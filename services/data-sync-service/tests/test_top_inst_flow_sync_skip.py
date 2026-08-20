@@ -175,6 +175,36 @@ def test_fetch_em_seat_bundles_parallel_runs_with_bounded_concurrency(monkeypatc
     assert max_in_flight == 2
 
 
+def test_sync_top_inst_skips_when_today_lhb_not_published(monkeypatch) -> None:
+    """2026-08-20: LHB for the CURRENT trading day is published only in the
+    evening — an empty result is "not published yet", not a data outage."""
+    monkeypatch.setattr(svc, "ensure_table", lambda: None)
+    monkeypatch.setattr(svc, "_latest_cn_trade_date_yyyymmdd", lambda: "20260820")
+    monkeypatch.setattr(svc, "_watchlist_ts_codes", lambda: ["603588.SH"])
+    monkeypatch.setattr(svc, "get_today_run", lambda job_type: None)
+    monkeypatch.setattr(svc, "is_trading_day", lambda exchange, cal_date: True)
+    monkeypatch.setattr(
+        svc,
+        "fetch_top_inst_provider_result",
+        lambda trade_date_iso: (
+            TopInstProviderResult(source="tushare", lhb_tickers=set(), lhb_count=0),
+            [],
+        ),
+    )
+    records: list[dict] = []
+    monkeypatch.setattr(svc, "upsert_daily_rows", lambda rows: len(rows))
+    monkeypatch.setattr(svc, "upsert_summary_rows", lambda rows: len(rows))
+    monkeypatch.setattr(svc, "insert_record", lambda **kwargs: records.append(kwargs))
+
+    out = svc.sync_top_inst_watchlist(force=True)
+
+    assert out["ok"] is True
+    assert out["skipped"] is True
+    assert out["reason"] == "lhb_not_published_yet"
+    assert out["lhbCount"] == 0
+    assert records and records[0]["success"] is True
+
+
 def test_sync_top_inst_rejects_suspicious_empty_lhb(monkeypatch) -> None:
     summary_called = False
 

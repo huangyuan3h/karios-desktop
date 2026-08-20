@@ -128,6 +128,32 @@ export interface PortfolioHealthResponse {
     holding513100?: boolean;
     note?: string;
   } | null;
+  /**
+   * 2026-08-20 (T6): the HELD NASDAQ-100 ETF (513110/513100/...) tracked as a
+   * separate "third asset / US" region with the sleeve rules (200d MA line),
+   * NOT as a CN A-share holding.
+   */
+  thirdAssetHolding?: {
+    active?: boolean;
+    symbol?: string;
+    tsCode?: string;
+    name?: string | null;
+    entryDate?: string;
+    costPrice?: number | null;
+    positionPct?: number | null;
+    price?: number;
+    ma200?: number;
+    aboveMa200?: boolean;
+    asOfDate?: string;
+    pctChg?: number | null;
+    pnlPct?: number | null;
+    action?: 'HOLD' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'NONE';
+    label?: string;
+    message?: string;
+    s3BuySetup?: boolean;
+    gateOpen?: boolean;
+    note?: string;
+  } | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

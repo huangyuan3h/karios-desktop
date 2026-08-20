@@ -56,12 +56,21 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
             ]
             if detail:
                 sleeve_lines.append(f"  ({' · '.join(detail)})")
+        pyramid_lines = []
+        for pt in p.get("pyramidTriggers") or []:
+            pyramid_lines.append(
+                f"  ⛓ 金字塔加仓 {pt.get('name') or pt.get('symbol')} "
+                f"收盘 {pt.get('lastClose')} ≥ 线 {pt.get('triggerLine')} → 加半仓"
+            )
+        if pyramid_lines:
+            pyramid_lines.insert(0, "「金字塔加仓触发」")
         body = _lines(
             _lines(*(_gate_line(k, v) for k, v in gates.items())),
             *([""] + [f"  {c.get('name') or c.get('symbol')} score={c.get('score')}"
                       for c in candidates] or []),
             *([""] + [f"  🚩退出 {e.get('name') or e.get('symbol')} {e.get('pnlPct')}%"
                       for e in exits] or []),
+            *pyramid_lines,
             *sleeve_lines,
         )
         return {"title": f"📋 执行卡 {p.get('day', '')}".strip(), "body": body}

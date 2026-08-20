@@ -119,6 +119,32 @@ def test_rolling_oos_warning_reads_file(monkeypatch, tmp_path) -> None:
     assert nf._rolling_oos_warning() == []
 
 
+def test_pyramid_trigger_alert_fires_when_close_crosses_line(monkeypatch) -> None:
+    """A held symbol whose close crossed the +2.5% trigger and not added yet -> alert."""
+    monkeypatch.setattr(
+        nf, "_anchor_blocks",
+        lambda: {"CN": {"holdings": [
+            {
+                "symbol": "CN:300628", "name": "亿联网络", "action": "HOLD",
+                "pyramidTriggerLine": 40.897, "pyramidAdded": False, "lastClose": 42.01,
+            },
+            {
+                "symbol": "CN:600000", "name": "未触发", "action": "HOLD",
+                "pyramidTriggerLine": 10.0, "pyramidAdded": False, "lastClose": 9.5,
+            },
+            {
+                "symbol": "CN:600001", "name": "已加过", "action": "HOLD",
+                "pyramidTriggerLine": 10.0, "pyramidAdded": True, "lastClose": 11.0,
+            },
+        ]}},
+    )
+    out = nf._pyramid_trigger_alerts()
+    assert len(out) == 1
+    assert out[0]["type"] == "pyramid_trigger"
+    assert "亿联网络" in out[0]["title"]
+    assert "加半仓" in out[0]["detail"]
+
+
 def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     monkeypatch.setattr(nf, "_stop_trail_alerts", lambda: [
         {"id": "a", "type": "near_line", "severity": "medium", "title": "m", "detail": "d",
@@ -130,6 +156,7 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     ])
     monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
+    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
     out = nf.build_notifications()
     assert [x["severity"] for x in out] == ["high", "medium"]

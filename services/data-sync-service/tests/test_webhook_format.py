@@ -57,6 +57,22 @@ def test_execution_card_renders_sleeve_when_actionable() -> None:
     )
     assert "第三资产" not in out2["body"]
 
+    # pyramid trigger rendered when present
+    out3 = format_bark(
+        "execution_card",
+        {
+            "day": "2026-08-20",
+            "gate": {"A股": {"regime": "Diverging", "panicActive": False, "candidateTotal": 0}},
+            "pyramidTriggers": [
+                {"market": "CN", "symbol": "CN:300628", "name": "亿联网络",
+                 "lastClose": 42.01, "triggerLine": 40.897},
+            ],
+        },
+    )
+    assert "金字塔加仓触发" in out3["body"]
+    assert "亿联网络" in out3["body"]
+    assert "加半仓" in out3["body"]
+
 
 def test_audit_issues_formats_kinds() -> None:
     out = format_bark(

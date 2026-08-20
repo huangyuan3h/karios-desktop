@@ -120,6 +120,10 @@ def _holdings_section(h: dict[str, Any]) -> list[dict[str, Any]]:
                 "pnlPct": hold.get("pnlPct"),
                 "expireDate": hold.get("expireDate"),
                 "lineOps": hold.get("lineOps") or {},
+                "pyramidTriggerLine": hold.get("pyramidTriggerLine"),
+                "pyramidAdded": bool(hold.get("pyramidAdded")),
+                "lastClose": hold.get("lastClose"),
+                "costPrice": hold.get("costPrice"),
             })
     return rows
 
@@ -387,6 +391,25 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
             if _sleeve.get("active") and _sleeve.get("action") not in ("NONE", "DONT_BUY")
             else None
         )
+        # T6 pyramid trigger (2026-08-20): remind via the phone push when a held
+        # symbol's close crossed the +2.5% trigger and has not been added yet.
+        pyramid_triggers = []
+        for h in sections:
+            if h.get("type") != "holding" or h.get("action") == "EXIT":
+                continue
+            if h.get("pyramidAdded"):
+                continue
+            try:
+                if float(h.get("lastClose") or 0) >= float(h.get("pyramidTriggerLine") or 0):
+                    pyramid_triggers.append({
+                        "market": h.get("market"),
+                        "symbol": h.get("symbol"),
+                        "name": h.get("name"),
+                        "lastClose": h.get("lastClose"),
+                        "triggerLine": h.get("pyramidTriggerLine"),
+                    })
+            except (TypeError, ValueError):
+                continue
         emit_event(
             "execution_card",
             {
@@ -427,6 +450,7 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
                     for h in sections
                     if h.get("type") == "holding" and h.get("action") == "EXIT"
                 ],
+                "pyramidTriggers": pyramid_triggers,
                 "thirdAssetSleeve": _sleeve_pushed,
             },
             dedupe_key=f"execution_card:{_now().split('T')[0]}",

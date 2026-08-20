@@ -218,6 +218,42 @@ def _rolling_oos_warning() -> list[dict[str, Any]]:
     }]
 
 
+def _pyramid_trigger_alerts() -> list[dict[str, Any]]:
+    """S-3 pyramid-add trigger (2026-08-20): a held symbol whose CLOSE crossed
+    the +2.5% trigger line and has NOT been added yet -> remind to add a half
+    sleeve. Close-based, matches the paper_s3._pyramid_adds rule."""
+    out: list[dict[str, Any]] = []
+    for market, block in _anchor_blocks().items():
+        for hold in block.get("holdings") or []:
+            symbol = str(hold.get("symbol") or "")
+            name = str(hold.get("name") or symbol)
+            if not symbol:
+                continue
+            if hold.get("pyramidAdded"):
+                continue
+            trigger = hold.get("pyramidTriggerLine")
+            last_close = hold.get("lastClose")
+            try:
+                trig_f = float(trigger)
+                close_f = float(last_close)
+            except (TypeError, ValueError):
+                continue
+            if trig_f <= 0 or close_f < trig_f:
+                continue
+            out.append({
+                "id": f"pyramid:{market}:{symbol}",
+                "type": "pyramid_trigger",
+                "severity": "high",
+                "title": f"金字塔加仓 · {name}",
+                "detail": (
+                    f"{symbol} 收盘 {close_f} ≥ 触发线 {trig_f}（成本 +2.5%）→ 建议加半仓（0.5x，每票至多 1 次）"
+                ),
+                "anchor": "holdings",
+                "createdAt": datetime.now(UTC).isoformat(),
+            })
+    return out[:5]
+
+
 def _third_asset_notification() -> list[dict[str, Any]]:
     """T6 (2026-08-19): 513100 idle-cash sleeve hint as a notification.
 
@@ -248,6 +284,7 @@ def build_notifications() -> list[dict[str, Any]]:
     """All actionable notifications, most severe first."""
     items = (
         _stop_trail_alerts()
+        + _pyramid_trigger_alerts()
         + _cron_failures()
         + _recon_alerts()
         + _rolling_oos_warning()

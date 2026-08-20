@@ -187,6 +187,82 @@ def test_sleeve_for_paper_uses_paper_book():
     assert out["action"] == tas.ACTION_BUY
 
 
+def test_resolve_held_third_asset_derives_ts_code() -> None:
+    """Registry rows carry no ts_code — the helper derives it from the symbol."""
+    rows = [{"symbol": "ETF:513110", "positionPct": 23.61, "costPrice": 2.45, "entryDate": "2026-08-20"}]
+    held = tas.resolve_held_third_asset(rows)
+    assert held is not None
+    assert held["symbol"] == "ETF:513110"
+    assert held["ts_code"] == "513110.SH"
+
+    sz = tas.resolve_held_third_asset([{"symbol": "ETF:159941"}])
+    assert sz is not None and sz["ts_code"] == "159941.SZ"
+
+    assert tas.resolve_held_third_asset([{"symbol": "CN:600000.SH"}]) is None
+
+
+def _md(*, above: bool, close: float = 2.45, ma200: float = 2.4) -> dict:
+    return {"ok": True, "ts": "513110.SH", "close": close, "ma200": ma200,
+            "above_ma200": above, "as_of": "2026-08-19", "pct_chg": -1.0}
+
+
+def test_build_third_asset_holding_hold_when_above_ma200() -> None:
+    """A held NASDAQ-100 ETF above its 200d MA with no A-share buy setup -> HOLD."""
+    holdings = [{"symbol": "ETF:513110", "ts_code": "513110.SH", "positionPct": 23.61, "costPrice": 2.45}]
+    with patch("data_sync_service.service.third_asset_sleeve._etf_market_data", return_value=_md(above=True)):
+        out = tas.build_third_asset_holding(day="2026-08-20", cn_block=_cn_block(regime="Diverging"), holdings_override=holdings)
+    assert out is not None
+    assert out["active"] is True
+    assert out["action"] == tas.ACTION_HOLD
+    assert out["aboveMa200"] is True
+    assert out["price"] > 0
+    assert out["pnlPct"] is not None
+
+
+def test_build_third_asset_holding_sell_when_below_ma200() -> None:
+    holdings = [{"symbol": "ETF:513110", "ts_code": "513110.SH", "positionPct": 23.61, "costPrice": 2.45}]
+    with patch("data_sync_service.service.third_asset_sleeve._etf_market_data", return_value=_md(above=False, close=2.1, ma200=2.4)):
+        out = tas.build_third_asset_holding(day="2026-08-20", cn_block=_cn_block(regime="Weak"), holdings_override=holdings)
+    assert out is not None
+    assert out["action"] == tas.ACTION_SELL_TO_REPO
+    assert out["aboveMa200"] is False
+    assert "跌破200日线" in out["message"]
+
+
+def test_build_third_asset_holding_sell_when_a_share_buy_setup() -> None:
+    holdings = [{"symbol": "ETF:513110", "ts_code": "513110.SH", "positionPct": 23.61, "costPrice": 2.45}]
+    block = _cn_block(regime="Strong", s3Candidates=[{"symbol": "CN:600000.SH", "score": 80}])
+    with patch("data_sync_service.service.third_asset_sleeve._etf_market_data", return_value=_md(above=True)):
+        out = tas.build_third_asset_holding(day="2026-08-20", cn_block=block, holdings_override=holdings)
+    assert out is not None
+    assert out["action"] == tas.ACTION_SELL_TO_A_SHARE
+    assert "换回 A 股" in out["message"]
+
+
+def test_build_third_asset_holding_none_when_not_held() -> None:
+    out = tas.build_third_asset_holding(day="2026-08-20", cn_block=_cn_block(), holdings_override=[])
+    assert out is None
+
+
+def test_cn_holdings_exclude_third_asset_etf() -> None:
+    """ETF:513110 must NOT appear in the CN A-share holdings block (separate region)."""
+    from data_sync_service.service import portfolio_health as ph
+
+    reg = [
+        {"symbol": "ETF:513110", "payload": {"positionPct": 23.61, "costPrice": 2.45, "entryDate": "2026-08-20"}},
+        {"symbol": "CN:300628", "payload": {"positionPct": 6.4, "costPrice": 39.9, "entryDate": "2026-08-04"}},
+    ]
+    with (
+        patch.object(ph, "list_registry", return_value=reg),
+        patch.object(ph, "_holding_check", lambda **kw: {"symbol": kw["name"], "action": "HOLD", "pnlPct": 1.0}),
+        patch.object(ph, "_pyramided_symbols", return_value=set()),
+    ):
+        holdings = ph._build_holdings_block(market="CN", day="2026-08-20")
+    syms = {h["symbol"] for h in holdings}
+    assert "CN:300628" in syms
+    assert "ETF:513110" not in syms
+
+
 def test_build_portfolio_health_embeds_sleeve():
     """portfolio-health response carries the thirdAssetSleeve block."""
     from data_sync_service.service import portfolio_health as ph
@@ -195,14 +271,20 @@ def test_build_portfolio_health_embeds_sleeve():
                   "circuitBlocked": False, "s3Candidates": [], "holdings": []}
     with (
         patch.object(ph, "_health_block", return_value=fake_block),
+        patch.object(ph, "list_registry", return_value=[]),
         patch(
             "data_sync_service.service.third_asset_sleeve.build_third_asset_sleeve",
             return_value={"active": True, "action": tas.ACTION_BUY, "message": "buy", "etf": "ETF:513100"},
         ) as sleeve_fn,
+        patch(
+            "data_sync_service.service.third_asset_sleeve.build_third_asset_holding",
+            return_value={"active": True, "symbol": "ETF:513100", "action": tas.ACTION_HOLD},
+        ) as holding_fn,
     ):
         out = ph.build_portfolio_health(trade_date="2026-08-07", markets=("CN",))
     sleeve_fn.assert_called_once()
+    holding_fn.assert_called_once()
     assert out["thirdAssetSleeve"]["action"] == tas.ACTION_BUY
-    assert out["thirdAssetSleeve"]["message"] == "buy"
+    assert out["thirdAssetHolding"]["action"] == tas.ACTION_HOLD
     assert "hkHealth" in out
     assert out["regime"] == "Weak"

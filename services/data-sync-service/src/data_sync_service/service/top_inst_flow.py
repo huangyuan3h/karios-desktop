@@ -79,6 +79,12 @@ def _yyyymmdd_to_iso(s: str) -> str:
     return s2
 
 
+def _is_today(iso_or_yyyymmdd: str) -> bool:
+    """True when the given date (ISO or YYYYMMDD) is the current calendar day."""
+    iso = _yyyymmdd_to_iso(iso_or_yyyymmdd)
+    return iso == datetime.now(tz=UTC).strftime("%Y-%m-%d")
+
+
 def _symbol_to_ts_code(symbol: str) -> str | None:
     from data_sync_service.service.market_quotes import normalize_market_symbol
 
@@ -757,6 +763,27 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
     lhb_tickers = provider_result.lhb_tickers
     org_by_ticker = provider_result.org_by_ticker
     if not lhb_tickers:
+        # 2026-08-20: LHB is published only AFTER the trading-day close (evening).
+        # A sync targeting the CURRENT trading day therefore legitimately gets 0
+        # rows until evening — that is "not published yet", NOT a data outage.
+        # Skip gracefully instead of failing, so morning/afternoon syncs stop
+        # triggering suspicious_empty_lhb alarms. The guard stays for PAST dates.
+        if _is_today(td_iso):
+            insert_record(
+                job_type=JOB_TYPE,
+                success=True,
+                last_ts_code=None,
+                error_message=None,
+            )
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "lhb_not_published_yet",
+                "jobType": JOB_TYPE,
+                "tradeDate": td_iso,
+                "source": provider_result.source,
+                "lhbCount": 0,
+            }
         error = "suspicious_empty_lhb"
         msg = f"{error}: source={provider_result.source}, tradeDate={td_iso}"
         insert_record(
