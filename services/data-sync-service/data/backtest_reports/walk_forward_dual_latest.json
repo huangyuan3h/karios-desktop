@@ -1,39 +1,64 @@
 {
-  "generatedAt": "2026-08-12T02:53:20.027090+00:00",
+  "generatedAt": "2026-08-21T16:53:49.702734+00:00",
   "rules": [
-    "R5C"
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5A",
+    "R5B",
+    "R5C",
+    "R5CS"
   ],
   "windows": {
-    "OOS2": {
-      "R5C": {
-        "totalNetPnlPct": 319.7103109931084,
-        "maxDrawdownPct": 24.230386117941137,
-        "sharpe": 1.92,
-        "annualPct": 310.33579922953993
-      }
-    },
-    "train": {
-      "R5C": {
-        "totalNetPnlPct": 51.98733196113632,
-        "maxDrawdownPct": 16.531182133707073,
-        "sharpe": 2.14,
-        "annualPct": 126.51270225026022
-      }
-    },
     "valid": {
+      "R1": {
+        "totalNetPnlPct": 126.05339077765566,
+        "maxDrawdownPct": 9.345158427790215,
+        "sharpe": 4.81,
+        "annualPct": 517.5179854953496
+      },
+      "R2": {
+        "totalNetPnlPct": 155.23251243994304,
+        "maxDrawdownPct": 12.630643880014864,
+        "sharpe": 4.87,
+        "annualPct": 709.7282211385495
+      },
+      "R3": {
+        "totalNetPnlPct": 126.05339077765566,
+        "maxDrawdownPct": 9.345158427790215,
+        "sharpe": 4.81,
+        "annualPct": 517.5179854953496
+      },
+      "R4": {
+        "totalNetPnlPct": 142.48020755289193,
+        "maxDrawdownPct": 10.777482422692634,
+        "sharpe": 4.82,
+        "annualPct": 622.1916194346746
+      },
+      "R5A": {
+        "totalNetPnlPct": 155.07862941000664,
+        "maxDrawdownPct": 4.466430539597541,
+        "sharpe": 5.49,
+        "annualPct": 708.6389031900912
+      },
+      "R5B": {
+        "totalNetPnlPct": 161.7645256090289,
+        "maxDrawdownPct": 5.475965332230486,
+        "sharpe": 5.47,
+        "annualPct": 756.7154242100868
+      },
       "R5C": {
-        "totalNetPnlPct": 82.9689078554944,
-        "maxDrawdownPct": 6.154424987913956,
-        "sharpe": 4.2,
-        "annualPct": 285.1798916283427
-      }
-    },
-    "long": {
-      "R5C": {
-        "totalNetPnlPct": 955.2486321642928,
-        "maxDrawdownPct": 25.479338079620224,
-        "sharpe": 1.2,
-        "annualPct": 59.018552125392354
+        "totalNetPnlPct": 235.48422147495808,
+        "maxDrawdownPct": 8.286407530365377,
+        "sharpe": 5.27,
+        "annualPct": 1390.6484108923453
+      },
+      "R5CS": {
+        "totalNetPnlPct": 266.3733471497737,
+        "maxDrawdownPct": 10.909063823659366,
+        "sharpe": 5.3,
+        "annualPct": 1714.5069803824765
       }
     }
   }

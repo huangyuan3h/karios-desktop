@@ -2969,3 +2969,30 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 41.83≥40.897 ✅ 半仓 3.0% ✅、ETF 两笔站上 MA200 ✅、2099 恐慌降险 ✅）；单测
 28 例（audit 11 + sleeve_auto 5 + allocation 5 + nav_sim 7）；后端全量 3497+
 通过（含时间敏感测试修复：top_inst 的 `_is_today` mock）；前端 804 + tsc/eslint 干净。
+
+### OPT-121：dual 联合三窗验收（CN+HK+套筒同池 · 2026-08-21）
+
+**状态**：[x]（R5CS 三窗全正；顺带修复 R5 系列两个既有 bug）
+
+**背景（todo T6 ③ 最后一块）**：`run_walk_forward_dual` 双市场资金池未含套筒——
+联合 NAV = w_cn×NAV_cn + w_hk×NAV_hk + w_etf×NAV_etf。
+
+**改动**：
+- `run_walk_forward_dual.py` 加 **R5CS** 规则：R5C 选中市场的**内部闲置**吃套筒
+  （`idle_pct_by_day` 从 positions_by_day 算，与 OPT-119 同口径）；双弱 → 整池
+  吃套筒；套筒 NAV 复用 `portfolio_nav_sim`（同规则同数据）
+- `allocation.py` 抽纯函数 `weights_with_sleeve_from_regimes`（dual 用引擎
+  regimes，live 用实时——同一决策代码）
+- **顺带修复两个既有 bug**（R5A/B/C 此前全部被无条件 momentum softmax 覆盖，
+  注释宣称的 "R5c = CN-first 100%" 从未生效；`rule == "R5a"` 大小写 bug 让
+  R5A 双强 50/50 分支成为死代码）
+
+**三窗结果（R5C vs R5CS，固化报告 walk_forward_dual_latest.json）**：
+| 窗口 | R5C% | R5CS% | 增量pt | DD R5C→R5CS |
+|------|------|-------|--------|-------------|
+| OOS2 | +411.9 | +422.7 | +10.8 | 35.0 → 35.0 |
+| train | +330.8 | +347.8 | +17.0 | 11.2 → 11.2 |
+| valid | +235.5 | +266.4 | +30.9 | 8.3 → 10.9 |
+
+**验收**：三窗增量全正（todo §19 铁律）；单测 8 例（R5C CN-first 权重、R5CS 同权、
+闲置吃套筒、双弱整池、R5A 50/50）；后端全量 3506 通过；ruff 干净。

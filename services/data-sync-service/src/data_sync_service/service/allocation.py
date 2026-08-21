@@ -37,6 +37,32 @@ def weights_from_regimes(cn_regime: str | None, hk_regime: str | None) -> tuple[
     return (0.0, 0.0)
 
 
+def weights_with_sleeve_from_regimes(
+    cn_regime: str | None,
+    hk_regime: str | None,
+    etf_above_ma200: bool | None = None,
+) -> tuple[float, float, float]:
+    """R5c + T6 sleeve, pure: (w_cn, w_hk, w_etf).
+
+    Both markets weak -> the idle pool goes to the Nasdaq sleeve while it
+    trades above its 200-day MA, else stays in cash/repo (w_etf = 0).
+    ``etf_above_ma200`` is injectable for backtests (engine regimes); when
+    omitted the live sleeve state machine is queried.
+    """
+    w_cn, w_hk = weights_from_regimes(cn_regime, hk_regime)
+    if w_cn > 0 or w_hk > 0:
+        return (w_cn, w_hk, 0.0)
+    if etf_above_ma200 is None:
+        from data_sync_service.service.third_asset_sleeve import (
+            THIRD_ASSET_TS,
+            _etf_market_data,
+        )
+
+        md = _etf_market_data(THIRD_ASSET_TS)
+        etf_above_ma200 = bool(md.get("ok") and md.get("above_ma200"))
+    return (0.0, 0.0, 1.0 if etf_above_ma200 else 0.0)
+
+
 def live_regimes(*, as_of_date: str | None = None) -> dict[str, str | None]:
     """Current traffic lights for both markets (live signal path)."""
     from data_sync_service.service.execution_gate import classify_market_regime
@@ -69,19 +95,9 @@ def weights_with_sleeve(
     live from the sleeve state machine.
     """
     base = resolve_weights(as_of_date=as_of_date)
-    w_cn = float(base["weights"]["CN"])
-    w_hk = float(base["weights"]["HK"])
-    if w_cn > 0 or w_hk > 0:
-        return (w_cn, w_hk, 0.0)
-    if etf_above_ma200 is None:
-        from data_sync_service.service.third_asset_sleeve import (
-            THIRD_ASSET_TS,
-            _etf_market_data,
-        )
-
-        md = _etf_market_data(THIRD_ASSET_TS)
-        etf_above_ma200 = bool(md.get("ok") and md.get("above_ma200"))
-    return (0.0, 0.0, 1.0 if etf_above_ma200 else 0.0)
+    return weights_with_sleeve_from_regimes(
+        base["regimes"]["CN"], base["regimes"]["HK"], etf_above_ma200=etf_above_ma200
+    )
 
 
 def resolve_weights_with_sleeve(*, as_of_date: str | None = None) -> dict[str, Any]:
