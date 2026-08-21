@@ -389,16 +389,19 @@ export function WatchlistTable({
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
       const market = tradeMarketForSymbol(symbol);
+      // 2026-08-21 fix: apply the watchlist edits FIRST (synchronous) and the
+      // trade-journal write last (best-effort). Previously the edits ran AFTER
+      // `await recordUserTrade` inside the same try — a browser-side network
+      // failure (abort / HMR reload / tunnel hiccup) skipped the table update
+      // even though the server may have already recorded the trade.
       try {
         if (kind === 'buy') {
-          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
           setItemCostPriceValue(symbol, price);
           setItemPositionPct(symbol, String(positionPct));
         } else if (kind === 'add') {
           const oldCost = item.costPrice ?? price;
           const oldPct = item.positionPct ?? 0;
           const blended = blendAddCost(oldCost, oldPct, price, positionPct);
-          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
           setItemCostPriceValue(symbol, blended.blendedCost);
           setItemPositionPct(symbol, String(blended.newPositionPct));
         } else {
@@ -408,6 +411,20 @@ export function WatchlistTable({
           const costBasis =
             typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
           if (typeof costBasis === 'number') setItemCostPriceValue(symbol, costBasis);
+          const remaining = (item.positionPct ?? 0) - positionPct;
+          setItemPositionPct(symbol, String(Math.max(0, remaining)));
+        }
+      } catch {
+        // Watchlist edits are the primary surface — never let them break.
+      }
+      try {
+        if (kind === 'buy') {
+          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
+        } else if (kind === 'add') {
+          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
+        } else {
+          const costBasis =
+            typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
           await recordUserTrade({
             symbol,
             side: 'SELL',
@@ -418,15 +435,14 @@ export function WatchlistTable({
             source,
             market,
           });
-          const remaining = (item.positionPct ?? 0) - positionPct;
-          setItemPositionPct(symbol, String(Math.max(0, remaining)));
         }
-        void invalidateUserTradesQueries(queryClient);
       } catch {
-        // Trade journal is best-effort; watchlist edits still apply.
-      } finally {
-        setTradeDialog(null);
+        // Trade journal is best-effort; the watchlist is already updated.
       }
+      // Always refresh the derived surfaces (trades journal + portfolio health)
+      // — the holdings shape changed either way.
+      void invalidateUserTradesQueries(queryClient);
+      setTradeDialog(null);
     },
     [tradeDialog, queryClient, setItemCostPriceValue, setItemPositionPct],
   );
