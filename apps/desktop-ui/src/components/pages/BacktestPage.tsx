@@ -12,6 +12,7 @@ import {
   useBacktestOverviewQuery,
   useBacktestReconQuery,
   useBacktestRunQuery,
+  useCoreAuditQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   usePaperVsBacktestQuery,
@@ -209,6 +210,80 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
       <p className="mt-2 text-[10px] text-[var(--k-muted)]">
         数字为固化基线（walk_forward_baseline.json）；回测是规则真值，实盘/paper 用同码引擎日终执行。
       </p>
+    </div>
+  );
+}
+
+function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
+  const holdings = q.data?.holdings ?? [];
+  const counts = q.data?.counts;
+  const gate = q.data?.gate;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <ShieldAlert className="size-3.5" />
+        核心仓操作核对（手动交易 vs 策略规则）
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          {q.data?.day ?? ''} · 闸门 {gate?.regime ?? '—'}
+          {gate?.panicActive ? ' · 恐慌中' : ''} · {gate?.gateOpen ? '开' : '关'}
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : holdings.length ? (
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            <span className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">
+              符合 {counts?.ok ?? 0}
+            </span>
+            <span className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+              偏离 {counts?.warn ?? 0}
+            </span>
+            <span className="rounded-md border border-red-500/40 bg-red-500/5 px-2 py-0.5 text-red-700 dark:text-red-300">
+              违反 {counts?.violation ?? 0}
+            </span>
+          </div>
+          {holdings.map((h) => (
+            <div key={h.symbol} className="rounded-md border border-[var(--k-border)] p-2">
+              <div className="flex flex-wrap items-baseline gap-x-3 text-[11px]">
+                <span className="font-medium">{h.symbol}</span>
+                <span className="text-[var(--k-muted)]">{h.name}</span>
+                <span>仓位 {h.positionPct ?? 0}%</span>
+                <span>成本 {h.costPrice ?? '—'}</span>
+                {h.pyramidTriggerLine != null && (
+                  <span className="text-[var(--k-muted)]">金字塔线 {h.pyramidTriggerLine} · {h.pyramidAdded ? '已加' : '未加'}</span>
+                )}
+              </div>
+              <div className="mt-1 flex flex-col gap-1">
+                {(h.ops ?? []).map((op, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px] leading-tight">
+                    <span
+                      className={cn(
+                        'mt-0.5 shrink-0 rounded px-1 py-px text-[9px]',
+                        op.verdict === 'ok'
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : op.verdict === 'warn'
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                            : 'bg-red-500/10 text-red-700 dark:text-red-300',
+                      )}
+                    >
+                      {op.verdict === 'ok' ? '符合' : op.verdict === 'warn' ? '偏离' : '违反'}
+                    </span>
+                    <span className="tabular-nums text-[var(--k-muted)]">
+                      {op.date} {op.side} {op.price} · {op.positionPct}%
+                    </span>
+                    <span className="text-[var(--k-muted)]">{op.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--k-muted)]">
+          暂无手动交易记录——核心仓操作后这里会出规则核对。
+        </p>
+      )}
     </div>
   );
 }
@@ -458,6 +533,7 @@ export function BacktestPage() {
   const reconQ = useBacktestReconQuery(2);
   const c4Q = usePaperVsBacktestQuery();
   const sleeveQ = useSleeveNavQuery();
+  const coreQ = useCoreAuditQuery();
 
   const set = (k: keyof BacktestParams, v: string | number) =>
     setParams((p) => ({ ...p, [k]: typeof v === 'number' ? v : Number(v) }));
@@ -468,6 +544,7 @@ export function BacktestPage() {
     <div className="flex flex-col gap-4 p-4">
       {/* 结论区（定案口径） */}
       <ConclusionBoard overview={overviewQ.data} />
+      <CoreAuditCard q={coreQ} />
       <SleeveNavCard q={sleeveQ} />
       <RollingOosCard overview={overviewQ.data} />
       <ReconStrip reconQ={reconQ} />

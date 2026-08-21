@@ -71,6 +71,7 @@ CLOSE_REASON_SCORE_FLOOR = "score_floor"  # latest TrendOK score < SCORE_FLOOR
 CLOSE_REASON_POOL_EXIT = "pool_exit"  # symbol purged from the watchlist registry
 CLOSE_REASON_SWAPPED = "swapped"  # RS rotation: replaced by a stronger candidate
 CLOSE_REASON_TRAILING = "trailing_stop"  # peak pullback <= TRAILING_STOP_PCT
+CLOSE_REASON_SLEEVE_EXIT = "sleeve_exit"  # third-asset sleeve: broke MA200 / A-share buy point (T6, 2026-08-21)
 CLOSE_REASONS = (
     CLOSE_REASON_MAX_HOLD,
     CLOSE_REASON_STOP_HIT,
@@ -79,6 +80,7 @@ CLOSE_REASONS = (
     CLOSE_REASON_POOL_EXIT,
     CLOSE_REASON_SWAPPED,
     CLOSE_REASON_TRAILING,
+    CLOSE_REASON_SLEEVE_EXIT,
 )
 
 # TIP-011: source attribution (provenance of the BUY/ADD signal).

@@ -11,6 +11,11 @@ Rule R5c:
   only HK tradable                -> 100% HK
   both weak                       -> 0/0 (both markets' own regime gates
                                        already keep them out of positions)
+
+T6 sleeve extension (2026-08-21): when BOTH markets are weak, the idle pool
+is offered to the third-asset sleeve — 100% Nasdaq ETF while it trades above
+its 200-day MA, else stay in cash/repo. The three-window validation lives in
+scripts/sleeve_nav_sim.py (OPT-119).
 """
 
 from __future__ import annotations
@@ -51,6 +56,45 @@ def resolve_weights(*, as_of_date: str | None = None) -> dict[str, Any]:
     regimes = live_regimes(as_of_date=as_of_date)
     w_cn, w_hk = weights_from_regimes(regimes["CN"], regimes["HK"])
     return {"weights": {"CN": w_cn, "HK": w_hk}, "regimes": regimes}
+
+
+def weights_with_sleeve(
+    *, as_of_date: str | None = None, etf_above_ma200: bool | None = None
+) -> tuple[float, float, float]:
+    """R5c + T6 sleeve: (w_cn, w_hk, w_etf).
+
+    Both markets weak -> the idle pool goes to the Nasdaq sleeve while it
+    trades above its 200-day MA, else stays in cash/repo (w_etf = 0).
+    ``etf_above_ma200`` is injectable for tests; when omitted it is read
+    live from the sleeve state machine.
+    """
+    base = resolve_weights(as_of_date=as_of_date)
+    w_cn = float(base["weights"]["CN"])
+    w_hk = float(base["weights"]["HK"])
+    if w_cn > 0 or w_hk > 0:
+        return (w_cn, w_hk, 0.0)
+    if etf_above_ma200 is None:
+        from data_sync_service.service.third_asset_sleeve import (
+            THIRD_ASSET_TS,
+            _etf_market_data,
+        )
+
+        md = _etf_market_data(THIRD_ASSET_TS)
+        etf_above_ma200 = bool(md.get("ok") and md.get("above_ma200"))
+    return (0.0, 0.0, 1.0 if etf_above_ma200 else 0.0)
+
+
+def resolve_weights_with_sleeve(*, as_of_date: str | None = None) -> dict[str, Any]:
+    """One-call R5c + sleeve allocation.
+
+    Returns {"weights": {"CN", "HK", "ETF"}, "regimes": {...}}.
+    """
+    w_cn, w_hk, w_etf = weights_with_sleeve(as_of_date=as_of_date)
+    regimes = live_regimes(as_of_date=as_of_date)
+    return {
+        "weights": {"CN": w_cn, "HK": w_hk, "ETF": w_etf},
+        "regimes": regimes,
+    }
 
 
 # ---------------------------------------------------------------------------

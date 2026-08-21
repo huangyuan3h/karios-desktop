@@ -340,6 +340,54 @@ export function useSleeveNavQuery(enabled = true) {
   });
 }
 
+export type CoreAuditOp = {
+  date?: string | null;
+  side?: string | null;
+  price?: number | null;
+  positionPct?: number | null;
+  verdict?: 'ok' | 'warn' | 'violation' | null;
+  rule?: string | null;
+  detail?: string | null;
+};
+
+export type CoreAuditHolding = {
+  symbol?: string | null;
+  name?: string | null;
+  positionPct?: number | null;
+  costPrice?: number | null;
+  lastClose?: number | null;
+  pnlPct?: number | null;
+  stopLossLine?: number | null;
+  trailingLine?: number | null;
+  maxHoldDate?: string | null;
+  pyramidTriggerLine?: number | null;
+  pyramidAdded?: boolean | null;
+  ops?: CoreAuditOp[] | null;
+};
+
+export type CoreAudit = {
+  ok: boolean;
+  day?: string | null;
+  gate?: {
+    regime?: string | null;
+    panicActive?: boolean | null;
+    gateOpen?: boolean | null;
+  } | null;
+  holdings?: CoreAuditHolding[] | null;
+  violations?: Array<CoreAuditOp & { symbol?: string | null; severity?: string | null }> | null;
+  counts?: { ok?: number | null; warn?: number | null; violation?: number | null } | null;
+};
+
+/** Core-holding operation audit: did manual trades follow the rules? */
+export function useCoreAuditQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'core-audit'],
+    queryFn: () => apiGetJson<CoreAudit>('/api/backtest/core-audit'),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export type PaperVsBacktestTwin = {
   entryDate?: string | null;
   closeDate?: string | null;

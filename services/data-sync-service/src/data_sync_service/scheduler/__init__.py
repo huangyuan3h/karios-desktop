@@ -33,6 +33,7 @@ from data_sync_service.scheduler import (
     index_daily_job,
     intraday_alarm_job,
     intraday_score_job,
+    sleeve_paper_job,
     macro_daily_job,
     minute_capture_job,
     morning_brief_job,
@@ -193,6 +194,12 @@ def create_scheduler() -> BackgroundScheduler:
         cn_industry_post_close_job.run,
         cn_industry_post_close_job.build_trigger(),
         id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        sleeve_paper_job.run,
+        sleeve_paper_job.build_trigger(),
+        id=sleeve_paper_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

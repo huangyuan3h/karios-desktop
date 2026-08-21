@@ -257,6 +257,24 @@ def backtest_paper_vs_backtest() -> dict[str, Any]:
     return {"ok": True, "report": report}
 
 
+@router.get("/core-audit")
+def backtest_core_audit(
+    day: str = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),
+) -> dict[str, Any]:
+    """Core-holding operation audit (2026-08-21): did manual trades follow the
+    rules? Pyramid ADDs are checked against the pre-trade blended cost via
+    reverse replay; SELLs against the -5% stop / panic de-risk; ETF ADDs
+    against the sleeve MA200. Warns are surfaced as a violations list.
+    """
+    from data_sync_service.service.core_holding_audit import audit_core_holdings
+
+    audit_day = day or date.today().isoformat()
+    try:
+        return {"ok": True, **audit_core_holdings(day=audit_day)}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"core audit failed: {exc}") from exc
+
+
 @router.get("/sleeve-nav")
 def backtest_sleeve_nav() -> dict[str, Any]:
     """T6 third-asset sleeve NAV report (data/backtest_reports/
