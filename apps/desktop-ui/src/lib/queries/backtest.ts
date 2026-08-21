@@ -310,6 +310,36 @@ export function useBacktestOverviewQuery(enabled = true) {
   });
 }
 
+export type SleeveNavWindow = {
+  window?: string | null;
+  totalBasePct?: number | null;
+  totalSleevePct?: number | null;
+  deltaPct?: number | null;
+  maxDdBasePct?: number | null;
+  maxDdSleevePct?: number | null;
+  holdDays?: number | null;
+  idleDays?: number | null;
+  avgIdlePct?: number | null;
+};
+
+export type SleeveNavReport = {
+  ok: boolean;
+  report?: {
+    generatedAt?: string | null;
+    results?: Record<string, SleeveNavWindow> | null;
+  } | null;
+};
+
+/** T6 third-asset sleeve NAV report (scripts/sleeve_nav_sim.py). */
+export function useSleeveNavQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'sleeve-nav'],
+    queryFn: () => apiGetJson<SleeveNavReport>('/api/backtest/sleeve-nav'),
+    staleTime: 10 * 60_000,
+    enabled,
+  });
+}
+
 export type PaperVsBacktestTwin = {
   entryDate?: string | null;
   closeDate?: string | null;

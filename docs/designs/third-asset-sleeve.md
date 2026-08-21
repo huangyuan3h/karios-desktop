@@ -24,6 +24,7 @@
   - 后端 `trading_brief.py` — 每日简报新增 `第三资产套筒` section（paper 书口径）；`execution_card` webhook payload 带 `thirdAssetSleeve`（仅可操作动作）→ `webhook_format.py` Bark 推送渲染；`notifications.py` 聚合通知新增 `third_asset` 项（实盘口径，仅 BUY/SELL 推，**DONT_BUY 不推**）
   - ai-service 决策 agent 的持仓体检输出注入套筒提示
   - 测试：后端 `test_third_asset_sleeve.py` 12 用例 + trading_brief 3 + notifications 3 + webhook_format 2 + 前端 banner 6 用例；全量后端 3459 + 前端 800 通过
+- **已落地 2026-08-21（OPT-119 · 回测/验证层）**：组合 NAV 模拟器 `service/portfolio_nav_sim.py`（闲置吃 513100/GC001，逐日复利，基线=闲置0%）+ `scripts/sleeve_nav_sim.py` 三窗验证 + `GET /api/backtest/sleeve-nav` + 回测页 `SleeveNavCard`。**落地实测三窗（当前引擎口径）：OOS2 +2.8 / train +23.1 / valid +30.4pt 全正**（设计稿探索 +3.1/+15.3/+39.0 为旧引擎口径，方向一致）；注意 valid 套筒 DD 13.7% > 基线 5.7%（高闲置 × 513100 波动传导）——"maxDD 略降"结论在现引擎下不再成立，如实展示。切换语义：当天切出（破线当日转 repo）经实测优于次日切出（valid +30.4 vs +14.0）。
 - **未落地（待拍板）**：paper 层自动配置（自动买卖 513100 进 paper 书）、`allocation.py` 资金池扩展、`run_walk_forward_dual` 三窗验收、"20d 回撤>10% 硬切出"兜底变体
 
 ---
