@@ -2946,3 +2946,26 @@ auth 单测 3 例 + AuthGate 4 例；774 passed；tsc/eslint 干净。
 valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，如实展示（设计稿
 "maxDD 略降"为旧引擎口径，不再成立）；模拟器单测 7 例；后端 50 测试 + 前端 804
 全过；tsc/eslint 干净。
+
+### OPT-120：核心仓操作核对 + paper 套筒自动配置（2026-08-21 · T6 剩余缺口）
+
+**状态**：[x]（核心仓 audit + paper 自动配置 + allocation 扩展全部落地）
+
+**背景（补齐回测页局限之二：核心仓手动操作无法对照规则）**：S-3 主线自动执行，
+但核心仓（300628/513110 等）是手动管理——"我的操作是否符合策略"没有工具回答。
+
+**改动**：
+- `service/core_holding_audit.py`：操作 vs 规则核对——**逆向回放**（从当前成本/仓位
+  反推每笔操作前状态，8/21 加仓用加仓前成本 39.9×1.025=40.897 判定而非加仓后混仓）；
+  金字塔 ADD（regime-independent，恐慌不拦）、SELL（-5% 止损/恐慌降险）、ETF ADD
+  （套筒 MA200 语义）；`GET /api/backtest/core-audit` + 回测页 `CoreAuditCard`
+- `service/sleeve_paper_auto.py`：paper 书套筒自动配置——BUY_513100 开仓（sleeve_pct=
+  闲置%）、SELL_TO_REPO/SELL_TO_A_SHARE 平仓（close_reason=`sleeve_exit`，新增枚举）；
+  幂等（ON CONFLICT / 只关 open）；`scheduler/sleeve_paper_job.py` 工作日 18:20
+- `service/allocation.py`：R5c 资金池扩展——双市场皆弱时闲置池进套筒
+  （`weights_with_sleeve` 三元权重：CN/HK/ETF）；ETF 站上 MA200 才承接
+
+**验收**：audit 实测 8/21 全部操作 4 ok / 0 warn / 0 violation（300628 金字塔
+41.83≥40.897 ✅ 半仓 3.0% ✅、ETF 两笔站上 MA200 ✅、2099 恐慌降险 ✅）；单测
+28 例（audit 11 + sleeve_auto 5 + allocation 5 + nav_sim 7）；后端全量 3497+
+通过（含时间敏感测试修复：top_inst 的 `_is_today` mock）；前端 804 + tsc/eslint 干净。

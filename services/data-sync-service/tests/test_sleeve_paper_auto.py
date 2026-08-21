@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
 from unittest.mock import patch
 
 import pytest
 
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_SLEEVE_EXIT,
-    close_paper_trade,
     list_paper_trades,
 )
 from data_sync_service.service.sleeve_paper_auto import apply_sleeve_to_paper
@@ -41,8 +39,9 @@ def _cleanup():
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM paper_trades WHERE symbol = %s AND why_at_entry LIKE %s",
-                (TEST_SYMBOL, "test sleeve leg%"),
+                "DELETE FROM paper_trades WHERE symbol = %s "
+                "AND (why_at_entry LIKE %s OR why_at_entry LIKE %s)",
+                (TEST_SYMBOL, "test sleeve leg%", "sleeve: idle %"),
             )
         conn.commit()
 
@@ -64,7 +63,7 @@ def test_buy_opens_sleeve_leg():
         if str(t.get("symbol") or "").upper() == TEST_SYMBOL
     ]
     assert len(open_legs) == 1
-    assert float(open_legs[0]["sleeve_pct"] or 0) == pytest.approx(60.0, abs=0.1)
+    assert float(open_legs[0]["sleevePct"] or 0) == pytest.approx(60.0, abs=0.1)
 
 
 @pytest.mark.requires_postgres
@@ -131,4 +130,4 @@ def test_close_reason_is_sleeve_exit():
         t for t in list_paper_trades(status="closed")
         if str(t.get("id")) == str(leg["id"])
     ]
-    assert rows and rows[0]["close_reason"] == CLOSE_REASON_SLEEVE_EXIT
+    assert rows and rows[0]["closeReason"] == CLOSE_REASON_SLEEVE_EXIT

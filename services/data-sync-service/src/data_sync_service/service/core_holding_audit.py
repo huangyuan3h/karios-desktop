@@ -130,7 +130,6 @@ def _judge_sell(op: dict[str, Any], state: dict[str, Any], gate: dict[str, Any])
     max-hold are informational (the engine's fixed -8% peak line / 60 days)."""
     price = float(op["price"] or 0)
     cost = float(state.get("cost") or 0)
-    pct_before = float(state.get("pct") or 0)
     stop = cost * (1 + STOP_LOSS_PCT / 100.0) if cost > 0 else None
 
     if stop is not None and price <= stop:

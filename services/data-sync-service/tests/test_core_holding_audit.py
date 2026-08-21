@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from data_sync_service.service.core_holding_audit import (
     _judge_add,
     _judge_open,

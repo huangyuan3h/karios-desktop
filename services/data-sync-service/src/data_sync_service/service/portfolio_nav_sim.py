@@ -100,8 +100,6 @@ def simulate_sleeve_nav(
     nav_base = 1.0
     nav_sleeve = 1.0
     rows: list[dict[str, Any]] = []
-    prev_base = 1.0
-    prev_sleeve = 1.0
     base_peak = 1.0
     sleeve_peak = 1.0
     max_dd_base = 0.0
@@ -174,8 +172,6 @@ def simulate_sleeve_nav(
                 "holding": holding,
             }
         )
-        prev_base = nav_base
-        prev_sleeve = nav_sleeve
 
     total_base = (nav_base - 1.0) * 100.0
     total_sleeve = (nav_sleeve - 1.0) * 100.0

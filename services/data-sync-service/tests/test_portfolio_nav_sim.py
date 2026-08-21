@@ -11,7 +11,7 @@ from data_sync_service.service.portfolio_nav_sim import (
 
 
 def _bars(dates: list[str], closes: list[float]) -> list[dict]:
-    return [{"date": d.replace("-", ""), "close": c} for d, c in zip(dates, closes)]
+    return [{"date": d.replace("-", ""), "close": c} for d, c in zip(dates, closes, strict=False)]
 
 
 def _run(
@@ -61,7 +61,7 @@ def _flat_then_break_etf(n: int = 220) -> dict[str, float]:
             closes.append(101.0 + (i - 200))
         else:
             closes.append(110.0 - 1.5 * (i - 210))
-    return {d: c for d, c in zip(days, closes)}
+    return {d: c for d, c in zip(days, closes, strict=False)}
 
 
 def test_baseline_is_idle_zero():
