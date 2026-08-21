@@ -362,6 +362,16 @@ export function WatchlistTable({
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
   const [tradeDialog, setTradeDialog] = React.useState<TradeDialogOpenState | null>(null);
   const queryClient = useQueryClient();
+  // T6 (2026-08-20): committing a positionPct edit changes the holdings shape —
+  // refresh portfolio-health so the health card + third-asset region update
+  // immediately instead of waiting for the 5-minute poll.
+  const commitPositionPctAndRefresh = React.useCallback(
+    (symbol: string) => {
+      commitItemPositionPctDraft(symbol);
+      void invalidateUserTradesQueries(queryClient);
+    },
+    [commitItemPositionPctDraft, queryClient],
+  );
 
   const openTradeDialog = React.useCallback(
     (kind: 'buy' | 'add' | 'sell', item: WatchlistItem) => {
@@ -839,7 +849,7 @@ export function WatchlistTable({
                         showColorPicker={showColorPicker}
                         setItemPositionPct={setItemPositionPct}
                         setItemPositionPctDraft={setItemPositionPctDraft}
-                        commitItemPositionPctDraft={commitItemPositionPctDraft}
+                        commitItemPositionPctDraft={commitPositionPctAndRefresh}
                         setItemCostPriceDraft={setItemCostPriceDraft}
                         setItemCostPriceValue={setItemCostPriceValue}
                         commitItemCostPriceDraft={commitItemCostPriceDraft}

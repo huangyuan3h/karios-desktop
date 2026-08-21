@@ -61,8 +61,9 @@ def _run(bars, cn_block, *, last_date: date | None = None, holdings_override=Non
         )
 
 
-def test_buy_when_idle_and_above_ma200_gate_open():
-    # gate must be OPEN (Strong/Diverging, no panic/circuit) to suggest buying
+def test_buy_when_idle_and_above_ma200():
+    # above the ETF's own 200d MA + idle capital -> BUY (the ETF's 200d MA is
+    # the only trend gate; the CN market gate does not apply to a US ETF)
     block = _cn_block(regime="Strong")
     out = _run(_bars(), block, last_date=date(2026, 8, 6))
     assert out["active"] is True
@@ -74,22 +75,25 @@ def test_buy_when_idle_and_above_ma200_gate_open():
     assert out["price"] == 120.0
 
 
-def test_gate_closed_weak_suppresses_buy():
-    """2026-08-19: Weak regime + panic cooldown → never hint BUY, even above MA200."""
+def test_cn_gate_closed_weak_does_not_suppress_etf_buy():
+    """2026-08-21: CN market gate (Weak/panic/circuit) does NOT gate a US ETF.
+
+    513100 follows the Nasdaq, not the A-share regime — above its own 200d MA
+    with idle capital it is a BUY even when the CN gate is closed.
+    """
     block = _cn_block(regime="Weak", panicCooldown={"active": True})
     out = _run(_bars(), block, last_date=date(2026, 8, 6))
     assert out["active"] is True
-    assert out["action"] == tas.ACTION_DONT_BUY
+    assert out["action"] == tas.ACTION_BUY
     assert out["gateOpen"] is False
-    assert "市场闸门关闭" in out["message"]
-    assert "今日不买" in out["message"]
+    assert "今日不买" not in out["message"]
 
 
-def test_gate_closed_circuit_suppresses_buy():
+def test_cn_gate_closed_circuit_does_not_suppress_etf_buy():
     block = _cn_block(regime="Strong", circuitBlocked=True)
     out = _run(_bars(), block, last_date=date(2026, 8, 6))
-    assert out["action"] == tas.ACTION_DONT_BUY
-    assert "回撤熔断" in out["message"]
+    assert out["action"] == tas.ACTION_BUY
+    assert "今日不买" not in out["message"]
 
 
 def test_sell_to_a_share_when_buy_setup():

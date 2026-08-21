@@ -16,11 +16,17 @@ This module only *hints* / *tracks* — it never moves money. The decision and
 execution stay with the user / paper system.
 
 States surfaced (always active when ETF data is available):
-  BUY_513100         idle capital + gate open + above MA200     -> buy the ETF
-  SELL_TO_A_SHARE    S-3 buy setup active                       -> switch back to A-shares
-  SELL_TO_REPO       broke MA200 (holding)                      -> sell to repo
-  DONT_BUY           gate closed / broke MA (not holding) /
-                     fully deployed (above MA200)               -> stay out today
+  BUY_513100         idle capital + above MA200     -> buy the ETF
+  SELL_TO_A_SHARE    S-3 buy setup active           -> switch back to A-shares
+  SELL_TO_REPO       broke MA200 (holding)          -> sell to repo
+  DONT_BUY           broke MA (not holding) /
+                     fully deployed (above MA200)   -> stay out today
+
+2026-08-21 (用户拍板): the CN A-share market gate (regime / panic / circuit)
+does NOT gate a US ETF — 513100 follows the Nasdaq, not the A-share regime.
+The ETF's own 200d MA is the only trend gate. The A-share gate only informs
+whether "A股有买点" (s3_buy_setup) counts — i.e. whether switching the ETF back
+to A-shares makes sense (the CN line has to actually be open for new buys).
 """
 
 from __future__ import annotations
@@ -269,26 +275,6 @@ def build_third_asset_sleeve(
                 f"→ 今天别买，资金留逆回购/现金"
             )
         out["label"] = action_label(out["action"])
-        return out
-
-    if not st["gate_open"]:
-        # 2026-08-19: market gate closed (Weak/panic/circuit) → never suggest a
-        # fresh buy on a day the A-share line itself is hiding. The ETF is
-        # correlated to the same risk-off that closed the gate.
-        out["active"] = True
-        out["action"] = ACTION_DONT_BUY
-        if st["regime"] not in _STRONG_REGIMES:
-            reason = f"市场闸门关闭（regime={st['regime']}）"
-        elif st["panic_active"]:
-            reason = "市场闸门关闭（恐慌冷却中）"
-        elif st["circuit"]:
-            reason = "市场闸门关闭（回撤熔断）"
-        else:
-            reason = "市场闸门关闭"
-        out["message"] = (
-            f"{reason} · 今日不买 {sym}（即使站上200日线，资金留逆回购/现金）"
-        )
-        out["label"] = action_label(ACTION_DONT_BUY)
         return out
 
     if idle_pct >= MIN_IDLE_PCT:

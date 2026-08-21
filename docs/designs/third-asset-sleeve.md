@@ -14,10 +14,10 @@
 
 - **已上线（提示层，只提示不动钱）**：
   - 后端 `service/third_asset_sleeve.py` — 状态机四态（始终激活：有 513100 数据即提示）：
-    - `BUY_513100`：**闸门开启**（非Weak + 无恐慌 + 无熔断）+ 闲置≥20% + 513100 收盘 > MA200 → 建议买入
-    - `SELL_TO_A_SHARE`：A股有买点（闸门开启 + 有候选）→ 卖出换回 A 股
+    - `BUY_513100`：闲置≥20% + 513100 收盘 > MA200 → 建议买入（**2026-08-21 拍板：CN 市场闸门对美股 ETF 无效，已移除**；ETF 自身 200dMA 是唯一趋势闸门）
+    - `SELL_TO_A_SHARE`：A股有买点（A 股线实际开闸 + 有候选）→ 卖出换回 A 股
     - `SELL_TO_REPO`：跌破 MA200 且持有 → 卖出转逆回购
-    - `DONT_BUY`：**闸门关闭**（Weak/恐慌/熔断，2026-08-19 修复：闸门关闭即使站上200日线也提示"今日不买"）/ 跌破 MA200 未持有 / 或资金已部署 → 今日不买
+    - `DONT_BUY`：跌破 MA200 未持有 / 或资金已部署 → 今日不买
   - `build_third_asset_sleeve` 支持 `holdings_override`（实盘 registry 或 paper 持仓均可评估）+ `build_third_asset_sleeve_for_paper`（paper 书口径）
   - `build_portfolio_health` 新增 `thirdAssetSleeve` 字段 → `GET /v1/agent/portfolio-health` 透传
   - 前端 `components/watchlist/ThirdAssetSleeveBanner.tsx` — WatchlistPage 执行闸横幅下方展示四色横幅（买=蓝 / 换A股=黄 / 转逆回购=红 / 不买=灰）
