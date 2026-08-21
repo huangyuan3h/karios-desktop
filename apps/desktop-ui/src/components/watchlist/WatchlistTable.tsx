@@ -153,6 +153,11 @@ export type WatchlistTableProps = {
   setItemCostPriceDraft: (symbol: string, value: string) => void;
   setItemCostPriceValue: (symbol: string, value: number | null) => void;
   commitItemCostPriceDraft: (symbol: string) => void;
+  /** 2026-08-21: atomic positionPct + costPrice update (one persist, no race). */
+  applyTradeUpdate: (
+    symbol: string,
+    fields: { positionPct?: number | null; costPrice?: number | null },
+  ) => void;
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   executionGate?: ExecutionGate | null;
@@ -221,6 +226,7 @@ export function WatchlistTable({
   setItemCostPriceDraft,
   setItemCostPriceValue,
   commitItemCostPriceDraft,
+  applyTradeUpdate,
   onRemove,
   onOpenStock,
   executionGate = null,
@@ -389,30 +395,34 @@ export function WatchlistTable({
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
       const market = tradeMarketForSymbol(symbol);
-      // 2026-08-21 fix: apply the watchlist edits FIRST (synchronous) and the
-      // trade-journal write last (best-effort). Previously the edits ran AFTER
-      // `await recordUserTrade` inside the same try — a browser-side network
-      // failure (abort / HMR reload / tunnel hiccup) skipped the table update
-      // even though the server may have already recorded the trade.
+      // 2026-08-21 fix: apply the watchlist edits FIRST (synchronous, atomic
+      // single-persist via applyTradeUpdate) and the trade-journal write last
+      // (best-effort). Previously the edits ran AFTER `await recordUserTrade`
+      // inside the same try — a browser-side network failure skipped the table
+      // update — and two separate persists raced, leaving the registry with
+      // mixed positionPct/costPrice that a reload then reverted.
       try {
         if (kind === 'buy') {
-          setItemCostPriceValue(symbol, price);
-          setItemPositionPct(symbol, String(positionPct));
+          applyTradeUpdate(symbol, { costPrice: price, positionPct });
         } else if (kind === 'add') {
           const oldCost = item.costPrice ?? price;
           const oldPct = item.positionPct ?? 0;
           const blended = blendAddCost(oldCost, oldPct, price, positionPct);
-          setItemCostPriceValue(symbol, blended.blendedCost);
-          setItemPositionPct(symbol, String(blended.newPositionPct));
+          applyTradeUpdate(symbol, {
+            costPrice: blended.blendedCost,
+            positionPct: blended.newPositionPct,
+          });
         } else {
           // Optional cost fill (2026-08-09): when the holding had no cost
           // price, the dialog can supply one so pnl is computed; the trade
           // is recorded either way.
           const costBasis =
             typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
-          if (typeof costBasis === 'number') setItemCostPriceValue(symbol, costBasis);
           const remaining = (item.positionPct ?? 0) - positionPct;
-          setItemPositionPct(symbol, String(Math.max(0, remaining)));
+          applyTradeUpdate(symbol, {
+            ...(typeof costBasis === 'number' ? { costPrice: costBasis } : {}),
+            positionPct: Math.max(0, remaining),
+          });
         }
       } catch {
         // Watchlist edits are the primary surface — never let them break.
@@ -444,7 +454,7 @@ export function WatchlistTable({
       void invalidateUserTradesQueries(queryClient);
       setTradeDialog(null);
     },
-    [tradeDialog, queryClient, setItemCostPriceValue, setItemPositionPct],
+    [tradeDialog, queryClient, applyTradeUpdate],
   );
 
   const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {

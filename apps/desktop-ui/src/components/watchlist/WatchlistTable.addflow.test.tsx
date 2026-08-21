@@ -69,6 +69,7 @@ function Harness() {
     setItemPositionPctDraft,
     commitItemPositionPctDraft,
     setItemCostPriceValue,
+    applyTradeUpdate,
   } = useWatchlistItems();
   return (
     <WatchlistTable
@@ -91,6 +92,7 @@ function Harness() {
       setItemCostPriceDraft={() => {}}
       setItemCostPriceValue={setItemCostPriceValue}
       commitItemCostPriceDraft={() => {}}
+      applyTradeUpdate={applyTradeUpdate}
       onRemove={() => {}}
     />
   );
