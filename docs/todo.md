@@ -1241,3 +1241,47 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 - ❌ 采信 <100 笔样本的方案
 - ❌ 前视调参（分数/红绿灯/资金流必须 as-of——OPT-070/071 已立纪律）
 - ❌ 把"胜率"当唯一目标（超额收益 + 回撤 + 夏普综合判断）
+
+## 20. 代码断层补漏（2026-08-22 全量读码扫描 · 按收益×风险排序）
+
+> 来源：读码 87 service + 38 db + 41 scheduler + 46 queries + 92 FE test，对照 `strategy-params`/`trading-system`/`optimization-checklist` 真值文档，**仅收录文档未覆盖/未闭环项**。已按 `预期收益×可验证性/投入` 排序；每项可单开 OPT/TIP，按 `AGENTS.md` 单文件范围交付。
+
+### 20.1 业务提升点（直接影响盈率/纪律 · 排序 P0→P2）
+
+| # | 优先级 | 标题 | 预期收益 | 投入 | 位置 | 一句话 | 文档缺口 |
+|---|--------|------|----------|------|------|--------|----------|
+| B-E3 | **[P0]** | HK 线环境感知补齐（neutral_block/entry_style/env_scale/D2） | ★★★★★ | M-L | `service/paper_s3.py:440` HK分支无判定 / `service/backtest_engine.py:606` | HK 无情绪/广度，`rolling_oos` HK 90天 -8.5%/DD19.5 暴露；CN同款 valid +10.7pt/DD12→2.7 可复刻 | `strategy-params §1b`仅提无行业流 |
+| B-T1 | **[P0]** | TrendOK 配方 15+ 旋钮纳入参数表 | ★★★★★ | S-M | `service/trendok.py:45` `FAILED_SCORE_CAP79` / `339` `_W_EMA0.40` / `422` `anti_spike -20` | `score≥65`唯一闸但权重/惩罚未参表，`slippage 0.05→0.1`曾证-31pt敏感度 | `trading-system §2.1`仅列因子名 |
+| B-S1 | **[P0]** | 套筒资金池口径统一 + 20d 硬切验证 | ★★★★☆ | M | `service/allocation.py:40` 双弱才进 vs `scripts/run_walk_forward_dual.py:221` 内部闲置 | 闲置57.3%吃GC001 0.7%，设计+3~39pt已验但live/dual `idle`定义分裂，`20d -10%`尾险未验 | `strategy-params`未收录，`§8 T6`待拍板② |
+| B-E1 | **[P0]** | 入场价 `last_hour_low` 打通（分钟线） | ★★★★☆ | M | `service/backtest_engine.py:185` `entry_mode` / `service/paper_trading.py:330` 成本0.30/0.60 vs 回测0.05 | 真实14:00-15:00随机非收盘，`C4`偏差-5.5pt主因收盘价差 | `trading-system §4`仅0.05% |
+| B-S2 | **[P1]** | RS轮动 `SWAP` 现基线重验 | ★★★★☆ | S | `service/paper_s3.py:97` `SWAP_ENABLED=False` / `service/backtest_engine.py:1581` | 满仓20×60天新强票被堵（300308 32天0交易），`+0~3pt`旧基线现叠D3/E2需重验 | 标记备用未重验 |
+| B-A1 | **[P1]** | 跨市场 `R3` 风险调整动量落地 | ★★★★☆ | M | `scripts/run_walk_forward_dual.py:102` R3无分支 / `service/allocation.py:29` 仅R5c | R3从未跑（≈R1假阴性），双强年50/50误配成本~150pt | 未披露 |
+| B-R1 | **[P1]** | 体制深绿阈值年度自适应 | ★★★☆☆ | M | `service/market_regime.py:378` `turnover1.5T/mainline5B/breadth50%` | 2024弱市1.5T永不触发，深绿失真致Strong占比失真 | `trading-system §2.3`仅三绿=Strong |
+| B-X1 | **[P1]** | 前后端仓位 `risk/budget` 统一 | ★★★☆☆ | S | `apps/desktop-ui/src/lib/execution-action.ts:37` `RISK0.5%` vs `service/paper_s3.py:55` `10%` | 同信号寒武纪FE 2.5% BE 10%，C4分母偏离 | `trading-system §5`仅15%/30% |
+| B-E2 | **[P1]** | `env_label` 2.0/0.5 阈值网格扫描 | ★★★☆☆ | S | `service/env_label.py:52` `UPTREND2.0/FAN0.5-1.5` | `fan`牛市零触发致D1零样本 | `TIP-014`仅概念 |
+| B-R2 | **[P2]** | 研报半衰14d/目标价权重扫描 | ★★☆☆☆ | S | `service/research.py:38` `HALF_LIFE14d/TARGET_MAX0.5` | 30%与50%空间同满分，高目标低估 | `TIP-012`无参表 |
+| B-R3 | **[P2]** | Alpha QA 惩罚权重 `0.6/0.5/0.4` 自适应 | ★★☆☆☆ | S | `service/alpha_radar_qa.py:54` `max非sum` | `0.6`可把S90打至36漏新主题龙头 | `TIP-009`未披露权重 |
+| B-T2 | **[P2]** | 持仓三峰口径统一 `close` | ★★☆☆☆ | S | `service/portfolio_health.py:132` `max(close)` vs `service/paper_trading.py:412` `max(high)` | 同持仓health EXIT/paper HOLD分歧1%即误触发 | `trading-system §4`统称-8% |
+
+> 业务验证纪律：每项 `PYTHONPATH=src python3 scripts/run_walk_forward.py --param k=v` 三窗0劣化+单窗提升（>5pt劣化拒收），样本<100不采信；`§19`封闭期仅B-E3/B-T1/B-S1三项 P0 可优先破例（数据/配方/闲置属防守向增强）。
+
+### 20.2 工程提升点（稳定性/可维护 · 排序 P0→P2）
+
+| # | 优先级 | 标题 | 风险收益 | 投入 | 位置 | 一句话 | 文档缺口 |
+|---|--------|------|----------|------|------|--------|----------|
+| E-S1 | **[P0]** | 内部 `/market/*` `/sync/*` 鉴权/限频 | ★★★★★ | M | `api/query_routes.py:179` `bars?force` / `api/security.py:43` 仅Origin | Tunnel暴露后可 `force=true` 100+/min 打爆tushare IP | OPT-045仅覆`/v1/*` |
+| E-D1 | **[P0]** | UTC vs Asia/Shanghai 日期错位 | ★★★★★ | S | `db/sync_job_record.py:32` `_utc_today()` vs `scheduler/__init__.py:59` Shanghai | 00:30 CST记作昨天，catchup重跑duplicate | 未记录 |
+| E-D2 | **[P0]** | `ensure_table` guard 补齐 | ★★★★☆ | S | `db/sync_job_record.py:25` / `db/allocation.py:29` 直调CREATE | 热路径每TrendOK付DDL解析+锁 | OPT-032标[x]未完全 |
+| E-J1 | **[P0]** | 调度丢任务 `misfire12h+coalesce` 掩盖 | ★★★★☆ | M | `scheduler/__init__.py:59` 全局 + `catchup:372`仅4 job | `hk_daily 16.5min` 17:50重启丢24h | AGENTS仅列3 job |
+| E-S2 | **[P1]** | 嵌套 `ThreadPoolExecutor` 爆炸 | ★★★★☆ | M | `service/dashboard.py:265` 3层 / `service/realtime_quote.py:574` 6×6 | 40并发→520线程，GIL串行化浪费 | OPT-031/038部分 |
+| E-S3 | **[P1]** | `except Exception: pass` 静默 | ★★★★☆ | M | `service/market_sentiment.py:138` / `service/paper_s3.py:49` | 恐慌闸fail-open无告警 | OPT-074未收敛 |
+| E-D3 | **[P1]** | 无连接池 `psycopg.connect` 每调新建 | ★★★☆☆ | M | `db/__init__.py:15` | 41 job 17:30 burst→`too many clients` | 未记录 |
+| E-F1 | **[P1]** | FE 双query未去重+缺ErrorBoundary | ★★★☆☆ | M | `lib/queries/dashboard.ts:337` vs `macro.ts:119` 分key | 480 req/min，一卡500崩全页 | OPT-034标[x]仍双调 |
+| E-D4 | **[P1]** | Shared Zod vs Python漂移 | ★★★☆☆ | M | `packages/shared/src/schemas/scheduler.ts:352` 41 job vs `api/sync_routes.py` | `source=S3HK` Zod崩 | AGENTS仅注释 |
+| E-D5 | **[P1]** | 覆盖率门禁过期 | ★★★☆☆ | M | `scripts/coverage_gate.py` 未含`bar_minute`/`sleeve_paper_auto` | R5CS/套筒0覆盖仍绿 | todo称92.2% |
+| E-S4 | **[P2]** | 静默截断 `200/500` | ★★☆☆☆ | S | `service/trendok.py:1009` `>200:[:200]` | 全市场683截断致paper 0候选 | 未记录 |
+| E-S5 | **[P2]** | Cache TTL无失效 | ★★☆☆☆ | S | `service/trendok.py:54` `TTL60` | `force`后仍60s旧分 | 未记录 |
+| E-S6 | **[P2]** | `bar_minute`逐行execute | ★★☆☆☆ | S | `db/bar_minute.py:60` `for:execute` | 33k行4s vs 0.3s批 | 未记录 |
+| E-N1 | **[P2]** | macOS `_scproxy` 仅Tencent修 | ★★☆☆☆ | S | `service/em_push2_http.py:191` 仅一条链 | ClashX下Sina走代理被限流 | todo轶事 |
+
+> 工程落地：每项单开 `OPT-1xx`，按 `optimization-checklist.md` 文件范围+测试交付，`SYNC_JOB_TYPES`/`SCHEDULER_JOB_CATALOG` 变更需同步 `packages/shared` Zod + 前端 `lib/queries/intervals.ts`。
