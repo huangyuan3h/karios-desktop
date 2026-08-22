@@ -19,10 +19,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
+from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData
 from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS
-
-from scripts.run_walk_forward import BASELINE_FILE, HK_BASELINE_FILE, S3_CONFIG, WINDOWS, _md_table
+from scripts.run_walk_forward import BASELINE_FILE, HK_BASELINE_FILE, S3_CONFIG, WINDOWS
 
 
 def parse_trendok_overrides(param_list: list[str]) -> dict[str, float]:
@@ -59,12 +58,12 @@ def main() -> int:
     base = S3_CONFIG if args.market == "CN" else {}
     # use S3_CONFIG as base for CN; HK uses its own baseline but shares recipe
     baseline_file = HK_BASELINE_FILE if args.market == "HK" else BASELINE_FILE
-    baseline = None
+    _baseline = None  # noqa: F841 - kept for future delta vs baseline
     if baseline_file.exists():
         try:
-            baseline = json.loads(baseline_file.read_text())["results"]
+            _baseline = json.loads(baseline_file.read_text())["results"]
         except Exception:
-            baseline = None
+            _baseline = None
 
     results: dict[str, dict] = {}
     for w in windows:
@@ -83,7 +82,7 @@ def main() -> int:
         # Instead we directly run simulate loop via BacktestData+simulate internals is encapsulated;
         # so we re-run simulate but inject recomputed scores via a tiny wrapper:
         # Create a new BacktestData with same cfg but override scores_by_day after init
-        run = sim(cfg)  # fallback — will use DB scores; for true heavy sweep we need to inject recomputed
+        _run = sim(cfg)  # noqa: F841 - scaffold fallback — will use DB scores; for true heavy sweep we need to inject recomputed
         # NOTE: current simulate always creates fresh BacktestData; to actually use recomputed,
         # we need to patch BacktestData.__init__ to use recomputed when trendok_params is set.
         # For now this script is a scaffold — it validates the recompute path without full pnl integration.

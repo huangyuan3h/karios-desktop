@@ -5,7 +5,6 @@ from data_sync_service.service.trendok import (
     _industry_flow_score_adjustment,
     _score_anti_spike_penalties,
     _score_sub_ema,
-    _score_sub_macd,
     _score_sub_volume,
     compute_trendok_for_symbols,
 )

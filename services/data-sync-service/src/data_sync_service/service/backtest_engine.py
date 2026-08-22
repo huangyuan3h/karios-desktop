@@ -669,7 +669,7 @@ class BacktestData:
         except Exception:
             flow_ctx_by_day = {d: {"ok": False} for d in self.calendar}
         # full universe for fidelity (parallelized)
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         def _score_one(args):
             ts_code, sym, day, flow_ctx, regime = args
             bars = self.bars_by_ts.get(ts_code, [])

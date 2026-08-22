@@ -24,6 +24,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from run_walk_forward import S3_CONFIG, WINDOWS  # noqa: E402
+
 from data_sync_service.service.backtest_engine import (  # noqa: E402
     BacktestConfig,
     BacktestData,
@@ -33,8 +35,6 @@ from data_sync_service.service.portfolio_nav_sim import (  # noqa: E402
     load_third_asset_cache,
     simulate_sleeve_nav,
 )
-
-from run_walk_forward import S3_CONFIG, WINDOWS  # noqa: E402
 
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
 CACHE_FILE = Path(__file__).resolve().parents[1] / "data" / "third_asset_cache.json"
