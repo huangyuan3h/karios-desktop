@@ -1314,21 +1314,26 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 
 > 每步 `PYTHONPATH=src python3 scripts/run_walk_forward.py --windows OOS2,train,valid,holdout,long` 三窗+holdout+长窗同屏，`>5pt` 拒收；预期 `totalNet` 下修但 `DD/Sharpe` 回落至 `3-5` 更贴近 `rolling_oos -0.6%`
 
-### Phase 2 — 数据可信度补丁（并行，1-2周 · P1）
+### Phase 2 — 数据可信度补丁（并行，1-2周 · P1）→ **抗辩后归档（2026-08-22）**
 | # | 动作 | 位置 | 说明 | 状态 |
 |---|------|------|------|------|
 | D0 | `daily` 历史前视 `fetch_last_ohlcv_batch` 加 `as_of` 界 | `db/daily.py:455` `as_of` + `service/market_regime.py:275` | `2024 D` 不读 `2026` 未来收盘 | [x] 2026-08-22 `as_of` + 单测 `test_daily_asof.py` |
-| D1 | 行业时态 `as_of_date` 版本表 | `db/stock_eastmoney_industry.py:61` | mild | [ ] |
-| D2 | Universe 退市感知 `delist_date` 过滤 | `backfill_watchlist_scores.py:74` | 长窗高估修正 | [ ] |
-| D3 | 长窗分段 `long_price_only vs long_full` | `backtests/README:77` | env 仅后者考核 | [ ] |
+| D1 | 行业时态 `as_of_date` 版本表 | `db/stock_eastmoney_industry.py:61` | mild，`gates=full` 单项 `+2-3pt`，需新增时态表 `60行+回填`，ROI 低 | [~] 归档： disclosed as `mild look-ahead` `backtests/audit-2026-08-22.md:42`，`valid/train` 不重跑 |
+| D2 | Universe 退市感知 `delist_date` 过滤 | `backfill_watchlist_scores.py:74` | 长窗 `5230→4241` 已 `as_of`，剩余退市 `~100` 需 `stock_basic.delist_date`，仅影响 `long` | [~] 归档：`long` 已标 `survivor-conditioned` `strategy-params:33`，`OOS2/train/valid` 不受影响 |
+| D3 | 长窗分段 `long_price_only vs long_full` | `backtests/README:77` | `long` 非决策窗，`OOS2/train` 已足 | [~] 归档：`long` 分段待 `Phase3` 有空再做，当前 `long` 仅作价格路径稳健性 |
 
-### Phase 3 — 统计纪律与 hold-out 确认（3-6月，自然等待 · P1）
+### Phase 3 — 统计纪律与 hold-out 确认（3-6月，自然等待 · P1）→ **纪律化归档**
 - `holdout n≥100` 前不调参，`neutral_block/auto/D2/D3` 在 hold-out `leave-one-regime-out` 复验；新实验预注册 `≤5 knob×3值`，`FDR 10%` + `monte_carlo 3000`
+- **抗辩**：`valid n55` 已标 `⚠️ underpowered` + `Wilson CI70-90%`，`129组合≈6.45假发现` 已 `Bonferroni` 披露，`holdout` 自然等待期不阻塞 `P0` 发布；`B-T1` 限 `15次/季度` 已 `todo §20.1` 约束 → **归档为纪律，不新增代码**
 
-### Phase 4 — B-T1 TrendOK 配方扫描（hold-out 通过后 · P2）
+### Phase 4 — B-T1 TrendOK 配方扫描（hold-out 通过后 · P2）→ **2026-08-22 闭环**
 - 限 `w_ema/w_macd/w_vol/flow` 5旋钮×3值≤15次，业务故事先行；必须 `三窗0劣化 + holdout不跌 + long_full不跌`；记录 `docs/backtests/experiments-trendok.md`
+- **2026-08-22 realism 闭环**：
+  - `TrendOK 15× valid` `PID91067` `100%现金 0.7亿` `w_ema/vol/macd` 全 `43.3%±4.5` 平台期拒收（`low_volume 1.1 -13.7`）
+  - `Phase A score_threshold 65→90 三窗`：`valid 43.3%持平` `OOS2 85 +2.8% n76` 但 `train 80 -13.8% n47` `>5pt` 单窗过拟合拒收（`§19`），`65` 维持；见 `docs/backtests/score-threshold-2026-08-22.md`
+  - **结论**：`score/TrendOK` 天花板，`79分 rank659/5129` 池 `40%` 过宽非阈值/权重可解，转 `TIP-013 IC` + `相关性`
 
-### 当前引用口径（对外/对内）
-- **可引用**：`OOS2 117.2% n237 / train 122.6% n123`（双窗一致，样本足）
-- **仅发现**：`valid 142.2% win81.8% n55`（牛市切片，CI 宽，reused≥4次）
-- **条件收益**：`长窗 333.9% DD45.1`（`survivor+200%杠杆+fail-open`，不可发布）
+### 当前引用口径（对外/对内 · 2026-08-22 realism）
+- **可引用**：`OOS2 43.1% n93 CI38-58% / train 34.3% n54 CI32-58%`（`100%现金+0.7亿+交易日`，`6d8280→dfc6539e` 已重固化）
+- **仅发现**：`valid 43.3% n18 CI44-84% ⚠️ n<100`（`OOS2/train` 样本足，`valid` 牛市切片，`holdout n0`）
+- **条件收益**：`长窗 333.9% DD45.1`（`survivor+200%` 条件，`5230→4241` 已 `as_of`，仍标 `survivor-conditioned`）

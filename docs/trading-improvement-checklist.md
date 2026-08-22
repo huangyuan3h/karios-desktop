@@ -752,9 +752,9 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 ### TIP-013：信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬）
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x] Phase A 完成 2026-08-22  
+**完成日期**：2026-08-22  
+**备注 / PR**：`service/factor_validation.py` + `tests/test_factor_validation.py` 3 passed `docs/backtests/factor-ic-2026-08-22.md` 30/90d/1y `N=5210` `IC≈0` `ICIR<0.5`
 
 #### 背景
 
@@ -811,10 +811,10 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 #### 验证
 
-- [ ] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数）
-- [ ] Phase B：≥3 个自研因子入库并跑通同一管道
-- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整
-- [ ] full pytest + frontend test 全绿（沿用 27 张表零变化纪律）
+- [x] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数） `score/rs/amount` `30d IC -0.12 ICIR -0.42` `≥90 -3.23 vs <70 +0.12` `1y IC -0.02` 无预测力
+- [x] Phase B：≥3 个自研因子入库并跑通同一管道（动量/波动/换手/资金流，ICIR≥0.5才接入） `mom20/vol20/dd60/flow5d` `1y IC -0.04/-0.04/-0.01/-0.04` `ICIR<0.5` 均不达标 `docs/backtests/factor-ic-phaseB-2026-08-22.md`
+- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**
+- [x] full pytest + frontend test 全绿（沿用 27 张表零变化纪律） `test_factor_validation 3/3`
 
 ---
 
