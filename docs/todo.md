@@ -1317,6 +1317,7 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 ### Phase 2 — 数据可信度补丁（并行，1-2周 · P1）
 | # | 动作 | 位置 | 说明 | 状态 |
 |---|------|------|------|------|
+| D0 | `daily` 历史前视 `fetch_last_ohlcv_batch` 加 `as_of` 界 | `db/daily.py:455` `as_of` + `service/market_regime.py:275` | `2024 D` 不读 `2026` 未来收盘 | [x] 2026-08-22 `as_of` + 单测 `test_daily_asof.py` |
 | D1 | 行业时态 `as_of_date` 版本表 | `db/stock_eastmoney_industry.py:61` | mild | [ ] |
 | D2 | Universe 退市感知 `delist_date` 过滤 | `backfill_watchlist_scores.py:74` | 长窗高估修正 | [ ] |
 | D3 | 长窗分段 `long_price_only vs long_full` | `backtests/README:77` | env 仅后者考核 | [ ] |

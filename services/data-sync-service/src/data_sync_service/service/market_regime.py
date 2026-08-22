@@ -272,7 +272,7 @@ def _compute_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[
     if not ts_codes:
         return {"ratio": 0.0, "total": 0, "above_count": 0}
 
-    batch = fetch_last_ohlcv_batch(ts_codes, days=30)
+    batch = fetch_last_ohlcv_batch(ts_codes, days=30, as_of=as_of_date)
     ma20_by_code: dict[str, float] = {}
     last_close_by_code: dict[str, float] = {}
     for code, rows in batch.items():
