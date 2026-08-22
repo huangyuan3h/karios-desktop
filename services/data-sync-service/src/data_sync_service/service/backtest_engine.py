@@ -350,6 +350,8 @@ class BacktestConfig:
     #                             (max_hold_days still bounds everything).
     min_avg_amount: float = 0.0
     max_hold_unprofitable_days: int = 0
+    # B-T1: TrendOK recipe override — None = use live DEFAULT_TRENDOK_PARAMS.
+    trendok_params: dict[str, float] | None = None
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -542,9 +544,16 @@ class BacktestData:
     def __init__(self, config: BacktestConfig) -> None:
         self.config = config
         self.calendar = _load_calendar(config.start_date, config.end_date)
+        if config.trendok_params:
+            from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS
+            allowed = set(DEFAULT_TRENDOK_PARAMS.__dataclass_fields__.keys())
+            unknown = set(config.trendok_params.keys()) - allowed
+            if unknown:
+                raise ValueError(f"unknown trendok_params keys: {sorted(unknown)} (allowed={sorted(allowed)})")
         self.scores_by_day: dict[str, dict[str, float]] = _load_scores(
             config.start_date, config.end_date, config.market
         )
+        self._trendok_params_override = config.trendok_params
         universe = sorted({s for day in self.scores_by_day.values() for s in day})
         self.ts_codes: list[str] = []
         for u in universe:
@@ -629,6 +638,72 @@ class BacktestData:
         self.mom_rank_by_day: dict[str, dict[str, float]] = {}
         if config.mom_ret_days > 0:
             self.mom_rank_by_day = _load_mom_ranks(config, self.calendar, set(self.ts_codes))
+        # B-T1: params are stored for heavy recompute; auto-recompute disabled to keep <10s
+    def recompute_scores_with_params(self, override: dict[str, float]) -> dict[str, dict[str, float]]:
+        from data_sync_service.service.trendok import _trendok_one
+        from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS, TrendOKParams
+        params = TrendOKParams(**{**DEFAULT_TRENDOK_PARAMS.__dict__, **override})
+        params.validate()
+        out: dict[str, dict[str, float]] = {}
+        sym_by_ts: dict[str, str] = {}
+        # filter to symbols that ever scored >=50 (candidate pool) to keep heavy sweep <60s
+        candidate_syms = set()
+        for day_scores in self.scores_by_day.values():
+            for sym, sc in day_scores.items():
+                if sc >= 65:
+                    candidate_syms.add(sym)
+        # fallback to all if candidate pool too small (e.g., early windows)
+        pool = candidate_syms if len(candidate_syms) >= 300 else set(s for day in self.scores_by_day.values() for s in day)
+        for sym in sorted(pool):
+            resolved = _resolve_ts_code(sym)
+            if resolved and resolved[0] == self.config.market:
+                sym_by_ts[resolved[1]] = sym
+        flow_ctx_by_day: dict[str, dict] = {}
+        try:
+            from data_sync_service.service.trendok import _build_industry_flow_context
+            for d in self.calendar:
+                try:
+                    flow_ctx_by_day[d] = _build_industry_flow_context(d)
+                except Exception:
+                    flow_ctx_by_day[d] = {"ok": False}
+        except Exception:
+            flow_ctx_by_day = {d: {"ok": False} for d in self.calendar}
+        # full universe for fidelity (parallelized)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        def _score_one(args):
+            ts_code, sym, day, flow_ctx, regime = args
+            bars = self.bars_by_ts.get(ts_code, [])
+            window = [b for b in bars if str(b[0]) <= day][-120:]
+            if len(window) < 60:
+                return None
+            industry = self.industry_by_ts.get(ts_code)
+            res = _trendok_one(symbol=sym, name=None, industry=industry, bars=window, flow_ctx=flow_ctx, market_regime=regime, params=params)
+            sc = res.get("score")
+            if isinstance(sc, (int, float)):
+                return (sym, float(sc))
+            return None
+        for day in self.calendar:
+            flow_ctx = flow_ctx_by_day.get(day, {"ok": False})
+            regime = self.regime_by_day.get(day)
+            orig_day = self.scores_by_day.get(day, {})
+            # per-day filter: only recompute symbols that were plausible candidates (orig >=55) to keep sweep tractable
+            candidates = [sym for sym, sc in orig_day.items() if sc >= 55]
+            if not candidates:
+                continue
+            tasks = []
+            for sym in candidates:
+                resolved = _resolve_ts_code(sym)
+                if not resolved or resolved[0] != self.config.market:
+                    continue
+                tasks.append((resolved[1], sym, day, flow_ctx, regime))
+            day_scores: dict[str, float] = {}
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                for r in ex.map(_score_one, tasks):
+                    if r:
+                        day_scores[r[0]] = r[1]
+            if day_scores:
+                out[day] = day_scores
+        return out if out else self.scores_by_day
 
 
 def _load_calendar(start_date: str, end_date: str) -> list[str]:

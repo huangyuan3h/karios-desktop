@@ -56,6 +56,9 @@
 | **执行验证（D7 分钟线）** | 尾盘真实执行 vs last_hour_low 假设；腾讯 1m 数据积累中 | 🔄 部分落地 |
 | **数据新鲜度/质量** | HK 日线同步 job 每日验证；OOS 滚动监控（rolling_oos_job） | 运行中 |
 | **实盘纪律** | 防守空间不在参数在纪律——paper 实绩跟踪 + 行为审计 | 已有体系 |
+| **审计后新增（2026-08-22）** | 执行可复制性/数据时态/统计 hold-out 需先补齐，否则 B-T1 越调越偏 | 见 `audit-2026-08-22.md` §4-5 |
+
+> **2026-08-22 审计后修正**：`valid n=55 Sharpe11` 为牛市切片峰值，`OOS2/train` 才可引用；`B-T1 TrendOK` 当前 `--param trendok_*` 为 no-op，需 Phase 0 打通 `recompute_scores_with_params` 注入后再扫；当前优先 Phase 0-1（冻结 hold-out + 资金/流动性/日历/入场价重固化），信号侧暂停。
 
 ## 5. 纪律声明（回测时代的遗产）
 
@@ -64,9 +67,22 @@
 3. 唯一合理的重开条件：**获得真正正交的新数据源**（如港股情绪/宽度、财务质量全量历史）
 4. 引擎保留全部实验参数（默认关）——数据/市场结构性变化时可低成本重测
 
-## 6. 文档地图
+## 6. 审计快照（2026-08-22）
+
+| 维度 | 评级 | 要点 |
+|---|---|---|
+| 方法论 | ★★★★☆ | 48 拒收证明纪律，但 `valid` 复用 4 次无 hold-out；`run_walk_forward >5pt` 真执行 |
+| 数据 | ★★★☆☆ | QFQ/全市场已修复，`score回填/行业静态/survivor` 未根治 |
+| 执行 | ★★☆☆☆ | 200-300% 杠杆 + 无流动性 + calendar 天数，`Sharpe11` 为 `per-close-day` 虚高 |
+| 统计 | ★★★☆☆ | `OOS2 n237` 可信，`valid n55` 仅发现，长窗 `333.9%` 为条件收益 |
+
+详见 [`audit-2026-08-22.md`](./audit-2026-08-22.md)（`file:line` 可复现）。
+
+## 7. 文档地图
 
 - 全部实验记录 → `experiments-*.md`（tip014 / d-pool / defensive / legacy / planned）
+- **审计** → [`audit-2026-08-22.md`](./audit-2026-08-22.md)（数据/执行/统计三审计合成）
 - 参数真值 → `modules/strategy-params.md`
-- 基线文件 → `data/backtest_reports/walk_forward_baseline.json`
+- 基线文件 → `data/backtest_reports/walk_forward_baseline.json`（下次起 `walk_forward_baseline_YYYYMMDD.json` 不可变）
+- 方法论真值 → `modules/backtest-strategy.md` §8-9
 - 归档 → `archive/2026-08-15-*.md`

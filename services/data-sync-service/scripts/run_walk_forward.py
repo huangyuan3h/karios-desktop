@@ -139,13 +139,28 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
 }
 
 
-def _overrides(args: argparse.Namespace) -> dict[str, float | int | str]:
+def _overrides(args: argparse.Namespace) -> dict[str, float | int | str | dict]:
+    from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS
     field_types = {f.name: f.type for f in fields(BacktestConfig)}
     valid = set(field_types)
-    out: dict[str, float | int | str] = {}
+    trendok_fields = set(DEFAULT_TRENDOK_PARAMS.__dataclass_fields__.keys())
+    out: dict[str, float | int | str | dict] = {}
+    trendok_override: dict[str, float] = {}
     for kv in args.param:
         key, _, value = kv.partition("=")
         key = key.strip()
+        if key.startswith("trendok_"):
+            tkey = key[len("trendok_"):]
+            if tkey not in trendok_fields:
+                print(f"WARN: unknown TrendOKParams field {tkey!r} (ignored)", file=sys.stderr)
+                continue
+            try:
+                v = float(value)
+            except ValueError:
+                print(f"WARN: TrendOKParams {tkey} expects numeric, got {value!r} (ignored)", file=sys.stderr)
+                continue
+            trendok_override[tkey] = v
+            continue
         if key not in valid:
             print(f"WARN: unknown BacktestConfig field {key!r} (ignored)", file=sys.stderr)
             continue
@@ -160,6 +175,8 @@ def _overrides(args: argparse.Namespace) -> dict[str, float | int | str]:
         if isinstance(raw, float) and raw.is_integer():
             raw = int(raw)
         out[key] = raw
+    if trendok_override:
+        out["trendok_params"] = trendok_override
     return out
 
 
@@ -223,6 +240,8 @@ def main() -> int:
         except (json.JSONDecodeError, KeyError):
             baseline = None
 
+    if "trendok_params" in config:
+        print("NOTE: trendok_params stored but full recompute is heavy (use scripts/scan_trendok_params.py). This run uses DB scores.", file=sys.stderr)
     results: dict[str, dict[str, float | int | str | None]] = {}
     for w in windows:
         start, end = WINDOWS[w]
