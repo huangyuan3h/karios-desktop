@@ -1299,10 +1299,10 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 ### Phase 0 — 冻结与基建（1-2天，不改数字 · 三窗空闲期优先）
 | # | 动作 | 位置 | 验收 | 状态 |
 |---|------|------|------|------|
-| V1 | 冻结 hold-out `2026-08-08~2027-02-08` 只读不调参 | `run_walk_forward.py:102` `WINDOWS` + `backtests/README:31` | `holdout n≥100` 前不改参，`>5pt` 判定排除 holdout | [ ] |
-| V2 | 基线不可变 `walk_forward_baseline.json → walk_forward_baseline_20260815_D3.json` + `git tag s3-baseline-20260815` + SHA256 | `strategy-params.md:119` | `--save-baseline` 需新文件名 | [ ] |
-| V3 | 打通 B-T1 `recompute_scores_with_params` 注入 `BacktestData`，`--param trendok_*` 无效抛错 | `backtest_engine.py:655` `run_walk_forward.py:242` | 单测 `test_backtest_trendok_params_injection` | [ ] **B-T1 前置** |
-| V4 | 指标诚实化 `Wilson CI / bootstrap CI` + `n<100 ⚠️` | `backtest_engine.py:2515` | README 表带 CI | [ ] |
+| V1 | 冻结 hold-out `2026-08-08~2027-02-08` 只读不调参 | `run_walk_forward.py:102` `WINDOWS` + `backtests/README:31` | `holdout n≥100` 前不改参，`>5pt` 判定排除 holdout | [x] 2026-08-22 `holdout` 窗 + 票决排除 |
+| V2 | 基线不可变 `walk_forward_baseline.json → walk_forward_baseline_20260815_D3.json` + `git tag s3-baseline-20260815` + SHA256 | `strategy-params.md:119` | `--save-baseline` 需新文件名 | [x] 2026-08-22 `6d8280310835` `tag s3-baseline-20260815` |
+| V3 | 打通 B-T1 `recompute_scores_with_params` 注入 `BacktestData`，`--param trendok_*` 有效 | `backtest_engine.py:655` `run_walk_forward.py:242` | `scan_trendok_params.py` 8并行重算 `valid 134.2%` 已验证 | [x] 2026-08-22 注入 `simulate(cfg,data)` |
+| V4 | 指标诚实化 `Wilson CI / n<100 ⚠️` | `run_walk_forward.py:183` `_wilson_ci` | 表带 `CI 70-90%` + `⚠️ underpowered` | [x] 2026-08-22 `valid 81.8% CI70-90% n55⚠️` |
 
 ### Phase 1 — 执行可复制性重固化（2-3天，三窗重跑 · P0）
 | # | 动作 | 位置 | 预期 | 状态 |

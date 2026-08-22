@@ -90,6 +90,8 @@ S3_CONFIG: dict[str, float | int | str] = {
     # 270.1→333.9 (+64pt), 三窗夏普两升一平. v1 (1.2/0.8) also passed but
     # weaker; v3 (fan-only) failed valid.
     "env_position_scale": "uptrend:1.25,fan:0.75",
+    # E2 流动性 2026-08-22: min_avg_amount 0→0.7亿 (60日均额，P17)，三窗重跑验证
+    "min_avg_amount": 0.7,
     # E2 (2026-08-14 数据回填后修正): panic_cooldown 3 → 2. 回填情绪历史
     # (2024-08 起) 后 panic 冷却在弱市年频繁触发, 3 天把 OOS2 锁死
     # (288964 次拦截 → 199 笔)。三窗+长窗同口径对比 (新基线=有情绪数据):
@@ -108,6 +110,8 @@ WINDOWS: dict[str, tuple[str, str]] = {
     # the fixed three-window audit. Baseline file has no "long" entry, so
     # the table shows no delta column for it.
     "long": ("2021-08-01", "2026-08-07"),
+    # 2026-08-22 V1: hold-out 2026-08-08+ 只读不调参，n≥100 前不改参，>5pt 判定排除 holdout
+    "holdout": ("2026-08-08", "2027-02-08"),
 }
 
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
@@ -180,11 +184,31 @@ def _overrides(args: argparse.Namespace) -> dict[str, float | int | str | dict]:
     return out
 
 
+def _wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    if n == 0 or k < 0 or k > n:
+        return None
+    p = k / n
+    denom = 1 + z * z / n
+    centre = p + z * z / (2 * n)
+    delta = z * ((p * (1 - p) + z * z / (4 * n)) / n) ** 0.5
+    lo = (centre - delta) / denom
+    hi = (centre + delta) / denom
+    return (max(0.0, lo), min(1.0, hi))
+
+
 def _summarize(run) -> dict[str, float | int | str | None]:
     s = run.summary
+    ci = None
+    warn = None
+    if s.closed and s.wins is not None:
+        ci = _wilson_ci(s.wins, s.closed)
+        if s.closed < 100:
+            warn = "⚠️ underpowered n<100"
     return {
         "closed": s.closed,
         "winRate": s.win_rate,
+        "winRateCI": ci,
+        "underpowered": warn,
         "avgNetPnlPct": s.avg_net_pnl_pct,
         "totalNetPnlPct": s.total_net_pnl_pct,
         "maxDrawdownPct": s.max_drawdown_pct,
@@ -197,7 +221,7 @@ def _md_table(
     results: dict[str, dict[str, float | int | str | None]],
     baseline: dict[str, dict[str, float | int | str | None]] | None,
 ) -> str:
-    lines = ["| 窗口 | 收益% | 回撤% | 夏普 | 胜率% | 笔数 | vs 基线 |", "|------|-------|-------|------|-------|------|---------|"]
+    lines = ["| 窗口 | 收益% | 回撤% | 夏普 | 胜率% | 笔数 | vs 基线 | 备注 |", "|------|-------|-------|------|-------|------|---------|------|"]
     for w in windows:
         r = results[w]
         diff = ""
@@ -205,10 +229,15 @@ def _md_table(
             b = baseline[w]
             d = float(r["totalNetPnlPct"] or 0) - float(b.get("totalNetPnlPct") or 0)
             diff = f"{d:+.1f}pt" if abs(d) >= 0.05 else "持平"
+        ci = r.get("winRateCI")
+        ci_s = f" CI {ci[0]*100:.0f}-{ci[1]*100:.0f}%" if isinstance(ci, (list, tuple)) and len(ci) == 2 else ""
+        warn = r.get("underpowered") or ""
+        if w == "holdout" and r.get("closed", 0) < 100:
+            warn = (warn + " holdout n<100" if warn else "holdout n<100")
         lines.append(
             f"| {w:6s} | {r['totalNetPnlPct'] or 0:7.1f} | {r['maxDrawdownPct']:5.1f} | "
             f"{r['sharpe'] if r['sharpe'] is not None else 0:5.2f} | "
-            f"{(r['winRate'] or 0) * 100:5.1f} | {r['closed']:4d} | {diff} |"
+            f"{(r['winRate'] or 0) * 100:5.1f}{ci_s} | {r['closed']:4d} | {diff} | {warn} |"
         )
     return "\n".join(lines)
 
@@ -240,13 +269,19 @@ def main() -> int:
         except (json.JSONDecodeError, KeyError):
             baseline = None
 
-    if "trendok_params" in config:
-        print("NOTE: trendok_params stored but full recompute is heavy (use scripts/scan_trendok_params.py). This run uses DB scores.", file=sys.stderr)
     results: dict[str, dict[str, float | int | str | None]] = {}
     for w in windows:
         start, end = WINDOWS[w]
         cfg = BacktestConfig(start_date=start, end_date=end, **config)
-        run = simulate(cfg)
+        if "trendok_params" in config:
+            from data_sync_service.service.backtest_engine import BacktestData
+
+            data = BacktestData(cfg)
+            recomputed = data.recompute_scores_with_params(config["trendok_params"])  # type: ignore[arg-type]
+            data.scores_by_day = recomputed
+            run = simulate(cfg, data=data)
+        else:
+            run = simulate(cfg)
         results[w] = _summarize(run)
         print(f"[{w}] {start}..{end} closed={run.summary.closed} "
               f"win={run.summary.win_rate} total={run.summary.total_net_pnl_pct:+.1f}% "
@@ -258,6 +293,8 @@ def main() -> int:
     verdicts: list[str] = []
     if baseline and windows[0] in baseline:
         for w in windows:
+            if w in ("holdout", "long"):
+                continue  # holdout/long 只读不参与 >5pt 票决
             b = baseline.get(w) or {}
             d = float(results[w]["totalNetPnlPct"] or 0) - float(b.get("totalNetPnlPct") or 0)
             if d < -5:
@@ -279,9 +316,17 @@ def main() -> int:
     out_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     print(f"report -> {out_file}")
     if args.save_baseline:
+        import hashlib
+
         baseline_file.parent.mkdir(parents=True, exist_ok=True)
-        baseline_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        payload = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+        baseline_file.write_text(payload)
         print(f"baseline saved -> {baseline_file}")
+        # V2: immutability — also save versioned copy + SHA256
+        versioned = baseline_file.with_name(f"walk_forward_baseline_{datetime.now(UTC).strftime('%Y%m%d')}.json")
+        versioned.write_text(payload)
+        sha = hashlib.sha256(payload.encode()).hexdigest()[:12]
+        print(f"versioned -> {versioned}  sha256:{sha}  tag: git tag s3-baseline-{datetime.now(UTC).strftime('%Y%m%d')}")
     return 0
 
 

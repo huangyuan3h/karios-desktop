@@ -1660,7 +1660,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         if config.swap_max_per_day > 0:
             held = []
             for sym, pos in positions.items():
-                if _calendar_days_between(str(pos["entry_date"]), day) < config.swap_min_hold_days:
+                if _calendar_days_between(str(pos["entry_date"]), day, data.calendar) < config.swap_min_hold_days:
                     continue
                 rsv = data.rs_rank_by_day.get(day, {}).get(pos["ts_code"])
                 if rsv is not None and rsv < config.swap_weak_rs_below:
@@ -1717,7 +1717,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         gross_pnl_pct=round(gross, 4),
                         costs_pct=round(costs_pct, 4),
                         pnl_pct=round(net, 4),
-                        holding_days=_calendar_days_between(str(pos_w["entry_date"]), day),
+                        holding_days=_calendar_days_between(str(pos_w["entry_date"]), day, data.calendar),
                         close_reason=CLOSE_REASON_SWAPPED,
                         score_at_entry=pos_w.get("score_at_entry"),
                         position_pct=float(pos_w.get("position_pct") or config.position_pct),
@@ -2237,6 +2237,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             pos_scale = 1.0 if regime == REGIME_STRONG else (
                 config.diverging_scale if regime == REGIME_DIVERGING else 0.0
             )
+            # E1: cash constraint — total nominal exposure capped at 100%
+            eff_pct = config.position_pct * pos_scale * atr_scale_for(ts, day) * config._env_position_scale(data.env_by_day.get(day))
+            if sum(p["position_pct"] for p in positions.values()) + eff_pct > 1.0 + 1e-9:
+                gated_blocks["cash_cap"] += 1
+                continue
             positions[sym] = {
                 "symbol": sym,
                 "market": config.market,
@@ -2246,8 +2251,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "peak_price": px,
                 "score_at_entry": score,
                 "industry": data.industry_by_ts.get(ts),
-                "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day)
-                * config._env_position_scale(data.env_by_day.get(day)),
+                "position_pct": eff_pct,
                 "atr_pct": atr14_pct_for(ts, day) if config.atr_stop_mult > 0 else 0.0,
                 "entry_env": data.env_by_day.get(day) if config.max_hold_env_shorten > 0 else None,
             }
@@ -2265,7 +2269,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             cost = entry_px * (1 + slip / 100.0)
             gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
             net = gross - costs_pct
-            holding = _calendar_days_between(str(pos["entry_date"]), day)
+            holding = _calendar_days_between(str(pos["entry_date"]), day, data.calendar)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
 
             if close_px > float(pos["peak_price"]):
@@ -2405,7 +2409,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             gross_pnl_pct=round(add_gross, 4),
                             costs_pct=round(costs_pct, 4),
                             pnl_pct=round(add_gross - costs_pct, 4),
-                            holding_days=_calendar_days_between(str(add["entry_date"]), day),
+                            holding_days=_calendar_days_between(str(add["entry_date"]), day, data.calendar),
                             close_reason=reason,
                             score_at_entry=pos.get("score_at_entry"),
                             position_pct=float(add.get("position_pct") or 0.0),
@@ -2421,15 +2425,22 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 and pos.get("adds", 0) < config.pyramid_max_adds
                 and gross >= config.pyramid_trigger_pct
             ):
-                pos["adds"] = pos.get("adds", 0) + 1
-                pos.setdefault("adds_list", []).append(
-                    {
-                        "entry_date": day,
-                        "entry_price": close_px,
-                        "position_pct": float(pos.get("position_pct") or config.position_pct)
-                        * config.pyramid_add_scale,
-                    }
+                add_pct = float(pos.get("position_pct") or config.position_pct) * config.pyramid_add_scale
+                # E1: pyramid also respects cash cap
+                total_now = sum(p["position_pct"] for p in positions.values()) + sum(
+                    a["position_pct"] for pp in positions.values() for a in pp.get("adds_list", [])
                 )
+                if total_now + add_pct > 1.0 + 1e-9:
+                    gated_blocks["cash_cap_pyramid"] = gated_blocks.get("cash_cap_pyramid", 0) + 1
+                else:
+                    pos["adds"] = pos.get("adds", 0) + 1
+                    pos.setdefault("adds_list", []).append(
+                        {
+                            "entry_date": day,
+                            "entry_price": close_px,
+                            "position_pct": add_pct,
+                        }
+                    )
 
         # End-of-day holding snapshot — the anchor for reconciling the real
         # paper/watchlist book against the backtest (2026-08-11). Captured
@@ -2478,7 +2489,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 gross_pnl_pct=round(gross, 4),
                 costs_pct=round(costs_pct, 4),
                 pnl_pct=round(net, 4),
-                holding_days=_calendar_days_between(str(pos["entry_date"]), last_day),
+                holding_days=_calendar_days_between(str(pos["entry_date"]), last_day, data.calendar),
                 close_reason=CLOSE_REASON_END_OF_WINDOW,
                 score_at_entry=pos.get("score_at_entry"),
                 position_pct=float(pos.get("position_pct") or config.position_pct),
@@ -2499,7 +2510,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     gross_pnl_pct=round(add_gross, 4),
                     costs_pct=round(costs_pct, 4),
                     pnl_pct=round(add_gross - costs_pct, 4),
-                    holding_days=_calendar_days_between(str(add["entry_date"]), last_day),
+                    holding_days=_calendar_days_between(str(add["entry_date"]), last_day, data.calendar),
                     close_reason=CLOSE_REASON_END_OF_WINDOW,
                     score_at_entry=pos.get("score_at_entry"),
                     position_pct=float(add.get("position_pct") or 0.0),
@@ -2702,7 +2713,20 @@ def default_sensitivity_grid(
     return out
 
 
-def _calendar_days_between(entry_date: str, today: str) -> int:
+def _calendar_days_between(entry_date: str, today: str, calendar: list[str] | None = None) -> int:
+    # E3 2026-08-22: use trading days when calendar is available (max_hold etc. are trading-day concepts)
+    if calendar is not None:
+        try:
+            # calendar is sorted ascending trading dates
+            # holding 0 on entry day, 1 next trading day
+            if entry_date not in calendar or today not in calendar:
+                # fallback to calendar diff for edge cases (weekend entry)
+                e = date.fromisoformat(entry_date)
+                t = date.fromisoformat(today)
+                return max(0, (t - e).days)
+            return max(0, calendar.index(today) - calendar.index(entry_date))
+        except ValueError:
+            pass
     try:
         e = date.fromisoformat(entry_date)
         t = date.fromisoformat(today)

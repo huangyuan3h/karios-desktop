@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-08-15T01:39:09.115400+00:00",
+  "tag": "",
+  "config": {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "CN",
+    "gates": "full",
+    "trailing_stop_pct": -8.0,
+    "position_pct": 0.1,
+    "max_positions": 20,
+    "rs_rank_min": 0.5,
+    "diverging_scale": 1.0,
+    "drawdown_circuit_pct": -25.0,
+    "slippage_pct": 0.05,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1,
+    "exclude_boards": "300",
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": true,
+    "neutral_block": true,
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
+    "max_hold_env_shorten": 45,
+    "env_position_scale": "uptrend:1.25,fan:0.75",
+    "panic_cooldown_days": 2
+  },
+  "results": {
+    "OOS2": {
+      "closed": 237,
+      "winRate": 0.544,
+      "avgNetPnlPct": 4.811,
+      "totalNetPnlPct": 117.204,
+      "maxDrawdownPct": 11.715,
+      "sharpe": 6.63
+    },
+    "train": {
+      "closed": 123,
+      "winRate": 0.52,
+      "avgNetPnlPct": 10.961,
+      "totalNetPnlPct": 122.619,
+      "maxDrawdownPct": 9.342,
+      "sharpe": 4.4
+    },
+    "valid": {
+      "closed": 55,
+      "winRate": 0.818,
+      "avgNetPnlPct": 27.098,
+      "totalNetPnlPct": 142.212,
+      "maxDrawdownPct": 1.759,
+      "sharpe": 11.05
+    }
+  },
+  "baselineUsed": true
+}

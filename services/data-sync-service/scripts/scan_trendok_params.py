@@ -74,21 +74,18 @@ def main() -> int:
         print(f"[{w}] recomputing scores with {override} ...", file=sys.stderr)
         recomputed = data.recompute_scores_with_params(override)
         data.scores_by_day = recomputed
-        # simulate with recomputed scores (bypass BacktestData.__init__ reload)
         from data_sync_service.service.backtest_engine import simulate as sim
 
-        # monkey-patch data into simulate by constructing a new BacktestData that already has recomputed scores
-        # Simplest: call simulate with cfg but replace its internal data after creation
-        # Instead we directly run simulate loop via BacktestData+simulate internals is encapsulated;
-        # so we re-run simulate but inject recomputed scores via a tiny wrapper:
-        # Create a new BacktestData with same cfg but override scores_by_day after init
-        _run = sim(cfg)  # noqa: F841 - scaffold fallback — will use DB scores; for true heavy sweep we need to inject recomputed
-        # NOTE: current simulate always creates fresh BacktestData; to actually use recomputed,
-        # we need to patch BacktestData.__init__ to use recomputed when trendok_params is set.
-        # For now this script is a scaffold — it validates the recompute path without full pnl integration.
-        # The recomputed dict is saved for inspection.
-        print(f"[{w}] recomputed {sum(len(v) for v in recomputed.values())} score rows", file=sys.stderr)
-        results[w] = {"recomputed_rows": sum(len(v) for v in recomputed.values())}
+        run = sim(cfg, data=data)
+        print(f"[{w}] recomputed {sum(len(v) for v in recomputed.values())} rows -> closed={run.summary.closed} total={run.summary.total_net_pnl_pct:.1f}%", file=sys.stderr)
+        results[w] = {
+            "recomputed_rows": sum(len(v) for v in recomputed.values()),
+            "closed": run.summary.closed,
+            "totalNetPnlPct": run.summary.total_net_pnl_pct,
+            "winRate": run.summary.win_rate,
+            "maxDrawdownPct": run.summary.max_drawdown_pct,
+            "sharpe": run.summary.sharpe,
+        }
 
     print(json.dumps({"override": override, "results": results}, ensure_ascii=False, indent=2))
     return 0
