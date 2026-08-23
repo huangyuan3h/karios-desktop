@@ -89,6 +89,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setItemCostPriceDraft,
     setItemCostPriceValue,
     commitItemCostPriceDraft,
+    applyTradeUpdate,
   } = useWatchlistItems();
 
   useExecutionJournalCapture({
@@ -486,6 +487,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           setItemCostPriceDraft={setItemCostPriceDraft}
           setItemCostPriceValue={setItemCostPriceValue}
           commitItemCostPriceDraft={commitItemCostPriceDraft}
+          applyTradeUpdate={applyTradeUpdate}
           onRemove={onRemove}
           onOpenStock={onOpenStock}
           executionGate={executionGate}

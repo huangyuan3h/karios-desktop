@@ -18,9 +18,15 @@ from data_sync_service.db.alpha_radar import (
 )
 from data_sync_service.db.bar_minute import CREATE_SQL as BAR_MINUTE_CREATE_SQL
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
+from data_sync_service.db.cn_financial import CREATE_SQL as CN_FINANCIAL_CREATE_SQL
+from data_sync_service.db.cn_hk_hold import CREATE_SQL as CN_HK_HOLD_CREATE_SQL
+from data_sync_service.db.cn_holder import CREATE_SQL as CN_HOLDER_CREATE_SQL
+from data_sync_service.db.cn_margin_detail import CREATE_SQL as CN_MARGIN_CREATE_SQL
+from data_sync_service.db.cn_moneyflow import CREATE_SQL as CN_MONEYFLOW_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
 from data_sync_service.db.decision import CREATE_SQL as DECISION_CREATE_SQL
 from data_sync_service.db.etf_fund_flow import CREATE_SQL as ETF_FUND_FLOW_CREATE_SQL
+from data_sync_service.db.factor_signals import CREATE_SQL as FACTOR_SIGNALS_CREATE_SQL
 from data_sync_service.db.index_basic import CREATE_SQL as INDEX_BASIC_CREATE_SQL
 from data_sync_service.db.index_daily import CREATE_SQL as INDEX_DAILY_CREATE_SQL
 from data_sync_service.db.industry_fund_flow import CREATE_SQL as INDUSTRY_FUND_FLOW_CREATE_SQL
@@ -162,6 +168,12 @@ def baseline_ddl_statements() -> list[str]:
         WATCHLIST_AUTOMATION_CREATE_SQL,
         SYSTEM_PROMPTS_CREATE_SQL,
         RESEARCH_CREATE_SQL,
+        CN_FINANCIAL_CREATE_SQL,
+        CN_HOLDER_CREATE_SQL,
+        CN_MARGIN_CREATE_SQL,
+        CN_MONEYFLOW_CREATE_SQL,
+        CN_HK_HOLD_CREATE_SQL,
+        FACTOR_SIGNALS_CREATE_SQL,
         DECISION_CREATE_SQL,
         USER_TRADES_CREATE_SQL,
         TV_LEGACY_CREATE_SQL,

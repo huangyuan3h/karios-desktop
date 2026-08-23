@@ -37,19 +37,22 @@ from data_sync_service.service.realtime_quote import (
 )
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
+from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS, TrendOKParams
 
 logger = logging.getLogger(__name__)
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 MACRO_LOCK_CACHE_TTL_SECONDS = 45.0
-TRENDOK_FAILED_SCORE_CAP = 79.0
-MACRO_LOCK_DOWN_THRESHOLD = 3500
-LOW_VOLUME_RATIO_THRESHOLD = 1.2
-LOW_VOLUME_RATIO_SCORE_CAP = 79.0
+# B-T1 (2026-08-22): live truth aliases — new code must read from TrendOKParams.
+# Kept for backward compat / grep stability; do not introduce new bare constants.
+TRENDOK_FAILED_SCORE_CAP = DEFAULT_TRENDOK_PARAMS.failed_score_cap
+MACRO_LOCK_DOWN_THRESHOLD = DEFAULT_TRENDOK_PARAMS.macro_lock_down_threshold
+LOW_VOLUME_RATIO_THRESHOLD = DEFAULT_TRENDOK_PARAMS.low_volume_ratio_threshold
+LOW_VOLUME_RATIO_SCORE_CAP = DEFAULT_TRENDOK_PARAMS.low_volume_ratio_score_cap
 LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
 # V6.3 Alpha S TrendOK recovering accelerator
-ALPHA_S_RECOVERING_VOL_MULT = 2.5
-ALPHA_S_RECOVERING_SCORE_FLOOR = 60.0
+ALPHA_S_RECOVERING_VOL_MULT = DEFAULT_TRENDOK_PARAMS.alpha_vol_mult
+ALPHA_S_RECOVERING_SCORE_FLOOR = DEFAULT_TRENDOK_PARAMS.alpha_score_floor
 ALPHA_S_RECOVERING_SCORE_PART = "alpha_s_trend_recovering"
 _trendok_cache: TTLCache = TTLCache(maxsize=128, ttl=TRENDOK_CACHE_TTL_SECONDS)
 _macro_lock_cache: TTLCache = TTLCache(maxsize=1, ttl=MACRO_LOCK_CACHE_TTL_SECONDS)
@@ -97,6 +100,7 @@ def apply_alpha_s_trend_recovering(
     opens: list[float],
     vols: list[float],
     is_alpha_s: bool,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> None:
     """
     V6.3: Alpha S + 2.5×10d volume + bullish candle → trendStatus=recovering,
@@ -117,7 +121,7 @@ def apply_alpha_s_trend_recovering(
     if (
         is_alpha_s
         and vol_ratio is not None
-        and vol_ratio >= ALPHA_S_RECOVERING_VOL_MULT
+        and vol_ratio >= params.alpha_vol_mult
         and _is_bullish_day(closes, opens)
     ):
         recovering = True
@@ -127,12 +131,12 @@ def apply_alpha_s_trend_recovering(
             score_f = float(prev_score) if prev_score is not None else 0.0
         except (TypeError, ValueError):
             score_f = 0.0
-        res["score"] = round(max(score_f, ALPHA_S_RECOVERING_SCORE_FLOOR), 3)
+        res["score"] = round(max(score_f, params.alpha_score_floor), 3)
         parts = res.get("scoreParts")
         if not isinstance(parts, dict):
             parts = {}
             res["scoreParts"] = parts
-        parts[ALPHA_S_RECOVERING_SCORE_PART] = ALPHA_S_RECOVERING_SCORE_FLOOR
+        parts[ALPHA_S_RECOVERING_SCORE_PART] = params.alpha_score_floor
         checks["alphaSTrendRecovering"] = True
         res["trendStatus"] = "recovering"
     else:
@@ -149,7 +153,9 @@ def apply_alpha_s_trend_recovering(
         checks["alphaSTrendRecovering"] = False
 
 
-def macro_override_lock_active(risk_mode: str | None, down_count: int | None) -> bool:
+def macro_override_lock_active(
+    risk_mode: str | None, down_count: int | None, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> bool:
     """
     V5.8 absolute macro deadlock when the market crashes.
     Capitulation V-bottom is exempt (left-side trial buy point).
@@ -158,7 +164,7 @@ def macro_override_lock_active(risk_mode: str | None, down_count: int | None) ->
         return False
     if str(risk_mode or "") == "extreme_caution":
         return True
-    if isinstance(down_count, (int, float)) and int(down_count) >= MACRO_LOCK_DOWN_THRESHOLD:
+    if isinstance(down_count, (int, float)) and int(down_count) >= params.macro_lock_down_threshold:
         return True
     return False
 
@@ -198,9 +204,10 @@ def apply_macro_override_lock(
     results: list[dict[str, Any]],
     risk_mode: str | None,
     down_count: int | None,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> list[dict[str, Any]]:
     """Force all watchlist buy actions to avoid when macro lock is active."""
-    if not macro_override_lock_active(risk_mode, down_count):
+    if not macro_override_lock_active(risk_mode, down_count, params=params):
         return results
     reason = f"macro_override_lock(risk={risk_mode},down={down_count}): all buy blocked"
     for res in results:
@@ -230,11 +237,13 @@ def apply_macro_override_lock(
     return results
 
 
-def _finalize_trendok_response(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _finalize_trendok_response(
+    rows: list[dict[str, Any]], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> list[dict[str, Any]]:
     """Apply macro override lock on a deep copy so cache stays pre-lock."""
     out = copy.deepcopy(rows)
     risk_mode, down_count = _read_latest_sentiment_for_macro_lock()
-    return apply_macro_override_lock(out, risk_mode, down_count)
+    return apply_macro_override_lock(out, risk_mode, down_count, params=params)
 
 
 def _trendok_cache_key(symbols: list[str], realtime: bool, latest_bar_date: str | None) -> tuple[frozenset[str], bool, str]:
@@ -336,15 +345,17 @@ def _clip01(x: float) -> float:
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
 
-# V4.0 Watchlist Score weights
-_W_EMA = 0.40
-_W_MACD = 0.20
-_W_BREAK = 0.10
-_W_RSI = 0.10
-_W_VOL = 0.20
+# V4.0 Watchlist Score weights — now via TrendOKParams (B-T1)
+_W_EMA = DEFAULT_TRENDOK_PARAMS.w_ema
+_W_MACD = DEFAULT_TRENDOK_PARAMS.w_macd
+_W_BREAK = DEFAULT_TRENDOK_PARAMS.w_break
+_W_RSI = DEFAULT_TRENDOK_PARAMS.w_rsi
+_W_VOL = DEFAULT_TRENDOK_PARAMS.w_vol
 
 
-def _score_sub_ema(ema5: float, ema20: float, ema60: float, ema20_prev: float) -> tuple[float, float]:
+def _score_sub_ema(
+    ema5: float, ema20: float, ema60: float, ema20_prev: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, float]:
     if ema5 is None or ema20 is None or ema60 is None:
         return 0.0, 0.0
     s_ema = 0.0
@@ -354,10 +365,12 @@ def _score_sub_ema(ema5: float, ema20: float, ema60: float, ema20_prev: float) -
         s_ema += 0.4
     if ema20_prev is not None and ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
         s_ema += 0.2
-    return s_ema, 100.0 * _W_EMA * s_ema
+    return s_ema, 100.0 * params.w_ema * s_ema
 
 
-def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
+def _score_sub_macd(
+    macd_last: float, hist: list[float], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, float]:
     if macd_last is None:
         return 0.0, 0.0
     s_macd = 0.0
@@ -365,50 +378,55 @@ def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
         h0, h1 = hist[-2], hist[-1]
         if h0 > 0 and h1 > 0 and h1 > h0:
             s_macd = 1.0
-    return s_macd, 100.0 * _W_MACD * s_macd
+    return s_macd, 100.0 * params.w_macd * s_macd
 
 
-def _score_sub_breakout(close: float, high20_high: float) -> tuple[float, float]:
+def _score_sub_breakout(
+    close: float, high20_high: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, float]:
     if close is None or high20_high is None:
         return 0.0, 0.0
     ratio_hi = close / high20_high if high20_high > 0 else 0.0
     s_break = _clip01((ratio_hi - 0.85) / 0.10)
-    return s_break, 100.0 * _W_BREAK * s_break
+    return s_break, 100.0 * params.w_break * s_break
 
 
-def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
+def _score_sub_rsi(rsi14: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> tuple[float, float]:
     if rsi14 is None:
         return 0.0, 0.0
     s_rsi = _clip01(1.0 - abs(rsi14 - 65.0) / 15.0)
     if rsi14 > 80.0:
         s_rsi *= _clip01(1.0 - (rsi14 - 80.0) / 10.0)
-    return s_rsi, 100.0 * _W_RSI * s_rsi
+    return s_rsi, 100.0 * params.w_rsi * s_rsi
 
 
-def _score_sub_volume(ratio_vol: float) -> tuple[float, float]:
+def _score_sub_volume(ratio_vol: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> tuple[float, float]:
     if ratio_vol is None:
         return 0.0, 0.0
-    if ratio_vol < 1.0:
-        s_vol = ratio_vol
-    elif ratio_vol < 1.2:
-        s_vol = 0.5 + 0.5 * (ratio_vol - 1.0) / 0.2
-    elif ratio_vol <= 2.0:
+    b1, b2, b3, b4 = params.vol_break_1, params.vol_break_2, params.vol_break_3, params.vol_break_4
+    if ratio_vol < b1:
+        s_vol = ratio_vol / b1 if b1 > 0 else 0.0
+    elif ratio_vol < b2:
+        span = b2 - b1
+        s_vol = 0.5 + 0.5 * (ratio_vol - b1) / span if span > 0 else 0.5
+    elif ratio_vol <= b3:
         s_vol = 1.0
-    elif ratio_vol <= 3.0:
-        s_vol = 1.0 - (ratio_vol - 2.0) / 1.0
+    elif ratio_vol <= b4:
+        span = b4 - b3
+        s_vol = 1.0 - (ratio_vol - b3) / span if span > 0 else 0.0
     else:
         s_vol = 0.0
     s_vol = _clip01(s_vol)
-    return s_vol, 100.0 * _W_VOL * s_vol
+    return s_vol, 100.0 * params.w_vol * s_vol
 
 
-def _score_bonus_ema20_slope_5d(ema20s: list[float]) -> float:
+def _score_bonus_ema20_slope_5d(ema20s: list[float], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> float:
     if len(ema20s) < 6:
         return 0.0
     for i in range(-5, 0):
         if ema20s[i] <= ema20s[i - 1]:
             return 0.0
-    return 5.0
+    return float(params.bonus_ema20_slope_5d)
 
 
 def _score_anti_spike_penalties(
@@ -419,29 +437,30 @@ def _score_anti_spike_penalties(
     atr14: float | None,
     vol_today: float,
     avg_vol30: float,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> tuple[float, dict[str, float]]:
     penalty = 0.0
     parts: dict[str, float] = {}
 
-    if intraday_chg_pct is not None and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT:
-        p = 20.0
+    if intraday_chg_pct is not None and intraday_chg_pct > params.intraday_surge_threshold_pct:
+        p = float(params.intraday_surge_penalty)
         penalty += p
         parts["penalty_intraday_spike"] = -round(p, 3)
 
     if atr14 is not None and close > 0:
         atr_ratio = float(atr14) / float(close)
-        if atr_ratio > 0.05:
-            p = (atr_ratio - 0.05) * 1000.0
+        if atr_ratio > params.atr_ratio_threshold:
+            p = (atr_ratio - params.atr_ratio_threshold) * float(params.atr_penalty_scale)
             penalty += p
             parts["penalty_volatility_atr"] = -round(p, 3)
 
-    if avg_vol30 > 0 and vol_today / avg_vol30 > 3.0:
-        p = 15.0
+    if avg_vol30 > 0 and vol_today / avg_vol30 > params.volume_climax_mult:
+        p = float(params.volume_climax_penalty)
         penalty += p
         parts["penalty_volume_climax"] = -round(p, 3)
 
     if close < ema20:
-        p = 30.0
+        p = float(params.below_ema20_penalty)
         penalty += p
         parts["penalty_below_ema20"] = -round(p, 3)
 
@@ -467,13 +486,14 @@ def _compute_watchlist_score_v4(
     closes: list[float],
     vols: list[float],
     intraday_chg_pct: float | None,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> tuple[float, dict[str, float]]:
     ema20_prev = ema20s[-2] if len(ema20s) >= 2 else 0.0
-    _, pts_ema = _score_sub_ema(ema5, ema20, ema60, ema20_prev)
-    _, pts_macd = _score_sub_macd(macd_last, hist)
-    _, pts_break = _score_sub_breakout(close, high20_high)
-    _, pts_rsi = _score_sub_rsi(rsi14)
-    _, pts_vol = _score_sub_volume(volume_ratio)
+    _, pts_ema = _score_sub_ema(ema5, ema20, ema60, ema20_prev, params=params)
+    _, pts_macd = _score_sub_macd(macd_last, hist, params=params)
+    _, pts_break = _score_sub_breakout(close, high20_high, params=params)
+    _, pts_rsi = _score_sub_rsi(rsi14, params=params)
+    _, pts_vol = _score_sub_volume(volume_ratio, params=params)
 
     parts: dict[str, float] = {
         "ema": round(pts_ema, 3),
@@ -485,7 +505,7 @@ def _compute_watchlist_score_v4(
 
     total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol
 
-    bonus = _score_bonus_ema20_slope_5d(ema20s)
+    bonus = _score_bonus_ema20_slope_5d(ema20s, params=params)
     if bonus > 0:
         parts["bonus_ema20_slope_5d"] = round(bonus, 3)
         total += bonus
@@ -499,6 +519,7 @@ def _compute_watchlist_score_v4(
         atr14=atr14,
         vol_today=vol_today,
         avg_vol30=avg30,
+        params=params,
     )
     parts.update(pen_parts)
     total -= penalty
@@ -899,14 +920,16 @@ def _build_industry_flow_context(as_of_date: str | None) -> dict[str, Any]:
     return build_trendok_flow_context_from_rows(flow_date=flow_date, dates_5=dates_5, rows=rows)
 
 
-def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple[float, dict[str, float], list[str]]:
+def _industry_flow_score_adjustment(
+    industry: str, ctx: dict[str, Any], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, dict[str, float], list[str]]:
     """
     Compute industry-flow-based score adjustments.
     """
     if not industry or not ctx.get("ok"):
         return 0.0, {}, []
 
-    large_outflow = -1.0e8
+    large_outflow = float(params.flow_large_outflow)
     delta = 0.0
     parts: dict[str, float] = {}
     reasons: list[str] = []
@@ -921,22 +944,22 @@ def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple
 
     # 5D flow ranking
     if industry in top_5d_3:
-        delta += 10.0
-        parts["industry_flow_5d_top3"] = 10.0
+        delta += float(params.flow_5d_top3)
+        parts["industry_flow_5d_top3"] = float(params.flow_5d_top3)
         reasons.append("industry_flow_5d_top3")
     if industry in bottom_5d_5:
-        delta -= 20.0
-        parts["industry_flow_5d_bottom5"] = -20.0
+        delta += float(params.flow_5d_bottom5)
+        parts["industry_flow_5d_bottom5"] = float(params.flow_5d_bottom5)
         reasons.append("industry_flow_5d_bottom5")
 
     # Today's hotspots (top inflow)
     if industry in top_today_3:
-        delta += 5.0
-        parts["hotspots_today_top3"] = 5.0
+        delta += float(params.flow_today_top3)
+        parts["hotspots_today_top3"] = float(params.flow_today_top3)
         reasons.append("hotspots_today_top3")
     elif industry in top_today_5:
-        delta += 3.0
-        parts["hotspots_today_top4_5"] = 3.0
+        delta += float(params.flow_today_top4_5)
+        parts["hotspots_today_top4_5"] = float(params.flow_today_top4_5)
         reasons.append("hotspots_today_top4_5")
 
     today_inflow = float(net_today.get(industry) or 0.0)
@@ -945,14 +968,14 @@ def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple
 
     # Yesterday top3, today falls out of top5 and has large negative inflow
     if industry in top_yesterday_3 and not in_hot_today and today_inflow <= large_outflow:
-        delta -= 15.0
-        parts["hotspot_falloff_big_outflow"] = -15.0
+        delta += float(params.flow_falloff_big_outflow)
+        parts["hotspot_falloff_big_outflow"] = float(params.flow_falloff_big_outflow)
         reasons.append("hotspot_falloff_big_outflow")
 
     # Not in hotspots and 2-day large outflow
     if not in_hot_today and today_inflow <= large_outflow and yesterday_inflow <= large_outflow:
-        delta -= 10.0
-        parts["hotspot_absent_2d_big_outflow"] = -10.0
+        delta += float(params.flow_absent_2d_big_outflow)
+        parts["hotspot_absent_2d_big_outflow"] = float(params.flow_absent_2d_big_outflow)
         reasons.append("hotspot_absent_2d_big_outflow")
 
     return delta, parts, reasons
@@ -993,14 +1016,24 @@ def _resolve_inst_summaries_for_trendok(
     return inst_by_code
 
 
+def _params_cache_suffix(params):
+    if params == DEFAULT_TRENDOK_PARAMS:
+        return ""
+    return str(hash(params))[:8]
+
+
 def compute_trendok_for_symbols(
     symbols: list[str],
     realtime: bool = False,
+    params: TrendOKParams | None = None,
 ) -> list[dict[str, Any]]:
     """
     Compute TrendOK for up to 200 symbols using DB-cached daily bars.
     Data freshness depends on scheduled close sync or manual `/bars?force=true` refresh.
     `realtime` enables best-effort quote merge for the latest bar during trading hours.
+
+    B-T1: `params` allows experiments; None => DEFAULT_TRENDOK_PARAMS (live truth).
+    Non-default params bypass the TTL cache (correctness over speed for scans).
     """
     syms0 = [str(s or "").strip().upper() for s in (symbols or [])]
     syms = [s for s in syms0 if s]
@@ -1043,6 +1076,9 @@ def compute_trendok_for_symbols(
                 if code and amt is not None and vol is not None and vol > 0:
                     rt_vwap_by_code[code] = amt / vol
 
+    p = params or DEFAULT_TRENDOK_PARAMS
+    use_cache = p == DEFAULT_TRENDOK_PARAMS
+
     latest_bar_date: str | None = None
     for bars in bars_by_code.values():
         if not bars:
@@ -1051,10 +1087,12 @@ def compute_trendok_for_symbols(
         if not latest_bar_date or d > latest_bar_date:
             latest_bar_date = d
 
-    cache_key = _trendok_cache_key(syms, realtime, latest_bar_date)
-    cached = _trendok_from_cache(cache_key)
-    if cached is not None:
-        return _finalize_trendok_response(cached)
+    cache_key: tuple[frozenset[str], bool, str] | None = None
+    if use_cache:
+        cache_key = _trendok_cache_key(syms, realtime, latest_bar_date)
+        cached = _trendok_from_cache(cache_key)
+        if cached is not None:
+            return _finalize_trendok_response(cached, params=p)
 
     by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
@@ -1209,14 +1247,17 @@ def compute_trendok_for_symbols(
                 is_held=is_held,
                 cost_price=cost_price,
                 entry_date=entry_date,
+                params=p,
             )
         )
     if stoploss_upserts_by_code:
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
     if stoploss_deletes_by_code:
         delete_stoploss_batch(sorted(stoploss_deletes_by_code))
-    _trendok_cache[cache_key] = out
-    return _finalize_trendok_response(out)
+    if use_cache and cache_key is not None:
+        _trendok_cache[cache_key] = out
+        return _finalize_trendok_response(out, params=p)
+    return _finalize_trendok_response(out, params=p)
 
 
 def _resolve_effective_stoploss(
@@ -1284,6 +1325,7 @@ def _trendok_one(
     is_held: bool = False,
     cost_price: float | None = None,
     entry_date: str | None = None,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1490,11 +1532,12 @@ def _trendok_one(
                 closes=closes,
                 vols=vols,
                 intraday_chg_pct=intraday_chg_pct,
+                params=params,
             )
             res["score"] = score
             res["scoreParts"] = parts
             if industry and flow_ctx:
-                delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx)
+                delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx, params=params)
                 checks = res.get("checks") if isinstance(res.get("checks"), dict) else {}
                 positive_bonus_allowed = all(
                     bool(checks.get(k))
@@ -1540,7 +1583,7 @@ def _trendok_one(
                 and isinstance(inst_flow.get("instNetBuyYi"), (int, float))
                 and float(inst_flow["instNetBuyYi"]) < 0
                 and isinstance(intraday_chg_pct, (int, float))
-                and float(intraday_chg_pct) > INTRADAY_SURGE_THRESHOLD_PCT
+                and float(intraday_chg_pct) > params.intraday_surge_threshold_pct
                 and res.get("score") is not None
             ):
                 res["score"] = round(min(float(res["score"]), 60.0), 3)
@@ -2103,16 +2146,16 @@ def _trendok_one(
     volume_ratio_raw = (res.get("values") or {}).get("volumeRatio") if isinstance(res.get("values"), dict) else None
     low_volume_ratio = False
     if isinstance(volume_ratio_raw, (int, float)):
-        low_volume_ratio = float(volume_ratio_raw) < LOW_VOLUME_RATIO_THRESHOLD
+        low_volume_ratio = float(volume_ratio_raw) < params.low_volume_ratio_threshold
     if low_volume_ratio:
         res["trendOk"] = False
         if res.get("score") is not None:
-            res["score"] = round(min(float(res["score"]), LOW_VOLUME_RATIO_SCORE_CAP), 3)
+            res["score"] = round(min(float(res["score"]), params.low_volume_ratio_score_cap), 3)
             parts2 = res.get("scoreParts")
             if isinstance(parts2, dict):
-                parts2[LOW_VOLUME_RATIO_SCORE_PART] = LOW_VOLUME_RATIO_SCORE_CAP
+                parts2[LOW_VOLUME_RATIO_SCORE_PART] = params.low_volume_ratio_score_cap
     if res.get("score") is not None and res.get("trendOk") is not True:
-        res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
+        res["score"] = round(min(float(res["score"]), params.failed_score_cap), 3)
 
     # V6.3 Alpha S recovering accelerator (after failed-score caps)
     apply_alpha_s_trend_recovering(
@@ -2121,6 +2164,7 @@ def _trendok_one(
         opens=opens,
         vols=vols,
         is_alpha_s=is_alpha_s,
+        params=params,
     )
 
     # RS_Leader alert (V5.7): contrarian resilience highlight during weak market

@@ -530,7 +530,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 | stop | -5% | -5% |
 | RS | **前 40%（rs_min 0.6）** | 前 50% |
 | 金字塔 | 开（2.5/0.5/1） | 开 |
-| 其他 | hold60/target100/mp20/10%仓位/swap 关 | 同 |
+| 其他 | hold60/target100/mp10/10%仓位/swap 关 | 同 |
 - **三窗**：OOS2 +43.4%/DD12.7/夏普2.63 · train +23.0%/DD9.9/2.89 · valid +26.2%/DD5.7/3.64
 - A 股回归：OOS2/train 与固化基线**完全一致**（124.3/4.21 · 151.1/5.92）；valid 78 笔差异
   = 8-09 数据回填演进（stash 验证非代码回归）——**基线待重固化（run_walk_forward --save-baseline）**
@@ -780,11 +780,12 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ⚠️ 观察：`news_enrich_job` 依赖 ai-service 在线（离线即 49/0 全失败）；失败原因已入库可诊断（2026-08-09）
 
 
-## 8. 回测（已重启 · S-3 定案）
+## 8. 回测（已重启 · S-3 定案 · 2026-08-22 审计后）
 
 - ✅ **前置条件**：与 live 同口径（共享规则代码 OPT-070）+ 历史 bars 齐全 + paper 先行——全部达成
 - ✅ **回测引擎 v1.5**（OPT-063→070）→ [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)
 - ✅ **Paper v0.1/v0.2 + S-3 模式**（paper_s3 同码闸门，cron 17:42）→ §16 L3-P1 / §19.1 G4
+- ⚠️ **代码审计（2026-08-22）**：数据前视/幸存者 · 执行 200%杠杆/无流动性/calendar 天数 · 统计 `valid n55` 复用 4 次，`valid Sharpe11` 虚高，`B-T1 --param trendok_*` 当前为 no-op → 详见 [`backtests/audit-2026-08-22.md`](./backtests/audit-2026-08-22.md) + [`backtest-strategy.md §8-9`](./modules/backtest-strategy.md#8-已知局限与可信度2026-08-22-审计--必读)
 - [ ] **[P1] paper 实绩对照（C4）**：≥20 笔平仓后，回测结论 vs paper 真实表现逐条核对——**框架已搭**（OPT-087：`scripts/paper_vs_backtest_report.py` 可跑；已揪出并修复 trailing 口径漂移）；现 2 笔样本，等积累
 - [x] **[P1] 环境×买入风格适配实验（TIP-014，2026-08-14 完成 ✅）**：用户真实执行节奏 = 14:00-15:00 随机时刻按信号买入；目标是用回测找出「市场环境 → 买入风格」规律，用规律指导交易系统演进。**成果**：① neutral_block（弱/中性日禁开仓，valid +10.7pt，DD 12.1→2.7，胜率 60.8→78.2）；② entry_style auto（主升追强 RS0.7 / 电风扇低吸 -3%，valid +4.7pt，电风扇日 avg +12.8→+17.4）；③ 板块画像（电子/有色/机械跨窗轮动，auto 不绑定板块，主线闸门动态 Top3 独立）；④ 长窗置信度验证（2021-08~2026-08 五年零劣化，2026 +96.3pt）；⑤ HK 线实验结论=不适用（仅 2 个指数红绿灯信息不足，维持 score）；**⑥ 情绪历史回填（方案 A，2026-08-14 ✅）**：`backfill_sentiment_history.py` 零成本重算 2024-08 起情绪（tushare daily 是唯一输入）+ 补 trade_calendar 2024-01 起；**⑦ E2 panic_cooldown 3→2（2026-08-14 ✅ 固化）**：回填暴露弱市年 3 天冷却锁死 OOS2（288964 次拦截）→ 2 天三窗 OOS2 92.6(+8.2) · train 103.1(+22) · valid 持平 · 长窗 270.1 vs 235.4（+34.7pt, DD 45.1→33.0）+ 蒙特卡洛稳健（53.4% 分位, 95% 下界 ≥+99.8%）；E1（大环境条件化）实验证明不需要已删除。全部已固化进 S3_CONFIG（三处）+ live paper 同步。详见 trading-improvement-checklist TIP-014 + designs/data-gap-backfill-2026-08.md
 - [ ] **[P2] 板块特点画像（用户提出，TIP-014 延伸）**：不同板块在不同环境下的收益特征分析——主升买什么板块、电风扇买什么板块、防御期买什么板块；**部分完成**：`scripts/tip014_industry_profile.py` 已产出跨窗画像（OOS2 工程机械/汽车零部件、train 有色/通信、valid 电子）；待做：画像→可执行规则（如主线行业白名单动态化）
@@ -814,9 +815,9 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
     - **P12 波动率调整动量（ret/vol）**：**❌ 已拒收（2026-08-15）**——所有变体（0.5/1.0/1.5/2.0）train 一致灾难（-22.7~-24.4）+ 长窗收益 -50pt + DD 45→63~84 全面恶化；ret/vol 阈值在震荡/弱市**系统性拒绝高 beta 票**（波动高→ratio 低），而高 beta 票是 S-3 动量 alpha 来源——**波动率维度是"砍 beta"不是"降噪"**，与动量哲学冲突；引擎 `risk_adj_mom_*` 保留默认关
     - **P14 PEAD 盈余公告后漂移**：**❌ 已拒收（2026-08-15）**——新建 stock_forecast 表（alembic 0035 + 回填 15470 行 2024-01~2026-08）；三窗全崩（train -107~-121 / valid -144~-148，valid 胜率 7.7-12.5% vs 81.8%）——**公告日=情绪高点利好出尽**，RS 排名已含业绩利好的价格反应，PEAD 时间窗=双重追高（与 P9 同源教训）；引擎 `pead_days` 默认关，表保留供未来纯事件策略用
     - **信号池终结（2026-08-15 · 用户拍板停止回测探索）**：**已验证 15 项全部拒收**（P1-P8 技术形态 8 项 + P9/P10 动量 + P11 行业维度 + P12 波动率动量 + P14 PEAD + P16-ST + P17 组合层）——剩余 11 项（P13/P15/P18-P26）**终止探索**；48+ 次失败（含防守 23 项 + 早期 ~10 项）证明：**A 股 S-3 的 alpha = RS 短期转强 + 主线行业 beta + 环境感知 + 纪律空仓，已全部占满**；HK 无强规律、beta 偏多、空间到顶（环境数据不足，D8 需新数据源）；**回测时代总结 → `backtests/SUMMARY.md`（必读）**；唯一合理的重开条件 = 获得真正正交的新数据源
-- ⚠️ 纪律：回测数字不作发布依据；paper 实绩为准
-- 🎯 **下一步（非信号工作）**：C4 paper 对照（等 ≥20 笔实绩）· 执行验证（D7 分钟线积累）· 数据新鲜度/OOS 滚动监控 · 实盘纪律跟踪
-- [ ] **[P1] T6 第三资产套筒（闲置资金低相关资产 · 2026-08-19 研究完成待拍板）**：S-3 平均闲置现金 57.3%、逆回购仅 +0.7%/yr → 研究 9 个候选（纳指/黄金/国债/可转债/货币/短融/红利）三窗条件化模拟；**最优 = 纳指ETF(513100) + 空仓日才持有 + 自身 px>200dMA + 破线切 GC001**（三窗 +3.1/+15.3/+39.0pt，过去一年 +97pt 且 maxDD 略降）；**失败记录全量在 `designs/third-asset-sleeve.md`**（黄金 valid -22.4pt、30Y 无条件 -3.4pt、20dMA 过滤劣于 200dMA、无脑持有均不稳）；**提示层已落地 2026-08-19（watchlist + paper 全对齐）**：四态状态机（买/换A股/转逆回购/今日不买）后端 `third_asset_sleeve.py` + `portfolio-health` 新字段 + 前端 `ThirdAssetSleeveBanner` + 每日简报 section + 通知聚合 + 决策 agent 注入；**待拍板**：①采纳与否 ②纳指 vs 保守版 30年国债 ③20d 硬切出变体三窗验证 ④paper 层自动配置 + allocation.py 资金池 + dual 三窗验收
+- ⚠️ 纪律：回测数字不作发布依据；paper 实绩为准；**引用口径**：可引用 `OOS2 117.2% n237 / train 122.6% n123`，`valid 142.2% n55` 仅发现、`长窗 333.9%` 条件收益（见 `audit-2026-08-22.md §6`）
+- 🎯 **下一步（审计后四阶段）**：**Phase 0 冻结 hold-out 2026-08-08~2027-02-08 + 打通 B-T1 注入**（1-2 天）→ **Phase 1 执行可复制性重固化**（资金≤100%/流动性0.7亿/交易日历/入场 `next_open`，2-3 天，三窗+hold-out+长窗同屏）→ **Phase 2 数据补丁**（行业时态/universe 退市/长窗分段，1-2 周）→ **Phase 3 hold-out 确认**（`n≥100` 前不调参，`FDR 10%` + leave-one-regime-out，3-6 月）→ **Phase 4 B-T1 5 旋钮×3 值≤15 次**（见 `audit-2026-08-22.md §5` + `backtest-strategy.md §9`）；期间 C4/D7/滚动 OOS 并行
+- [ ] **[P1] T6 第三资产套筒（闲置资金低相关资产 · 2026-08-19 研究完成 · 2026-08-21 采纳落地）**：S-3 平均闲置现金 57.3%、逆回购仅 +0.7%/yr → 研究 9 个候选（纳指/黄金/国债/可转债/货币/短融/红利）三窗条件化模拟；**最优 = 纳指ETF(513100) + 空仓日才持有 + 自身 px>200dMA + 破线切 GC001**（设计稿三窗 +3.1/+15.3/+39.0pt；落地模拟器实测 +2.8/+23.1/+30.4pt 全正）；**失败记录全量在 `designs/third-asset-sleeve.md`**（黄金 valid -22.4pt、30Y 无条件 -3.4pt、20dMA 过滤劣于 200dMA、无脑持有均不稳）；**提示层已落地 2026-08-19（watchlist + paper 全对齐）**：四态状态机（买/换A股/转逆回购/今日不买）后端 `third_asset_sleeve.py` + `portfolio-health` 新字段 + 前端 `ThirdAssetSleeveBanner` + 每日简报 section + 通知聚合 + 决策 agent 注入；**NAV 模拟器已落地 2026-08-21（OPT-119）**：`portfolio_nav_sim.py` + `scripts/sleeve_nav_sim.py` 三窗验证 + 回测页 `SleeveNavCard`；**核心仓核对 + paper 自动配置已落地 2026-08-21（OPT-120）**：`core_holding_audit.py` 操作 vs 规则逆向回放 + 回测页 `CoreAuditCard`、`sleeve_paper_auto.py` paper 书自动买卖（sleeve_exit 平仓原因、工作日 18:20 job）、`allocation.py` 三元资金池（CN/HK/ETF）；**dual 联合三窗已验收 2026-08-21（OPT-121）**：R5CS 规则（选中市场内部闲置吃套筒）三窗 +10.8/+17.0/+30.9pt 全正，顺带修复 R5A/B/C 被 momentum 覆盖的既有 bug；**待拍板/待做**：①CN 闸门已移除（2026-08-21 拍板）②20d 硬切出变体三窗验证 ③R3 规则在 dual 中从未实现（与 R1 等价，需补实现或标记废弃）④套筒 job 观察期后评估是否进实盘 watchlist
 
 
 ## 9. 多市场 / 远景（最低优先级）
@@ -1158,7 +1159,7 @@ today 已显示（如 strength 26.4）。**离散 regime（Strong/Diverging/Weak
 2. 买入前自查：regime 非 Weak（banner）✓ → score≥65 ✓ → RS 前50%（绿色徽标）✓ → 主线 ✓ → 非恐慌冷却期
 3. **卖出只按**：移动止损 -8% / 固定 -5% / 60 天——**禁止**因"涨了 10%"或"评分回落"卖出（回测证明是错误）
 4. 恐慌冷却期（极端谨慎日 +3 天）不买新票
-5. 每笔 5%（paper S-3 口径），同时 ≤20 笔（mp20 定案）；加仓每票至多 1 次（+2.5% 触发，半仓）
+5. 每笔 10%（paper S-3 口径），同时 ≤10 笔（mp10 定案）；加仓每票至多 1 次（+2.5% 触发，半仓）
    （2026-08-09 复核：原「≤10笔」为 S-3 定案前旧口径，已统一为 20）
 
 ### §19.2 回测极致化（2026-08-09 · 参数空间已封闭 · 不再做参数微调）
@@ -1168,7 +1169,7 @@ today 已显示（如 strength 26.4）。**离散 regime（Strong/Diverging/Weak
 | 1 第二样本外年（2024-08~2025-08 弱市） | ✅ **通过**：+52.9%/胜率49.1%/超额 vs 科创50 +10.3% → S-3 双年验证策略 |
 | 2 A2 趋势评分 | ❌ 弃用（见手段清单） |
 | 3 执行增强 | 金字塔 ✅ 固化（trigger 2.5%/0.5x/1次 · 阈值单调 +1%>+30%）；ATR ❌ 弃用 |
-| 4 max_positions | 定案 **20**（mp10 收益低 40%；mp30 回撤 16.8% 劣化） |
+| 4 max_positions | 定案 **10**（2026-08-23 三窗重测：`mp10 43.1/35.6/43.3` 最优；`mp5/33%×3` 拒收；`mp15/20/30` 持平） |
 | 5 swap 换仓 | 机制保留**默认关**（SWAP_ENABLED=False；正确基线下增量 +0~3pt 双窗不一致） |
 | 6 参数灵敏度盘点 | 最佳值判定框架（平台期 / 双窗一致 / 取舍三分类）→ strategy-params §4 |
 | 8 机制级实验 | 行业 cap ❌、市值分层 ❌（风格轮动因子）、回撤熔断 ❌ → **组合层探索封闭** |
@@ -1179,7 +1180,7 @@ today 已显示（如 strength 26.4）。**离散 regime（Strong/Diverging/Weak
 **✅ 组合重测定案（2026-08-09 晚 · 含 trailing -8 正确基线 · 10% 仓）**：
 mp20 = +155.1%/DD10.1/183笔（一年）；paper 5%×20 纪律口径 ≈ +77.5%/DD~5%。
 **S-3 最终参数组（固化）**：score 65 · hold 60 · target 100 · floor 0 · trailing -8 · stop -5 ·
-RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper 5%）· exclude_boards 300 · swap 关。
+RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 10（回测 10% / paper 10%）· exclude_boards 300 · swap 关。
 **基线（2026-08-09 晚重固化）**：OOS2 +124.3/DD18.7 · train +151.1/DD9.7 · valid +77.2/DD5.0（含金字塔+排除创业板）。
 
 #### mainline/flow 历史回拉 + S-3 定案复核（⏸ 数据源受阻 · 用户拍板暂停）
@@ -1226,6 +1227,62 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 
 **纪律**：收集只加快照不改信号；alpha 退出在验证前不进入任何退出逻辑（OPT-097 铁律不变）。
 
+### §19.4 形态 / ML 因子有效性验证（2026-08-23 立 · **独立于 S-3** · 用户拍板）
+
+> **重大重构（用户 2026-08-23）**：形态识别与 ML **不与 S-3 绑定**。S-3 是"1日入场+风控"执行层；
+> 形态/ML 是独立的**因子研究层**——只回答"某形态 / 模型本身有没有 edge"。判定方式由"并入 S-3 三窗回测"
+> 改为：**全市场扫描存在性 → 形态内标准交易独立小回放 → 多因子分层 vs 同域无条件 base rate**。
+> 详细设计与印证顺序见 [`docs/designs/pattern-factor-validation.md`](./designs/pattern-factor-validation.md)。
+
+**形态目录（假设存在 → 如何获利）**：箱体震荡 / 双底 / 杯柄 / 勺型浅回调 / 旗形 / 三角收敛 / 突破。
+每种定义可检测规则 + 入场(低点/突破) / 目标(高点/度量) / 止损(结构破位) / 持有期，并在 **量能 / RS / 行业** 上做多因子分层。
+
+**轨道 A — 规则形态（先证存在、再证有效）**：见设计文档 §2；先跑 **箱体震荡** 存在性扫描
+（全市场是否大量票长期箱体）+ 箱内"低点买→到高点"回放，命中率 vs 随机。
+**轨道 B — CNN K线（数据驱动）**：输入 `60×5` 归一化 K线，标签 `N日方向`；作为**独立多因子判别器**
+验证 AUC/IC 稳定性，不与 S-3 门控绑定。
+**ML 定位修正**：ML 不是 S-3 门控（已证并入 S-3 增益≈0，见下方旧框架段）；正确定位 = 独立的
+多因子 edge 判别器，与规则形态互为印证。
+
+**⚠️ 旧框架痕迹（已弃，结论仍成立）**：本节下方"ML-gating 路线已验证收敛"与"轨道 A 一检"两段，
+是**旧 S-3 耦合框架**产物。结论（ML 并入 S-3 无增益、规则形态在 S-3 小域无 edge）有效，但框架已弃；
+新工作一律按设计文档**独立验证**，与 S-3 解耦。
+
+**执行顺序**：箱体 → 双底 → 杯柄 → 勺型 → 旗形 → 三角 → 突破，一个一个印证（设计文档 §5）。
+**风控**：因子研究不碰 S-3 执行层；多因子分层判稳，避免单因子伪信号；as-of 无前视。
+**依赖**：`daily 13.8M`（已恢复）即可跑全市场扫描；`cn_extra` 补全后 B 可接 `30维` 二次验。
+
+**🔴 ML-gating 路线已验证收敛（2026-08-23）**：TCN（最佳 ckpt `auc0.615`）并入 S-3 后，
+OOS2 入场门控增益 `<1pt`（远低于 §19 的 5pt 票决线）；TCN 在 S-3 真实入场上的 AUC≈0.55（≈随机），
+无法区分 S-3 赢亏 → **ML 对 S-3 几乎零增益，路线放弃**。详见
+[`archive/2026-08-23-ml-s3-lift-verify.md`](./archive/2026-08-23-ml-s3-lift-verify.md)。
+横向对比 TCN/LSTM/Transformer/XGBoost 全部 AUC<0.62（量价时序天花板）→ 增强重心转 **轨道 A/B 形态识别**。
+
+#### 轨道 A 一检（2026-08-23 · 规则形态多维度）
+
+> 样本 = 可投资域（60日均额 ≥0.5亿），label = N10>5% 前收益；base rate ≈ **23.2%**（全样本胜率 24.9%）。
+> 产物 `data/backtest_reports/morph_trackA.json` + `/tmp/morph_samples.parquet`（185万样本含维度标签）。
+
+**整体（n / 胜率% / N10均值%）**：`double_bottom 293655/21.4/0.09` · `cup_handle 8418/12.3/0.07` ·
+`flag 36/0.0/-5.19` · `triangle 268188/24.2/0.13` · `vol_breakout 27025/17.7/-0.26` ——
+**5 类全部 ≈ base rate（23%），无显著 edge**。
+
+**按板块（完整）**：双底 主板 21.0% / 创业板 20.9% / 科创 21.2%；三角 主板 22.8% / 创业板 27.4% / 科创 27.2%；
+量破 主板 22.6% / 创业板 20.2% / 科创 24.7% —— 均贴近 base，无板块结构性差异。
+
+**按行业（top10 样本）**：软件服务 / 电气设备 / 元器件 / 专用机械 / 化工 / 汽车配件等三角胜率 23–30%、双底 19–24%，
+无行业稳定超 base；个别（小盘 cup_handle n=27 胜率 51.9%）属小样本噪声。
+
+**⚠️ 数据问题**：市值分层几乎全空（大盘/中盘 =0）——`stock_dailybasic.total_mv` 仅覆盖 5594 票 + 历史日期缺口，
+多数样本 `mv=None→NA`，维度不可用。需换更完整市值源或改用「60日均额」作规模代理。
+
+**方法学偏差（关键）**：规则在「确认日」（价格已收复颈线）才触发，而 N10 从该日计——
+突破段涨幅已兑现，forward 10日自然偏小，可能系统性低估形态 edge。需：① 入场改「突破日 close」且 label 试 **N5/N20**；
+② 双底/杯柄加**量能确认**（二次探底缩量+突破放量）；③ 收紧定义降假阳性（现 double_bottom 29万样本过松）。
+
+**结论（一检）**：规则形态尚未呈现 >base 的 edge，但受「确认日入场 + N10 标签」偏差拖累，不能直接判死；
+先修方法学（N5/N20 + 量能确认 + 市值代理）二检，仍平则转 **轨道 B CNN K线**（直接学结构，绕开规则偏差）。
+
 ### 明确不做（过拟合温床 · 封闭清单）
 
 - ❌ 继续扫参数网格（收益递减，边际=过拟合）
@@ -1241,3 +1298,98 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 - ❌ 采信 <100 笔样本的方案
 - ❌ 前视调参（分数/红绿灯/资金流必须 as-of——OPT-070/071 已立纪律）
 - ❌ 把"胜率"当唯一目标（超额收益 + 回撤 + 夏普综合判断）
+
+## 20. 代码断层补漏（2026-08-22 全量读码扫描 · 按收益×风险排序）
+
+> 来源：读码 87 service + 38 db + 41 scheduler + 46 queries + 92 FE test，对照 `strategy-params`/`trading-system`/`optimization-checklist` 真值文档，**仅收录文档未覆盖/未闭环项**。已按 `预期收益×可验证性/投入` 排序；每项可单开 OPT/TIP，按 `AGENTS.md` 单文件范围交付。
+
+### 20.1 业务提升点（直接影响盈率/纪律 · 排序 P0→P2）
+
+| # | 优先级 | 标题 | 预期收益 | 投入 | 位置 | 一句话 | 文档缺口 |
+|---|--------|------|----------|------|------|--------|----------|
+| B-E3 | **[P0]** | HK 线环境感知补齐（neutral_block/entry_style/env_scale/D2） | ★★★★★ | M-L | `service/paper_s3.py:440` HK分支无判定 / `service/backtest_engine.py:606` | HK 无情绪/广度，`rolling_oos` HK 90天 -8.5%/DD19.5 暴露；CN同款 valid +10.7pt/DD12→2.7 可复刻 | `strategy-params §1b`仅提无行业流 |
+| B-T1 | **[P0]** | TrendOK 配方 15+ 旋钮纳入参数表 | ★★★★★ | S-M | `service/trendok.py:45` `FAILED_SCORE_CAP79` / `339` `_W_EMA0.40` / `422` `anti_spike -20` | `score≥65`唯一闸但权重/惩罚未参表，`slippage 0.05→0.1`曾证-31pt敏感度 | `trading-system §2.1`仅列因子名 | **🔄 2026-08-22 夜跑中 PID65848 `valid` 首筛 `15*~7分` → 三窗 `>5pt` 票决，`bark` 推 `execution_card`，完后落 `docs/backtests/audit-2026-08-22.md` + `strategy-params` §1** |
+| B-S1 | **[P0]** | 套筒资金池口径统一 + 20d 硬切验证 | ★★★★☆ | M | `service/allocation.py:40` 双弱才进 vs `scripts/run_walk_forward_dual.py:221` 内部闲置 | 闲置57.3%吃GC001 0.7%，设计+3~39pt已验但live/dual `idle`定义分裂，`20d -10%`尾险未验 | `strategy-params`未收录，`§8 T6`待拍板② |
+| B-E1 | **[P0]** | 入场价 `last_hour_low` 打通（分钟线） | ★★★★☆ | M | `service/backtest_engine.py:185` `entry_mode` / `service/paper_trading.py:330` 成本0.30/0.60 vs 回测0.05 | 真实14:00-15:00随机非收盘，`C4`偏差-5.5pt主因收盘价差 | `trading-system §4`仅0.05% |
+| B-S2 | **[P1]** | RS轮动 `SWAP` 现基线重验 | ★★★★☆ | S | `service/paper_s3.py:97` `SWAP_ENABLED=False` / `service/backtest_engine.py:1581` | 满仓20×60天新强票被堵（300308 32天0交易），`+0~3pt`旧基线现叠D3/E2需重验 | 标记备用未重验 |
+| B-A1 | **[P1]** | 跨市场 `R3` 风险调整动量落地 | ★★★★☆ | M | `scripts/run_walk_forward_dual.py:102` R3无分支 / `service/allocation.py:29` 仅R5c | R3从未跑（≈R1假阴性），双强年50/50误配成本~150pt | 未披露 |
+| B-R1 | **[P1]** | 体制深绿阈值年度自适应 | ★★★☆☆ | M | `service/market_regime.py:378` `turnover1.5T/mainline5B/breadth50%` | 2024弱市1.5T永不触发，深绿失真致Strong占比失真 | `trading-system §2.3`仅三绿=Strong |
+| B-X1 | **[P1]** | 前后端仓位 `risk/budget` 统一 | ★★★☆☆ | S | `apps/desktop-ui/src/lib/execution-action.ts:37` `RISK0.5%` vs `service/paper_s3.py:55` `10%` | 同信号寒武纪FE 2.5% BE 10%，C4分母偏离 | `trading-system §5`仅15%/30% |
+| B-E2 | **[P1]** | `env_label` 2.0/0.5 阈值网格扫描 | ★★★☆☆ | S | `service/env_label.py:52` `UPTREND2.0/FAN0.5-1.5` | `fan`牛市零触发致D1零样本 | `TIP-014`仅概念 |
+| B-R2 | **[P2]** | 研报半衰14d/目标价权重扫描 | ★★☆☆☆ | S | `service/research.py:38` `HALF_LIFE14d/TARGET_MAX0.5` | 30%与50%空间同满分，高目标低估 | `TIP-012`无参表 |
+| B-R3 | **[P2]** | Alpha QA 惩罚权重 `0.6/0.5/0.4` 自适应 | ★★☆☆☆ | S | `service/alpha_radar_qa.py:54` `max非sum` | `0.6`可把S90打至36漏新主题龙头 | `TIP-009`未披露权重 |
+| B-T2 | **[P2]** | 持仓三峰口径统一 `close` | ★★☆☆☆ | S | `service/portfolio_health.py:132` `max(close)` vs `service/paper_trading.py:412` `max(high)` | 同持仓health EXIT/paper HOLD分歧1%即误触发 | `trading-system §4`统称-8% |
+
+> 业务验证纪律：每项 `PYTHONPATH=src python3 scripts/run_walk_forward.py --param k=v` 三窗+hold-out+长窗同屏，`>5pt劣化` 拒收，`n<100` 标 `⚠️ underpowered`；`§19`封闭期仅B-E3/B-T1/B-S1三项 P0 可优先破例；**B-T1 前置**：`BacktestData.recompute_scores_with_params` 注入打通前禁止 `--param trendok_*` 扫描（当前为 no-op，见 `audit-2026-08-22.md §3.3`）；`holdout 2026-08-08~2027-02-08` 只读不调参。
+
+### 20.2 工程提升点（稳定性/可维护 · 排序 P0→P2）
+
+| # | 优先级 | 标题 | 风险收益 | 投入 | 位置 | 一句话 | 文档缺口 |
+|---|--------|------|----------|------|------|--------|----------|
+| E-S1 | **[P0]** | 内部 `/market/*` `/sync/*` 鉴权/限频 | ★★★★★ | M | `api/query_routes.py:179` `bars?force` / `api/security.py:43` 仅Origin | Tunnel暴露后可 `force=true` 100+/min 打爆tushare IP | OPT-045仅覆`/v1/*` |
+| E-D1 | **[P0]** | UTC vs Asia/Shanghai 日期错位 | ★★★★★ | S | `db/sync_job_record.py:32` `_utc_today()` vs `scheduler/__init__.py:59` Shanghai | 00:30 CST记作昨天，catchup重跑duplicate | 未记录 |
+| E-D2 | **[P0]** | `ensure_table` guard 补齐 | ★★★★☆ | S | `db/sync_job_record.py:25` / `db/allocation.py:29` 直调CREATE | 热路径每TrendOK付DDL解析+锁 | OPT-032标[x]未完全 |
+| E-J1 | **[P0]** | 调度丢任务 `misfire12h+coalesce` 掩盖 | ★★★★☆ | M | `scheduler/__init__.py:59` 全局 + `catchup:372`仅4 job | `hk_daily 16.5min` 17:50重启丢24h | AGENTS仅列3 job |
+| E-S2 | **[P1]** | 嵌套 `ThreadPoolExecutor` 爆炸 | ★★★★☆ | M | `service/dashboard.py:265` 3层 / `service/realtime_quote.py:574` 6×6 | 40并发→520线程，GIL串行化浪费 | OPT-031/038部分 |
+| E-S3 | **[P1]** | `except Exception: pass` 静默 | ★★★★☆ | M | `service/market_sentiment.py:138` / `service/paper_s3.py:49` | 恐慌闸fail-open无告警 | OPT-074未收敛 |
+| E-D3 | **[P1]** | 无连接池 `psycopg.connect` 每调新建 | ★★★☆☆ | M | `db/__init__.py:15` | 41 job 17:30 burst→`too many clients` | 未记录 |
+| E-F1 | **[P1]** | FE 双query未去重+缺ErrorBoundary | ★★★☆☆ | M | `lib/queries/dashboard.ts:337` vs `macro.ts:119` 分key | 480 req/min，一卡500崩全页 | OPT-034标[x]仍双调 |
+| E-D4 | **[P1]** | Shared Zod vs Python漂移 | ★★★☆☆ | M | `packages/shared/src/schemas/scheduler.ts:352` 41 job vs `api/sync_routes.py` | `source=S3HK` Zod崩 | AGENTS仅注释 |
+| E-D5 | **[P1]** | 覆盖率门禁过期 | ★★★☆☆ | M | `scripts/coverage_gate.py` 未含`bar_minute`/`sleeve_paper_auto` | R5CS/套筒0覆盖仍绿 | todo称92.2% |
+| E-S4 | **[P2]** | 静默截断 `200/500` | ★★☆☆☆ | S | `service/trendok.py:1009` `>200:[:200]` | 全市场683截断致paper 0候选 | 未记录 |
+| E-S5 | **[P2]** | Cache TTL无失效 | ★★☆☆☆ | S | `service/trendok.py:54` `TTL60` | `force`后仍60s旧分 | 未记录 |
+| E-S6 | **[P2]** | `bar_minute`逐行execute | ★★☆☆☆ | S | `db/bar_minute.py:60` `for:execute` | 33k行4s vs 0.3s批 | 未记录 |
+| E-N1 | **[P2]** | macOS `_scproxy` 仅Tencent修 | ★★☆☆☆ | S | `service/em_push2_http.py:191` 仅一条链 | ClashX下Sina走代理被限流 | todo轶事 |
+
+> 工程落地：每项单开 `OPT-1xx`，按 `optimization-checklist.md` 文件范围+测试交付，`SYNC_JOB_TYPES`/`SCHEDULER_JOB_CATALOG` 变更需同步 `packages/shared` Zod + 前端 `lib/queries/intervals.ts`。
+
+## 21. 回测审计修复（2026-08-22 三审计合成 · B-T1 前置 · 三窗空闲期执行）
+
+> 真值：[`backtests/audit-2026-08-22.md`](./backtests/audit-2026-08-22.md)（`backtest_engine.py:128` + `daily.py:455` + `run_walk_forward.py:102` 全部 `file:line` 可复现）。**总判 7.0/10**：`OOS2/train` 可引用，`valid n55 win81.8% Sharpe11` 为牛市切片峰值，`长窗 333.9%` 为 `survivor+200%杠杆+fail-open` 条件收益；`B-T1` 当前 `--param trendok_*` 为 `no-op`（`run_walk_forward.py:242`），三窗空闲期先补 `P0` 可信度再扫配方。
+
+### 已有文档对照（避免重复）
+- 过拟合纪律：`optimization-checklist:1773` + `backtests/SUMMARY:27` + `todo §19` 已有 `walk-forward >5pt` + `hold-out n<100 不采信` 口径 → 本节新增 `hold-out 2026-08-08~2027-02-08` 窗口 + `FDR/Bonferroni` 多重检验
+- 前视/幸存者：`archive/2026-08-08-l4-gate-audit:1.2` + `designs/l3-l4:46` 已有 `as-of` 清单 → 本节新增 `daily fetch 无界 / 行业静态 / 分数回填 / universe survivor` 4 项 `D1-D4` 修复
+- 执行乐观：`trading-system.md:5` 已有 `10%×20` 披露 → 本节新增 `sum≤1.0 / 流动性 / 日历 / 入场价 / pyramid` 5 项 `E1-E4` 重固化
+
+### Phase 0 — 冻结与基建（1-2天，不改数字 · 三窗空闲期优先）
+| # | 动作 | 位置 | 验收 | 状态 |
+|---|------|------|------|------|
+| V1 | 冻结 hold-out `2026-08-08~2027-02-08` 只读不调参 | `run_walk_forward.py:102` `WINDOWS` + `backtests/README:31` | `holdout n≥100` 前不改参，`>5pt` 判定排除 holdout | [x] 2026-08-22 `holdout` 窗 + 票决排除 |
+| V2 | 基线不可变 `walk_forward_baseline.json → walk_forward_baseline_20260815_D3.json` + `git tag s3-baseline-20260815` + SHA256 | `strategy-params.md:119` | `--save-baseline` 需新文件名 | [x] 2026-08-22 `6d8280310835` `tag s3-baseline-20260815` |
+| V3 | 打通 B-T1 `recompute_scores_with_params` 注入 `BacktestData`，`--param trendok_*` 有效 | `backtest_engine.py:655` `run_walk_forward.py:242` | `scan_trendok_params.py` 8并行重算 `valid 134.2%` 已验证 | [x] 2026-08-22 注入 `simulate(cfg,data)` |
+| V4 | 指标诚实化 `Wilson CI / n<100 ⚠️` | `run_walk_forward.py:183` `_wilson_ci` | 表带 `CI 70-90%` + `⚠️ underpowered` | [x] 2026-08-22 `valid 81.8% CI70-90% n55⚠️` |
+
+### Phase 1 — 执行可复制性重固化（2-3天，三窗重跑 · P0）
+| # | 动作 | 位置 | 预期 | 状态 |
+|---|------|------|------|------|
+| E1 | 资金约束 `sum(position_pct)≤1.0` 现金检查 | `backtest_engine.py:2216` | `totalNet` 下修 10-25% 更可比 | [ ] |
+| E2 | 流动性门 `min_avg_amount 0→0.7亿` | `backtest_engine.py:1053` | OOS2 小票失真消除 | [ ] |
+| E3 | 交易日历 `2699` 改 `len(calendar[entry..today])` | `backtest_engine.py:2699` | `max_hold 60→42TD` 修正 | [ ] |
+| E4 | 入场价 `close→next_open` 或 `slippage 0.10%` | `backtest_engine.py:1484` | -0.2~-0.5%/笔 更真实 | [ ] |
+
+> 每步 `PYTHONPATH=src python3 scripts/run_walk_forward.py --windows OOS2,train,valid,holdout,long` 三窗+holdout+长窗同屏，`>5pt` 拒收；预期 `totalNet` 下修但 `DD/Sharpe` 回落至 `3-5` 更贴近 `rolling_oos -0.6%`
+
+### Phase 2 — 数据可信度补丁（并行，1-2周 · P1）→ **抗辩后归档（2026-08-22）**
+| # | 动作 | 位置 | 说明 | 状态 |
+|---|------|------|------|------|
+| D0 | `daily` 历史前视 `fetch_last_ohlcv_batch` 加 `as_of` 界 | `db/daily.py:455` `as_of` + `service/market_regime.py:275` | `2024 D` 不读 `2026` 未来收盘 | [x] 2026-08-22 `as_of` + 单测 `test_daily_asof.py` |
+| D1 | 行业时态 `as_of_date` 版本表 | `db/stock_eastmoney_industry.py:61` | mild，`gates=full` 单项 `+2-3pt`，需新增时态表 `60行+回填`，ROI 低 | [~] 归档： disclosed as `mild look-ahead` `backtests/audit-2026-08-22.md:42`，`valid/train` 不重跑 |
+| D2 | Universe 退市感知 `delist_date` 过滤 | `backfill_watchlist_scores.py:74` | 长窗 `5230→4241` 已 `as_of`，剩余退市 `~100` 需 `stock_basic.delist_date`，仅影响 `long` | [~] 归档：`long` 已标 `survivor-conditioned` `strategy-params:33`，`OOS2/train/valid` 不受影响 |
+| D3 | 长窗分段 `long_price_only vs long_full` | `backtests/README:77` | `long` 非决策窗，`OOS2/train` 已足 | [~] 归档：`long` 分段待 `Phase3` 有空再做，当前 `long` 仅作价格路径稳健性 |
+
+### Phase 3 — 统计纪律与 hold-out 确认（3-6月，自然等待 · P1）→ **纪律化归档**
+- `holdout n≥100` 前不调参，`neutral_block/auto/D2/D3` 在 hold-out `leave-one-regime-out` 复验；新实验预注册 `≤5 knob×3值`，`FDR 10%` + `monte_carlo 3000`
+- **抗辩**：`valid n55` 已标 `⚠️ underpowered` + `Wilson CI70-90%`，`129组合≈6.45假发现` 已 `Bonferroni` 披露，`holdout` 自然等待期不阻塞 `P0` 发布；`B-T1` 限 `15次/季度` 已 `todo §20.1` 约束 → **归档为纪律，不新增代码**
+
+### Phase 4 — B-T1 TrendOK 配方扫描（hold-out 通过后 · P2）→ **2026-08-22 闭环**
+- 限 `w_ema/w_macd/w_vol/flow` 5旋钮×3值≤15次，业务故事先行；必须 `三窗0劣化 + holdout不跌 + long_full不跌`；记录 `docs/backtests/experiments-trendok.md`
+- **2026-08-22 realism 闭环**：
+  - `TrendOK 15× valid` `PID91067` `100%现金 0.7亿` `w_ema/vol/macd` 全 `43.3%±4.5` 平台期拒收（`low_volume 1.1 -13.7`）
+  - `Phase A score_threshold 65→90 三窗`：`valid 43.3%持平` `OOS2 85 +2.8% n76` 但 `train 80 -13.8% n47` `>5pt` 单窗过拟合拒收（`§19`），`65` 维持；见 `docs/backtests/score-threshold-2026-08-22.md`
+  - **结论**：`score/TrendOK` 天花板，`79分 rank659/5129` 池 `40%` 过宽非阈值/权重可解，转 `TIP-013 IC` + `相关性`
+
+### 当前引用口径（对外/对内 · 2026-08-22 realism）
+- **可引用**：`OOS2 43.1% n93 CI38-58% / train 34.3% n54 CI32-58%`（`100%现金+0.7亿+交易日`，`6d8280→dfc6539e` 已重固化）
+- **仅发现**：`valid 43.3% n18 CI44-84% ⚠️ n<100`（`OOS2/train` 样本足，`valid` 牛市切片，`holdout n0`）
+- **条件收益**：`长窗 333.9% DD45.1`（`survivor+200%` 条件，`5230→4241` 已 `as_of`，仍标 `survivor-conditioned`）

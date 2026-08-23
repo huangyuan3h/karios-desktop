@@ -70,4 +70,9 @@ export async function invalidateUserTradesQueries(
   queryClient: QueryClient,
 ): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['userTrades'] });
+  // T6 (2026-08-20): a buy/add/sell changes the holdings shape (positionPct /
+  // cost / third-asset sleeve) — refresh the portfolio-health surface so the
+  // health card + third-asset region reflect it immediately instead of waiting
+  // for the 5-minute poll.
+  await queryClient.invalidateQueries({ queryKey: ['portfolio-health'] });
 }

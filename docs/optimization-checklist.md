@@ -2917,3 +2917,82 @@ standalone 模式下凭据不持久，反复弹框。
 
 **验收**：UI 200（免认证）；API 无 key 401 / 带 key 200 / 错 key 401；AI 同；
 auth 单测 3 例 + AuthGate 4 例；774 passed；tsc/eslint 干净。
+
+### OPT-119：T6 套筒组合 NAV 模拟器 + 回测页卡片（2026-08-21）
+
+**状态**：[x]（三窗验证通过；paper 自动配置仍未落地——见 todo T6 条目）
+
+**背景（补齐回测页局限：ETF 套筒 + 组合 NAV 不可验证）**：回测页此前只覆盖 S-3 短线主线，
+无法验证核心仓规则与 ETF 套筒。T6 已拍板"最优 = 纳指ETF(513100) + 空仓日才持有 +
+自身 px>200dMA + 破线切 GC001"，但无落地模拟器。
+
+**改动**：
+- `service/portfolio_nav_sim.py`：组合 NAV 模拟器——S-3 引擎 `positions_by_day` 的
+  已部署比例逐日吃 close-to-close mark-to-market，闲置现金吃 513100 日收益
+  （站上 200dMA 持有）/ GC001（破线），逐日复利；基线=闲置 0% 收益
+- `scripts/sleeve_nav_sim.py`：三窗验证脚本（S3_CONFIG + third_asset_cache.json）
+- `api/backtest_routes.py`：`GET /api/backtest/sleeve-nav`（读 sleeve_nav_latest.json）
+- 回测页 `SleeveNavCard`：三窗对比表（基线/套筒收益、增量pt、DD、持有天数、平均闲置）
+- 切换语义实测：当天切出（valid +30.4pt）优于次日切出（+14.0pt）——破线次日往往续跌
+
+**三窗结果（2026-08-21 固化报告）**：
+| 窗口 | 基线% | 套筒% | 增量pt | 基线DD% | 套筒DD% |
+|------|-------|-------|--------|---------|---------|
+| OOS2 | 211.5 | 214.3 | +2.8 | 17.4 | 17.3 |
+| train | 134.8 | 157.9 | +23.1 | 15.3 | 15.3 |
+| valid | 139.4 | 169.8 | +30.4 | 5.7 | 13.7 |
+
+**验收**：三窗增量全正（todo §19 铁律；设计稿目标 +3.1/+15.3/+39.0pt，方向一致）；
+valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，如实展示（设计稿
+"maxDD 略降"为旧引擎口径，不再成立）；模拟器单测 7 例；后端 50 测试 + 前端 804
+全过；tsc/eslint 干净。
+
+### OPT-120：核心仓操作核对 + paper 套筒自动配置（2026-08-21 · T6 剩余缺口）
+
+**状态**：[x]（核心仓 audit + paper 自动配置 + allocation 扩展全部落地）
+
+**背景（补齐回测页局限之二：核心仓手动操作无法对照规则）**：S-3 主线自动执行，
+但核心仓（300628/513110 等）是手动管理——"我的操作是否符合策略"没有工具回答。
+
+**改动**：
+- `service/core_holding_audit.py`：操作 vs 规则核对——**逆向回放**（从当前成本/仓位
+  反推每笔操作前状态，8/21 加仓用加仓前成本 39.9×1.025=40.897 判定而非加仓后混仓）；
+  金字塔 ADD（regime-independent，恐慌不拦）、SELL（-5% 止损/恐慌降险）、ETF ADD
+  （套筒 MA200 语义）；`GET /api/backtest/core-audit` + 回测页 `CoreAuditCard`
+- `service/sleeve_paper_auto.py`：paper 书套筒自动配置——BUY_513100 开仓（sleeve_pct=
+  闲置%）、SELL_TO_REPO/SELL_TO_A_SHARE 平仓（close_reason=`sleeve_exit`，新增枚举）；
+  幂等（ON CONFLICT / 只关 open）；`scheduler/sleeve_paper_job.py` 工作日 18:20
+- `service/allocation.py`：R5c 资金池扩展——双市场皆弱时闲置池进套筒
+  （`weights_with_sleeve` 三元权重：CN/HK/ETF）；ETF 站上 MA200 才承接
+
+**验收**：audit 实测 8/21 全部操作 4 ok / 0 warn / 0 violation（300628 金字塔
+41.83≥40.897 ✅ 半仓 3.0% ✅、ETF 两笔站上 MA200 ✅、2099 恐慌降险 ✅）；单测
+28 例（audit 11 + sleeve_auto 5 + allocation 5 + nav_sim 7）；后端全量 3497+
+通过（含时间敏感测试修复：top_inst 的 `_is_today` mock）；前端 804 + tsc/eslint 干净。
+
+### OPT-121：dual 联合三窗验收（CN+HK+套筒同池 · 2026-08-21）
+
+**状态**：[x]（R5CS 三窗全正；顺带修复 R5 系列两个既有 bug）
+
+**背景（todo T6 ③ 最后一块）**：`run_walk_forward_dual` 双市场资金池未含套筒——
+联合 NAV = w_cn×NAV_cn + w_hk×NAV_hk + w_etf×NAV_etf。
+
+**改动**：
+- `run_walk_forward_dual.py` 加 **R5CS** 规则：R5C 选中市场的**内部闲置**吃套筒
+  （`idle_pct_by_day` 从 positions_by_day 算，与 OPT-119 同口径）；双弱 → 整池
+  吃套筒；套筒 NAV 复用 `portfolio_nav_sim`（同规则同数据）
+- `allocation.py` 抽纯函数 `weights_with_sleeve_from_regimes`（dual 用引擎
+  regimes，live 用实时——同一决策代码）
+- **顺带修复两个既有 bug**（R5A/B/C 此前全部被无条件 momentum softmax 覆盖，
+  注释宣称的 "R5c = CN-first 100%" 从未生效；`rule == "R5a"` 大小写 bug 让
+  R5A 双强 50/50 分支成为死代码）
+
+**三窗结果（R5C vs R5CS，固化报告 walk_forward_dual_latest.json）**：
+| 窗口 | R5C% | R5CS% | 增量pt | DD R5C→R5CS |
+|------|------|-------|--------|-------------|
+| OOS2 | +411.9 | +422.7 | +10.8 | 35.0 → 35.0 |
+| train | +330.8 | +347.8 | +17.0 | 11.2 → 11.2 |
+| valid | +235.5 | +266.4 | +30.9 | 8.3 → 10.9 |
+
+**验收**：三窗增量全正（todo §19 铁律）；单测 8 例（R5C CN-first 权重、R5CS 同权、
+闲置吃套筒、双弱整池、R5A 50/50）；后端全量 3506 通过；ruff 干净。

@@ -153,6 +153,11 @@ export type WatchlistTableProps = {
   setItemCostPriceDraft: (symbol: string, value: string) => void;
   setItemCostPriceValue: (symbol: string, value: number | null) => void;
   commitItemCostPriceDraft: (symbol: string) => void;
+  /** 2026-08-21: atomic positionPct + costPrice update (one persist, no race). */
+  applyTradeUpdate: (
+    symbol: string,
+    fields: { positionPct?: number | null; costPrice?: number | null },
+  ) => void;
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   executionGate?: ExecutionGate | null;
@@ -221,6 +226,7 @@ export function WatchlistTable({
   setItemCostPriceDraft,
   setItemCostPriceValue,
   commitItemCostPriceDraft,
+  applyTradeUpdate,
   onRemove,
   onOpenStock,
   executionGate = null,
@@ -362,6 +368,16 @@ export function WatchlistTable({
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
   const [tradeDialog, setTradeDialog] = React.useState<TradeDialogOpenState | null>(null);
   const queryClient = useQueryClient();
+  // T6 (2026-08-20): committing a positionPct edit changes the holdings shape —
+  // refresh portfolio-health so the health card + third-asset region update
+  // immediately instead of waiting for the 5-minute poll.
+  const commitPositionPctAndRefresh = React.useCallback(
+    (symbol: string) => {
+      commitItemPositionPctDraft(symbol);
+      void invalidateUserTradesQueries(queryClient);
+    },
+    [commitItemPositionPctDraft, queryClient],
+  );
 
   const openTradeDialog = React.useCallback(
     (kind: 'buy' | 'add' | 'sell', item: WatchlistItem) => {
@@ -379,25 +395,46 @@ export function WatchlistTable({
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
       const market = tradeMarketForSymbol(symbol);
+      // 2026-08-21 fix: apply the watchlist edits FIRST (synchronous, atomic
+      // single-persist via applyTradeUpdate) and the trade-journal write last
+      // (best-effort). Previously the edits ran AFTER `await recordUserTrade`
+      // inside the same try — a browser-side network failure skipped the table
+      // update — and two separate persists raced, leaving the registry with
+      // mixed positionPct/costPrice that a reload then reverted.
       try {
         if (kind === 'buy') {
-          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
-          setItemCostPriceValue(symbol, price);
-          setItemPositionPct(symbol, String(positionPct));
+          applyTradeUpdate(symbol, { costPrice: price, positionPct });
         } else if (kind === 'add') {
           const oldCost = item.costPrice ?? price;
           const oldPct = item.positionPct ?? 0;
           const blended = blendAddCost(oldCost, oldPct, price, positionPct);
-          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
-          setItemCostPriceValue(symbol, blended.blendedCost);
-          setItemPositionPct(symbol, String(blended.newPositionPct));
+          applyTradeUpdate(symbol, {
+            costPrice: blended.blendedCost,
+            positionPct: blended.newPositionPct,
+          });
         } else {
           // Optional cost fill (2026-08-09): when the holding had no cost
           // price, the dialog can supply one so pnl is computed; the trade
           // is recorded either way.
           const costBasis =
             typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
-          if (typeof costBasis === 'number') setItemCostPriceValue(symbol, costBasis);
+          const remaining = (item.positionPct ?? 0) - positionPct;
+          applyTradeUpdate(symbol, {
+            ...(typeof costBasis === 'number' ? { costPrice: costBasis } : {}),
+            positionPct: Math.max(0, remaining),
+          });
+        }
+      } catch {
+        // Watchlist edits are the primary surface — never let them break.
+      }
+      try {
+        if (kind === 'buy') {
+          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
+        } else if (kind === 'add') {
+          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
+        } else {
+          const costBasis =
+            typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
           await recordUserTrade({
             symbol,
             side: 'SELL',
@@ -408,17 +445,16 @@ export function WatchlistTable({
             source,
             market,
           });
-          const remaining = (item.positionPct ?? 0) - positionPct;
-          setItemPositionPct(symbol, String(Math.max(0, remaining)));
         }
-        void invalidateUserTradesQueries(queryClient);
       } catch {
-        // Trade journal is best-effort; watchlist edits still apply.
-      } finally {
-        setTradeDialog(null);
+        // Trade journal is best-effort; the watchlist is already updated.
       }
+      // Always refresh the derived surfaces (trades journal + portfolio health)
+      // — the holdings shape changed either way.
+      void invalidateUserTradesQueries(queryClient);
+      setTradeDialog(null);
     },
-    [tradeDialog, queryClient, setItemCostPriceValue, setItemPositionPct],
+    [tradeDialog, queryClient, applyTradeUpdate],
   );
 
   const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {
@@ -839,7 +875,7 @@ export function WatchlistTable({
                         showColorPicker={showColorPicker}
                         setItemPositionPct={setItemPositionPct}
                         setItemPositionPctDraft={setItemPositionPctDraft}
-                        commitItemPositionPctDraft={commitItemPositionPctDraft}
+                        commitItemPositionPctDraft={commitPositionPctAndRefresh}
                         setItemCostPriceDraft={setItemCostPriceDraft}
                         setItemCostPriceValue={setItemCostPriceValue}
                         commitItemCostPriceDraft={commitItemCostPriceDraft}

@@ -467,6 +467,13 @@ def _build_holdings_block(
             sym = str(r.get("symbol") or "").upper()
             if not in_market(sym):
                 continue
+            # T6 (2026-08-20): the NASDAQ-100 sleeve ETF is NOT an A-share
+            # holding — it is a separate "third asset / US" region tracked by
+            # the sleeve rules (200d MA), not the CN S-3 exit rules.
+            from data_sync_service.service.third_asset_sleeve import is_third_asset_symbol
+
+            if market == "CN" and is_third_asset_symbol(sym):
+                continue
             payload = r.get("payload") or {}
             pct = payload.get("positionPct", r.get("positionPct"))
             cost = payload.get("costPrice", r.get("costPrice"))
@@ -773,18 +780,42 @@ def build_portfolio_health(
             blocks[m] = _health_block(market=m, day=day)
 
     cn = blocks.get("CN") or _health_block(market="CN", day=day)
-    from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve
+    from data_sync_service.service.third_asset_sleeve import (
+        build_third_asset_holding,
+        build_third_asset_sleeve,
+    )
 
+    # T6 (2026-08-20): the sleeve functions must see the RAW registry holdings
+    # INCLUDING the NASDAQ-100 ETF (it is excluded from the CN A-share holdings
+    # block above, so the filtered block can't reveal the held ETF).
+    raw_holdings = [
+        {
+            "symbol": str(r.get("symbol") or "").upper(),
+            "positionPct": (r.get("payload") or {}).get("positionPct", r.get("positionPct")),
+            "costPrice": (r.get("payload") or {}).get("costPrice", r.get("costPrice")),
+            "entryDate": (r.get("payload") or {}).get("entryDate", r.get("entryDate")),
+            "name": (r.get("payload") or {}).get("name", r.get("name")),
+            "ts_code": r.get("ts_code"),
+        }
+        for r in list_registry()
+        if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
+    ]
     try:
-        third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn)
+        third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health third-asset sleeve failed: %s", exc)
         third_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
+    try:
+        third_asset_holding = build_third_asset_holding(day=day, cn_block=cn, holdings_override=raw_holdings)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health third-asset holding failed: %s", exc)
+        third_asset_holding = None
     return {
         "tradeDate": day,
         **cn,
         "hkHealth": blocks.get("HK"),
         "thirdAssetSleeve": third_asset_sleeve,
+        "thirdAssetHolding": third_asset_holding,
     }
 
 

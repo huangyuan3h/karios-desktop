@@ -14,17 +14,20 @@
 
 - **已上线（提示层，只提示不动钱）**：
   - 后端 `service/third_asset_sleeve.py` — 状态机四态（始终激活：有 513100 数据即提示）：
-    - `BUY_513100`：**闸门开启**（非Weak + 无恐慌 + 无熔断）+ 闲置≥20% + 513100 收盘 > MA200 → 建议买入
-    - `SELL_TO_A_SHARE`：A股有买点（闸门开启 + 有候选）→ 卖出换回 A 股
+    - `BUY_513100`：闲置≥20% + 513100 收盘 > MA200 → 建议买入（**2026-08-21 拍板：CN 市场闸门对美股 ETF 无效，已移除**；ETF 自身 200dMA 是唯一趋势闸门）
+    - `SELL_TO_A_SHARE`：A股有买点（A 股线实际开闸 + 有候选）→ 卖出换回 A 股
     - `SELL_TO_REPO`：跌破 MA200 且持有 → 卖出转逆回购
-    - `DONT_BUY`：**闸门关闭**（Weak/恐慌/熔断，2026-08-19 修复：闸门关闭即使站上200日线也提示"今日不买"）/ 跌破 MA200 未持有 / 或资金已部署 → 今日不买
+    - `DONT_BUY`：跌破 MA200 未持有 / 或资金已部署 → 今日不买
   - `build_third_asset_sleeve` 支持 `holdings_override`（实盘 registry 或 paper 持仓均可评估）+ `build_third_asset_sleeve_for_paper`（paper 书口径）
   - `build_portfolio_health` 新增 `thirdAssetSleeve` 字段 → `GET /v1/agent/portfolio-health` 透传
   - 前端 `components/watchlist/ThirdAssetSleeveBanner.tsx` — WatchlistPage 执行闸横幅下方展示四色横幅（买=蓝 / 换A股=黄 / 转逆回购=红 / 不买=灰）
   - 后端 `trading_brief.py` — 每日简报新增 `第三资产套筒` section（paper 书口径）；`execution_card` webhook payload 带 `thirdAssetSleeve`（仅可操作动作）→ `webhook_format.py` Bark 推送渲染；`notifications.py` 聚合通知新增 `third_asset` 项（实盘口径，仅 BUY/SELL 推，**DONT_BUY 不推**）
   - ai-service 决策 agent 的持仓体检输出注入套筒提示
   - 测试：后端 `test_third_asset_sleeve.py` 12 用例 + trading_brief 3 + notifications 3 + webhook_format 2 + 前端 banner 6 用例；全量后端 3459 + 前端 800 通过
+- **已落地 2026-08-21（OPT-119 · 回测/验证层）**：组合 NAV 模拟器 `service/portfolio_nav_sim.py`（闲置吃 513100/GC001，逐日复利，基线=闲置0%）+ `scripts/sleeve_nav_sim.py` 三窗验证 + `GET /api/backtest/sleeve-nav` + 回测页 `SleeveNavCard`。**落地实测三窗（当前引擎口径）：OOS2 +2.8 / train +23.1 / valid +30.4pt 全正**（设计稿探索 +3.1/+15.3/+39.0 为旧引擎口径，方向一致）；注意 valid 套筒 DD 13.7% > 基线 5.7%（高闲置 × 513100 波动传导）——"maxDD 略降"结论在现引擎下不再成立，如实展示。切换语义：当天切出（破线当日转 repo）经实测优于次日切出（valid +30.4 vs +14.0）。
 - **未落地（待拍板）**：paper 层自动配置（自动买卖 513100 进 paper 书）、`allocation.py` 资金池扩展、`run_walk_forward_dual` 三窗验收、"20d 回撤>10% 硬切出"兜底变体
+- **已落地 2026-08-21（OPT-120 · 执行层）**：paper 书套筒自动配置 `service/sleeve_paper_auto.py`（BUY_513100 开仓 / SELL_TO_REPO·SELL_TO_A_SHARE 平仓，close_reason=`sleeve_exit`，幂等）+ `scheduler/sleeve_paper_job.py`（工作日 18:20）+ `allocation.py` 三元资金池扩展（双市场皆弱时闲置池进套筒，`weights_with_sleeve`）。
+- **已落地 2026-08-21（OPT-121 · dual 联合三窗验收）**：`run_walk_forward_dual.py` 加 R5CS 规则——R5C 选中市场的内部闲置吃套筒（复用 OPT-119 套筒 NAV），三窗 +10.8/+17.0/+30.9pt 全正；顺带修复 R5A/B/C 被无条件 momentum softmax 覆盖的既有 bug（R5C 现在才是真 CN-first）。剩余："20d 回撤>10% 硬切出"变体、R3 规则补实现或废弃。
 
 ---
 

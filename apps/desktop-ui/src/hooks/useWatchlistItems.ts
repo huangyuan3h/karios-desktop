@@ -243,6 +243,51 @@ export function useWatchlistItems() {
     setCostPriceDrafts((prev) => ({ ...prev, [symbol]: value }));
   }
 
+  /**
+   * 2026-08-21: atomic trade update — positionPct AND costPrice in ONE persist.
+   *
+   * Calling setItemCostPriceValue + setItemPositionPct back-to-back used to
+   * race: both computed from the same pre-render `items` closure and each
+   * persisted the WHOLE item array with only one field changed. The two
+   * registry POSTs then fought — the survivor carried one stale field, so the
+   * registry ended with mixed data (new cost + old pct, or vice versa) and a
+   * page reload reverted the table from the registry.
+   */
+  function applyTradeUpdate(
+    symbol: string,
+    fields: { positionPct?: number | null; costPrice?: number | null },
+  ) {
+    const nextValPct =
+      fields.positionPct != null && Number.isFinite(fields.positionPct)
+        ? Math.max(0, Math.min(100, fields.positionPct))
+        : fields.positionPct;
+    const nextValCost =
+      fields.costPrice != null && Number.isFinite(fields.costPrice)
+        ? Math.round(fields.costPrice * 1000) / 1000
+        : fields.costPrice;
+    const todaySh = getShanghaiTodayIso();
+    const next = items.map((it) => {
+      if (it.symbol !== symbol) return it;
+      const prevPct =
+        typeof it.positionPct === 'number' && Number.isFinite(it.positionPct) ? it.positionPct : 0;
+      const opening = prevPct <= 0 && nextValPct != null && nextValPct > 0;
+      const clearing = nextValPct == null || nextValPct <= 0;
+      const base = clearing
+        ? applyZeroPositionCleanup({ ...it, positionPct: nextValPct })
+        : { ...it, positionPct: nextValPct };
+      let entryDate = base.entryDate ?? null;
+      if (opening && !entryDate) entryDate = todaySh;
+      return {
+        ...base,
+        ...(nextValCost != null
+          ? { costPrice: nextValCost, maxPrice: nextValCost }
+          : {}),
+        entryDate,
+      };
+    });
+    persist(next);
+  }
+
   function commitItemCostPriceDraft(symbol: string) {
     const raw = costPriceDrafts[symbol];
     setCostPriceDrafts((prev) => {
@@ -265,6 +310,7 @@ export function useWatchlistItems() {
   return {
     items,
     setItems,
+    applyTradeUpdate,
     persist,
     watchlistHydrating,
     error,

@@ -274,7 +274,7 @@ class TestBreadthAndLiquidity:
         rising = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 5.0 if i < 20 else 10.0, 0.0, 0.0, 5.0 if i < 20 else 10.0, 1e6) for i in range(30)]
         falling = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 10.0 if i < 20 else 5.0, 0.0, 0.0, 10.0 if i < 20 else 5.0, 1e6) for i in range(30)]
 
-        def batch(codes, days):
+        def batch(codes, days, as_of=None, **kwargs):
             return {"600000.SH": rising, "000001.SZ": falling}
 
         monkeypatch.setattr(mr, "fetch_last_ohlcv_batch", batch)

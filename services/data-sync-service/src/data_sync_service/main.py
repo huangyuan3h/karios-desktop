@@ -15,6 +15,7 @@ from .api.decision_routes import router as decision_router
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
 from .api.execution_journal_routes import router as execution_journal_router
+from .api.factor_routes import router as factor_router
 from .api.health_routes import router as health_router
 from .api.industry_flow_routes import router as industry_flow_router
 from .api.journal_routes import router as journal_router
@@ -105,6 +106,7 @@ app.include_router(market_sentiment_router)
 app.include_router(news_router)
 app.include_router(alpha_radar_router)
 app.include_router(watchlist_router)
+app.include_router(factor_router)
 app.include_router(research_router)
 app.include_router(user_trades_router)
 # OPT-045 Phase A: discovery router (4 stable endpoints, no auth).

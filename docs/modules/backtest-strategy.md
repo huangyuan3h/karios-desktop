@@ -341,8 +341,46 @@ S-3 已是 20 只×60 天趋势分散，ATR 加权无信息；与 A2 同教训�
 2. **双窗结果必须同屏记录**——只有训练窗结果的结论一律不写
 3. 参数定案必须落在"业务自然截断"上（0.5=前一半；-10=常识回撤），拒绝数据最优值
 4. 淘汰方案进 §4 历史区，不删除（防止重新发现已证伪的东西）
-5. 验证窗样本 <100 时结论标注"方向参考"，不许当定论
+5. 验证窗样本 <100 时结论标注"方向参考"，不许当定论（`valid n=55` 当前即此档，见 `backtests/audit-2026-08-22.md` §3）
 6. 目标（超最强基准 +10%）每月复核一次，基准变了目标跟着变
+7. **基线不可变**：`walk_forward_baseline.json` 冻结后只增新文件 `walk_forward_baseline_YYYYMMDD.json` + `git tag s3-baseline-YYYYMMDD` + SHA256 落 `strategy-params.md`，禁止 `--save-baseline` 覆写
+8. **B-T1 前置**：`--param trendok_*` 当前为 no-op（`run_walk_forward.py:242`），打通 `BacktestData.recompute_scores_with_params` 注入前禁止 TrendOK 配方扫描
+
+---
+
+## 8. 已知局限与可信度（2026-08-22 审计 · 必读）
+
+> 详见 [`backtests/audit-2026-08-22.md`](../backtests/audit-2026-08-22.md) 三审计合成；本节为真值摘要。
+
+| 维度 | 结论 | 位置 |
+|---|---|---|
+| **数据前视/幸存者** | `watchlist_score_daily` 回填（2024-08~2026-06 合成）+ 行业静态 + `daily DISTINCT` survivor-only ⇒ 长窗 `+333.9%` 为幸存者条件收益；OOS2 资金流 `fail-open` 实为 `regime` 窗 | `audit §1` `backtest_engine.py:770,61,703,852` `backfill:74,128` |
+| **执行可复制性** | `10%×20=200%` + `env 1.25`→250% + `pyramid`→300% 无现金约束 + 无流动性 + calendar 天数（60≈42TD）+ `entry close` 乐观 0.2-0.5%/笔 + `Sharpe per-close-day` 虚高 | `audit §2` `backtest_engine.py:2216,351,2699,1484,2615` |
+| **统计** | `valid n=55 win81.8% Wilson 69.7-89.8% Sharpe11` 为牛市切片峰值，已复用 4 次；`OOS2/train 415` 笔/20 参≈20笔/参，多重检验 ~129 组合 FWER 6.45；长窗前段全 `fail-open` 非同分布 | `audit §3` `run_walk_forward.py:102` `walk_forward_baseline.json:33` |
+
+**引用口径**：可引用 `OOS2 117.2% n237 / train 122.6% n123`；`valid 142.2%` 仅发现、`长窗 333.9%` 条件收益，不可发布。
+
+---
+
+## 9. 验证计划（四阶段 · 2026-08-22 立）
+
+> 路线图真值在 `audit-2026-08-22.md §5`；本节为执行清单（每项单开 OPT，`run_walk_forward --param k=v` 三窗+hold-out+长窗同屏，`>5pt劣化` 拒收）。
+
+**Phase 0 — 冻结与基建（1-2 天，不改数字）**：
+1. `cp walk_forward_baseline.json walk_forward_baseline_20260815_D3.json` + `git tag s3-baseline-20260815` + SHA256 落 `strategy-params.md:119`
+2. `run_walk_forward.py` 加 `holdout 2026-08-08~2027-02-08` 只读窗口（`>5pt` 判定排除 hold-out，`n<100` 标 `⚠️`）
+3. 修复 `scan_trendok_params.py:86` 注入 `data.scores_by_day=recomputed; run=simulate(cfg,data)` + 单测 `test_backtest_trendok_params_injection`
+4. `walk_forward_*.json` 输出 `Wilson CI / bootstrap CI`
+
+**Phase 1 — 执行可复制性重固化（2-3 天，三窗重跑）**：依次合入 `sum(position_pct)<=1.0` → `min_avg_amount 0.7亿` → `trading-day` → `entry next_open`，每步三窗+hold-out+长窗同屏，预期 `totalNet` 下修 10-25% 更贴近 `rolling_oos`。
+
+**Phase 2 — 数据可信度补丁（并行 1-2 周）**：行业 `as_of` 版本/快照；universe `delist_date` 过滤或分段披露；`long` 拆 `long_price_only(2021-08~2024-07)` vs `long_full(2024-08~)`，env 仅后者考核；HK 基线统一 qfq 后 `270.2/26.9/60.6`。
+
+**Phase 3 — 统计纪律与 hold-out 确认（3-6 个月）**：`holdout n≥100` 前不调参，`neutral_block/auto/D2/D3` leave-one-regime-out 复验；新实验 `FDR 10%` + `monte_carlo 3000`；预注册 `≤5 knob×3值≤15次/季度`。
+
+**Phase 4 — B-T1 TrendOK 配方扫描（Phase 3 通过后）**：限 `w_ema/w_macd/w_vol/flow/momentum` 5 旋钮×3 值≤15 次，业务故事先行，必过三窗+hold-out+`long_full`，全量落 `experiments-trendok.md`。
+
+> **B-T1 前置条件**：Phase 0 完成前禁止 `--param trendok_*` 扫描；`todo §20 B-T1` 解锁条件见 `audit §4 V3`。
 
 ## 7. 防守优先 · 回测改进候选清单（2026-08-12 立 · 用户方针：防守大于进攻）
 

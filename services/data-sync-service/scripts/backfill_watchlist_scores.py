@@ -71,14 +71,18 @@ def _load_calendar(start: str, end: str) -> list[str]:
             return [str(r[0]) for r in cur.fetchall()]
 
 
-def _load_universe_full() -> set[str]:
+def _load_universe_full(*, as_of: str | None = None) -> set[str]:
     """Full-market CN A-share universe (daily table) — for pre-TV windows.
 
     TV snapshots only exist from 2025-12-21, so windows before that cannot
-    use the screener pool. Scoring the WHOLE market (5226 names) keeps the
-    score history universe-consistent with the live full-market line
-    (2026-08-12: walk-forward extension to 2021 needs this; known limitation:
-    survivorship bias — today's listed names only).
+    use the screener pool. Scoring the WHOLE market keeps the score history
+    universe-consistent with the live full-market line (2026-08-12).
+
+    D4 fix 2026-08-22: ``as_of`` bounds ``trade_date <= as_of`` so a 2021
+    window does not see 2026 newly listed names (survivor bias). When
+    ``as_of`` is None the current behaviour is kept for backward compat.
+    Known limitation: delisted names that have been vacuumed from ``daily``
+    are still missing — ``+333.9%`` remains survivor-conditioned.
     """
     import re
 
@@ -86,9 +90,15 @@ def _load_universe_full() -> set[str]:
     out: set[str] = set()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$'"
-            )
+            if as_of:
+                cur.execute(
+                    "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$' AND trade_date <= %s",
+                    (as_of,),
+                )
+            else:
+                cur.execute(
+                    "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$'"
+                )
             for (ts,) in cur.fetchall():
                 code = str(ts)
                 if not a_share_re.match(code):
@@ -99,7 +109,7 @@ def _load_universe_full() -> set[str]:
 
 
 def _load_universe(end: str, min_appearances: int) -> set[str]:
-    """CN symbols noticed before ``end``: TV snapshot hits + score history + registry."""
+    """CN symbols noticed before ``end``: TV snapshot hits + score history + registry (as_of)."""
     universe: set[str] = set()
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -125,13 +135,23 @@ def _load_universe(end: str, min_appearances: int) -> set[str]:
             for sym, n in counts.items():
                 if sym.startswith("CN:") and n >= min_appearances:
                     universe.add(sym)
+            # D4 fix 2026-08-22: score history bounded by trade_date < end (no future scores)
             cur.execute(
-                "SELECT DISTINCT symbol FROM watchlist_score_daily WHERE symbol LIKE 'CN:%'"
+                "SELECT DISTINCT symbol FROM watchlist_score_daily WHERE symbol LIKE 'CN:%' AND trade_date < %s",
+                (end,),
             )
             for (sym,) in cur.fetchall():
                 universe.add(str(sym))
+            # D4 fix 2026-08-22: registry bounded by added_at/updated_at < end (no future hot)
             cur.execute(
-                "SELECT DISTINCT symbol FROM watchlist_registry WHERE symbol LIKE 'CN:%'"
+                "SELECT DISTINCT symbol FROM watchlist_registry WHERE symbol LIKE 'CN:%' AND COALESCE(added_at,'') < %s",
+                (end,),
+            )
+            for (sym,) in cur.fetchall():
+                universe.add(str(sym))
+            # Fallback: if added_at is empty (legacy rows), keep them — conservative
+            cur.execute(
+                "SELECT DISTINCT symbol FROM watchlist_registry WHERE symbol LIKE 'CN:%' AND (added_at IS NULL OR added_at = '')"
             )
             for (sym,) in cur.fetchall():
                 universe.add(str(sym))
@@ -163,7 +183,7 @@ def main() -> None:
     t0 = time.time()
     calendar = _load_calendar(args.start, args.end)
     universe = (
-        _load_universe_full()
+        _load_universe_full(as_of=args.end)
         if args.universe == "full"
         else _load_universe(args.end, args.min_appearances)
     )

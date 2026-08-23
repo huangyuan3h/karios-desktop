@@ -12,10 +12,12 @@ import {
   useBacktestOverviewQuery,
   useBacktestReconQuery,
   useBacktestRunQuery,
+  useCoreAuditQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   usePaperVsBacktestQuery,
   useSensitivityQuery,
+  useSleeveNavQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
@@ -212,6 +214,144 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
   );
 }
 
+function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
+  const holdings = q.data?.holdings ?? [];
+  const counts = q.data?.counts;
+  const gate = q.data?.gate;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <ShieldAlert className="size-3.5" />
+        核心仓操作核对（手动交易 vs 策略规则）
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          {q.data?.day ?? ''} · 闸门 {gate?.regime ?? '—'}
+          {gate?.panicActive ? ' · 恐慌中' : ''} · {gate?.gateOpen ? '开' : '关'}
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : holdings.length ? (
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            <span className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">
+              符合 {counts?.ok ?? 0}
+            </span>
+            <span className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+              偏离 {counts?.warn ?? 0}
+            </span>
+            <span className="rounded-md border border-red-500/40 bg-red-500/5 px-2 py-0.5 text-red-700 dark:text-red-300">
+              违反 {counts?.violation ?? 0}
+            </span>
+          </div>
+          {holdings.map((h) => (
+            <div key={h.symbol} className="rounded-md border border-[var(--k-border)] p-2">
+              <div className="flex flex-wrap items-baseline gap-x-3 text-[11px]">
+                <span className="font-medium">{h.symbol}</span>
+                <span className="text-[var(--k-muted)]">{h.name}</span>
+                <span>仓位 {h.positionPct ?? 0}%</span>
+                <span>成本 {h.costPrice ?? '—'}</span>
+                {h.pyramidTriggerLine != null && (
+                  <span className="text-[var(--k-muted)]">金字塔线 {h.pyramidTriggerLine} · {h.pyramidAdded ? '已加' : '未加'}</span>
+                )}
+              </div>
+              <div className="mt-1 flex flex-col gap-1">
+                {(h.ops ?? []).map((op, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px] leading-tight">
+                    <span
+                      className={cn(
+                        'mt-0.5 shrink-0 rounded px-1 py-px text-[9px]',
+                        op.verdict === 'ok'
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : op.verdict === 'warn'
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                            : 'bg-red-500/10 text-red-700 dark:text-red-300',
+                      )}
+                    >
+                      {op.verdict === 'ok' ? '符合' : op.verdict === 'warn' ? '偏离' : '违反'}
+                    </span>
+                    <span className="tabular-nums text-[var(--k-muted)]">
+                      {op.date} {op.side} {op.price} · {op.positionPct}%
+                    </span>
+                    <span className="text-[var(--k-muted)]">{op.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--k-muted)]">
+          暂无手动交易记录——核心仓操作后这里会出规则核对。
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
+  const report = q.data?.report;
+  const results = report?.results;
+  const rows = results ? Object.entries(results) : [];
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <TrendingDown className="size-3.5" />
+        T6 · 第三资产套筒（闲置现金 NAV 对比）
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {report?.generatedAt ? `报告 ${report.generatedAt.slice(0, 10)}` : ''}
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : rows.length ? (
+        <div className="flex flex-col gap-2">
+          <div className="overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead>
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-2">窗口</th>
+                  <th className="py-1 pr-2">基线收益%</th>
+                  <th className="py-1 pr-2">套筒收益%</th>
+                  <th className="py-1 pr-2">增量pt</th>
+                  <th className="py-1 pr-2">基线DD%</th>
+                  <th className="py-1 pr-2">套筒DD%</th>
+                  <th className="py-1 pr-2">持有天数</th>
+                  <th className="py-1 pr-2">平均闲置%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(([w, r]) => (
+                  <tr key={w} className="border-t border-[var(--k-border)]">
+                    <td className="py-1 pr-2 font-medium">{w}</td>
+                    <td className="py-1 pr-2">{r.totalBasePct ?? '—'}</td>
+                    <td className="py-1 pr-2">{r.totalSleevePct ?? '—'}</td>
+                    <td className={cn('py-1 pr-2 font-semibold', tone(r.deltaPct ?? null))}>
+                      {r.deltaPct != null ? `${r.deltaPct >= 0 ? '+' : ''}${r.deltaPct}` : '—'}
+                    </td>
+                    <td className="py-1 pr-2">{r.maxDdBasePct ?? '—'}</td>
+                    <td className="py-1 pr-2">{r.maxDdSleevePct ?? '—'}</td>
+                    <td className="py-1 pr-2">{r.holdDays ?? '—'}</td>
+                    <td className="py-1 pr-2">{r.avgIdlePct ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-[var(--k-muted)]">
+            口径：S-3 持仓之外的闲置现金，513100 站上 200 日线时吃纳指ETF 日收益，破线切 GC001
+            逆回购；逐日复利 NAV，基线=闲置现金 0% 收益。规则真值：docs/designs/third-asset-sleeve.md §2。
+            验证：scripts/sleeve_nav_sim.py（三窗增量全正 = 通过）。
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--k-muted)]">
+          尚无套筒 NAV 报告——先跑 scripts/sleeve_nav_sim.py 生成三窗对比。
+        </p>
+      )}
+    </div>
+  );
+}
+
 function RollingOosCard({ overview }: { overview: ReturnType<typeof useBacktestOverviewQuery>['data'] }) {
   const ro = overview?.rollingOos;
   if (!ro) return null;
@@ -392,6 +532,8 @@ export function BacktestPage() {
   const overviewQ = useBacktestOverviewQuery();
   const reconQ = useBacktestReconQuery(2);
   const c4Q = usePaperVsBacktestQuery();
+  const sleeveQ = useSleeveNavQuery();
+  const coreQ = useCoreAuditQuery();
 
   const set = (k: keyof BacktestParams, v: string | number) =>
     setParams((p) => ({ ...p, [k]: typeof v === 'number' ? v : Number(v) }));
@@ -402,6 +544,8 @@ export function BacktestPage() {
     <div className="flex flex-col gap-4 p-4">
       {/* 结论区（定案口径） */}
       <ConclusionBoard overview={overviewQ.data} />
+      <CoreAuditCard q={coreQ} />
+      <SleeveNavCard q={sleeveQ} />
       <RollingOosCard overview={overviewQ.data} />
       <ReconStrip reconQ={reconQ} />
       <PaperVsBacktestCard q={c4Q} />

@@ -45,6 +45,7 @@ from data_sync_service.scheduler import (
     paper_trading_update_job,
     research_report_job,
     rolling_oos_job,
+    sleeve_paper_job,
     stock_basic_job,
     trading_brief_job,
     watchlist_automation_job,
@@ -193,6 +194,12 @@ def create_scheduler() -> BackgroundScheduler:
         cn_industry_post_close_job.run,
         cn_industry_post_close_job.build_trigger(),
         id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        sleeve_paper_job.run,
+        sleeve_paper_job.build_trigger(),
+        id=sleeve_paper_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

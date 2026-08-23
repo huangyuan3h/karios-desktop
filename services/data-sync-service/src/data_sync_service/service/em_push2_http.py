@@ -182,41 +182,52 @@ def em_get_json(
         _EM_BLOCKED = False
         _EM_FAIL_STREAK = 0
         _PROXY_DEGRADED = False
-    use_proxy = bool(_PROXY) and not _PROXY_DEGRADED
+
+    # 2026-08-20: DIRECT connection is the primary path for ALL eastmoney
+    # fetches — the ClashX proxy exit IP is eastmoney-blocked (502 nginx) while
+    # the local broadband IP is clean (todo §19 finding; option_iv broke for a
+    # week on the proxy). Proxy is only a last-resort fallback if direct fails.
     try:
-        import requests  # type: ignore[import-not-found]
-
-        proxies: dict[str, str | None] = {"http": None, "https": None}
-        if use_proxy:
-            proxies = {"http": _PROXY, "https": _PROXY}
-        resp = requests.get(
-            url,
-            params=params,
-            headers=_em_headers(referer),
-            timeout=timeout,
-            proxies=proxies,
-        )
-        if resp.status_code >= 400:
-            preview = resp.text[:160].replace("\n", " ")
-            raise RuntimeError(f"http_{resp.status_code}:{preview}")
-        j = resp.json()
-        if not isinstance(j, dict):
-            raise RuntimeError(f"non_object_json:{type(j).__name__}")
-        _PROXY_DEGRADED = False
+        result = _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
         _EM_FAIL_STREAK = 0
-        _EM_BLOCKED = False
-        return j
+        _PROXY_DEGRADED = False
+        return result
     except Exception as e:  # noqa: BLE001
-        errors.append(f"requests:{e}")
+        errors.append(f"direct:{e}")
 
+    use_proxy = bool(_PROXY) and not _PROXY_DEGRADED
     if use_proxy:
+        try:
+            import requests  # type: ignore[import-not-found]
+
+            proxies: dict[str, str] = {"http": _PROXY, "https": _PROXY}
+            resp = requests.get(
+                url,
+                params=params,
+                headers=_em_headers(referer),
+                timeout=timeout,
+                proxies=proxies,
+            )
+            if resp.status_code >= 400:
+                preview = resp.text[:160].replace("\n", " ")
+                raise RuntimeError(f"http_{resp.status_code}:{preview}")
+            j = resp.json()
+            if not isinstance(j, dict):
+                raise RuntimeError(f"non_object_json:{type(j).__name__}")
+            _PROXY_DEGRADED = False
+            _EM_FAIL_STREAK = 0
+            _EM_BLOCKED = False
+            return j
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"requests_proxy:{e}")
+
         try:
             result = _curl_get_json(url, params=params, referer=referer, timeout=timeout)
             _PROXY_DEGRADED = False
             _EM_FAIL_STREAK = 0
             return result
         except Exception as e:  # noqa: BLE001
-            errors.append(f"curl:{e}")
+            errors.append(f"curl_proxy:{e}")
 
         try:
             result = _urllib_get_json(url, params=params, referer=referer, timeout=timeout)
@@ -224,17 +235,10 @@ def em_get_json(
             _EM_FAIL_STREAK = 0
             return result
         except Exception as e:  # noqa: BLE001
-            errors.append(f"urllib:{e}")
+            errors.append(f"urllib_proxy:{e}")
 
-        # All proxy attempts failed — mark degraded so later calls go direct.
+        # All proxy attempts failed — mark degraded so later calls skip proxy.
         _PROXY_DEGRADED = True
-
-    try:
-        result = _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
-        _EM_FAIL_STREAK = 0
-        return result
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"direct:{e}")
 
     _EM_FAIL_STREAK += 1
     if _EM_FAIL_STREAK >= 3:

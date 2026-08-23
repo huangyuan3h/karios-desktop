@@ -141,12 +141,12 @@ TV Screener（候选宇宙）
 > 来源：外部系统 V7.0 改进提案；经对照现有代码（`execution-action.ts` / `execution_gate.py`）评审后**部分采纳 + 修正**。
 > 评审结论（2026-08-05）：**仅选做 V7.0-02（ATR 风险平价）**，理由：原理无争议、每笔交易直接受益、改动最小（仅 `suggestFireSizePct`）、可立即验证。V7.0-01 暂缓（工程复杂、属预防性闸门，作为第二步）；V7.0-03 排除（Tier3 与现有 Chandelier 重复且更保守，Tier1 +3% 阈值与波动率逻辑自相矛盾，Tier2 分批止盈与趋势跟随哲学冲突）。
 
-### V7.0-01：跨资产相关性热力网（Cross-Asset Correlation Cap）—— 暂缓（第二步）
+### V7.0-01：跨资产相关性热力网（Cross-Asset Correlation Cap）—— 已落地（L3-P5 / V7.0-01 2026-08-22 验证）
 
-**状态**：[ ] 暂缓  
-**完成日期**：  
-**优先级**：P1（暂缓）  
-**备注 / PR**：
+**状态**：[x] 2026-08-22  
+**完成日期**：2026-08-22  
+**优先级**：P1  
+**备注 / PR**：`service/correlation.py` 语义簇（9簇 tech_hk/semiconductor/tech_comm 等 30% cap）+ 20日实证 `r>0.75` 双层 + `api/backtest_routes.py /correlation-status` + `execution-action.ts roomCorrelation` 已全量，`evaluate_correlation_cap` 实测 `tech_hk 31% → BLOCK`
 
 #### 问题
 
@@ -180,8 +180,8 @@ TV Screener（候选宇宙）
 
 #### 验证
 
-- [ ] 单测：跨市场日历对齐；簇聚合正确；>30% 拦 BUY/ADD；<30% 放行
-- [ ] 用当前组合（含恒生科技 ETF 18.4% 案例）回放确认触发与数字合理
+- [x] 单测：跨市场日历对齐；簇聚合正确；>30% 拦 BUY/ADD；<30% 放行 `test_corr 31% BLOCK 23.4% 放行`
+- [x] 用当前组合（含恒生科技 ETF 18.4% 案例）回放确认触发与数字合理 `tech_hk 23.4% 未超 cap`
 
 ---
 
@@ -752,9 +752,9 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 ### TIP-013：信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬）
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x] Phase A 完成 2026-08-22  
+**完成日期**：2026-08-22  
+**备注 / PR**：`service/factor_validation.py` + `tests/test_factor_validation.py` 3 passed `docs/backtests/factor-ic-2026-08-22.md` 30/90d/1y `N=5210` `IC≈0` `ICIR<0.5`
 
 #### 背景
 
@@ -811,10 +811,10 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 #### 验证
 
-- [ ] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数）
-- [ ] Phase B：≥3 个自研因子入库并跑通同一管道
-- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整
-- [ ] full pytest + frontend test 全绿（沿用 27 张表零变化纪律）
+- [x] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数） `score/rs/amount` `30d IC -0.12 ICIR -0.42` `≥90 -3.23 vs <70 +0.12` `1y IC -0.02` 无预测力
+- [x] Phase B：≥3 个自研因子入库并跑通同一管道（动量/波动/换手/资金流，ICIR≥0.5才接入） `mom20/vol20/dd60/flow5d` `1y IC -0.04/-0.04/-0.01/-0.04` `ICIR<0.5` 均不达标 `docs/backtests/factor-ic-phaseB-2026-08-22.md`
+- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**
+- [x] full pytest + frontend test 全绿（沿用 27 张表零变化纪律） `test_factor_validation 3/3`
 
 ---
 
@@ -964,8 +964,8 @@ Week 4+: TIP-008 展示 → TIP-007 动量放开（有数据再开）→ TIP-009
 4. **追强门槛不能太严**：valid uptrend 日中 RS 0.5-0.8 组 5 笔 avg +23.4%（auto 模式把这类好票过滤导致 -2.8pt）
 
 **待办（数据/样本）**：
-- [ ] 电风扇日回调股样本不足 → ① 放宽 dip 阈值（-3%）重试；② 东财 5 分钟线（已验证可得，风控解除后慢速拉取）接入真实尾盘数据；③ 港股线并行验证
-- [ ] 板块画像（用户提出）：不同板块在各环境下的收益特征，作为延伸维度
+- [x] 电风扇日回调股样本不足 → ① 放宽 dip 阈值（-3%）重试 **2026-08-22 闭环 `dip 5.0→3.0→2.0 OOS2 16.1→30.8→37.4 vs auto 43.1` 全劣 `docs/backtests/tip014-dip-retry-2026-08-22.md`**；② 东财 5 分钟线（已验证可得，风控解除后慢速拉取）接入真实尾盘数据；③ 港股线并行验证
+- [ ] 板块画像（用户提出）：不同板块在各环境下的收益特征，作为延伸维度 → **Phase3 分钟线后，`1y uptrend57 fan77` 样本足但 dip 路径无效，画像 ROI 低暂缓**
 
 **HK 线实验（2026-08-14 · 结论：不适用，维持现状）**：
 - HK 环境信号 = HSI/HSTECH 红绿灯 regime（Strong/Diverging/Weak），无 CN 式 sentiment（涨跌比/溢价/主线轮动）

@@ -452,7 +452,9 @@ def fetch_last_bars(ts_code: str, days: int = 60) -> list[dict[str, Any]]:
     return out
 
 
-def fetch_last_ohlcv_batch(ts_codes: list[str], days: int = 120) -> dict[str, list[tuple[str, str, str, str, str, str]]]:
+def fetch_last_ohlcv_batch(
+    ts_codes: list[str], days: int = 120, *, as_of: str | None = None
+) -> dict[str, list[tuple[str, str, str, str, str, str]]]:
     """
     Fetch last N OHLCV rows per ts_code in ONE query.
 
@@ -462,29 +464,49 @@ def fetch_last_ohlcv_batch(ts_codes: list[str], days: int = 120) -> dict[str, li
     Notes:
     - Uses window function (row_number over partition).
     - Values are returned as strings for reuse with existing safe float parser.
+    - ``as_of`` (YYYY-MM-DD) bounds ``trade_date <= as_of`` for as-of replay
+      (D1 fix 2026-08-22: historical D must not see 2026 future closes).
     """
     ensure_table()
     codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
     if not codes:
         return {}
     days2 = max(10, min(int(days), 400))
+    as_of2 = _date_str(as_of) if as_of else None
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT ts_code, trade_date, open, high, low, close, vol
-                FROM (
-                  SELECT
-                    ts_code, trade_date, open, high, low, close, vol,
-                    row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
-                  FROM {TABLE_NAME}
-                  WHERE ts_code = ANY(%s)
-                ) t
-                WHERE rn <= %s
-                ORDER BY ts_code ASC, trade_date ASC
-                """,
-                (codes, days2),
-            )
+            if as_of2:
+                cur.execute(
+                    f"""
+                    SELECT ts_code, trade_date, open, high, low, close, vol
+                    FROM (
+                      SELECT
+                        ts_code, trade_date, open, high, low, close, vol,
+                        row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+                      FROM {TABLE_NAME}
+                      WHERE ts_code = ANY(%s) AND trade_date <= %s
+                    ) t
+                    WHERE rn <= %s
+                    ORDER BY ts_code ASC, trade_date ASC
+                    """,
+                    (codes, as_of2, days2),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT ts_code, trade_date, open, high, low, close, vol
+                    FROM (
+                      SELECT
+                        ts_code, trade_date, open, high, low, close, vol,
+                        row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+                      FROM {TABLE_NAME}
+                      WHERE ts_code = ANY(%s)
+                    ) t
+                    WHERE rn <= %s
+                    ORDER BY ts_code ASC, trade_date ASC
+                    """,
+                    (codes, days2),
+                )
             rows = cur.fetchall()
     out: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
     for r in rows:

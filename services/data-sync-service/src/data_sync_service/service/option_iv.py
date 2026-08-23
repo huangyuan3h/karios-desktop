@@ -72,6 +72,8 @@ def _is_510300_put_row(name: str) -> bool:
 
 
 def _em_option_value_request(params: dict[str, str]) -> dict[str, Any]:
+    # em_get_json is DIRECT-first globally since 2026-08-20 (proxy IP is
+    # eastmoney-blocked, local broadband clean — todo §19 finding).
     return em_get_json(
         EM_OPTION_VALUE_URL,
         params=params,

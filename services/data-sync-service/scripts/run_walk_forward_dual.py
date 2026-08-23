@@ -9,6 +9,10 @@ capital pool between them when BOTH markets are strong:
   R2  strength-ratio weighting (weekly rebalance; T2 regime_strength_score)
   R3  relative 20d momentum (CSI300 vs HSI, softmax, weekly)
   R4  fixed 60/40 (CN/HK)
+  R5C traffic-light substitution (CN-first 100%; both weak -> cash)
+  R5CS R5C + T6 third-asset sleeve: on both-weak weeks the idle pool earns
+       the Nasdaq ETF while it trades above its 200-day MA, else repo (T6,
+       2026-08-21; sleeve leg = OPT-119 portfolio_nav_sim, same rule code)
 
 Each market's daily NAV is rebuilt from its simulated trades (per-trade
 position_pct mark-to-market along the real close path). The joint NAV is
@@ -43,9 +47,13 @@ from data_sync_service.service.backtest_engine import (  # noqa: E402
 )
 from data_sync_service.service.market_regime import regime_strength_score  # noqa: E402
 
-RULES = ("R1", "R2", "R3", "R4", "R5A", "R5B", "R5C")
+RULES = ("R1", "R2", "R3", "R4", "R5A", "R5B", "R5C", "R5CS")
 WEIGHT_CLAMP = (0.2, 0.8)
 SHARPE_DAYS = 252
+
+
+REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
+CACHE_FILE = Path(__file__).resolve().parents[1] / "data" / "third_asset_cache.json"
 
 
 def _mk_config(market: str, start: str, end: str) -> BacktestConfig:
@@ -120,7 +128,7 @@ def weekly_weights(
             total = s_cn + s_hk
             w_cn = 0.5 if total <= 0 else s_cn / total
             out[wk] = _clamp_pair(w_cn)
-        elif rule in ("R5A", "R5B", "R5C"):
+        elif rule in ("R5A", "R5B", "R5C", "R5CS"):
             # Same-decision-code rule: live path calls allocation.resolve_weights,
             # the backtest replays the SAME function on as-of regimes.
             from data_sync_service.service.allocation import weights_from_regimes
@@ -129,20 +137,20 @@ def weekly_weights(
             r_hk = _regime_at(regimes["HK"], wk) if regimes else "Weak"
             w_cn, w_hk = weights_from_regimes(r_cn, r_hk)
             both_ok = (r_cn in ("Strong", "Diverging")) and (r_hk in ("Strong", "Diverging"))
-            if both_ok and rule != "R5C":  # R5c keeps weights_from_regimes: CN-first 100%
-                if rule == "R5a":
+            # 2026-08-21 bugfix: the momentum softmax block below used to run
+            # UNCONDITIONALLY after this assignment, silently overriding every
+            # R5 rule with R3-style momentum weights — R5C never was CN-first.
+            # R5A/B only deviate from R5C when BOTH markets are tradable.
+            if both_ok and rule not in ("R5C", "R5CS"):  # R5C/R5CS keep weights_from_regimes: CN-first 100%
+                if rule == "R5A":
                     w_cn, w_hk = (0.5, 0.5)
-                else:
+                else:  # R5B: both-strong split by 20d momentum rate
                     m_cn = regime_strength_score(market="CN", as_of_date=wk)["components"]["momentum"]
                     m_hk = regime_strength_score(market="HK", as_of_date=wk)["components"]["momentum"]
                     total_m = m_cn + m_hk
                     w_cn = 0.5 if total_m <= 0 else m_cn / total_m
                     w_hk = 1.0 - w_cn
             out[wk] = (w_cn, w_hk)
-            m_cn = _index_momentum(market_codes["cn"], wk)
-            m_hk = _index_momentum(market_codes["hk"], wk)
-            e_cn, e_hk = math.exp(m_cn), math.exp(m_hk)
-            out[wk] = _clamp_pair(e_cn / (e_cn + e_hk))
         d = d.fromordinal(d.toordinal() + 7)
     return out
 
@@ -174,8 +182,32 @@ def _index_momentum(codes: list[str], as_of: str) -> float:
     return sum(moms) / len(moms) if moms else 0.0
 
 
+def idle_pct_by_day(run, calendar: list[str]) -> dict[str, float]:
+    """day -> idle fraction (1 - sum of open position_pct) for one market.
+
+    From the engine's end-of-day holding snapshots — the SAME source as the
+    T6 sleeve NAV (OPT-119), so the "idle cash earns the sleeve" semantics
+    are byte-identical between the CN-line sim and the joint pool.
+    """
+    snap_by_day = {str(s.get("date")): s for s in run.positions_by_day}
+    out: dict[str, float] = {}
+    for day in calendar:
+        snap = snap_by_day.get(day)
+        deployed = 0.0
+        for pos in (snap or {}).get("positions") or []:
+            try:
+                deployed += float(pos.get("position_pct") or 0.0)
+            except (TypeError, ValueError):
+                continue
+        out[day] = max(0.0, min(1.0, 1.0 - deployed))
+    return out
+
+
 def joint_stats(
-    nav_cn: list[float], nav_hk: list[float], calendar: list[str], weights: dict[str, tuple[float, float]]
+    nav_cn: list[float], nav_hk: list[float], calendar: list[str],
+    weights: dict[str, tuple[float, float]],
+    sleeve_nav: list[float] | None = None,
+    idle_by_day: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, float]:
     """Union calendar + weekly weights -> joint pool NAV.
 
@@ -185,18 +217,37 @@ def joint_stats(
     Correct: weight the DAILY RETURNS, compounding the single capital pool:
         joint[t] = joint[t-1] * (1 + w(t)*r_cn(t) + (1-w)(t)*r_hk(t))
     NAV-weighting is only equivalent when weights are constant (R1/R4).
+
+    R5CS sleeve leg (2026-08-21): the R5C-selected market's IDLE cash earns
+    the third-asset sleeve's daily return (513100 above MA200, else GC001 —
+    OPT-119's sleeve NAV, same rule code as the live sleeve). Both markets
+    weak -> the whole pool sits in the sleeve (0/0 weights).
     """
     joint = [1.0]
     prev_cn, prev_hk = nav_cn[0], nav_hk[0]
+    prev_sleeve = sleeve_nav[0] if sleeve_nav else 1.0
     for i in range(1, len(calendar)):
-        w_cn = 0.5
+        w_cn, w_hk = 0.5, 0.5
         for wk in sorted(weights):
             if calendar[i] >= wk:
-                w_cn = weights[wk][0]
+                w_cn, w_hk = weights[wk]
         r_cn = nav_cn[i] / prev_cn - 1.0 if prev_cn > 0 else 0.0
         r_hk = nav_hk[i] / prev_hk - 1.0 if prev_hk > 0 else 0.0
-        joint.append(joint[-1] * (1.0 + w_cn * r_cn + (1.0 - w_cn) * r_hk))
+        r_pool = w_cn * r_cn + w_hk * r_hk
+        if sleeve_nav is not None:
+            r_sleeve = sleeve_nav[i] / prev_sleeve - 1.0 if prev_sleeve > 0 else 0.0
+            if w_cn + w_hk <= 0:
+                r_pool = r_sleeve
+            elif w_cn > 0 and idle_by_day:
+                idle = (idle_by_day.get("CN") or {}).get(calendar[i], 0.0)
+                r_pool = w_cn * (r_cn + idle * r_sleeve)
+            elif w_hk > 0 and idle_by_day:
+                idle = (idle_by_day.get("HK") or {}).get(calendar[i], 0.0)
+                r_pool = w_hk * (r_hk + idle * r_sleeve)
+        joint.append(joint[-1] * (1.0 + r_pool))
         prev_cn, prev_hk = nav_cn[i], nav_hk[i]
+        if sleeve_nav is not None:
+            prev_sleeve = sleeve_nav[i]
 
     daily_ret = [joint[i] / joint[i - 1] - 1.0 for i in range(1, len(joint)) if joint[i - 1] > 0]
     total = joint[-1] - 1.0
@@ -268,14 +319,51 @@ def main() -> int:
             "hk": ["HSI"],
         }
         regimes = {"CN": data_cn.regime_by_day, "HK": data_hk.regime_by_day}
+        sleeve_nav = None
+        if "R5CS" in rules:
+            from data_sync_service.service.portfolio_nav_sim import (
+                load_third_asset_cache,
+                simulate_sleeve_nav,
+            )
+
+            cache = json.loads(CACHE_FILE.read_text())
+            etf_close, repo_rate = load_third_asset_cache(cache)
+            sleeve_sim = simulate_sleeve_nav(
+                positions_by_day=[],
+                close_by_ts_day={},
+                calendar=union,
+                etf_close_by_day=etf_close,
+                repo_rate_by_day=repo_rate,
+                min_idle_pct=0.0,
+            )
+            sleeve_nav = [r["navSleeve"] for r in sleeve_sim["rows"]]
         rows = [["规则", "联合收益%", "联合回撤%", "夏普", "年化%"]]
+        r5c_base: dict[str, float] | None = None
+        idle_by_day = None
+        if "R5CS" in rules:
+            idle_by_day = {
+                "CN": idle_pct_by_day(run_cn, union),
+                "HK": idle_pct_by_day(run_hk, union),
+            }
         for rule in rules:
             weights = weekly_weights(start, end, rule, market_codes, regimes=regimes)
-            stats = joint_stats(nav_cn, nav_hk, union, weights)
+            stats = joint_stats(
+                nav_cn, nav_hk, union, weights,
+                sleeve_nav=sleeve_nav if rule == "R5CS" else None,
+                idle_by_day=idle_by_day if rule == "R5CS" else None,
+            )
             rows.append([rule, f"{stats['totalNetPnlPct']:+.1f}", f"{stats['maxDrawdownPct']:.1f}",
                          f"{stats['sharpe']:.2f}", f"{stats['annualPct']:+.1f}"])
             report.setdefault("windows", {}).setdefault(w, {})[rule] = stats
+            if rule == "R5C":
+                r5c_base = stats
         print(_md_table(rows))
+        if r5c_base and "R5CS" in rules:
+            sleeve_stats = report["windows"][w]["R5CS"]
+            print(
+                f"  R5CS vs R5C: 增量 {sleeve_stats['totalNetPnlPct'] - r5c_base['totalNetPnlPct']:+.1f}pt "
+                f"· 回撤 {r5c_base['maxDrawdownPct']:.1f} -> {sleeve_stats['maxDrawdownPct']:.1f}"
+            )
 
     out_file = Path(args.json) if args.json else Path(__file__).resolve().parents[1] / "data" / "backtest_reports" / "walk_forward_dual_latest.json"
     out_file.parent.mkdir(parents=True, exist_ok=True)
