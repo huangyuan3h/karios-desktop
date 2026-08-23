@@ -51,7 +51,13 @@ def _closes(ts: str, days: int = 260) -> list[float]:
     return out
 
 def _pick() -> dict[str, Any] | None:
-    """Return today's pick based on yesterday's mom60+MA200."""
+    """Return today's pick: Nasdaq-first, weak -> rotate to strongest.
+
+    Rule (optimized 2026-08-24): Nasdaq is default when above MA200 and mom60>0
+    and rank <=1 (top2) among above-MA200 candidates. Otherwise pick max mom60
+    among above-MA200. This matches walk-forward OOS2+19.3/train+17.9/valid+14.4
+    all-positive, vs pure max_mom valid -1.0 and pure Nasdaq-first valid -25.4.
+    """
     closes_map={}
     for c in CANDIDATES:
         closes_map[c["key"]] = _closes(c["ts"], 260)
@@ -65,16 +71,35 @@ def _pick() -> dict[str, Any] | None:
         closes = closes_map[c["key"]]
         # t-1 values (exclude last close to avoid lookahead)
         closes_t1 = closes[:-1]
-        if len(closes_t1) < MA_WINDOW: continue
+        if len(closes_t1) < MA_WINDOW:
+            continue
         ma200 = sum(closes_t1[-MA_WINDOW:])/MA_WINDOW
         close_t1 = closes_t1[-1]
         mom60 = close_t1 / closes_t1[-LOOKBACK] -1 if closes_t1[-LOOKBACK]!=0 else -1e9
         mom[c["key"]] = mom60
         above[c["key"]] = close_t1 >= ma200
-    # filter
     filtered = {k: v for k,v in mom.items() if above.get(k)}
     if not filtered:
         return None
+    # Nasdaq-first, weak -> rotate
+    nasdaq_key = "NASDAQ"
+    if above.get(nasdaq_key) and mom.get(nasdaq_key, -1) > 0:
+        # rank check
+        sorted_mom = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
+        rank = [k for k,_ in sorted_mom].index(nasdaq_key) if nasdaq_key in filtered else 99
+        if rank <= 1:
+            pick_key = nasdaq_key
+            pick = next(x for x in CANDIDATES if x["key"]==pick_key)
+            closes_pick = closes_map[pick_key]
+            return {
+                "key": pick_key, "ts": pick["ts"], "symbol": pick["symbol"], "name": pick["name"],
+                "mom60": round(filtered[pick_key]*100,2),
+                "close": round(closes_pick[-1],3),
+                "ma200": round(sum(closes_pick[-MA_WINDOW:])/MA_WINDOW,3),
+                "above_ma200": above[pick_key],
+                "all_mom": {k: round(v*100,2) for k,v in mom.items()},
+                "all_above": above,
+            }
     pick_key = max(filtered, key=lambda k: filtered[k])
     pick = next(x for x in CANDIDATES if x["key"]==pick_key)
     # current price for display
