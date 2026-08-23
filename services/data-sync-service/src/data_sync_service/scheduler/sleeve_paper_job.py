@@ -36,17 +36,7 @@ def run() -> None:
         out = apply_sleeve_to_paper(day=day)
     except Exception as exc:  # noqa: BLE001
         logger.exception("sleeve_paper_auto: %s", exc)
-        insert_record(
-            job_id=JOB_ID,
-            status="failed",
-            message=str(exc),
-            started_at=datetime.now(tz=UTC),
-        )
+        insert_record(JOB_ID, success=False, error_message=str(exc))
         return
-    insert_record(
-        job_id=JOB_ID,
-        status="success",
-        message=f"{out.get('action')} · {out.get('reason')}",
-        started_at=datetime.now(tz=UTC),
-    )
+    insert_record(JOB_ID, success=True)
     logger.info("sleeve_paper_auto %s: %s (%s)", day, out.get("action"), out.get("reason"))

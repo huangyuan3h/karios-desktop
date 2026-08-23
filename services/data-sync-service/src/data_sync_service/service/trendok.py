@@ -1087,6 +1087,7 @@ def compute_trendok_for_symbols(
         if not latest_bar_date or d > latest_bar_date:
             latest_bar_date = d
 
+    cache_key: tuple[frozenset[str], bool, str] | None = None
     if use_cache:
         cache_key = _trendok_cache_key(syms, realtime, latest_bar_date)
         cached = _trendok_from_cache(cache_key)
@@ -1253,7 +1254,7 @@ def compute_trendok_for_symbols(
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
     if stoploss_deletes_by_code:
         delete_stoploss_batch(sorted(stoploss_deletes_by_code))
-    if use_cache:
+    if use_cache and cache_key is not None:
         _trendok_cache[cache_key] = out
         return _finalize_trendok_response(out, params=p)
     return _finalize_trendok_response(out, params=p)
