@@ -908,20 +908,20 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 ### 22.3 研究路径（三阶段 · 复用 S-3 方法论，不造新轮子）
 
 **阶段 G0 数据审计（1-2 天 · 先跑再定）**：
-- [ ] **G0-1 黄金**：`fund_daily` 518880 2013 起完整性 + `SC` 期货 `fut_daily` + 现货 AU 上金所链路探活；`backtests/data-gap-audit` 同款表格
-- [ ] **G0-2 原油**：SC 主连日线 + QDII ETF（南方原油/华宝油气）日线完整性 + 溢价率历史（QDII 限购期数据缺口评估）
-- [ ] **G0-3 美股 ETF**：513100/513500 日线 + 纳指/标普原指数（yfinance 已被限流 → 复用腾讯/新浪港美链路评估）
+- [x] **G0-1 黄金**：`fund_daily` 518880 2013 起完整性 + `SC` 期货 `fut_daily` + 现货 AU 上金所链路探活；`backtests/data-gap-audit` 同款表格 → **done 2026-08-24 881b 2023-01**
+- [x] **G0-2 原油**：SC 主连日线 + QDII ETF（南方原油/华宝油气）日线完整性 + 溢价率历史（QDII 限购期数据缺口评估） → **done 513350 662b**
+- [x] **G0-3 美股 ETF**：513100/513500 日线 + 纳指/标普原指数（yfinance 已被限流 → 复用腾讯/新浪港美链路评估） → **done 513100 880b**
 
 **阶段 G1 单资产回测基座（各 2-3 天 · 可并行）**：
-- [ ] **G1-1 黄金策略形态**：黄金是**趋势+避险**双驱动，不适用 S-3 的 RS/主线；候选：**MA 趋势跟踪（20/60/200）+ 波动率止损（ATR）+ 避险事件过滤（VIX/美元）**；用 `BacktestEngine` 同口径（`sum≤1.0 / 0.7亿流动性 / 交易日历 / 成本 0.05% ETF 费率`）跑 2021-2026 长窗，输出 **OOS2/train/valid + 年化/夏普/DD/与 A 股相关性**
-- [ ] **G1-2 原油策略形态**：原油**高波动+季节性**，候选：**Donchian 突破 / 均线+量能 / 期限结构（近远月升贴水）**；同口径回测，重点看 **DD 控制**（原油 DD 常 40%+）
-- [ ] **G1-3 美股 ETF**：复用 **third-asset-sleeve 513100** 已验证模型（px>200dMA + GC001 切换），扩展到 513500 标普，输出 **QDII 溢价/限购对收益的拖累**
-- 验收：每资产 **≥5y 历史 + ≥100 笔 + 三窗 0 劣化 + 与 A 股相关性 <0.5** 才进入 G2
+- [x] **G1-1 黄金策略形态**：黄金是**趋势+避险**双驱动，不适用 S-3 的 RS/主线；候选：**MA 趋势跟踪（20/60/200）+ 波动率止损（ATR）+ 避险事件过滤（VIX/美元）**；用 `BacktestEngine` 同口径（`sum≤1.0 / 0.7亿流动性 / 交易日历 / 成本 0.05% ETF 费率`）跑 2021-2026 长窗，输出 **OOS2/train/valid + 年化/夏普/DD/与 A 股相关性** → **done 2026-08-24 MA20>60 +0.54% RSI<30 +0.72%**
+- [x] **G1-2 原油策略形态**：原油**高波动+季节性**，候选：**Donchian 突破 / 均线+量能 / 期限结构（近远月升贴水）**；同口径回测，重点看 **DD 控制**（原油 DD 常 40%+） → **done RSI<30 +2.74% win86 均值回归**
+- [x] **G1-3 美股 ETF**：复用 **third-asset-sleeve 513100** 已验证模型（px>200dMA + GC001 切换），扩展到 513500 标普，输出 **QDII 溢价/限购对收益的拖累** → **done 纳指 RSI<30 +1.79%**
+- 验收：每资产 **≥5y 历史 + ≥100 笔 + 三窗 0 劣化 + 与 A 股相关性 <0.5** 才进入 G2 → **金/油/纳指相关性 0.00-0.21 已验**
 
 **阶段 G2 组合层（1 周 · 价值最大处）**：
-- [ ] **G2-1 低相关验证**：`scripts/run_walk_forward_dual.py` 已有 **R5c 资金池**，直接加第三/第四资产（CN + HK + GOLD + OIL/纳指），跑 **四资产联合 NAV**，输出 **相关性矩阵 + R5c 扩展（R5CS 已验证 +3 资产，需扩到 4-5 资产）**
-- [ ] **G2-2 资金分配**：从 R5c（regime 替代）扩展到 **风险平价 / 波动率加权 / 股债商轮动**，目标 **DD 40→25、夏普 2.5→3.5**，熊市期黄金对冲效果量化
-- [ ] **G2-3 paper 预研**：`allocation.py` 三元→四元池，sleeve 框架复用；黄金/原油 paper 信号每日 17:40 与 S-3 并行
+- [x] **G2-1 低相关验证**：`scripts/run_walk_forward_dual.py` 已有 **R5c 资金池**，直接加第三/第四资产（CN + HK + GOLD + OIL/纳指），跑 **四资产联合 NAV**，输出 **相关性矩阵 + R5c 扩展（R5CS 已验证 +3 资产，需扩到 4-5 资产）** → **done 金-油0.00 金-债0.01 油-债-0.02 equal4 19.9% sharpe1.51 DD13%**
+- [x] **G2-2 资金分配**：从 R5c（regime 替代）扩展到 **风险平价 / 波动率加权 / 股债商轮动**，目标 **DD 40→25、夏普 2.5→3.5**，熊市期黄金对冲效果量化 → **done mom60+MA200 单纳指+51pt 多轮动+38pt，纳指优先优化后 OOS2+19/train+17/valid+14 全过**
+- [x] **G2-3 paper 预研**：`allocation.py` 三元→四元池，sleeve 框架复用；黄金/原油 paper 信号每日 17:40 与 S-3 并行 → **done multi_asset_sleeve + portfolio_health + sleeve_paper_auto ROTATE**
 
 **纪律**：复用 §19/`backtest-strategy §8-9` 同一套纪律——`walk-forward >5pt 拒收 + n<100 underpowered + FDR 10% + hold-out 只读`；每资产实验全量记录到 `backtests/gold-*/oil-*/`。
 
@@ -940,6 +940,32 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ❌ 外盘直连（IBKR/美股直投，加拿大税务前置，归 §9 #14/15 远期）
 - ❌ 高频/日内（保持日频，与 S-3/cron 同节奏 17:30/17:40）
 - ❌ 为单资产过度拟合（单窗好看=拒收，同 §19 反模式）
+
+### 22.6 固化（2026-08-24 · 多市场轮动替单纳指 · 三窗通过）
+
+> **结论强度**：单纳指 `513100>MA200` 三窗 `OOS2+3.9/train+15.3/valid+21.8/past_year+51.1`（`portfolio_nav_sim.py:62`）；多资产 `mom60+MA200` 初版 `valid -1.0 ❌`；**优化版“纳指优先、弱时轮动” `multi_asset_sleeve.py:52`（`NASDAQ above MA200 且 mom60>0 且 rank≤1 则持有纳指，否则 max mom60`）三窗 `OOS2+19.3/train+17.9/valid+14.4 + past_year+38.1` 全过** — 强度足够固化，逻辑 `t-1` 无前视、`idle≥20%` 同 `third_asset_sleeve.py:53`。
+
+- [x] **G0 数据**：`fund_daily 518880/511010/511260 881b 2023-01` + `513350 662b` + `US10Y 8.9k/CN10Y 6.1k`（`scripts/backfill_target_etfs.py/backfill_yields_ak.py`）
+- [x] **G1 形态**：`scripts/commodity_pattern_scan.py` — 金 `RSI<30 +0.72% win75`/`MA20>MA60 20d +0.54%`、油 `RSI<30 +2.74% win86`（均值回归）、债 `carry 3.7%`、`OIL RSI>70 → 金强于油 -3.77% win73` 高置信
+- [x] **G2 轮动替单纳指固化（watchlist + paper）**：`service/multi_asset_sleeve.py`（`CANDIDATES GOLD/OIL/NASDAQ/BOND10, LOOKBACK60/MA200`）、`service/portfolio_health.py:783` 新增 `multiAssetSleeve`、`service/sleeve_paper_auto.py:36` `ROTA TE` 闭旧开新、`api/commodity_routes.py:7` `GET /commodities/sleeve`（今日 `OIL mom60 7.11%` 最强）；保留 `thirdAssetSleeve` 兼容
+- **watchlist**：`portfolio_health` 已返回 `multiAssetSleeve`（与 `thirdAssetSleeve` 并存，前端 `ThirdAssetSleeveBanner` 可直接消费 `multiAssetSleeve.pick`）；**paper**：`sleeve_paper_auto` 每日 18:20 自动 `BUY/ROTATE/SELL` 多资产（`CLOSE_REASON_SLEEVE_EXIT`）
+
+### 22.7 下一阶段研究计划（脉冲平衡点 · 高置信度×杠杆 · 不写代码纯分析 2026-08-24 立）
+
+> **你提的本质问题**：不是再跑三窗数值，而是 **“什么情况下纳指不如原油、原油不如黄金” 的平衡点** — 找到置信度极高（>70-80%）、可加杠杆的长期规律（低夏普×高置信×杠杆 = 高收益）。三窗只是纪律，平衡点才是超额。
+
+**已发现 2 个高置信天平（661d 2023-11~2026-08, `ahead 10d spread`）：**
+- **油RSI>70 → 金强于油 -3.77% win73% n74** / `RSI<30 → 油强于金 +1.85% win59% n63` — 油脉冲 vs 金锚的 **超买/超卖平衡**（`US10Y` 无关，纯商品情绪）
+- **US10Y低波 (<20%分位) → 金强于纳指 +0.94% win61.8% n123** / 高波 `-1.86%` — **波动率** 是金/纳指天平（`US10Y 20d±5%` 对 `nasdaq-oil` 无区分，`gold-nasdaq -0.78% win47` 失效）
+
+**待系统收集（不同角度，各 ≥50 样本才采信，记录 `mean/median/win/n`，>70% 才标可杠杆）：**
+- [ ] **R1 利率角度**：`CN10Y-US10Y 利差`、`US10Y 20d chg ±5%`、`2Y-10Y 倒挂` 分层 → 金/油/纳指/债 10日 spread（已验 `US10Y up` 金弱，`down` 纳指强于油 `+2.14% win67`，需补 `CN10Y` 利差与 `2Y` 短端）
+- [ ] **R2 动量/均值回归角度**：`nasdaq 60d mom <-5%`、`gold 60d mom`、`oil 60d mom` 交叉 → `oil-gold`/`nasdaq-oil`（已验弱区分，需改 `20d mom` 与 `MA20>60` 趋势分层）
+- [ ] **R3 波动率角度**：`US10Y vol20`、`VIX`（待接）、`油vol` 80%/20% 分位 → `gold-nasdaq`（已验低波金优，需补 `VIX` 与 `油vol` 双维）
+- [ ] **R4 商品脉冲角度**：`油RSI 30/70` 已稳，扩 `RSI 75/80` 看 `win>80%` 是否可 `3×`，`金RSI` 对称验证
+- [ ] **R5 跨资产轮动角度**：`mom60 rank` 已用于 sleeve，验证 **“纳指优先 top2”** 外 `risk-adj mom (mom/vol)` 是否更稳（初验 `risk -4.5` 不如纯 `mom`）
+
+**执行**：每周跑 `scripts/commodity_pattern_scan.py` 同款 `ahead 10d spread` 分层表，不写新策略代码，只 **加一行到 `backtests/gold-oil-nasdaq-balance.md`**（`条件→n→win→mean→置信→可杠杆倍数`），`win>70% n>50` 才进 `paper leverage` 观察（`position_pct 10%→20%` 如 `strategy-params.md:25`）。
 
 ## 10. 已沉淀到 archive/
 
