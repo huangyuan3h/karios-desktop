@@ -20,6 +20,11 @@ FEATURE_COLS = [
     "ma20_slope",
     "close_to_ma60",
     "volatility_20",
+    # feat+ 4
+    "rs_rank",
+    "score_norm",
+    "log_mv",
+    "turnover",
 ]
 
 def rsi(series: pd.Series, n: int = 14) -> float:
@@ -35,6 +40,10 @@ def build_feature_tensor(
     calendar: list[str],
     samples: pd.DataFrame,
     L: int = 60,
+    rs_map: dict | None = None,
+    score_map: dict | None = None,
+    mv_map: dict | None = None,
+    turnover_map: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], list[str]]:
     """Return X [N, L, F], y_reg [N], y_cls [N], plus index lists for backtest join.
 
@@ -112,8 +121,39 @@ def build_feature_tensor(
             ma60 = float(np.mean(closes))
             close_to_ma60 = float(c / (ma60+1e-9) - 1)
             volatility_20 = float(np.std(closes[max(0,i-19):i+1]) / (c+1e-9)) if i>=19 else 0.0
+            # feat+ extra: look up by bar's trade_date
+            cur_day = str(window.index[i]) if hasattr(window.index[i], "strftime") else str(window.index[i])
+            # window.index is trade_date string, use it
+            try:
+                cur_day_str = cur_day[:10]
+            except:
+                cur_day_str = str(cur_day)
+            rs_rank = 0.5
+            if rs_map is not None:
+                try: rs_rank = float(rs_map.get(cur_day_str, {}).get(ts, 0.5))
+                except: rs_rank = 0.5
+                if not (0 <= rs_rank <= 1): rs_rank = 0.5
+            score_norm = 0.5
+            if score_map is not None:
+                try:
+                    sc = score_map.get(cur_day_str, {}).get(ts)
+                    if sc is not None: score_norm = float(sc)/100.0
+                except: pass
+                score_norm = float(np.clip(score_norm, 0, 1))
+            log_mv = 0.0
+            if mv_map is not None:
+                try:
+                    mv = mv_map.get(cur_day_str, {}).get(ts)
+                    if mv is not None and mv>0: log_mv = float(np.log1p(mv/1e5)) # total_mv is 万元, /1e5 ≈ 亿元
+                except: log_mv = 0.0
+            turnover = 0.0
+            if turnover_map is not None:
+                try:
+                    tr = turnover_map.get(cur_day_str, {}).get(ts)
+                    if tr is not None: turnover = float(tr)/10.0 # turnover_rate ~ 0-20 -> 0-2
+                except: turnover = 0.0
 
-            seq.append([ret_1, ret_5, ret_20, log_vol, vol_ratio_20, float(amounts[i]/1e7), high_20_ratio, low_20_ratio, atr_20, rsi_14/100, ma20_bias, ma20_slope, close_to_ma60, volatility_20])
+            seq.append([ret_1, ret_5, ret_20, log_vol, vol_ratio_20, float(amounts[i]/1e7), high_20_ratio, low_20_ratio, atr_20, rsi_14/100, ma20_bias, ma20_slope, close_to_ma60, volatility_20, rs_rank, score_norm, log_mv, turnover])
         X_list.append(np.array(seq, dtype=np.float32))
         y_reg_list.append(float(row["label_reg"]))
         y_cls_list.append(int(row["label_cls"]))

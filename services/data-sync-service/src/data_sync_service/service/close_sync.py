@@ -306,6 +306,39 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
             insert_record(JOB_TYPE, success=False, last_ts_code=last_completed, error_message=str(e))
             return {"ok": False, "error": str(e), "last_marker": last_completed}
 
+    # Daily extra data (margin/moneyflow/hk_hold/top) best-effort after daily bars succeed.
+    extra_result: dict | None = None
+    if trade_dates:
+        try:
+            from data_sync_service.service.cn_extra_sync import (
+                sync_hk_hold_for_dates,
+                sync_margin_detail_for_dates,
+                sync_moneyflow_for_dates,
+            )
+
+            td_strs = [d.isoformat() for d in trade_dates]
+            extra_result = {
+                "margin": sync_margin_detail_for_dates(td_strs),
+                "moneyflow": sync_moneyflow_for_dates(td_strs),
+                "hk_hold": sync_hk_hold_for_dates(td_strs),
+            }
+            # financial/holder are ann_date driven — sync last 8 days of ann window daily
+            try:
+                from data_sync_service.service.cn_extra_sync import (
+                    sync_financial_for_range,
+                    sync_holder_for_range,
+                )
+
+                ann_start = (today - timedelta(days=8)).isoformat()
+                ann_end = today.isoformat()
+                extra_result["financial"] = sync_financial_for_range(ann_start, ann_end)
+                extra_result["holder"] = sync_holder_for_range(ann_start, ann_end)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("cn_extra ann sync failed: %s", e)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("cn_extra daily sync failed: %s", e)
+            extra_result = {"error": str(e)}
+
     # Mark success when fully caught up through the intended end_date.
     caught_up = last_completed and last_completed == _to_yyyymmdd(end_date)
     if caught_up and (end_date == today or not is_trading_today):
@@ -316,6 +349,8 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
         "updated_adj_factor_rows": total_factor,
         "trade_dates": [d.isoformat() for d in trade_dates],
     }
+    if extra_result is not None:
+        out3["extra"] = extra_result
     if end_date != today and is_trading_today:
         out3["partial"] = True
         out3["message"] = "pre-close catchup: synced until yesterday; will sync today after close"

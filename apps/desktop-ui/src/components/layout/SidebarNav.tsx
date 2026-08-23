@@ -7,14 +7,14 @@ import {
   ChevronsRight,
   Clock,
   LayoutDashboard,
-  Webhook,
   LineChart,
   Newspaper,
   NotebookPen,
-  Star,
   Settings,
+  Star,
   Table2,
   Rocket,
+  Webhook,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';

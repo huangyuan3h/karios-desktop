@@ -57,7 +57,7 @@ S3_RS_MIN = 0.5
 # HK RS floor matches the HK backtest baseline (HK_S3_CONFIG.rs_rank_min=0.6,
 # strategy-params.md §HK) — the shared 0.5 is the CN S-3 floor (2026-08-11).
 S3_RS_MIN_HK = 0.6
-S3_MAX_POSITIONS = 20
+S3_MAX_POSITIONS = 10
 # 2026-08-12 (long-window defence): drawdown circuit breaker — live mirror
 # of backtest drawdown_circuit_pct=-25 (30d realized window, CN line only).
 # Realized net pnl over trailing 30 days <= -25% → block new S-3 entries

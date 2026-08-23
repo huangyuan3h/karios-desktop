@@ -99,6 +99,56 @@ def load_rs_rank_map(start: str, end: str) -> dict[str, dict[str, float]]:
         return {}
 
 
+def load_extra_maps(start: str, end: str) -> tuple[dict, dict, dict]:
+    """Load score, mv, turnover for feat+ (PiT, may be sparse)."""
+    # score: watchlist_score_daily -> ts_code
+    score_map: dict[str, dict[str, float]] = {}
+    mv_map: dict[str, dict[str, float]] = {}
+    turnover_map: dict[str, dict[str, float]] = {}
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # scores: need to map CN:000001 -> 000001.SZ/SH
+                # heuristic: 60* -> SH, else SZ (covers 00/30/68)
+                cur.execute(
+                    "SELECT symbol, trade_date, score FROM watchlist_score_daily WHERE trade_date>=%s AND trade_date<=%s",
+                    ((date.fromisoformat(start)-timedelta(days=70)).isoformat(), end),
+                )
+                for sym, d, sc in cur.fetchall():
+                    if not sym or not sc: continue
+                    s = str(sym)
+                    if not s.startswith("CN:"): continue
+                    code = s.split(":")[1]
+                    ts = code + (".SH" if code.startswith("60") or code.startswith("68") and code.startswith("688") else ".SZ")
+                    # 688 should be .SH as STAR, fix: 688* -> SH
+                    if code.startswith("688") or code.startswith("689"):
+                        ts = code + ".SH"
+                    elif code.startswith("60"):
+                        ts = code + ".SH"
+                    else:
+                        ts = code + ".SZ"
+                    day = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                    try: v=float(sc)
+                    except: continue
+                    score_map.setdefault(day, {})[ts]=v
+                # mv + turnover from stock_dailybasic
+                cur.execute(
+                    "SELECT ts_code, trade_date, total_mv, turnover_rate FROM stock_dailybasic WHERE trade_date>=%s AND trade_date<=%s",
+                    ((date.fromisoformat(start)-timedelta(days=70)).isoformat(), end),
+                )
+                for ts, d, mv, tr in cur.fetchall():
+                    day = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                    if mv is not None:
+                        try: mv_map.setdefault(day, {})[str(ts)] = float(mv)
+                        except: pass
+                    if tr is not None:
+                        try: turnover_map.setdefault(day, {})[str(ts)] = float(tr)
+                        except: pass
+    except Exception as e:
+        print(f"load_extra_maps warn {e}")
+    return score_map, mv_map, turnover_map
+
+
 def build_samples(
     bars: pd.DataFrame,
     calendar: list[str],

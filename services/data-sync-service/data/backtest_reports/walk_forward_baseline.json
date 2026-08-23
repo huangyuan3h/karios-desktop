@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T01:43:32.129644+00:00",
+  "generatedAt": "2026-08-22T23:05:30.534875+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -11,7 +11,7 @@
     "gates": "full",
     "trailing_stop_pct": -8.0,
     "position_pct": 0.1,
-    "max_positions": 20,
+    "max_positions": 10,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,
@@ -46,17 +46,17 @@
       "sharpe": 6.11
     },
     "train": {
-      "closed": 54,
-      "winRate": 0.444,
+      "closed": 52,
+      "winRate": 0.462,
       "winRateCI": [
-        0.3200225687559781,
-        0.5762458608863554
+        0.3334025986239788,
+        0.5949662160231659
       ],
       "underpowered": "⚠️ underpowered n<100",
-      "avgNetPnlPct": 6.318,
-      "totalNetPnlPct": 34.34,
-      "maxDrawdownPct": 8.382,
-      "sharpe": 5.4
+      "avgNetPnlPct": 6.799,
+      "totalNetPnlPct": 35.601,
+      "maxDrawdownPct": 7.11,
+      "sharpe": 5.65
     },
     "valid": {
       "closed": 18,

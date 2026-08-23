@@ -46,7 +46,7 @@ S3_CONFIG: dict[str, float | int | str] = {
     "gates": "full",
     "trailing_stop_pct": -8.0,
     "position_pct": 0.10,
-    "max_positions": 20,
+    "max_positions": 10,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,

@@ -19,7 +19,13 @@ def main():
     ap.add_argument("--x", type=float, default=8.0)
     ap.add_argument("--L", type=int, default=60)
     ap.add_argument("--epochs", type=int, default=60)
-    ap.add_argument("--model", choices=["tcn","lstm"], default="tcn")
+    ap.add_argument("--model", choices=["tcn","lstm","transformer"], default="tcn")
+    ap.add_argument("--feat-plus", action="store_true", help="14->18 with rs/score/mv/turnover")
+    ap.add_argument("--hidden", type=int, default=64)
+    ap.add_argument("--levels", type=int, default=4)
+    ap.add_argument("--dropout", type=float, default=0.2)
+    ap.add_argument("--nmax-train", type=int, default=20000)
+    ap.add_argument("--nmax-valid", type=int, default=10000)
     args = ap.parse_args()
     cal = load_calendar("2021-08-01","2026-08-07")
     print(f"calendar {len(cal)}")
@@ -46,20 +52,32 @@ def main():
         pos_n = int(nmax * len(pos)/len(df))
         neg_n = nmax - pos_n
         return pd.concat([pos.sample(n=pos_n, random_state=seed), neg.sample(n=neg_n, random_state=seed)]).sample(frac=1, random_state=seed)
-    train_s = downsample(train_s, 20000)
-    valid_s = downsample(valid_s, 10000)
-    oos2_s = downsample(oos2_s, 10000)
+    train_s = downsample(train_s, args.nmax_train)
+    valid_s = downsample(valid_s, args.nmax_valid)
+    oos2_s = downsample(oos2_s, args.nmax_valid)
     print(f"downsampled train {len(train_s)} valid {len(valid_s)} OOS2 {len(oos2_s)}")
 
+    # feat+ maps
+    rs_map = score_map = mv_map = turnover_map = None
+    if args.feat_plus:
+        print("loading feat+ maps (rs/score/mv)...")
+        from ml_forecast.data import load_rs_rank_map, load_extra_maps
+        rs_map = load_rs_rank_map("2021-08-01","2026-08-07")
+        score_map, mv_map, turnover_map = load_extra_maps("2021-08-01","2026-08-07")
+        print(f"rs {len(rs_map)} days, score {len(score_map)} mv {len(mv_map)}")
+
     # build tensors per split (to avoid OOM, build sequentially)
+    feat_kwargs = {}
+    if args.feat_plus:
+        feat_kwargs = dict(rs_map=rs_map, score_map=score_map, mv_map=mv_map, turnover_map=turnover_map)
     print("building train features...")
-    X_train, y_reg_train, y_cls_train, _, _ = build_feature_tensor(bars, cal, train_s, L=args.L)
+    X_train, y_reg_train, y_cls_train, _, _ = build_feature_tensor(bars, cal, train_s, L=args.L, **feat_kwargs)
     print(f"X_train {X_train.shape} y_pos {y_cls_train.mean():.3f}")
     print("building valid features...")
-    X_valid, y_reg_valid, y_cls_valid, valid_days, valid_tss = build_feature_tensor(bars, cal, valid_s, L=args.L)
+    X_valid, y_reg_valid, y_cls_valid, valid_days, valid_tss = build_feature_tensor(bars, cal, valid_s, L=args.L, **feat_kwargs)
     print(f"X_valid {X_valid.shape}")
     print("building OOS2 features...")
-    X_oos2, y_reg_oos2, y_cls_oos2, oos2_days, oos2_tss = build_feature_tensor(bars, cal, oos2_s, L=args.L)
+    X_oos2, y_reg_oos2, y_cls_oos2, oos2_days, oos2_tss = build_feature_tensor(bars, cal, oos2_s, L=args.L, **feat_kwargs)
     print(f"X_oos2 {X_oos2.shape}")
 
     # norm by train
@@ -76,7 +94,8 @@ def main():
 
     model, best_auc, preds_reg_valid, preds_prob_valid, trues_reg_valid, trues_cls_valid = train_one_model(
         X_train, y_reg_train, y_cls_train, X_valid, y_reg_valid, y_cls_valid,
-        model_type=args.model, epochs=args.epochs, batch=1024, pos_weight=pos_weight
+        model_type=args.model, epochs=args.epochs, batch=1024, pos_weight=pos_weight,
+        hidden=args.hidden, levels=args.levels, dropout=args.dropout
     )
     print(f"\n=== Valid offline ===")
     metrics_valid = evaluate_offline(preds_prob_valid, preds_reg_valid, trues_cls_valid, trues_reg_valid)

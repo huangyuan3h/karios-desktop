@@ -261,6 +261,22 @@ def sync_top_inst_watchlist_endpoint(
     return sync_top_inst_watchlist(force=bool(force), trade_date=trade_date)
 
 
+@router.post("/sync/cn-extra")
+def sync_cn_extra_endpoint(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD; default today"),
+    daily_only: bool = Query(False, description="If true, skip quarterly financial/holder"),
+) -> dict:
+    """Sync CN extra data (financial/holder/margin/moneyflow/hk_hold/top) for range."""
+    from datetime import date as _date
+
+    from data_sync_service.service.cn_extra_sync import sync_all_for_range
+
+    if end_date is None:
+        end_date = _date.today().isoformat()
+    return {"ok": True, **sync_all_for_range(start_date, end_date, daily_only=daily_only)}
+
+
 @router.post("/sync/close")
 def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)) -> dict:
     # Purpose: close-time sync by trade_date window; pulls daily + adj_factor (paged).
@@ -317,6 +333,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "intraday_alarm",
     "candidate_diff",
     "behavior_audit",
+    "cn_extra_sync",
 )
 
 

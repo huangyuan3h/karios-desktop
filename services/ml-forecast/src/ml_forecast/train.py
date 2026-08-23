@@ -11,7 +11,7 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader
 
-from ml_forecast.model import LSTMForecast, TCNForecast
+from ml_forecast.model import LSTMForecast, TCNForecast, TransformerForecast
 
 class SeqDataset(Dataset):
     def __init__(self, X, y_reg, y_cls):
@@ -29,16 +29,18 @@ def spearman_ic(pred, label):
     r2 = np.argsort(np.argsort(label))
     return np.corrcoef(r1, r2)[0,1] if np.std(r1)>0 and np.std(r2)>0 else 0.0
 
-def train_one_model(X_train, y_reg_train, y_cls_train, X_valid, y_reg_valid, y_cls_valid, model_type="tcn", epochs=80, batch=1024, lr=3e-4, device=None, pos_weight=None):
+def train_one_model(X_train, y_reg_train, y_cls_train, X_valid, y_reg_valid, y_cls_valid, model_type="tcn", epochs=80, batch=1024, lr=3e-4, device=None, pos_weight=None, hidden=64, levels=4, dropout=0.2):
     if device is None:
         # force CPU for stability (MPS caused NaN in first run)
         device=torch.device("cpu")
     print(f"device {device} train {len(X_train)} valid {len(X_valid)} pos_rate {y_cls_train.mean():.3f}")
     in_dim = X_train.shape[-1]
     if model_type=="tcn":
-        model = TCNForecast(in_dim=in_dim, hidden=64, levels=4, dropout=0.2)
+        model = TCNForecast(in_dim=in_dim, hidden=hidden, levels=levels, dropout=dropout)
+    elif model_type=="transformer":
+        model = TransformerForecast(in_dim=in_dim, hidden=hidden, dropout=dropout)
     else:
-        model = LSTMForecast(in_dim=in_dim, hidden=64, layers=1, dropout=0.2)
+        model = LSTMForecast(in_dim=in_dim, hidden=hidden, layers=1, dropout=dropout)
     model.to(device)
     train_ds = SeqDataset(X_train, y_reg_train, y_cls_train)
     valid_ds = SeqDataset(X_valid, y_reg_valid, y_cls_valid)

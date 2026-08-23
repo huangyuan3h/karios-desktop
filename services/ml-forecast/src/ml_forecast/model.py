@@ -71,3 +71,19 @@ class LSTMForecast(nn.Module):
         reg = self.head_reg(last).squeeze(-1)
         logit = self.head_cls(last).squeeze(-1)
         return reg, logit
+
+class TransformerForecast(nn.Module):
+    def __init__(self, in_dim=14, hidden=64, nhead=4, layers=2, dropout=0.2):
+        super().__init__()
+        self.in_proj = nn.Linear(in_dim, hidden)
+        enc_layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, dim_feedforward=hidden*2, dropout=dropout, batch_first=True)
+        self.enc = nn.TransformerEncoder(enc_layer, num_layers=layers)
+        self.head_reg = nn.Sequential(nn.Linear(hidden, 32), nn.ReLU(), nn.Dropout(dropout), nn.Linear(32,1))
+        self.head_cls = nn.Sequential(nn.Linear(hidden, 32), nn.ReLU(), nn.Dropout(dropout), nn.Linear(32,1))
+    def forward(self, x):
+        y = self.in_proj(x)  # [B,L,H]
+        y = self.enc(y)  # [B,L,H]
+        last = y[:, -1, :]
+        reg = self.head_reg(last).squeeze(-1)
+        logit = self.head_cls(last).squeeze(-1)
+        return reg, logit

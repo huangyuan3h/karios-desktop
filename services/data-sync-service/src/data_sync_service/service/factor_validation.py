@@ -8,7 +8,6 @@ size warnings per spec.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
 from typing import Any
 
 from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData
@@ -136,9 +135,11 @@ def _dd_60(data: BacktestData, ts_code: str, day: str) -> float | None:
 def compute_signal_ic(
     data: BacktestData,
     signal_getter,  # (day, ts_code) -> float | None
-    horizons: list[int] = [1, 3, 5, 10],
+    horizons: list[int] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Per-horizon cross-sectional RankIC time series."""
+    if horizons is None:
+        horizons = [1, 3, 5, 10]
     out: dict[int, dict[str, Any]] = {}
     for h in horizons:
         ics: list[float] = []
