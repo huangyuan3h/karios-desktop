@@ -1,5 +1,3 @@
-import pytest
-
 from data_sync_service.service.factor_validation import _spearman, analyze_signals
 
 
