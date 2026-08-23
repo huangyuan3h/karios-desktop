@@ -388,6 +388,32 @@ export function useCoreAuditQuery(enabled = true) {
   });
 }
 
+export type TimelineRow = {
+  date: string;
+  deployedPct: number;
+  idlePct: number;
+  positions: number;
+  pick: string | null;
+  pickTs: string | null;
+  navBase: number;
+  navSleeve: number | null;
+  navMulti: number;
+  navBaseReturnPct: number;
+  navMultiReturnPct: number;
+};
+
+export type TimelineResponse = { ok: boolean; start: string; end: string; rows: TimelineRow[] };
+
+export function useTimelineQuery(start: string, end: string, enabled = true) {
+  const q = new URLSearchParams({ start, end });
+  return useQuery({
+    queryKey: ['backtest', 'timeline', start, end],
+    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export type PaperVsBacktestTwin = {
   entryDate?: string | null;
   closeDate?: string | null;

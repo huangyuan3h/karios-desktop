@@ -295,6 +295,169 @@ def backtest_sleeve_nav() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"report unreadable: {exc}") from exc
 
 
+@router.get("/timeline")
+def backtest_timeline(
+    start: str = Query("2025-08-01", description="Start YYYY-MM-DD"),
+    end: str = Query(None, description="End YYYY-MM-DD, default today"),
+) -> dict[str, Any]:
+    """Past-year timeline: daily S-3 NAV + idle sleeve (single NASDAQ + multi Nasdaq-first) picks.
+
+    Returns rows with date, deployedPct, pick, navBase/navSleeve/navMulti for a
+    distribution view (what to buy each day). Uses S3_CONFIG mp10 10%×10.
+    """
+    from datetime import date as date_type
+
+    from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
+    from data_sync_service.service.multi_asset_sleeve import CANDIDATES
+    from data_sync_service.service.portfolio_nav_sim import load_third_asset_cache, simulate_sleeve_nav
+
+    _validate_window(start, end or date_type.today().isoformat())
+    end = end or date_type.today().isoformat()
+    # S3 run
+    from run_walk_forward import S3_CONFIG
+
+    cfg = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
+    try:
+        data = BacktestData(cfg)
+        run = simulate(cfg, data)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"timeline S-3 failed: {exc}") from exc
+    # single sleeve NAV rows
+    try:
+        cache_path = REPORTS_DIR / ".." / "third_asset_cache.json"
+        # fallback to data/third_asset_cache.json
+        if not cache_path.exists():
+            cache_path = Path(__file__).resolve().parents[3] / "data" / "third_asset_cache.json"
+        cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+        etf_close, repo_rate = load_third_asset_cache(cache)
+        single = simulate_sleeve_nav(
+            positions_by_day=run.positions_by_day,
+            close_by_ts_day=data.close_by_ts_day,
+            calendar=data.calendar,
+            etf_close_by_day=etf_close,
+            repo_rate_by_day=repo_rate,
+            min_idle_pct=20.0,
+        )
+        single_rows = {r["date"]: r for r in single.get("rows", [])}
+    except Exception:  # noqa: BLE001
+        single_rows = {}
+    # multi sleeve daily pick (Nasdaq-first mom60+MA200)
+    try:
+        import psycopg
+        from data_sync_service.config import get_settings
+
+        s = get_settings()
+        conn = psycopg.connect(s.database_url)
+        cur = conn.cursor()
+        multi_close: dict[str, dict[str, float]] = {}
+        for ts in [c["ts"] for c in CANDIDATES]:
+            cur.execute("select trade_date, close from daily where ts_code=%s order by trade_date", (ts,))
+            multi_close[ts] = {str(r[0]): float(r[1]) for r in cur.fetchall()}
+        conn.close()
+        # precompute pick per day (t-1)
+        pick_by_day: dict[str, str] = {}
+        for idx, day in enumerate(data.calendar):
+            if idx == 0:
+                continue
+            prev = data.calendar[idx - 1]
+            mom: dict[str, float] = {}
+            above: dict[str, bool] = {}
+            for c in CANDIDATES:
+                ts = c["ts"]
+                mp = multi_close.get(ts, {})
+                days_sorted = sorted(mp.keys())
+                try:
+                    pi = days_sorted.index(prev)
+                except ValueError:
+                    continue
+                if pi < 260:
+                    continue
+                ma200 = sum(mp[days_sorted[j]] for j in range(pi - 200 + 1, pi + 1)) / 200
+                mom60 = mp[prev] / mp[days_sorted[pi - 60]] - 1 if mp[days_sorted[pi - 60]] != 0 else -1e9
+                mom[c["key"]] = mom60
+                above[c["key"]] = mp[prev] >= ma200
+            filt = {k: v for k, v in mom.items() if above.get(k)}
+            if not filt:
+                continue
+            # Nasdaq-first
+            nasdaq_key = "NASDAQ"
+            if above.get(nasdaq_key) and mom.get(nasdaq_key, -1) > 0:
+                sorted_mom = sorted(filt.items(), key=lambda x: x[1], reverse=True)
+                rank = [k for k, _ in sorted_mom].index(nasdaq_key) if nasdaq_key in filt else 99
+                if rank <= 1:
+                    pick_by_day[day] = nasdaq_key
+                    continue
+            pick_by_day[day] = max(filt, key=lambda k: filt[k])
+        # multi NAV (reuse simulate_sleeve logic with multi picks)
+        # Build ret map
+        ret_by_ts: dict[str, dict[str, float]] = {}
+        for ts, mp in multi_close.items():
+            days_sorted = sorted(mp.keys())
+            ret: dict[str, float] = {}
+            for i in range(1, len(days_sorted)):
+                d = days_sorted[i]
+                prev = days_sorted[i - 1]
+                if mp[prev] != 0:
+                    ret[d] = mp[d] / mp[prev] - 1
+            ret_by_ts[ts] = ret
+        key_to_ts = {c["key"]: c["ts"] for c in CANDIDATES}
+        snap_by_day = {str(s.get("date")): s for s in run.positions_by_day}
+        day_idx = {d: i for i, d in enumerate(data.calendar)}
+        nav_base = 1.0
+        nav_multi = 1.0
+        rows = []
+        for day in data.calendar:
+            snap = snap_by_day.get(day)
+            deployed_ret = 0.0
+            deployed_pct = 0.0
+            if snap:
+                for pos in snap.get("positions") or []:
+                    try:
+                        pct = float(pos.get("position_pct") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if pct <= 0:
+                        continue
+                    entry = str(pos.get("entry_date") or "")
+                    if entry and day <= entry:
+                        continue
+                    closes_d = data.close_by_ts_day.get(str(pos.get("ts_code") or "")) or {}
+                    today = closes_d.get(day)
+                    idx = day_idx.get(day)
+                    prev = closes_d.get(data.calendar[idx - 1]) if idx and idx > 0 else None
+                    if today is not None and prev:
+                        deployed_ret += pct * (today / prev - 1.0)
+                    deployed_pct += pct
+            deployed_pct = min(1.0, deployed_pct)
+            idle_pct = max(0.0, 1.0 - deployed_pct)
+            pick_key = pick_by_day.get(day)
+            pick_ts = key_to_ts.get(pick_key) if pick_key else None
+            sleeve_ret = 0.0
+            if pick_ts and idle_pct > 0 and idle_pct * 100 >= 20:
+                sleeve_ret = ret_by_ts.get(pick_ts, {}).get(day, 0.0)
+            nav_base *= 1 + deployed_ret
+            nav_multi *= 1 + deployed_ret + idle_pct * sleeve_ret
+            single_row = single_rows.get(day, {})
+            rows.append(
+                {
+                    "date": day,
+                    "deployedPct": round(deployed_pct * 100, 1),
+                    "idlePct": round(idle_pct * 100, 1),
+                    "positions": len((snap or {}).get("positions") or []),
+                    "pick": pick_key,
+                    "pickTs": pick_ts,
+                    "navBase": round(nav_base, 6),
+                    "navSleeve": single_row.get("navSleeve"),
+                    "navMulti": round(nav_multi, 6),
+                    "navBaseReturnPct": round((nav_base - 1) * 100, 2),
+                    "navMultiReturnPct": round((nav_multi - 1) * 100, 2),
+                }
+            )
+        return {"ok": True, "start": start, "end": end, "rows": rows}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc
+
+
 @router.get("/latest-report")
 def backtest_latest_report() -> dict[str, Any]:
     """Return the most recent CLI report (data/backtest_reports/latest.json).

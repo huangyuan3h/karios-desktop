@@ -18,6 +18,7 @@ import {
   usePaperVsBacktestQuery,
   useSensitivityQuery,
   useSleeveNavQuery,
+  useTimelineQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
@@ -518,6 +519,87 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
   );
 }
 
+function TimelineCard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const start = '2025-08-01';
+  const q = useTimelineQuery(start, today, true);
+  const rows = q.data?.rows ?? [];
+  const dist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = r.pick ?? 'NONE';
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const last = rows[rows.length - 1];
+  const pickColor: Record<string, string> = {
+    GOLD: 'bg-amber-500',
+    OIL: 'bg-slate-800 dark:bg-slate-200',
+    NASDAQ: 'bg-blue-600',
+    BOND10: 'bg-emerald-600',
+    NONE: 'bg-[var(--k-border)]',
+  };
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <BarChart3 className="size-3.5" />
+        过去一年 Timeline（每日该买什么 · 总体分布）
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {start} ~ {today} · {rows.length} 交易日
+          {last ? ` · 基线 ${last.navBaseReturnPct}% · 多轮动 ${last.navMultiReturnPct}%` : ''}
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex h-3 w-full overflow-hidden rounded">
+            {rows.map((r) => (
+              <div key={r.date} className={cn('h-full flex-1', pickColor[r.pick ?? 'NONE'] ?? 'bg-gray-300')} title={`${r.date} ${r.pick ?? 'NONE'} ${r.deployedPct}%`} />
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            {Object.entries(dist).map(([k, v]) => (
+              <span key={k} className="flex items-center gap-1">
+                <span className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')} />
+                {k} {v}天 ({((v / rows.length) * 100).toFixed(0)}%)
+              </span>
+            ))}
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">金/油/纳指/债10 = Nasdaq-first mom60&gt;0 top2 轮动 · 闲置≥20%才开</span>
+          </div>
+          <div className="max-h-[200px] overflow-auto rounded border border-[var(--k-border)]">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead className="sticky top-0 bg-[var(--k-surface)]">
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-2 pl-2">日期</th>
+                  <th className="py-1 pr-2">持仓</th>
+                  <th className="py-1 pr-2">闲置%</th>
+                  <th className="py-1 pr-2">该买</th>
+                  <th className="py-1 pr-2">基线NAV%</th>
+                  <th className="py-1 pr-2">多轮动NAV%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(-30).map((r) => (
+                  <tr key={r.date} className="border-t border-[var(--k-border)]/60">
+                    <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
+                    <td className="py-1 pr-2">{r.positions}票 {r.deployedPct}%</td>
+                    <td className="py-1 pr-2">{r.idlePct}%</td>
+                    <td className="py-1 pr-2 font-medium">{r.pick ?? '—'}</td>
+                    <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
+                    <td className={cn('py-1 pr-2 font-semibold', tone(r.navMultiReturnPct))}>{r.navMultiReturnPct.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-[var(--k-muted)]">近30日明细 · 全量 {rows.length} 日色条可 hover 看日；分布=全年该买资产天数占比，NAV=含闲置套筒的复利（多轮动=纳指优先）。</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
@@ -546,6 +628,7 @@ export function BacktestPage() {
       <ConclusionBoard overview={overviewQ.data} />
       <CoreAuditCard q={coreQ} />
       <SleeveNavCard q={sleeveQ} />
+      <TimelineCard />
       <RollingOosCard overview={overviewQ.data} />
       <ReconStrip reconQ={reconQ} />
       <PaperVsBacktestCard q={c4Q} />

@@ -34,7 +34,10 @@ K线        RS排名      资金流        移动止损      评估框架
 | 板块资金流 | `market_cn_industry_fund_flow_daily` | 2025-12-15 | eastmoney SW L1（31 行业） |
 | 市场情绪 | `market_cn_sentiment_daily` | 2026-01-05 | 盘后 cron |
 | 行业归属 | `stock_eastmoney_industry` | 全量 | EM 板块映射 |
-| TV 候选池 | `tv_screener_snapshots` | 2025-12-21 | TV screener 每日 AM/PM 抓取 |
+| TV 候选池 | `tv_screener_snapshots` | 2025-12-21 | TV screener 每日 AM/PM 抓取（已剥离，仅历史） |
+| 黄金/原油/美股ETF | `daily` `518880/513350/513100` | 2023-01 | `fund_daily` `backfill_target_etfs.py`（`518880 881b/513350 662b/513100 880b`） |
+| 债券ETF | `daily` `511260/511010` | 2023-01 | `fund_daily` `511260 881b` |
+| 美债/中债收益率 | `macro_daily` `US10Y 8.9k/CN10Y 6.1k/CN30Y/US30Y/VIX 2.5k` | 1990/2002/2016 | `akshare bond_zh_us_rate` + `yfinance VIX` `backfill_yields_ak.py` |
 
 **as-of 纪律（不可违反）**：所有信号计算必须只用截至决策日的数据——
 分数/红绿灯/资金流/RS/情绪全部 as-of 重算，禁止用未来数据（回测引擎强制）。
@@ -111,16 +114,17 @@ K线        RS排名      资金流        移动止损      评估框架
 
 ---
 
-## 5. 仓位模型
+## 5. 仓位模型（2026-08-23 mp10 固化）
 
-| 参数 | 回测口径 | 手动操作口径 |
+| 参数 | 回测口径 | paper/实盘口径 |
 |------|---------|-------------|
-| 单笔仓位 | 10%（满仓实验） | **5-10%**（真实系统 suggestFireSizePct） |
-| 同时持仓 | 20 笔（满仓） | **≤10 笔** |
-| 单票上限 | — | 15%（真实系统红线） |
-| 板块集中度 | — | 30%（真实系统红线） |
+| 单笔仓位 | 10% | **10%**（`S3_POSITION_PCT=0.10` paper与回测同口径，用户拍板 2026-08-11） |
+| 同时持仓 | 10 笔（`mp10` `walk_forward_baseline 40ef4cd0` `OOS2 43.1/train 35.6/valid 43.3`） | **≤10 笔** |
+| 名义上限 | 10%×10=100%（`cash≤1.0` 恰满，夏普恒定） | 同 |
+| 单票上限 | — | 15%（红线） |
+| 板块集中度 | — | 30%（红线） |
 
-回测累计收益 = Σ(单笔 pnl × 该笔实际仓位)；满仓口径用于对比，手动操作按 5-10% 纪律。
+回测累计收益 = Σ(单笔 pnl × 仓位)；`position_pct 0.05→0.10` 已统一，paper 实绩可直接对照回测数字。金字塔加仓 `trigger 2.5%/0.5×/1次` 同步。
 
 ---
 
@@ -152,9 +156,14 @@ RS 过滤=0.5 · Diverging 仓位=1.0 · 仓位 10% · 持仓上限 20 · gates=
 恐慌冷却=3 天 · 滑点=0.05（回测页新增参数）
 ```
 
-### 6.3 paper 对照（待做 C4）
+### 6.3 paper 实盘（已固化 2026-08-21 · 三窗 + past_year 验证）
 
-paper ≥20 笔平仓后，将 S-3 回测结论与 paper 实绩逐条核对。
+- **paper 书**：`paper_trades` 表（`source S3/S3HK`，`sleeve_pct` 闲置套筒，`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update` + `18:20 sleeve_paper_auto`（`service/sleeve_paper_auto.py`）
+- **闲置套筒**：`T6` 单纳指 `513100>MA200` 三窗 `OOS2+3.9/train+15.3/valid+21.8/past+51.1`；**多资产轮动** `GOLD/OIL/NASDAQ/BOND10 mom60>0 top2 Nasdaq-first` 三窗 `OOS2+19.3/train+17.9/valid+14.4/past+38.1` 全过（`service/multi_asset_sleeve.py:52`），`portfolio_health multiAssetSleeve` + `GET /commodities/sleeve` 已上线，`watchlist` 与 `paper` 同码
+- **脉冲高置信** `OIL RSI<25 90% n30 +3.92%/10d`（`commodity_pattern_scan.py`）`valid +28.5` 三窗全过，已进 `impulseSleeve`（`2×` 杠杆），`NASDAQ RSI>75 78%` 等 `R1-R5` 按 `todo §22.7` 分批固化
+- **对账**：`C4 paper_vs_backtest_report.py` + `BehavioAudit` + `BacktestPage Timeline`（`GET /api/backtest/timeline?start=2025-08-01` 日级 `pick/navBase/navMulti/deployedPct` 分布，`TimelineCard` 色条 `GOLD/OIL/NASDAQ/BOND`），`paper ≥20 笔` 后出统计定论
+
+**文档真值**：`strategy-params.md §1` 参数表 + `service/paper_trading.py:60` + `service/paper_s3.py` + `service/sleeve_paper_auto.py` + `service/multi_asset_sleeve.py` + `service/commodity_signals.py`
 
 ---
 
