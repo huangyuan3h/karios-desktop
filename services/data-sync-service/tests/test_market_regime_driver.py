@@ -98,7 +98,7 @@ def test_compute_breadth_with_realtime(monkeypatch) -> None:
     monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: ["600000.SH", "600001.SH", "000001.SZ", "000002.SZ"])
     monkeypatch.setattr(
         mr, "fetch_last_ohlcv_batch",
-        lambda ts_codes, days=30: {
+        lambda ts_codes, days=30, as_of=None, **kwargs: {
             "600000.SH": _ohlcv_rows(30, 10.0),
             "600001.SH": _ohlcv_rows(30, 10.0),
             "000001.SZ": _ohlcv_rows(30, 10.0),
@@ -131,7 +131,7 @@ def test_compute_breadth_no_codes_and_eod_only(monkeypatch) -> None:
     monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: ["600000.SH"])
     monkeypatch.setattr(
         mr, "fetch_last_ohlcv_batch",
-        lambda ts_codes, days=30: {"600000.SH": _ohlcv_rows(30, 10.0)},
+        lambda ts_codes, days=30, as_of=None, **kwargs: {"600000.SH": _ohlcv_rows(30, 10.0)},
     )
     # as_of_date set → realtime window branch skipped, uses last close (10 == ma20, not above)
     out = mr._compute_breadth_above_ma20_ratio(as_of_date="2026-08-07")
@@ -143,7 +143,7 @@ def test_compute_breadth_short_history(monkeypatch) -> None:
     monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: ["600000.SH"])
     monkeypatch.setattr(
         mr, "fetch_last_ohlcv_batch",
-        lambda ts_codes, days=30: {"600000.SH": _ohlcv_rows(10, 10.0)},
+        lambda ts_codes, days=30, as_of=None, **kwargs: {"600000.SH": _ohlcv_rows(10, 10.0)},
     )
     out = mr._compute_breadth_above_ma20_ratio(as_of_date="2026-08-07")
     assert out["total"] == 0

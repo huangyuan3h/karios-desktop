@@ -146,16 +146,16 @@ def test_simulate_score_floor_uses_as_of_score() -> None:
 
 
 def test_simulate_max_hold_closes() -> None:
-    """Entry 06-18 → 06-23 is 5 calendar days → max_hold fires on 06-23."""
+    """Entry 06-18 → 06-23 is 3 trading days → max_hold fires on 06-23."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
     scores = {d: {CN1: 88.0} for d in calendar}
     prices = {TS1: {d: 10.0 for d in calendar}}
-    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-23", max_hold_days=5)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-23", max_hold_days=3)
 
     run = simulate(config, data=_data(calendar, scores, prices))
     assert run.summary.closed == 1
     assert run.trades[0].close_reason == "max_hold"
-    assert run.trades[0].holding_days == 5
+    assert run.trades[0].holding_days == 3
 
 
 def test_simulate_no_second_entry_while_held() -> None:
