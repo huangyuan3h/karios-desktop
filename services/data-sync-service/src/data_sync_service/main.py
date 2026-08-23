@@ -40,6 +40,7 @@ from .api.v1_explain_routes import router as v1_explain_router
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
 from .api.webhook_routes import router as webhook_router
+from .api.commodity_routes import router as commodity_router
 from .scheduler import create_scheduler
 
 
@@ -117,6 +118,7 @@ app.include_router(notifications_router)
 app.include_router(backtest_router)
 app.include_router(decision_router)
 app.include_router(webhook_router)
+app.include_router(commodity_router)
 # OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
 app.include_router(v1_business_router)
 # OPT-047 Phase C: /v1/explain/{symbol}.
