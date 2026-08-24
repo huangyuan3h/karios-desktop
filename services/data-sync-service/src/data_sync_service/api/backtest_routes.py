@@ -17,6 +17,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from functools import lru_cache
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -30,6 +32,8 @@ from data_sync_service.service.backtest_engine import (
 )
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+
+_timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
 LATEST_REPORT = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "latest.json"
 
@@ -297,7 +301,7 @@ def backtest_sleeve_nav() -> dict[str, Any]:
 
 @router.get("/timeline")
 def backtest_timeline(
-    start: str = Query("2025-08-01", description="Start YYYY-MM-DD"),
+    start: str = Query("2026-01-01", description="Start YYYY-MM-DD"),
     end: str = Query(None, description="End YYYY-MM-DD, default today"),
 ) -> dict[str, Any]:
     """Past-year timeline: daily S-3 NAV + idle sleeve (single NASDAQ + multi Nasdaq-first) picks.
@@ -313,8 +317,14 @@ def backtest_timeline(
 
     _validate_window(start, end or date_type.today().isoformat())
     end = end or date_type.today().isoformat()
-    # S3 run
-    from run_walk_forward import S3_CONFIG
+    cache_key = (start, end)
+    if cache_key in _timeline_cache:
+        return _timeline_cache[cache_key]
+    # S3 run (scripts/ is not in src, add to path)
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    from run_walk_forward import S3_CONFIG  # noqa: E402
 
     cfg = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
     try:
@@ -345,6 +355,7 @@ def backtest_timeline(
     try:
         import psycopg
         from data_sync_service.config import get_settings
+        from data_sync_service.service.multi_asset_sleeve import CANDIDATES
 
         s = get_settings()
         conn = psycopg.connect(s.database_url)
@@ -453,7 +464,9 @@ def backtest_timeline(
                     "navMultiReturnPct": round((nav_multi - 1) * 100, 2),
                 }
             )
-        return {"ok": True, "start": start, "end": end, "rows": rows}
+        result = {"ok": True, "start": start, "end": end, "rows": rows}
+        _timeline_cache[cache_key] = result
+        return result
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc
 

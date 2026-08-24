@@ -521,7 +521,7 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
 
 function TimelineCard() {
   const today = new Date().toISOString().slice(0, 10);
-  const start = '2025-08-01';
+  const start = '2026-01-01';
   const q = useTimelineQuery(start, today, true);
   const rows = q.data?.rows ?? [];
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
@@ -548,9 +548,17 @@ function TimelineCard() {
         </span>
       </div>
       {q.isError ? (
-        <p className="text-xs text-red-700">{String(q.error)}</p>
+        <div className="text-xs">
+          <p className="text-red-700">{String(q.error)}</p>
+          <p className="mt-1 text-[var(--k-muted)]">后端计算需 ~50s（S-3 全市场回放），请稍后刷新或改短周期</p>
+          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+            重试
+          </Button>
+        </div>
+      ) : q.isFetching && !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">计算中…（首次约 50s，已加缓存）</p>
       ) : !rows.length ? (
-        <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+        <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex h-3 w-full overflow-hidden rounded">
