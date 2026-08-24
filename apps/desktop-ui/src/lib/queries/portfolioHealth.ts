@@ -154,6 +154,29 @@ export interface PortfolioHealthResponse {
     gateOpen?: boolean;
     note?: string;
   } | null;
+  /** 2026-08-24 multi-asset rotation sleeve (GOLD/OIL/NASDAQ/BOND10 mom60>0 top2 Nasdaq-first). */
+  multiAssetSleeve?: {
+    active?: boolean;
+    action?: 'BUY' | 'ROTATE' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'HOLD' | 'DONT_BUY' | 'NONE';
+    label?: string;
+    message?: string;
+    idlePct?: number;
+    s3BuySetup?: boolean;
+    pick?: {
+      key?: string;
+      ts?: string;
+      symbol?: string;
+      name?: string;
+      mom60?: number;
+      close?: number;
+      ma200?: number;
+      above_ma200?: boolean;
+      all_mom?: Record<string, number>;
+      all_above?: Record<string, boolean>;
+    } | null;
+    holding?: boolean;
+    note?: string;
+  } | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }
