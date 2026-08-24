@@ -525,7 +525,12 @@ function TimelineCard() {
   const q = useTimelineQuery(start, today, true);
   const rows = q.data?.rows ?? [];
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
-    const k = r.pick ?? 'NONE';
+    const k = r.pick ?? 'REPO';
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const stockDist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = (r as unknown as { stockMarket?: string }).stockMarket ?? (r.positions ? 'A股' : '空仓');
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
@@ -535,7 +540,13 @@ function TimelineCard() {
     OIL: 'bg-slate-800 dark:bg-slate-200',
     NASDAQ: 'bg-blue-600',
     BOND10: 'bg-emerald-600',
-    NONE: 'bg-[var(--k-border)]',
+    REPO: 'bg-zinc-300 dark:bg-zinc-700',
+  };
+  const stockColor: Record<string, string> = {
+    'A股': 'bg-red-500',
+    HK: 'bg-blue-500',
+    'A+H': 'bg-purple-500',
+    空仓: 'bg-[var(--k-border)]',
   };
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
@@ -562,9 +573,17 @@ function TimelineCard() {
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex h-3 w-full overflow-hidden rounded">
-            {rows.map((r) => (
-              <div key={r.date} className={cn('h-full flex-1', pickColor[r.pick ?? 'NONE'] ?? 'bg-gray-300')} title={`${r.date} ${r.pick ?? 'NONE'} ${r.deployedPct}%`} />
-            ))}
+            {rows.map((r) => {
+              const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
+              const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
+              return (
+                <div
+                  key={r.date}
+                  className={cn('h-full flex-1', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}
+                  title={`${r.date} 套筒:${r.pick ?? 'REPO'} 股票:${sm} ${r.deployedPct}% 持仓${r.positions} ${syms} 基线${r.navBaseReturnPct}% 多轮动${r.navMultiReturnPct}%`}
+                />
+              );
+            })}
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
             {Object.entries(dist).map(([k, v]) => (
@@ -573,31 +592,51 @@ function TimelineCard() {
                 {k} {v}天 ({((v / rows.length) * 100).toFixed(0)}%)
               </span>
             ))}
-            <span className="ml-auto text-[10px] text-[var(--k-muted)]">金/油/纳指/债10 = Nasdaq-first mom60&gt;0 top2 轮动 · 闲置≥20%才开</span>
+            <span className="ml-2 flex items-center gap-1 text-[10px] text-[var(--k-muted)]">
+              {Object.entries(stockDist).map(([k, v]) => (
+                <span key={k} className="flex items-center gap-1">
+                  <span className={cn('inline-block size-2 rounded-sm', stockColor[k] ?? 'bg-gray-300')} />
+                  {k} {v}天
+                </span>
+              ))}
+            </span>
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">REPO=逆回购GC001 · 金/油/纳指/债10= Nasdaq-first 轮动 · 多轮动NAV=股票+套筒复利</span>
           </div>
-          <div className="max-h-[200px] overflow-auto rounded border border-[var(--k-border)]">
+          <div className="max-h-[220px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
               <thead className="sticky top-0 bg-[var(--k-surface)]">
                 <tr className="text-[10px] text-[var(--k-muted)]">
                   <th className="py-1 pr-2 pl-2">日期</th>
-                  <th className="py-1 pr-2">持仓</th>
+                  <th className="py-1 pr-2">股票</th>
+                  <th className="py-1 pr-2">该买套筒</th>
                   <th className="py-1 pr-2">闲置%</th>
-                  <th className="py-1 pr-2">该买</th>
                   <th className="py-1 pr-2">基线NAV%</th>
                   <th className="py-1 pr-2">多轮动NAV%</th>
+                  <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(-30).map((r) => (
-                  <tr key={r.date} className="border-t border-[var(--k-border)]/60">
-                    <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
-                    <td className="py-1 pr-2">{r.positions}票 {r.deployedPct}%</td>
-                    <td className="py-1 pr-2">{r.idlePct}%</td>
-                    <td className="py-1 pr-2 font-medium">{r.pick ?? '—'}</td>
-                    <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
-                    <td className={cn('py-1 pr-2 font-semibold', tone(r.navMultiReturnPct))}>{r.navMultiReturnPct.toFixed(2)}%</td>
-                  </tr>
-                ))}
+                {rows.slice(-30).map((r) => {
+                  const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '';
+                  return (
+                    <tr key={r.date} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
+                      <td className="py-1 pr-2">
+                        <span className={cn('rounded px-1 py-px text-[10px]', stockColor[sm] ?? 'bg-gray-100', sm === '空仓' ? 'text-[var(--k-muted)]' : 'text-white')}>
+                          {sm}
+                        </span>{' '}
+                        {r.positions}票
+                      </td>
+                      <td className="py-1 pr-2 font-medium">{r.pick ?? 'REPO'}</td>
+                      <td className="py-1 pr-2">{r.idlePct}%</td>
+                      <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
+                      <td className={cn('py-1 pr-2 font-semibold', tone(r.navMultiReturnPct))}>{r.navMultiReturnPct.toFixed(2)}%</td>
+                      <td className={cn('py-1 pr-2', tone(r.navMultiReturnPct - r.navBaseReturnPct))}>
+                        {(r.navMultiReturnPct - r.navBaseReturnPct).toFixed(2)}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

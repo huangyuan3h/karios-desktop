@@ -417,10 +417,21 @@ def backtest_timeline(
         nav_base = 1.0
         nav_multi = 1.0
         rows = []
+        # repo rate for REPO (GC001) - reload from cache
+        repo_by_day: dict[str, float] = {}
+        try:
+            _cache2 = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+            _, _repo_rate2 = load_third_asset_cache(_cache2)
+            repo_by_day = {k: float(v) / 100 / 365 for k, v in (_repo_rate2 or {}).items()}
+        except Exception:
+            repo_by_day = {}
         for day in data.calendar:
             snap = snap_by_day.get(day)
             deployed_ret = 0.0
             deployed_pct = 0.0
+            cn_cnt = 0
+            hk_cnt = 0
+            stock_syms: list[str] = []
             if snap:
                 for pos in snap.get("positions") or []:
                     try:
@@ -432,20 +443,47 @@ def backtest_timeline(
                     entry = str(pos.get("entry_date") or "")
                     if entry and day <= entry:
                         continue
-                    closes_d = data.close_by_ts_day.get(str(pos.get("ts_code") or "")) or {}
+                    ts_code = str(pos.get("ts_code") or "")
+                    closes_d = data.close_by_ts_day.get(ts_code) or {}
                     today = closes_d.get(day)
                     idx = day_idx.get(day)
                     prev = closes_d.get(data.calendar[idx - 1]) if idx and idx > 0 else None
                     if today is not None and prev:
                         deployed_ret += pct * (today / prev - 1.0)
                     deployed_pct += pct
+                    # market split
+                    if ts_code.endswith(".HK") or ts_code.startswith("HK"):
+                        hk_cnt += 1
+                    else:
+                        cn_cnt += 1
+                    # track symbol for hover (first 3)
+                    sym = pos.get("symbol") or ts_code
+                    if len(stock_syms) < 3:
+                        stock_syms.append(str(sym))
             deployed_pct = min(1.0, deployed_pct)
             idle_pct = max(0.0, 1.0 - deployed_pct)
             pick_key = pick_by_day.get(day)
-            pick_ts = key_to_ts.get(pick_key) if pick_key else None
+            # NONE -> REPO (GC001)
+            if not pick_key:
+                pick_key = "REPO"
+                pick_ts = "GC001"
+            else:
+                pick_ts = key_to_ts.get(pick_key)
+            # stock market label
+            if cn_cnt and hk_cnt:
+                stock_market = "A+H"
+            elif hk_cnt:
+                stock_market = "HK"
+            elif cn_cnt:
+                stock_market = "A股"
+            else:
+                stock_market = "空仓"
             sleeve_ret = 0.0
-            if pick_ts and idle_pct > 0 and idle_pct * 100 >= 20:
-                sleeve_ret = ret_by_ts.get(pick_ts, {}).get(day, 0.0)
+            if idle_pct > 0 and idle_pct * 100 >= 20:
+                if pick_key == "REPO":
+                    sleeve_ret = repo_by_day.get(day, 0.0)
+                elif pick_ts:
+                    sleeve_ret = ret_by_ts.get(pick_ts, {}).get(day, 0.0)
             nav_base *= 1 + deployed_ret
             nav_multi *= 1 + deployed_ret + idle_pct * sleeve_ret
             single_row = single_rows.get(day, {})
@@ -455,6 +493,10 @@ def backtest_timeline(
                     "deployedPct": round(deployed_pct * 100, 1),
                     "idlePct": round(idle_pct * 100, 1),
                     "positions": len((snap or {}).get("positions") or []),
+                    "cnPositions": cn_cnt,
+                    "hkPositions": hk_cnt,
+                    "stockMarket": stock_market,
+                    "stockSymbols": stock_syms,
                     "pick": pick_key,
                     "pickTs": pick_ts,
                     "navBase": round(nav_base, 6),
