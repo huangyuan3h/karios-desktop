@@ -301,7 +301,7 @@ def backtest_sleeve_nav() -> dict[str, Any]:
 
 @router.get("/timeline")
 def backtest_timeline(
-    start: str = Query("2026-01-01", description="Start YYYY-MM-DD"),
+    start: str = Query("2026-05-01", description="Start YYYY-MM-DD"),
     end: str = Query(None, description="End YYYY-MM-DD, default today"),
 ) -> dict[str, Any]:
     """Past-year timeline: daily S-3 NAV + idle sleeve (single NASDAQ + multi Nasdaq-first) picks.
@@ -330,6 +330,31 @@ def backtest_timeline(
     try:
         data = BacktestData(cfg)
         run = simulate(cfg, data)
+        # Also load HK for combined A+H view (best effort)
+        try:
+            from run_walk_forward import HK_S3_CONFIG  # noqa: E402
+
+            cfg_hk = BacktestConfig(start_date=start, end_date=end, market="HK", **HK_S3_CONFIG)  # type: ignore[arg-type]
+            data_hk = BacktestData(cfg_hk)
+            run_hk = simulate(cfg_hk, data_hk)
+            # merge HK positions into CN run for timeline display
+            hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
+            for s in run.positions_by_day:
+                day = str(s.get("date"))
+                hk_s = hk_by_day.get(day)
+                if hk_s:
+                    # merge positions
+                    s["positions"] = (s.get("positions") or []) + (hk_s.get("positions") or [])
+            # merge close maps and calendar (union)
+            for ts, mp in data_hk.close_by_ts_day.items():
+                if ts not in data.close_by_ts_day:
+                    data.close_by_ts_day[ts] = mp
+                else:
+                    data.close_by_ts_day[ts].update(mp)
+            # calendar union
+            data.calendar = sorted(set(data.calendar) | set(data_hk.calendar))
+        except Exception:
+            pass
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline S-3 failed: {exc}") from exc
     # single sleeve NAV rows

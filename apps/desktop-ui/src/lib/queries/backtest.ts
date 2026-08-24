@@ -408,7 +408,7 @@ export function useTimelineQuery(start: string, end: string, enabled = true) {
   const q = new URLSearchParams({ start, end });
   return useQuery({
     queryKey: ['backtest', 'timeline', start, end],
-    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`),
+    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 90_000 }),
     staleTime: 5 * 60_000,
     enabled,
   });

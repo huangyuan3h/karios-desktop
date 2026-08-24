@@ -521,7 +521,7 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
 
 function TimelineCard() {
   const today = new Date().toISOString().slice(0, 10);
-  const start = '2026-01-01';
+  const start = '2026-05-01';
   const q = useTimelineQuery(start, today, true);
   const rows = q.data?.rows ?? [];
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
@@ -572,18 +572,36 @@ function TimelineCard() {
         <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="flex h-3 w-full overflow-hidden rounded">
-            {rows.map((r) => {
-              const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
-              const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
-              return (
-                <div
-                  key={r.date}
-                  className={cn('h-full flex-1', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}
-                  title={`${r.date} 套筒:${r.pick ?? 'REPO'} 股票:${sm} ${r.deployedPct}% 持仓${r.positions} ${syms} 基线${r.navBaseReturnPct}% 多轮动${r.navMultiReturnPct}%`}
-                />
-              );
-            })}
+          <div className="flex flex-col gap-1">
+            <div className="flex h-3 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+              {rows.map((r) => {
+                const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
+                const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
+                return (
+                  <div
+                    key={`sleeve-${r.date}`}
+                    className={cn('h-full flex-1', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}
+                    title={`${r.date} 套筒:${r.pick ?? 'REPO'} 股票:${sm} ${r.deployedPct}% 持仓${r.positions} ${syms} 基线${r.navBaseReturnPct}% 多轮动${r.navMultiReturnPct}%`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex h-3 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+              {rows.map((r) => {
+                const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '空仓';
+                return (
+                  <div
+                    key={`stock-${r.date}`}
+                    className={cn('h-full flex-1', stockColor[sm] ?? 'bg-gray-300')}
+                    title={`${r.date} 股票:${sm} ${r.deployedPct}% ${((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',')}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
+              <span>上：套筒（金/油/纳指/债/REPO）</span>
+              <span>下：股票（A股红/HK蓝/空仓灰）</span>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
             {Object.entries(dist).map(([k, v]) => (
@@ -600,7 +618,7 @@ function TimelineCard() {
                 </span>
               ))}
             </span>
-            <span className="ml-auto text-[10px] text-[var(--k-muted)]">REPO=逆回购GC001 · 金/油/纳指/债10= Nasdaq-first 轮动 · 多轮动NAV=股票+套筒复利</span>
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">REPO=逆回购 · 多轮动NAV=股票+套筒复利</span>
           </div>
           <div className="max-h-[220px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
