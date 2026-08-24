@@ -30,21 +30,16 @@ from data_sync_service.db.paper_trading import (  # noqa: E402
     insert_paper_trade,
     list_paper_trades,
 )
-from data_sync_service.service.multi_asset_sleeve import build_multi_asset_sleeve  # noqa: E402
+from data_sync_service.service.multi_asset_sleeve import CANDIDATES, build_multi_asset_sleeve  # noqa: E402
 from data_sync_service.service.portfolio_health import _health_block  # noqa: E402
-from data_sync_service.service.third_asset_sleeve import (  # noqa: E402
-    ACTION_BUY,
-    ACTION_SELL_TO_A_SHARE,
-    ACTION_SELL_TO_REPO,
-    THIRD_ASSET_SYMBOL,
-    build_third_asset_sleeve_for_paper,
-)
+
+CANDIDATE_SYMBOLS = {c["symbol"] for c in CANDIDATES}
 
 
 def _open_sleeve_legs() -> list[dict[str, Any]]:
     return [
         t for t in list_paper_trades(status="open")
-        if str(t.get("symbol") or "").upper() == THIRD_ASSET_SYMBOL
+        if str(t.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
     ]
 
 
@@ -73,99 +68,41 @@ def _build_multi_for_paper(day: str) -> dict[str, Any]:
 
 
 def apply_sleeve_to_paper(*, day: str) -> dict[str, Any]:
-    """Run the sleeve decision against the paper book for ``day``.
+    """Run the multi-asset sleeve (GOLD/OIL/NASDAQ/BOND 60/200+5d) against the paper book.
 
-    Prefers multi-asset rotation (Nasdaq-first) when active; falls back to
-    single-NASDAQ T6. Returns the action taken + what changed. Safe to run repeatedly.
+    Single-asset T6 fallback removed 2026-08-24 (multi validated tri-window).
     """
-    # Try multi-asset first (validated OOS2+19/train+17/valid+14)
-    try:
-        multi = _build_multi_for_paper(day)
-        if multi.get("active") and multi.get("action") in ("BUY", "ROTATE", "SELL_TO_A_SHARE", "SELL_TO_REPO"):
-            action = multi.get("action")
-            pick = multi.get("pick") or {}
-            price = pick.get("close")
-            idle = float(multi.get("idlePct") or 0.0)
-            # find open multi legs (any candidate)
-            from data_sync_service.service.multi_asset_sleeve import CANDIDATES  # noqa
-
-            cand_syms = {c["symbol"] for c in CANDIDATES}
-            open_multi = [t for t in list_paper_trades(status="open") if str(t.get("symbol") or "").upper() in cand_syms]
-            if action == "BUY" and not open_multi:
-                if price is None:
-                    return {"day": day, "action": action, "changed": False, "reason": "no price"}
-                row = insert_paper_trade(
-                    symbol=pick.get("symbol") or "ETF:513350",
-                    entry_date=day,
-                    side="BUY",
-                    entry_price=float(price),
-                    why_at_entry=f"multi-sleeve: {pick.get('key')} mom60 {pick.get('mom60')}% (Nasdaq-first)",
-                    sleeve_pct=idle,
-                    source=SOURCE_S3,
-                    market="CN",
-                )
-                return {"day": day, "action": action, "changed": bool(row), "reason": "multi opened", "price": price, "symbol": pick.get("symbol")}
-            if action == "ROTATE" and open_multi:
-                # close old, open new
-                for leg in open_multi:
-                    pnl, days = _pnl_for(leg, float(price or 0), day)
-                    close_paper_trade(trade_id=str(leg.get("id")), close_date=day, close_price=float(price or 0), pnl_pct=pnl, holding_days=days, close_reason=CLOSE_REASON_SLEEVE_EXIT)
-                row = insert_paper_trade(symbol=pick.get("symbol") or "ETF:513350", entry_date=day, side="BUY", entry_price=float(price), why_at_entry=f"multi-sleeve rotate to {pick.get('key')}", sleeve_pct=idle, source=SOURCE_S3, market="CN")
-                return {"day": day, "action": action, "changed": True, "reason": "rotated", "price": price}
-            if action in ("SELL_TO_A_SHARE", "SELL_TO_REPO") and open_multi:
-                closed = 0
-                for leg in open_multi:
-                    pnl, days = _pnl_for(leg, float(price or 0), day)
-                    if close_paper_trade(trade_id=str(leg.get("id")), close_date=day, close_price=float(price or 0), pnl_pct=pnl, holding_days=days, close_reason=CLOSE_REASON_SLEEVE_EXIT):
-                        closed += 1
-                return {"day": day, "action": action, "changed": closed > 0, "reason": f"multi closed {closed}", "price": price}
-            # HOLD/DONT_BUY -> no-op but multi was active, suppress single
-            if multi.get("active"):
-                return {"day": day, "action": multi.get("action"), "changed": False, "reason": "multi no-op"}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("multi sleeve paper failed, fallback to single: %s", exc)
-
-    sleeve = build_third_asset_sleeve_for_paper(day=day)
-    action = sleeve.get("action")
-    price = sleeve.get("price")
-    idle = float(sleeve.get("idlePct") or 0.0)
-    open_legs = _open_sleeve_legs()
-
-    if action == ACTION_BUY and not open_legs:
+    multi = _build_multi_for_paper(day)
+    action = multi.get("action")
+    pick = multi.get("pick") or {}
+    price = pick.get("close")
+    idle = float(multi.get("idlePct") or 0.0)
+    open_multi = _open_sleeve_legs()
+    if action == "BUY" and not open_multi:
         if price is None:
             return {"day": day, "action": action, "changed": False, "reason": "no price"}
         row = insert_paper_trade(
-            symbol=THIRD_ASSET_SYMBOL,
+            symbol=pick.get("symbol") or "ETF:513350",
             entry_date=day,
             side="BUY",
             entry_price=float(price),
-            why_at_entry=f"sleeve: idle {idle:.0f}% & above MA200 (T6)",
+            why_at_entry=f"multi-sleeve: {pick.get('key')} mom60 {pick.get('mom60')}% 60/200+5d",
             sleeve_pct=idle,
             source=SOURCE_S3,
             market="CN",
         )
-        return {
-            "day": day, "action": action, "changed": bool(row), "reason": "opened",
-            "price": price, "sleevePct": round(idle, 1),
-        }
-
-    if action in (ACTION_SELL_TO_REPO, ACTION_SELL_TO_A_SHARE) and open_legs:
-        closed = 0
-        for leg in open_legs:
+        return {"day": day, "action": action, "changed": bool(row), "reason": "multi opened", "price": price, "symbol": pick.get("symbol")}
+    if action == "ROTATE" and open_multi:
+        for leg in open_multi:
             pnl, days = _pnl_for(leg, float(price or 0), day)
-            updated = close_paper_trade(
-                trade_id=str(leg.get("id")),
-                close_date=day,
-                close_price=float(price or 0),
-                pnl_pct=pnl,
-                holding_days=days,
-                close_reason=CLOSE_REASON_SLEEVE_EXIT,
-            )
-            if updated:
+            close_paper_trade(trade_id=str(leg.get("id")), close_date=day, close_price=float(price or 0), pnl_pct=pnl, holding_days=days, close_reason=CLOSE_REASON_SLEEVE_EXIT)
+        row = insert_paper_trade(symbol=pick.get("symbol") or "ETF:513350", entry_date=day, side="BUY", entry_price=float(price), why_at_entry=f"multi-sleeve rotate to {pick.get('key')} 5d", sleeve_pct=idle, source=SOURCE_S3, market="CN")
+        return {"day": day, "action": action, "changed": True, "reason": "rotated", "price": price}
+    if action in ("SELL_TO_A_SHARE", "SELL_TO_REPO") and open_multi:
+        closed = 0
+        for leg in open_multi:
+            pnl, days = _pnl_for(leg, float(price or 0), day)
+            if close_paper_trade(trade_id=str(leg.get("id")), close_date=day, close_price=float(price or 0), pnl_pct=pnl, holding_days=days, close_reason=CLOSE_REASON_SLEEVE_EXIT):
                 closed += 1
-        return {
-            "day": day, "action": action, "changed": closed > 0, "reason": f"closed {closed}",
-            "price": price,
-        }
-
-    return {"day": day, "action": action or "NONE", "changed": False, "reason": "no-op"}
+        return {"day": day, "action": action, "changed": closed > 0, "reason": f"multi closed {closed}", "price": price}
+    return {"day": day, "action": action or "NONE", "changed": False, "reason": "multi no-op"}

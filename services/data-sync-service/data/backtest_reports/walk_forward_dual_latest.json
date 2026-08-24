@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-21T16:53:49.702734+00:00",
+  "generatedAt": "2026-08-24T13:34:47.975358+00:00",
   "rules": [
     "R1",
     "R2",
@@ -11,54 +11,154 @@
     "R5CS"
   ],
   "windows": {
-    "valid": {
+    "OOS2": {
       "R1": {
-        "totalNetPnlPct": 126.05339077765566,
-        "maxDrawdownPct": 9.345158427790215,
-        "sharpe": 4.81,
-        "annualPct": 517.5179854953496
+        "totalNetPnlPct": 37.53342042740498,
+        "maxDrawdownPct": 12.672520468650973,
+        "sharpe": 1.79,
+        "annualPct": 36.844890545805306
       },
       "R2": {
-        "totalNetPnlPct": 155.23251243994304,
-        "maxDrawdownPct": 12.630643880014864,
-        "sharpe": 4.87,
-        "annualPct": 709.7282211385495
+        "totalNetPnlPct": 36.89823051600851,
+        "maxDrawdownPct": 12.693268132445295,
+        "sharpe": 1.7,
+        "annualPct": 36.22281082470727
       },
       "R3": {
-        "totalNetPnlPct": 126.05339077765566,
-        "maxDrawdownPct": 9.345158427790215,
-        "sharpe": 4.81,
-        "annualPct": 517.5179854953496
+        "totalNetPnlPct": 37.53342042740498,
+        "maxDrawdownPct": 12.672520468650973,
+        "sharpe": 1.79,
+        "annualPct": 36.844890545805306
       },
       "R4": {
-        "totalNetPnlPct": 142.48020755289193,
-        "maxDrawdownPct": 10.777482422692634,
-        "sharpe": 4.82,
-        "annualPct": 622.1916194346746
+        "totalNetPnlPct": 40.1639049135172,
+        "maxDrawdownPct": 12.89217485703415,
+        "sharpe": 1.86,
+        "annualPct": 39.420603069041384
       },
       "R5A": {
-        "totalNetPnlPct": 155.07862941000664,
-        "maxDrawdownPct": 4.466430539597541,
-        "sharpe": 5.49,
-        "annualPct": 708.6389031900912
+        "totalNetPnlPct": 32.73624560420561,
+        "maxDrawdownPct": 8.462737880335624,
+        "sharpe": 1.57,
+        "annualPct": 32.14559374957307
       },
       "R5B": {
-        "totalNetPnlPct": 161.7645256090289,
-        "maxDrawdownPct": 5.475965332230486,
-        "sharpe": 5.47,
-        "annualPct": 756.7154242100868
+        "totalNetPnlPct": 31.409805803659907,
+        "maxDrawdownPct": 8.462737880335624,
+        "sharpe": 1.52,
+        "annualPct": 30.845749607801665
       },
       "R5C": {
-        "totalNetPnlPct": 235.48422147495808,
-        "maxDrawdownPct": 8.286407530365377,
-        "sharpe": 5.27,
-        "annualPct": 1390.6484108923453
+        "totalNetPnlPct": 35.449203597819825,
+        "maxDrawdownPct": 10.384578565467947,
+        "sharpe": 1.44,
+        "annualPct": 34.80352105373259
       },
       "R5CS": {
-        "totalNetPnlPct": 266.3733471497737,
-        "maxDrawdownPct": 10.909063823659366,
-        "sharpe": 5.3,
-        "annualPct": 1714.5069803824765
+        "totalNetPnlPct": 37.96070074233582,
+        "maxDrawdownPct": 10.37864118404433,
+        "sharpe": 1.51,
+        "annualPct": 37.2633264157163
+      }
+    },
+    "train": {
+      "R1": {
+        "totalNetPnlPct": 18.169994782993882,
+        "maxDrawdownPct": 12.675617737163968,
+        "sharpe": 1.64,
+        "annualPct": 38.55291169949544
+      },
+      "R2": {
+        "totalNetPnlPct": 27.513500707122105,
+        "maxDrawdownPct": 9.397178726400924,
+        "sharpe": 2.35,
+        "annualPct": 60.75496392778439
+      },
+      "R3": {
+        "totalNetPnlPct": 18.169994782993882,
+        "maxDrawdownPct": 12.675617737163968,
+        "sharpe": 1.64,
+        "annualPct": 38.55291169949544
+      },
+      "R4": {
+        "totalNetPnlPct": 21.476985044569318,
+        "maxDrawdownPct": 10.892170386091095,
+        "sharpe": 1.88,
+        "annualPct": 46.22692679368343
+      },
+      "R5A": {
+        "totalNetPnlPct": 50.50150698232474,
+        "maxDrawdownPct": 5.935917870134164,
+        "sharpe": 3.74,
+        "annualPct": 122.20788711984993
+      },
+      "R5B": {
+        "totalNetPnlPct": 52.77493263949027,
+        "maxDrawdownPct": 5.935917870134181,
+        "sharpe": 3.89,
+        "annualPct": 128.81092646128022
+      },
+      "R5C": {
+        "totalNetPnlPct": 68.27512580682284,
+        "maxDrawdownPct": 5.935917870134197,
+        "sharpe": 4.26,
+        "annualPct": 176.34089759201606
+      },
+      "R5CS": {
+        "totalNetPnlPct": 75.22121153257409,
+        "maxDrawdownPct": 7.029553962440089,
+        "sharpe": 3.98,
+        "annualPct": 199.05786748747167
+      }
+    },
+    "valid": {
+      "R1": {
+        "totalNetPnlPct": 45.07604349419532,
+        "maxDrawdownPct": 5.195286761603089,
+        "sharpe": 4.51,
+        "annualPct": 129.45878742718807
+      },
+      "R2": {
+        "totalNetPnlPct": 46.02010437946864,
+        "maxDrawdownPct": 5.4927148293482455,
+        "sharpe": 4.35,
+        "annualPct": 132.80512274144925
+      },
+      "R3": {
+        "totalNetPnlPct": 45.07604349419532,
+        "maxDrawdownPct": 5.195286761603089,
+        "sharpe": 4.51,
+        "annualPct": 129.45878742718807
+      },
+      "R4": {
+        "totalNetPnlPct": 44.55621536881726,
+        "maxDrawdownPct": 5.554404703150572,
+        "sharpe": 4.33,
+        "annualPct": 127.62760646440823
+      },
+      "R5A": {
+        "totalNetPnlPct": 37.87708876693816,
+        "maxDrawdownPct": 1.8966511429792086,
+        "sharpe": 5.48,
+        "annualPct": 104.81714374392226
+      },
+      "R5B": {
+        "totalNetPnlPct": 38.54933146494752,
+        "maxDrawdownPct": 1.8653197881783063,
+        "sharpe": 5.44,
+        "annualPct": 107.05290451119289
+      },
+      "R5C": {
+        "totalNetPnlPct": 49.576358236836946,
+        "maxDrawdownPct": 2.717223066716569,
+        "sharpe": 4.89,
+        "annualPct": 145.6513167263516
+      },
+      "R5CS": {
+        "totalNetPnlPct": 65.34639230474843,
+        "maxDrawdownPct": 10.909063823659393,
+        "sharpe": 4.04,
+        "annualPct": 207.24740394222417
       }
     }
   }

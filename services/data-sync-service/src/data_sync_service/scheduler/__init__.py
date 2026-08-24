@@ -47,6 +47,7 @@ from data_sync_service.scheduler import (
     rolling_oos_job,
     sleeve_paper_job,
     stock_basic_job,
+    timeline_warmup_job,
     trading_brief_job,
     watchlist_automation_job,
     webhook_delivery_job,
@@ -339,6 +340,13 @@ def create_scheduler() -> BackgroundScheduler:
         decision_action_job.run,
         decision_action_job.build_trigger(),
         id=decision_action_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Timeline warmup: past-year single-track (08:20 weekdays) -> file cache for <100ms loads
+    scheduler.add_job(
+        timeline_warmup_job.run,
+        timeline_warmup_job.build_trigger(),
+        id=timeline_warmup_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

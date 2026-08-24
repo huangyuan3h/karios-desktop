@@ -534,6 +534,14 @@ function TimelineCard() {
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
+  const distMarket = rows.reduce<Record<string, number>>((acc, r) => {
+    const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '—';
+    if ((r.pick ?? 'REPO') === 'STOCK') {
+      acc[sm] = (acc[sm] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+  const [showAll, setShowAll] = React.useState(false);
   const last = rows[rows.length - 1];
   const pickColor: Record<string, string> = {
     STOCK: 'bg-red-500',
@@ -542,6 +550,14 @@ function TimelineCard() {
     NASDAQ: 'bg-blue-600',
     BOND10: 'bg-emerald-600',
     REPO: 'bg-zinc-300 dark:bg-zinc-700',
+  };
+  const stockBarColor = (r: (typeof rows)[number]): string => {
+    if ((r.pick ?? 'REPO') !== 'STOCK') return pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300';
+    const m = (r as unknown as { stockMarket?: string }).stockMarket ?? '';
+    if (m === 'A股') return 'bg-red-500';
+    if (m === 'HK') return 'bg-orange-500';
+    if (m === 'A+H') return 'bg-purple-600';
+    return pickColor.STOCK;
   };
   const pickLabel: Record<string, string> = {
     STOCK: '股票',
@@ -581,17 +597,18 @@ function TimelineCard() {
                 const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
                 const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
                 const stkMom = (r as unknown as { stockMom?: number | null }).stockMom;
+                const exits = ((r as unknown as { exits?: string[] }).exits ?? []).join(',');
                 return (
                   <div
                     key={`single-${r.date}`}
-                    className={cn('h-full flex-1', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}
-                    title={`${r.date} 该买:${r.pick ?? 'REPO'}${stkMom != null ? ` 股票mom${stkMom}%` : ''} 持仓:${sm} ${r.deployedPct}% ${syms} 基线${r.navBaseReturnPct}% 单轨${(r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct}%`}
+                    className={cn('h-full flex-1', stockBarColor(r))}
+                    title={`${r.date} 该买:${r.pick ?? 'REPO'}${stkMom != null ? ` 股票mom${stkMom}%` : ''} 持仓:${sm} ${r.deployedPct}% ${syms}${exits ? ` 卖出:${exits}` : ''} 基线${r.navBaseReturnPct}% 单轨${(r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct}%`}
                   />
                 );
               })}
             </div>
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
-              <span>单轨：股票红 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买</span>
+              <span>单轨：A股红 / 港股橙 / A+H紫 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买（红色细分港/A）</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
@@ -604,32 +621,60 @@ function TimelineCard() {
                 </span>
               );
             })}
+            {dist['STOCK'] ? (
+              <>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-red-500" />A股 {distMarket['A股'] ?? 0}天
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-orange-500" />港股 {distMarket['HK'] ?? 0}天
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-purple-600" />A+H {distMarket['A+H'] ?? 0}天
+                </span>
+              </>
+            ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">单轨100% · 哪个mom60强买哪个（站上MA200）· 基线=股票不动时的原S-3</span>
           </div>
-          <div className="max-h-[220px] overflow-auto rounded border border-[var(--k-border)]">
+          <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
               <thead className="sticky top-0 bg-[var(--k-surface)]">
                 <tr className="text-[10px] text-[var(--k-muted)]">
                   <th className="py-1 pr-2 pl-2">日期</th>
                   <th className="py-1 pr-2">该买</th>
-                  <th className="py-1 pr-2">持仓</th>
+                  <th className="py-1 pr-2">持仓(A/H)</th>
+                  <th className="py-1 pr-2">持有</th>
+                  <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
                   <th className="py-1 pr-2">单轨NAV%</th>
                   <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(-30).map((r) => {
+                {(showAll ? rows : rows.slice(-30)).map((r) => {
                   const single = (r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct;
+                  const exits = (r as unknown as { exits?: string[] }).exits ?? [];
+                  const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(' ') || '—';
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
                       <td className="py-1 pr-2">
-                        <span className={cn('rounded px-1 py-px text-[10px] text-white', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}>
+                        <span className={cn('rounded px-1 py-px text-[10px] text-white', stockBarColor(r))}>
                           {r.pick ?? 'REPO'}
                         </span>
                       </td>
-                      <td className="py-1 pr-2 text-[var(--k-muted)]">{(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">
+                        {(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票{' '}
+                        <span className="text-[10px]">
+                          A{(r as unknown as { cnPositions?: number }).cnPositions ?? 0}/H{(r as unknown as { hkPositions?: number }).hkPositions ?? 0}
+                        </span>
+                      </td>
+                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]" title={syms}>
+                        {syms}
+                      </td>
+                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300" title={exits.join(' ')}>
+                        {exits.length ? exits.join(' ') : '—'}
+                      </td>
                       <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
                       <td className={cn('py-1 pr-2', tone(single - r.navBaseReturnPct))}>{(single - r.navBaseReturnPct).toFixed(2)}%</td>
@@ -639,7 +684,14 @@ function TimelineCard() {
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-[var(--k-muted)]">近30日明细 · 单轨100%（股票vs金/油/纳指/债 同池 mom60＞MA200 择强）· 0天也计入分布</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-[var(--k-muted)]">
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 单轨100%（股票vs金/油/纳指/债 同池 mom60＞MA200 择强）· 卖出=前日有今日无（移动止损/固定止损/到期）
+            </p>
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60">
+              {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}
+            </button>
+          </div>
         </div>
       )}
     </div>

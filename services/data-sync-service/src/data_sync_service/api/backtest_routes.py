@@ -32,6 +32,31 @@ from data_sync_service.service.backtest_engine import (
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 _timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
+TIMELINE_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
+TIMELINE_CACHE_TTL_HOURS = 24
+
+def _timeline_file(start: str, end: str) -> Path:
+    safe = f"{start}_{end}.json"
+    return TIMELINE_CACHE_DIR / safe
+
+def _load_timeline_file(start: str, end: str) -> dict[str, Any] | None:
+    p = _timeline_file(start, end)
+    if not p.exists():
+        return None
+    try:
+        import time
+        if time.time() - p.stat().st_mtime > TIMELINE_CACHE_TTL_HOURS * 3600:
+            return None
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+def _save_timeline_file(start: str, end: str, data: dict[str, Any]) -> None:
+    try:
+        TIMELINE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _timeline_file(start, end).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 LATEST_REPORT = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "latest.json"
 
@@ -326,6 +351,11 @@ def backtest_timeline(
     cache_key = (start, end)
     if cache_key in _timeline_cache:
         return _timeline_cache[cache_key]
+    # file cache (warm daily by scheduler 08:20)
+    file_cached = _load_timeline_file(start, end)
+    if file_cached is not None:
+        _timeline_cache[cache_key] = file_cached
+        return file_cached
     # S3 run (scripts/ is not in src, add to path)
     import sys
 
@@ -505,6 +535,31 @@ def backtest_timeline(
                     rets.append(today_c / prev_c - 1)
             if rets:
                 stock_avg_ret_by_day[day] = sum(rets) / len(rets)
+        # build sold map: prev positions - current positions (by ts_code)
+        sold_by_day: dict[str, list[str]] = {}
+        prev_syms: set[str] = set()
+        prev_map: dict[str, str] = {}
+        for day in data.calendar:
+            cur_snap = snap_by_day.get(day)
+            cur_syms = {str(p.get("ts_code") or p.get("symbol") or "") for p in (cur_snap.get("positions") or []) if cur_snap}
+            cur_syms = {s for s in cur_syms if s}
+            sold = sorted(prev_syms - cur_syms)
+            if sold:
+                # map to display symbol (try symbol field first)
+                sold_labels = []
+                for ts in sold:
+                    # find name from prev_map
+                    sold_labels.append(prev_map.get(ts, ts))
+                sold_by_day[day] = sold_labels
+            # update
+            prev_syms = cur_syms
+            prev_map = {}
+            if cur_snap:
+                for p in cur_snap.get("positions") or []:
+                    ts = str(p.get("ts_code") or p.get("symbol") or "")
+                    sym = str(p.get("symbol") or ts)
+                    if ts:
+                        prev_map[ts] = sym
         for day in data.calendar:
             snap = snap_by_day.get(day)
             deployed_ret = 0.0
@@ -575,6 +630,8 @@ def backtest_timeline(
                     "hkPositions": hk_cnt,
                     "stockMarket": stock_market,
                     "stockSymbols": stock_syms,
+                    "exits": sold_by_day.get(day, []),
+                    "exitsCount": len(sold_by_day.get(day, [])),
                     "pick": pick_key,
                     "pickTs": pick_ts,
                     "stockMom": round(stock_mom_by_day.get(day, 0) * 100, 2) if day in stock_mom_by_day else None,
@@ -589,6 +646,7 @@ def backtest_timeline(
             )
         result = {"ok": True, "start": start, "end": end, "rows": rows}
         _timeline_cache[cache_key] = result
+        _save_timeline_file(start, end, result)
         return result
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc

@@ -17,7 +17,7 @@ function holdingKey(sym: string): string {
   const s = sym.toUpperCase();
   if (s.includes('518880') || s.includes('518800')) return 'GOLD';
   if (s.includes('513350') || s.includes('159518') || s.includes('561570')) return 'OIL';
-  if (s.includes('513100') || s.includes('513500')) return 'NASDAQ';
+  if (s.includes('513110') || s.includes('513100') || s.includes('513500')) return 'NASDAQ';
   if (s.includes('511260') || s.includes('511010')) return 'BOND10';
   return 'OTHER';
 }

@@ -817,6 +817,13 @@ def build_portfolio_health(
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health multi-asset sleeve failed: %s", exc)
         multi_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
+    try:
+        from data_sync_service.service.multi_asset_sleeve import build_pulse_hints
+
+        pulse_hints = build_pulse_hints(day=day)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health pulse hints failed: %s", exc)
+        pulse_hints = []
     # Multi-asset holdings (GOLD/OIL/BOND) separate from S-3
     from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol as _is_multi
 
@@ -843,6 +850,7 @@ def build_portfolio_health(
         "thirdAssetHolding": third_asset_holding,
         "multiAssetSleeve": multi_asset_sleeve,
         "multiAssetHoldings": multi_holdings,
+        "pulseHints": pulse_hints,
     }
 
 

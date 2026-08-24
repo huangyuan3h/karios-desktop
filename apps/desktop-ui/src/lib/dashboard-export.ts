@@ -482,6 +482,40 @@ export function buildSentimentMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
+async function fetchBacktestOverviewDash(): Promise<{ cnBaseline?: { tag?: string; windows?: Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }> }; longWindowCN?: { window?: string; totalNetPnlPct?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number } } | null> {
+  try {
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/api/backtest/overview`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return (await res.json()) as never;
+  } catch {
+    return null;
+  }
+}
+function buildStrategyAppendixDash(overview: Awaited<ReturnType<typeof fetchBacktestOverviewDash>>): string {
+  const lines: string[] = [];
+  lines.push('## 策略体系（固化口径 · 可复现）');
+  lines.push('- S-3 定案（`docs/modules/strategy-params.md §1` · `db/paper_trading.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong ATR×2） · 持有60天 · 不止盈 · 恐慌冷却3天 · 回撤熔断-25%（CN） · 单票10%×10=100% mp10 · 创业板300排除');
+  lines.push('- 港股 S-3（HK线）：regime闸 · RS前40% · trail-12% · 其余同A股；A/H独立');
+  if (overview?.cnBaseline?.windows) {
+    const w = overview.cnBaseline.windows as Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }>;
+    const fmt = (k: string) => {
+      const v = w[k];
+      if (!v) return `${k} —`;
+      return `${k} ${v.totalNetPnlPct?.toFixed(1) ?? '—'}% / DD${v.maxDrawdownPct?.toFixed(1) ?? '—'}% / 胜率${v.winRate != null ? (v.winRate * 100).toFixed(1) + '%' : '—'} / ${v.trades ?? '—'}笔`;
+    };
+    lines.push(`- 三窗（OOS2/train/valid · 100%现金≤1.0+0.7亿流动性 · ${overview.cnBaseline.tag ?? ''}）：${fmt('OOS2')} · ${fmt('train')} · ${fmt('valid')}`);
+  }
+  if (overview?.longWindowCN) {
+    const l = overview.longWindowCN;
+    lines.push(`- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔`);
+  }
+  lines.push('- 单轨100%择强（`GET /api/backtest/timeline` 一年）：持仓优先股票·空仓时金518880/油513350/纳指513100/债511260 按mom60>MA200择强·空档GC001');
+  lines.push('- 多资产 sleeve：GOLD 518880·OIL 513350·NASDAQ 513100·BOND10 511260 · 多头轮动·可1.4×杠杆');
+  lines.push('- 形态：strong_scoop_exhaustion 勺型耗尽顶 89-92%（ret60>0.4+放量）· 方向判别层');
+  lines.push('');
+  return lines.join('\n');
+}
+
 export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): string {
   const summary2: any = s ?? {};
   const macroSnapshot: any = summary2?.macroSnapshot ?? {};
@@ -954,7 +988,7 @@ export async function buildDashboardCopyAllMarkdown(
   const mainlineAllow = buildMainlineAllowSet(s);
   const sectorOutflowBlock = isSectorOutflowBlock(s);
   const tradingTime = isShanghaiTradingTime();
-  const [watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
+  const [watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd, strategyMd] =
     await Promise.all([
       buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock, forceFresh),
       buildCompactCatalystMarkdown(s),
@@ -995,6 +1029,9 @@ export async function buildDashboardCopyAllMarkdown(
       buildSinceLastCopyMarkdown().catch(() =>
         formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
       ),
+      fetchBacktestOverviewDash()
+        .then((ov) => buildStrategyAppendixDash(ov))
+        .catch(() => ''),
     ]);
   const autoQaMd = buildAutoQaMarkdown(
     await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20),
@@ -1012,6 +1049,11 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
   lines.push('');
+  // 策略体系置顶：外部 agent 第一眼即知回测口径与择强规则
+  if (strategyMd.trim()) {
+    lines.push(strategyMd.trim());
+    lines.push('');
+  }
   // TIP-013: per-source freshness header (stale sources flagged for the agent).
   try {
     const health = await fetchDataSourcesHealth();
@@ -1060,6 +1102,9 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push(execBundle.sourceStatsMd.trim());
     lines.push('');
   }
+  // 持仓与执行是 agent 最关心的“现在该做什么”，紧跟 Gate/Attention 之后
+  lines.push(watchlistMd.trim());
+  lines.push('');
   if (!compact) {
     lines.push(buildIndustryMarkdown(s, '##').trim());
     lines.push('');
@@ -1124,8 +1169,6 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push('');
   }
   lines.push(catalystMd.trim());
-  lines.push('');
-  lines.push(watchlistMd.trim());
   lines.push('');
   return lines.join('\n').trim() + '\n';
 }

@@ -959,11 +959,11 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - **US10Y低波 (<20%分位) → 金强于纳指 +0.94% win61.8% n123** / 高波 `-1.86%` — **波动率** 是金/纳指天平（`US10Y 20d±5%` 对 `nasdaq-oil` 无区分，`gold-nasdaq -0.78% win47` 失效）
 
 **待系统收集（不同角度，各 ≥50 样本才采信，记录 `mean/median/win/n`，>70% 才标可杠杆）：**
-- [ ] **R1 利率角度**：`CN10Y-US10Y 利差`、`US10Y 20d chg ±5%`、`2Y-10Y 倒挂` 分层 → 金/油/纳指/债 10日 spread（已验 `US10Y up` 金弱，`down` 纳指强于油 `+2.14% win67`，需补 `CN10Y` 利差与 `2Y` 短端）
-- [ ] **R2 动量/均值回归角度**：`nasdaq 60d mom <-5%`、`gold 60d mom`、`oil 60d mom` 交叉 → `oil-gold`/`nasdaq-oil`（已验弱区分，需改 `20d mom` 与 `MA20>60` 趋势分层）
-- [ ] **R3 波动率角度**：`US10Y vol20`、`VIX`（待接）、`油vol` 80%/20% 分位 → `gold-nasdaq`（已验低波金优，需补 `VIX` 与 `油vol` 双维）
-- [ ] **R4 商品脉冲角度**：`油RSI 30/70` 已稳，扩 `RSI 75/80` 看 `win>80%` 是否可 `3×`，`金RSI` 对称验证
-- [ ] **R5 跨资产轮动角度**：`mom60 rank` 已用于 sleeve，验证 **“纳指优先 top2”** 外 `risk-adj mom (mom/vol)` 是否更稳（初验 `risk -4.5` 不如纯 `mom`）
+- [x] **R1 利率角度**：`CN10Y-US10Y 利差`、`US10Y 20d chg ±5%`、`2Y-10Y 倒挂` 分层 → 金/油/纳指/债 10日 spread — **done 2026-08-24**：`US10Y down<-0.2 n111 金-油+1.76% win70.3%` 最强但 `金-纳指-0.03%`，`US-CN spread` 无天平 → 仅 `金/油` 不 `金/纳指`，vs sleeve≈0（`docs/backtests/gold-oil-nasdaq-balance.md:14`）
+- [x] **R2 动量/均值回归角度**：`nasdaq 60d mom <-5%`、`gold 60d mom`、`oil 60d mom` 交叉 → `oil-gold`/`nasdaq-oil` — **done 2026-08-24**：`nas mom20<-5% n63 金-油+4.66% win71.4%` 为 `R2` 最强（`60d` 无区分 `0.46%`），`MA20>60` 无区分 `0.45%`；`金-纳指+0.59%` vs sleeve≈0
+- [x] **R3 波动率角度**：`US10Y vol20`、`VIX`（待接）、`油vol` 80%/20% 分位 → `gold-nasdaq` — **done 2026-08-24**：`oil vol20低 n129 金-纳指+2.46% win65.1%` 唯一 `>2%`，`US10Y vol/VIX` `win<60%` 弃用
+- [x] **R4 商品脉冲角度**：`油RSI 30/70` 已稳，扩 `RSI 75/80` 看 `win>80%` 是否可 `3×`，`金RSI` 对称验证 — **done 2026-08-24**：`油RSI>80 n35 +4.00% win82.9%` 首个 `>80%`，但 `金-纳指+2.13%全期/-1.06%近期`，vs sleeve `past_year -6pt`，不进杠杆
+- [x] **R5 跨资产轮动角度**：`mom60 rank` 已用于 sleeve，验证 **“纳指优先 top2”** 外 `risk-adj mom (mom/vol)` 是否更稳 — **done 2026-08-24**：`risk-adj -4.5%` 不如纯 `mom60`，维持 `mom60` 择优
 
 **执行**：每周跑 `scripts/commodity_pattern_scan.py` 同款 `ahead 10d spread` 分层表，不写新策略代码，只 **加一行到 `backtests/gold-oil-nasdaq-balance.md`**（`条件→n→win→mean→置信→可杠杆倍数`），`win>70% n>50` 才进 `paper leverage` 观察（`position_pct 10%→20%` 如 `strategy-params.md:25`）。
 
