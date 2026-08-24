@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import { loadWatchlist, saveWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
-import { ThirdAssetHealthBlock } from './ThirdAssetHealthBlock';
+import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
 
 function fmtPct(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(v)) return '—';
@@ -720,7 +720,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
           remindedSymbols={remindedSymbols}
           boughtSymbols={boughtSymbols}
         />
-        <ThirdAssetHealthBlock holding={data?.thirdAssetHolding} onOpen={onOpenStock} />
+        <MultiAssetHealthBlock holdings={data?.multiAssetHoldings} sleeve={data?.multiAssetSleeve} onOpen={onOpenStock} />
       </div>
 
       {reminderTarget && (

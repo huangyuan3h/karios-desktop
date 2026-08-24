@@ -470,9 +470,10 @@ def _build_holdings_block(
             # T6 (2026-08-20): the NASDAQ-100 sleeve ETF is NOT an A-share
             # holding — it is a separate "third asset / US" region tracked by
             # the sleeve rules (200d MA), not the CN S-3 exit rules.
+            from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol
             from data_sync_service.service.third_asset_sleeve import is_third_asset_symbol
 
-            if market == "CN" and is_third_asset_symbol(sym):
+            if market == "CN" and (is_third_asset_symbol(sym) or is_multi_asset_symbol(sym)):
                 continue
             payload = r.get("payload") or {}
             pct = payload.get("positionPct", r.get("positionPct"))
@@ -816,6 +817,24 @@ def build_portfolio_health(
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health multi-asset sleeve failed: %s", exc)
         multi_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
+    # Multi-asset holdings (GOLD/OIL/BOND) separate from S-3
+    from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol as _is_multi
+
+    multi_holdings = []
+    for h in raw_holdings:
+        sym = str(h.get("symbol") or "").upper()
+        if _is_multi(sym):
+            # enrich with market data
+            ts = h.get("ts_code") or sym.replace("ETF:", "") + (".SH" if sym.startswith("ETF:5") else ".SZ")
+            md = {}
+            try:
+                from data_sync_service.service.multi_asset_sleeve import _etf_market_data
+
+                md = _etf_market_data(str(ts))
+            except Exception:
+                md = {}
+            holding = {**h, "marketData": md, "isMulti": True}
+            multi_holdings.append(holding)
     return {
         "tradeDate": day,
         **cn,
@@ -823,6 +842,7 @@ def build_portfolio_health(
         "thirdAssetSleeve": third_asset_sleeve,
         "thirdAssetHolding": third_asset_holding,
         "multiAssetSleeve": multi_asset_sleeve,
+        "multiAssetHoldings": multi_holdings,
     }
 
 

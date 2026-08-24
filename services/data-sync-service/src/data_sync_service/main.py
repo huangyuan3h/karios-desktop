@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-fo
 from .api.alpha_radar_routes import router as alpha_radar_router
 from .api.backtest_routes import router as backtest_router
 from .api.broker_routes import router as broker_router
+from .api.commodity_routes import router as commodity_router
 from .api.dashboard_routes import router as dashboard_router
 from .api.decision_routes import router as decision_router
 
@@ -40,7 +41,6 @@ from .api.v1_explain_routes import router as v1_explain_router
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
 from .api.webhook_routes import router as webhook_router
-from .api.commodity_routes import router as commodity_router
 from .scheduler import create_scheduler
 
 

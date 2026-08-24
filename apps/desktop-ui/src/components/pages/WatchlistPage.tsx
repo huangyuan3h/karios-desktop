@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { TodayActionCard } from '@/components/watchlist/TodayActionCard';
 import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
@@ -344,8 +345,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
-        <BehaviorAuditBanner />
-        <ThirdAssetSleeveBanner />
+        <TodayActionCard />
+        <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
+          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">展开旧提醒（行为对账 / 轮动 / Gate 详情）</summary>
+          <div className="mt-3">
+            <BehaviorAuditBanner />
+            <ThirdAssetSleeveBanner />
+          </div>
+        </details>
         {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}

@@ -177,6 +177,16 @@ export interface PortfolioHealthResponse {
     holding?: boolean;
     note?: string;
   } | null;
+  multiAssetHoldings?: Array<{
+    symbol: string;
+    name?: string | null;
+    positionPct?: number;
+    costPrice?: number | null;
+    entryDate?: string | null;
+    ts_code?: string | null;
+    isMulti?: boolean;
+    marketData?: { close?: number; ma200?: number; above?: boolean; ok?: boolean; n?: number } | null;
+  }> | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

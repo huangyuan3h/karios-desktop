@@ -32,6 +32,26 @@ CANDIDATES = [
     {"key": "BOND10", "ts": "511260.SH", "symbol": "ETF:511260", "name": "10年国债ETF"},
 ]
 
+MULTI_ASSET_SYMBOLS = {c["symbol"] for c in CANDIDATES}
+MULTI_ASSET_TS_CODES = {c["ts"] for c in CANDIDATES}
+
+def is_multi_asset_symbol(symbol: str) -> bool:
+    sym = str(symbol or "").upper()
+    # also treat ts_code with .SH/.SZ as symbol
+    return sym in MULTI_ASSET_SYMBOLS or sym in MULTI_ASSET_TS_CODES or sym.replace(".SH","").replace(".SZ","") in {s.replace("ETF:","") for s in MULTI_ASSET_SYMBOLS}
+
+def _etf_market_data(ts: str) -> dict[str, Any]:
+    """Fetch ETF bars and compute close/MA200 for holding display."""
+    try:
+        closes = _closes(ts, 260)
+        if len(closes) < MA_WINDOW:
+            return {"ok": False, "n": len(closes)}
+        ma200 = sum(closes[-MA_WINDOW:]) / MA_WINDOW
+        close = closes[-1]
+        return {"ok": True, "close": close, "ma200": ma200, "above": close >= ma200}
+    except Exception:
+        return {"ok": False, "n": 0}
+
 LOOKBACK = 60
 MA_WINDOW = 200
 COST = 0.0005

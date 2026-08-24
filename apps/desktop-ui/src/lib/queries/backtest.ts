@@ -393,12 +393,19 @@ export type TimelineRow = {
   deployedPct: number;
   idlePct: number;
   positions: number;
+  cnPositions: number;
+  hkPositions: number;
+  stockMarket: string;
+  stockSymbols: string[];
+  stockMom: number | null;
   pick: string | null;
   pickTs: string | null;
   navBase: number;
   navSleeve: number | null;
+  navSingle: number;
   navMulti: number;
   navBaseReturnPct: number;
+  navSingleReturnPct: number;
   navMultiReturnPct: number;
 };
 

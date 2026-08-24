@@ -521,41 +521,44 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
 
 function TimelineCard() {
   const today = new Date().toISOString().slice(0, 10);
-  const start = '2026-05-01';
+  const start = (() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
   const q = useTimelineQuery(start, today, true);
   const rows = q.data?.rows ?? [];
+  const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = r.pick ?? 'REPO';
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
-  const stockDist = rows.reduce<Record<string, number>>((acc, r) => {
-    const k = (r as unknown as { stockMarket?: string }).stockMarket ?? (r.positions ? 'A股' : '空仓');
-    acc[k] = (acc[k] ?? 0) + 1;
-    return acc;
-  }, {});
   const last = rows[rows.length - 1];
   const pickColor: Record<string, string> = {
+    STOCK: 'bg-red-500',
     GOLD: 'bg-amber-500',
     OIL: 'bg-slate-800 dark:bg-slate-200',
     NASDAQ: 'bg-blue-600',
     BOND10: 'bg-emerald-600',
     REPO: 'bg-zinc-300 dark:bg-zinc-700',
   };
-  const stockColor: Record<string, string> = {
-    'A股': 'bg-red-500',
-    HK: 'bg-blue-500',
-    'A+H': 'bg-purple-500',
-    空仓: 'bg-[var(--k-border)]',
+  const pickLabel: Record<string, string> = {
+    STOCK: '股票',
+    GOLD: '黄金',
+    OIL: '原油',
+    NASDAQ: '纳指',
+    BOND10: '国债',
+    REPO: '逆回购',
   };
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        过去一年 Timeline（每日该买什么 · 总体分布）
+        过去一年 Timeline（单轨 · 哪个强买哪个 · 100%）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {today} · {rows.length} 交易日
-          {last ? ` · 基线 ${last.navBaseReturnPct}% · 多轮动 ${last.navMultiReturnPct}%` : ''}
+          {last ? ` · 基线 ${last.navBaseReturnPct}% · 单轨 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%` : ''}
         </span>
       </div>
       {q.isError ? (
@@ -573,92 +576,70 @@ function TimelineCard() {
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <div className="flex h-3 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+            <div className="flex h-4 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
               {rows.map((r) => {
                 const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
                 const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
+                const stkMom = (r as unknown as { stockMom?: number | null }).stockMom;
                 return (
                   <div
-                    key={`sleeve-${r.date}`}
+                    key={`single-${r.date}`}
                     className={cn('h-full flex-1', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}
-                    title={`${r.date} 套筒:${r.pick ?? 'REPO'} 股票:${sm} ${r.deployedPct}% 持仓${r.positions} ${syms} 基线${r.navBaseReturnPct}% 多轮动${r.navMultiReturnPct}%`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex h-3 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
-              {rows.map((r) => {
-                const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '空仓';
-                return (
-                  <div
-                    key={`stock-${r.date}`}
-                    className={cn('h-full flex-1', stockColor[sm] ?? 'bg-gray-300')}
-                    title={`${r.date} 股票:${sm} ${r.deployedPct}% ${((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',')}`}
+                    title={`${r.date} 该买:${r.pick ?? 'REPO'}${stkMom != null ? ` 股票mom${stkMom}%` : ''} 持仓:${sm} ${r.deployedPct}% ${syms} 基线${r.navBaseReturnPct}% 单轨${(r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct}%`}
                   />
                 );
               })}
             </div>
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
-              <span>上：套筒（金/油/纳指/债/REPO）</span>
-              <span>下：股票（A股红/HK蓝/空仓灰）</span>
+              <span>单轨：股票红 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
-            {Object.entries(dist).map(([k, v]) => (
-              <span key={k} className="flex items-center gap-1">
-                <span className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')} />
-                {k} {v}天 ({((v / rows.length) * 100).toFixed(0)}%)
-              </span>
-            ))}
-            <span className="ml-2 flex items-center gap-1 text-[10px] text-[var(--k-muted)]">
-              {Object.entries(stockDist).map(([k, v]) => (
+            {ALL_PICKS.map((k) => {
+              const v = dist[k] ?? 0;
+              return (
                 <span key={k} className="flex items-center gap-1">
-                  <span className={cn('inline-block size-2 rounded-sm', stockColor[k] ?? 'bg-gray-300')} />
-                  {k} {v}天
+                  <span className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')} />
+                  {pickLabel[k] ?? k} {v}天 ({rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
                 </span>
-              ))}
-            </span>
-            <span className="ml-auto text-[10px] text-[var(--k-muted)]">REPO=逆回购 · 多轮动NAV=股票+套筒复利</span>
+              );
+            })}
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">单轨100% · 哪个mom60强买哪个（站上MA200）· 基线=股票不动时的原S-3</span>
           </div>
           <div className="max-h-[220px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
               <thead className="sticky top-0 bg-[var(--k-surface)]">
                 <tr className="text-[10px] text-[var(--k-muted)]">
                   <th className="py-1 pr-2 pl-2">日期</th>
-                  <th className="py-1 pr-2">股票</th>
-                  <th className="py-1 pr-2">该买套筒</th>
-                  <th className="py-1 pr-2">闲置%</th>
+                  <th className="py-1 pr-2">该买</th>
+                  <th className="py-1 pr-2">持仓</th>
                   <th className="py-1 pr-2">基线NAV%</th>
-                  <th className="py-1 pr-2">多轮动NAV%</th>
+                  <th className="py-1 pr-2">单轨NAV%</th>
                   <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.slice(-30).map((r) => {
-                  const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '';
+                  const single = (r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct;
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
                       <td className="py-1 pr-2">
-                        <span className={cn('rounded px-1 py-px text-[10px]', stockColor[sm] ?? 'bg-gray-100', sm === '空仓' ? 'text-[var(--k-muted)]' : 'text-white')}>
-                          {sm}
-                        </span>{' '}
-                        {r.positions}票
+                        <span className={cn('rounded px-1 py-px text-[10px] text-white', pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300')}>
+                          {r.pick ?? 'REPO'}
+                        </span>
                       </td>
-                      <td className="py-1 pr-2 font-medium">{r.pick ?? 'REPO'}</td>
-                      <td className="py-1 pr-2">{r.idlePct}%</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票</td>
                       <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
-                      <td className={cn('py-1 pr-2 font-semibold', tone(r.navMultiReturnPct))}>{r.navMultiReturnPct.toFixed(2)}%</td>
-                      <td className={cn('py-1 pr-2', tone(r.navMultiReturnPct - r.navBaseReturnPct))}>
-                        {(r.navMultiReturnPct - r.navBaseReturnPct).toFixed(2)}%
-                      </td>
+                      <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
+                      <td className={cn('py-1 pr-2', tone(single - r.navBaseReturnPct))}>{(single - r.navBaseReturnPct).toFixed(2)}%</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-[var(--k-muted)]">近30日明细 · 全量 {rows.length} 日色条可 hover 看日；分布=全年该买资产天数占比，NAV=含闲置套筒的复利（多轮动=纳指优先）。</p>
+          <p className="text-[10px] text-[var(--k-muted)]">近30日明细 · 单轨100%（股票vs金/油/纳指/债 同池 mom60＞MA200 择强）· 0天也计入分布</p>
         </div>
       )}
     </div>
