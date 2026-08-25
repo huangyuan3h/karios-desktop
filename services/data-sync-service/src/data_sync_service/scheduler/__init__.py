@@ -392,19 +392,147 @@ def catchup_missed_eod_chain() -> None:
     ``sync_job_record`` today-row, so the normal scheduled path is untouched.
     Time-of-day guards sit AFTER each cron slot to avoid racing a fire that
     is about to happen (or just happened) normally.
+
+    2026-08-25 extension: startup self-heal for cross-day miss (e.g. process
+    closed 2026-08-24 18:00 before EOD chain → 2026-08-25 10:00 health stale).
+    Calls stock_close_sync pre-close catchup for the latest open date even
+    before 17:35, then heals watchlist/mainline regardless of clock.
     """
     logger = logging.getLogger(__name__)
-    from data_sync_service.db.sync_job_record import get_today_run
+    from data_sync_service.db.sync_job_record import get_last_success, get_today_run
+    from data_sync_service.service.trade_calendar_utils import last_open_date_on_or_before
 
     now = _cst_now()
+    # --- cross-day self-heal (any time on a weekday) ---
+    # If yesterday was an open day but stock_close_sync never landed for it,
+    # run pre-close catchup immediately — sync_close() internally caps end_date
+    # to yesterday before 17:05, so it never races today's unfinished close.
+    try:
+        from data_sync_service.db.trade_calendar import is_trading_day as _is_td2
+
+        _is_today_open2 = _is_td2("SSE", now.date()) is True
+        _before_close2 = now.hour * 60 + now.minute < 17 * 60 + 5
+        if _is_today_open2 and _before_close2:
+            from datetime import timedelta as _td2
+
+            latest_open = last_open_date_on_or_before(now.date() - _td2(days=1), exchange="SSE")
+        else:
+            latest_open = last_open_date_on_or_before(now.date(), exchange="SSE")
+        if latest_open and now.weekday() < 5:
+            last_ok = get_last_success("stock_close_sync")
+            marker = str((last_ok or {}).get("last_ts_code") or "")
+            need_close = False
+            if not last_ok or not last_ok.get("success"):
+                need_close = True
+            elif len(marker) == 8 and marker.isdigit():
+                try:
+                    from datetime import date as _date
+
+                    mdate = _date.fromisoformat(f"{marker[:4]}-{marker[4:6]}-{marker[6:8]}")
+                    if mdate < latest_open:
+                        need_close = True
+                except ValueError:
+                    need_close = True
+            else:
+                need_close = True
+            if need_close:
+                logger.info(
+                    "startup self-heal: stock_close_sync stale (last %s < latest_open %s) — running pre-close catchup",
+                    marker or "none",
+                    latest_open.isoformat(),
+                )
+                try:
+                    close_sync_job.run()
+                except Exception:  # noqa: BLE001
+                    logger.warning("startup self-heal: stock_close_sync catchup failed", exc_info=True)
+    except Exception:  # noqa: BLE001
+        logger.warning("startup self-heal: close check failed", exc_info=True)
+
     if now.weekday() >= 5:
         return
     close_ok = bool((get_today_run("stock_close_sync") or {}).get("success"))
+    # warm close_ok from cross-day heal: if we just caught up latest_open,
+    # todayRun may still be None before close — treat latest_open success as ok
+    if not close_ok:
+        try:
+            latest_open2 = last_open_date_on_or_before(now.date(), exchange="SSE")
+            last_ok2 = get_last_success("stock_close_sync")
+            m2 = str((last_ok2 or {}).get("last_ts_code") or "")
+            if latest_open2 and len(m2) == 8 and m2 == latest_open2.strftime("%Y%m%d"):
+                close_ok = True
+        except Exception:
+            pass
     if not close_ok:
         return
 
     def already(job_type: str) -> bool:
         return get_today_run(job_type) is not None
+
+    # --- cross-day watchlist/mainline heal (any time) ---
+    # Yesterday's scores/mainline should be healed at 10:00 startup, not 17:35.
+    try:
+        from data_sync_service.db.trade_calendar import is_trading_day as _is_td
+
+        _is_today_open = _is_td("SSE", now.date()) is True
+        _before_close = now.hour * 60 + now.minute < 17 * 60 + 5
+        if _is_today_open and _before_close:
+            # today not settled yet — heal through yesterday
+            from datetime import timedelta as _td
+
+            latest_open3 = last_open_date_on_or_before(now.date() - _td(days=1), exchange="SSE")
+        else:
+            latest_open3 = last_open_date_on_or_before(now.date(), exchange="SSE")
+        if latest_open3:
+            ws_ok = get_last_success("watchlist_automation")
+            wsm = str((ws_ok or {}).get("last_ts_code") or "")
+            need_ws = False
+            if not ws_ok or not ws_ok.get("success"):
+                need_ws = True
+            elif len(wsm) == 8 and wsm.isdigit():
+                try:
+                    from datetime import date as _date2
+
+                    if _date2.fromisoformat(f"{wsm[:4]}-{wsm[4:6]}-{wsm[6:8]}") < latest_open3:
+                        need_ws = True
+                except ValueError:
+                    need_ws = True
+            else:
+                # watchlist uses uuid marker on old runs — fall back to date check via sync_at
+                try:
+                    from datetime import datetime as _dt
+
+                    sa = _dt.fromisoformat(str(ws_ok.get("sync_at")))
+                    if sa.astimezone(ZoneInfo("Asia/Shanghai")).date() < latest_open3:
+                        need_ws = True
+                except Exception:
+                    need_ws = True
+            if need_ws:
+                logger.info(
+                    "startup self-heal: watchlist_automation stale (last %s < latest_open %s) — running",
+                    wsm or "none",
+                    latest_open3.isoformat(),
+                )
+                try:
+                    watchlist_automation_job.run()
+                except Exception:  # noqa: BLE001
+                    logger.warning("startup self-heal: watchlist_automation failed", exc_info=True)
+            # mainline follows watchlist; heal if still stale after watchlist
+            cn_ok = get_last_success("cn_industry_post_close_sync")
+            # cn_industry uses no marker — use sync_at date
+            try:
+                from datetime import datetime as _dt2
+
+                cn_date = _dt2.fromisoformat(str(cn_ok.get("sync_at"))).astimezone(ZoneInfo("Asia/Shanghai")).date() if cn_ok and cn_ok.get("sync_at") else None
+                if not cn_ok or not cn_ok.get("success") or not cn_date or cn_date < latest_open3:
+                    logger.info("startup self-heal: cn_industry_post_close_sync stale — running")
+                    try:
+                        cn_industry_post_close_job.run()
+                    except Exception:  # noqa: BLE001
+                        logger.warning("startup self-heal: cn_industry failed", exc_info=True)
+            except Exception:
+                pass
+    except Exception:  # noqa: BLE001
+        logger.warning("startup self-heal: watchlist/mainline check failed", exc_info=True)
 
     # watchlist_automation cron: 17:30 — catch up only after its slot
     # (17:35 avoids racing the normal 17:30 fire when started just before).
