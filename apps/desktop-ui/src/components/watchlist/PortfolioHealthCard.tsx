@@ -386,6 +386,7 @@ function HealthPanel({
   onBuy,
   remindedSymbols,
   boughtSymbols,
+  overall,
 }: {
   title: string;
   tag: string;
@@ -396,12 +397,16 @@ function HealthPanel({
   onBuy: (c: PortfolioCandidate, sizePct: number) => void;
   remindedSymbols: Set<string>;
   boughtSymbols: Set<string>;
+  overall?: PortfolioHealthResponse | null;
 }) {
   const holdings = block?.holdings ?? [];
   const candidates = block?.s3Candidates ?? [];
   const regime = regimeBadge(block?.regime);
   const idSuffix = tag === 'HK' ? '-hk' : '';
   const gateClosed = isMarketGateClosed(block);
+  const overallIdle = overall?.multiAssetSleeve?.idlePct ?? overall?.thirdAssetSleeve?.idlePct ?? 100;
+  const sleevePick = overall?.multiAssetSleeve?.pick?.key ?? 'REPO';
+  const notActionable = overallIdle === 0 && sleevePick !== 'STOCK' && tag !== 'REPO' && candidates.length > 0 && block?.regime !== 'Weak';
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
@@ -494,7 +499,11 @@ function HealthPanel({
           ))}
         </div>
       )}
-      {candidates.length > 0 ? (
+      {notActionable ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          回测有 {candidates.length} 只候选（{tag} {block?.regime}），但单轨择强为 <strong>{sleevePick}</strong> 且闲置 {overallIdle}% → 需先卖 {sleevePick} 腾仓才可买，不主动提示买入
+        </div>
+      ) : candidates.length > 0 ? (
         <BuyList
           candidates={candidates}
           total={block?.s3CandidateTotal}
@@ -708,6 +717,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
           onBuy={handleBuy}
           remindedSymbols={remindedSymbols}
           boughtSymbols={boughtSymbols}
+          overall={data}
         />
         <HealthPanel
           title="港股 S-3（regime 档 · trail -12%）"
@@ -719,6 +729,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
           onBuy={handleBuy}
           remindedSymbols={remindedSymbols}
           boughtSymbols={boughtSymbols}
+          overall={data}
         />
         <MultiAssetHealthBlock holdings={data?.multiAssetHoldings} sleeve={data?.multiAssetSleeve} onOpen={onOpenStock} />
       </div>

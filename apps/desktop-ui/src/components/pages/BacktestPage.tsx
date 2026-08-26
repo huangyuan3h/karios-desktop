@@ -555,8 +555,8 @@ function TimelineCard() {
     if ((r.pick ?? 'REPO') !== 'STOCK') return pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300';
     const m = (r as unknown as { stockMarket?: string }).stockMarket ?? '';
     if (m === 'A股') return 'bg-red-500';
-    if (m === 'HK') return 'bg-orange-500';
-    if (m === 'A+H') return 'bg-purple-600';
+    if (m === 'HK') return 'bg-cyan-600';
+    if (m === 'A+H') return 'bg-fuchsia-600';
     return pickColor.STOCK;
   };
   const pickLabel: Record<string, string> = {
