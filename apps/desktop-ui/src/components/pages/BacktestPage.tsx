@@ -654,7 +654,11 @@ function TimelineCard() {
                 {(showAll ? rows : rows.slice(-30)).map((r) => {
                   const single = (r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct;
                   const exits = (r as unknown as { exits?: string[] }).exits ?? [];
-                  const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(' ') || '—';
+                  const isStock = (r.pick ?? 'REPO') === 'STOCK';
+                  const pickSym = r.pick === 'GOLD' ? '518880' : r.pick === 'OIL' ? '513350' : r.pick === 'NASDAQ' ? '513110' : r.pick === 'BOND10' ? '511260' : r.pick === 'REPO' ? 'GC001' : r.pick ?? 'REPO';
+                  const syms = isStock
+                    ? (((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(' ') || '—')
+                    : `${pickSym} 1票`;
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
@@ -664,10 +668,16 @@ function TimelineCard() {
                         </span>
                       </td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">
-                        {(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票{' '}
-                        <span className="text-[10px]">
-                          A{(r as unknown as { cnPositions?: number }).cnPositions ?? 0}/H{(r as unknown as { hkPositions?: number }).hkPositions ?? 0}
-                        </span>
+                        {isStock ? (
+                          <>
+                            {(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票{' '}
+                            <span className="text-[10px]">
+                              A{(r as unknown as { cnPositions?: number }).cnPositions ?? 0}/H{(r as unknown as { hkPositions?: number }).hkPositions ?? 0}
+                            </span>
+                          </>
+                        ) : (
+                          <>{pickSym} 1票</>
+                        )}
                       </td>
                       <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]" title={syms}>
                         {syms}

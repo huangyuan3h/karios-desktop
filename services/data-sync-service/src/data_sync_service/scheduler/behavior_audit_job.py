@@ -44,6 +44,19 @@ def run() -> None:
         return
 
     available = {m: v for m, v in out["markets"].items() if v.get("available")}
+    # Bark 与系统一致：单轨100%择强时，STOCK类 missing 仅当 pick==STOCK 才算问题
+    try:
+        from data_sync_service.service.multi_asset_sleeve import _pick as sleeve_pick
+
+        pick = sleeve_pick()
+        is_stock_pick = (pick.get("key") if isinstance(pick, dict) else getattr(pick, "key", None)) == "STOCK"
+        if not is_stock_pick:
+            for m in ("CN", "HK"):
+                if m in available and available[m].get("missingList"):
+                    # suppress STOCK missing when single-track is GOLD/OIL/NASDAQ
+                    available[m]["missingList"] = []
+    except Exception:  # noqa: BLE001
+        pass
     n_extra = sum(len(v.get("extraList") or []) for v in available.values())
     n_missing = sum(len(v.get("missingList") or []) for v in available.values())
     insert_record(
