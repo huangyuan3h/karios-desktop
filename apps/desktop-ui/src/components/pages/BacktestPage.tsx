@@ -5,6 +5,8 @@ import React from 'react';
 import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 import {
@@ -150,6 +152,10 @@ function BaselinePanel({
           <WindowRow key={name} name={name} w={windows[name]} />
         ))}
       </div>
+      <p className="mt-1 text-[10px] leading-tight text-[var(--k-muted)]">
+        收益/夏普/回撤均基于<span className="font-medium">连续净值曲线</span>（每日盯市所有持仓），
+        夏普为真实年化（非平仓日口径）；收益为复利口径。
+      </p>
       {extra}
     </div>
   );
@@ -714,6 +720,7 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
+  const [tab, setTab] = React.useState<'compare' | 'baseline'>('compare');
 
   const runQ = useBacktestRunQuery(submitted, attempt);
   const sensQ = useSensitivityQuery(DEFAULT_PARAMS.start, DEFAULT_PARAMS.end, gridOn);
@@ -732,14 +739,22 @@ export function BacktestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {/* 结论区（定案口径） */}
-      <ConclusionBoard overview={overviewQ.data} />
-      <CoreAuditCard q={coreQ} />
-      <SleeveNavCard q={sleeveQ} />
-      <TimelineCard />
-      <RollingOosCard overview={overviewQ.data} />
-      <ReconStrip reconQ={reconQ} />
-      <PaperVsBacktestCard q={c4Q} />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'compare' | 'baseline')}>
+        <TabsList>
+          <TabsTrigger value="compare">对比</TabsTrigger>
+          <TabsTrigger value="baseline">回测基线</TabsTrigger>
+        </TabsList>
+        <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
+          <CoreAuditCard q={coreQ} />
+          <RecentDailyCompareCard />
+          <TimelineCard />
+          <SleeveNavCard q={sleeveQ} />
+          <PaperVsBacktestCard q={c4Q} />
+          <ReconStrip reconQ={reconQ} />
+        </TabsContent>
+        <TabsContent value="baseline" className="mt-4 flex flex-col gap-4">
+          <ConclusionBoard overview={overviewQ.data} />
+          <RollingOosCard overview={overviewQ.data} />
 
       {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
@@ -1251,6 +1266,8 @@ export function BacktestPage() {
           </div>
         )}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

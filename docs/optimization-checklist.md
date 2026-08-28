@@ -2175,7 +2175,7 @@ alembic HEAD 基线测试同步。
 
 **状态**：[x]（全 23 项 · 零采纳 · 文档 §7 全记录）
 
-**执行**：`backtest-strategy.md` §7 全清单 20 项候选 + 3 基线，每条 `run_walk_forward
+**执行**：`backtest-strategy.md`（已归档至 `archive/modules-legacy/backtest-strategy-legacy.md`）§7 全清单 20 项候选 + 3 基线，每条 `run_walk_forward
 --param` 三窗 + HK 线。结果：拒收 17 · 中性 4 · 采纳 0。
 
 **新增引擎能力（全部默认禁用，live 常量 0）**：

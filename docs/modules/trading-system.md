@@ -3,7 +3,7 @@
 > **目的**：本文件自包含描述当前交易系统的完整逻辑——数据、信号、闸门、仓位、退出、
 > 操作流程与验证证据。**即使系统全部丢失，凭本文 + 数据源即可重建。**
 > 回测引擎实现见 `backtest_engine.py`（OPT-070/071/072/073）；策略演进见
-> `docs/modules/backtest-strategy.md`；作战计划见 `docs/todo.md §19`。
+> `docs/modules/backtest-strategy.md`（2026-08-09 归档，现行参数真值见 `strategy-params.md`）；作战计划见 `docs/todo.md §19`。
 
 ---
 

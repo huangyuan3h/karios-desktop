@@ -45,6 +45,7 @@ stop, gates). Outputs are not a release decision basis — the paper book is.
 from __future__ import annotations
 
 import logging
+import statistics
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
@@ -74,6 +75,7 @@ CLOSE_REASON_TRAILING = "trailing_stop"
 CLOSE_REASON_SWAPPED = "swapped"
 CLOSE_REASON_FLOW_EXIT = "flow_exit"
 CLOSE_REASON_TIME_STOP = "time_stop"  # P17: underwater N days → cut
+CLOSE_REASON_DELISTED = "delisted"  # survivor-bias guard: name delisted → forced exit at last close
 
 GATE_LEVELS = ("none", "regime", "full")
 
@@ -560,6 +562,7 @@ class BacktestData:
             resolved = _resolve_ts_code(u)
             if resolved and resolved[0] == config.market:
                 self.ts_codes.append(resolved[1])
+        self.delist_by_ts: dict[str, str] = _load_delist_dates(set(self.ts_codes))
         self.bars_by_ts: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
         if self.ts_codes:
 
@@ -801,6 +804,76 @@ def _load_scores(start_date: str, end_date: str, market: str) -> dict[str, dict[
             continue
         out.setdefault(d, {})[sym] = score
     return out
+
+
+def _load_delist_dates(ts_codes: set[str]) -> dict[str, str]:
+    """ts_code -> delist_date (ISO) for names that have delisted.
+
+    Survivor-bias guard: a name that is no longer listed must not be traded
+    (and any open position must be force-closed at its last available close).
+    Returns {} when the table is unavailable so the engine fails open.
+    """
+    if not ts_codes:
+        return {}
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts_code, delist_date FROM stock_basic "
+                    "WHERE delist_date IS NOT NULL",
+                )
+                rows = cur.fetchall()
+        out: dict[str, str] = {}
+        for r in rows:
+            ts = str(r[0] or "")
+            if ts in ts_codes:
+                dd = r[1]
+                out[ts] = dd.strftime("%Y-%m-%d") if hasattr(dd, "strftime") else str(dd)
+        return out
+    except Exception:
+        return {}
+
+
+def _last_close_before(data: "BacktestData", ts: str, day: str) -> float | None:
+    """Last close strictly before ``day`` for ``ts`` (for delisted force-close)."""
+    series = data.closes_by_ts.get(ts)
+    if not series:
+        return None
+    res: float | None = None
+    for d, c in series:
+        if str(d) < day:
+            res = c
+        else:
+            break
+    return res
+
+
+def _nav_for_day(
+    positions: dict[str, dict[str, Any]],
+    data: "BacktestData",
+    day: str,
+) -> float:
+    """Mark-to-market of all OPEN sleeves (incl. pyramid adds) at ``day``'s
+    close (raw price ratio). The realised P&L of CLOSED trades is accumulated
+    separately into ``nav_cash`` by the caller, so the full equity curve is
+    ``nav_cash + _nav_for_day(...)``.
+
+    Used for honest Sharpe / MaxDD / CAGR — the previous per-close-day series
+    ignored holding-period MTM and idle days → inflated Sharpe, understated DD.
+    """
+    mtm = 0.0
+    for pos in positions.values():
+        ts = pos["ts_code"]
+        ep = pos.get("entry_price")
+        closes = data.close_by_ts_day.get(ts)
+        cp = closes.get(day) if closes else None
+        ratio = (cp / ep) if (cp and ep and ep > 0) else 1.0
+        mtm += pos["position_pct"] * ratio
+        for a in pos.get("adds_list", []):
+            aep = a.get("entry_price")
+            ratio_a = (cp / aep) if (cp and aep and aep > 0) else 1.0
+            mtm += a["position_pct"] * ratio_a
+    return mtm
 
 
 def _load_regime_by_day(config: BacktestConfig, calendar: list[str]) -> dict[str, str]:
@@ -1468,13 +1541,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     positions: dict[str, dict[str, Any]] = {}  # symbol -> live position state
     closed_trades: list[BacktestTrade] = []
     positions_by_day: list[dict] = []  # end-of-day holding snapshots (2026-08-11)
+    nav_curve: list[float] = []  # daily account NAV (start 1.0) for Sharpe/DD/CAGR
+    nav_cash: float = 1.0  # realised capital (initial units); OPEN sleeves add their MTM on top
+    _rt_cost = round_trip_cost_pct(config.market) * 100.0
+    _cfrac = _rt_cost / 200.0  # half of round-trip commission as entry, half as exit
+    _entry_cost_frac = config.slippage_pct / 100.0 + _cfrac
+    _exit_cost_frac = config.slippage_pct / 100.0 + _cfrac
     gated_blocks: dict[str, int] = defaultdict(int)
     strength_cache: dict[str, float] = {}  # §19.2 D1: day -> strength score
     last_panic_idx = -10 ** 9
     day_index = 0
 
     threshold = config.score_threshold
-    costs_pct = round_trip_cost_pct(config.market) * 100.0
     realized_pnl_window: list[tuple[str, float]] = []  # (close_date, pnl_pct)"""
 
     def _circuit_halted(day: str) -> bool:
@@ -1704,7 +1782,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 slip = config.slippage_pct
                 cost = entry_px * (1 + slip / 100.0)
                 gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
-                net = gross - costs_pct
+                net = gross - _rt_cost
                 realized_pnl_window.append((day, net))
                 closed_trades.append(
                     BacktestTrade(
@@ -1715,7 +1793,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         close_date=day,
                         close_price=round(float(close_px), 4),
                         gross_pnl_pct=round(gross, 4),
-                        costs_pct=round(costs_pct, 4),
+                        costs_pct=round(_rt_cost, 4),
                         pnl_pct=round(net, 4),
                         holding_days=_calendar_days_between(str(pos_w["entry_date"]), day, data.calendar),
                         close_reason=CLOSE_REASON_SWAPPED,
@@ -2224,6 +2302,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 continue
             if sym in swapped_syms:
                 continue
+            delist_d = getattr(data, "delist_by_ts", {}).get(ts)
+            if delist_d is not None and delist_d <= day:
+                gated_blocks["delisted"] += 1
+                continue
             px = entry_price_for(ts, day)
             if px is None or px <= 0:
                 continue
@@ -2255,20 +2337,34 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "atr_pct": atr14_pct_for(ts, day) if config.atr_stop_mult > 0 else 0.0,
                 "entry_env": data.env_by_day.get(day) if config.max_hold_env_shorten > 0 else None,
             }
+            # NAV: deploy the sleeve's capital + pay entry cost up front.
+            nav_cash -= eff_pct * (1.0 + _entry_cost_frac)
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
         for sym in list(positions.keys()):
             pos = positions[sym]
-            closes = data.close_by_ts_day.get(pos["ts_code"])
+            ts_code = pos["ts_code"]
+            delist_d = getattr(data, "delist_by_ts", {}).get(ts_code)
+            delisted_now = delist_d is not None and delist_d <= day
+            closes = data.close_by_ts_day.get(ts_code)
             close_px = closes.get(day) if closes else None
+            force_reason = None
             if close_px is None or close_px <= 0:
-                # No bar today (suspension / weekend noise) — hold, retry next day.
-                continue
+                if delisted_now:
+                    last_close = _last_close_before(data, ts_code, day)
+                    if last_close:
+                        close_px = last_close
+                        force_reason = CLOSE_REASON_DELISTED
+                    else:
+                        continue
+                else:
+                    # No bar today (suspension / weekend noise) — hold, retry.
+                    continue
             entry_px = float(pos["entry_price"])
             slip = config.slippage_pct
             cost = entry_px * (1 + slip / 100.0)
             gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
-            net = gross - costs_pct
+            net = gross - _rt_cost
             holding = _calendar_days_between(str(pos["entry_date"]), day, data.calendar)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
 
@@ -2374,6 +2470,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             break
                     if streak >= config.industry_flow_exit_days:
                         reason = CLOSE_REASON_FLOW_EXIT
+            if reason is None and force_reason is not None:
+                reason = force_reason
             if reason is not None:
                 realized_pnl_window.append((day, net))
                 closed_trades.append(
@@ -2385,7 +2483,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         close_date=day,
                         close_price=round(float(close_px), 4),
                         gross_pnl_pct=round(gross, 4),
-                        costs_pct=round(costs_pct, 4),
+                        costs_pct=round(_rt_cost, 4),
                         pnl_pct=round(net, 4),
                         holding_days=holding,
                         close_reason=reason,
@@ -2398,6 +2496,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     add_entry = float(add["entry_price"])
                     add_cost = add_entry * (1 + slip / 100.0)
                     add_gross = (close_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
+                    # NAV: credit the realised add P&L (exit cost applied).
+                    nav_cash += add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
                     closed_trades.append(
                         BacktestTrade(
                             symbol=sym,
@@ -2407,14 +2507,16 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             close_date=day,
                             close_price=round(float(close_px), 4),
                             gross_pnl_pct=round(add_gross, 4),
-                            costs_pct=round(costs_pct, 4),
-                            pnl_pct=round(add_gross - costs_pct, 4),
+                            costs_pct=round(_rt_cost, 4),
+                            pnl_pct=round(add_gross - _rt_cost, 4),
                             holding_days=_calendar_days_between(str(add["entry_date"]), day, data.calendar),
                             close_reason=reason,
                             score_at_entry=pos.get("score_at_entry"),
                             position_pct=float(add.get("position_pct") or 0.0),
                         )
                     )
+                # NAV: credit the realised main-leg P&L (exit cost applied).
+                nav_cash += pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
                 del positions[sym]
                 continue
 
@@ -2441,6 +2543,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             "position_pct": add_pct,
                         }
                     )
+                    # NAV: deploy the add's capital + entry cost.
+                    nav_cash -= add_pct * (1.0 + _entry_cost_frac)
+
+        # Continuous NAV (mark-to-market of all open sleeves) for honest
+        # Sharpe / MaxDD / CAGR — replaces the old per-close-day proxy.
+        nav_curve.append(nav_cash + _nav_for_day(positions, data, day))
 
         # End-of-day holding snapshot — the anchor for reconciling the real
         # paper/watchlist book against the backtest (2026-08-11). Captured
@@ -2477,7 +2585,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         slip = config.slippage_pct
         cost = entry_px * (1 + slip / 100.0)
         gross = (final_px * (1 - slip / 100.0) - cost) / cost * 100.0
-        net = gross - costs_pct
+        net = gross - _rt_cost
         closed_trades.append(
             BacktestTrade(
                 symbol=sym,
@@ -2487,7 +2595,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 close_date=last_day,
                 close_price=round(float(final_px), 4),
                 gross_pnl_pct=round(gross, 4),
-                costs_pct=round(costs_pct, 4),
+                costs_pct=round(_rt_cost, 4),
                 pnl_pct=round(net, 4),
                 holding_days=_calendar_days_between(str(pos["entry_date"]), last_day, data.calendar),
                 close_reason=CLOSE_REASON_END_OF_WINDOW,
@@ -2508,22 +2616,30 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     close_date=last_day,
                     close_price=round(float(final_px), 4),
                     gross_pnl_pct=round(add_gross, 4),
-                    costs_pct=round(costs_pct, 4),
-                    pnl_pct=round(add_gross - costs_pct, 4),
+                    costs_pct=round(_rt_cost, 4),
+                    pnl_pct=round(add_gross - _rt_cost, 4),
                     holding_days=_calendar_days_between(str(add["entry_date"]), last_day, data.calendar),
                     close_reason=CLOSE_REASON_END_OF_WINDOW,
                     score_at_entry=pos.get("score_at_entry"),
                     position_pct=float(add.get("position_pct") or 0.0),
                 )
             )
+        # NAV: credit the realised window-end P&L (main + add legs).
+        nav_cash += pos["position_pct"] * (final_px / entry_px) * (1.0 - _exit_cost_frac)
+        for add in pos.get("adds_list", []):
+            nav_cash += add["position_pct"] * (final_px / float(add["entry_price"])) * (1.0 - _exit_cost_frac)
         # Must drop the closed position or open_at_end would count it too
         # (it counts only the positions we could not price at window end).
         del positions[sym]
     # Position dict is discarded; open_at_end = count we could not price.
     open_at_end = len(positions)
+    # Final NAV point: all window-end positions are now closed and their
+    # realised P&L credited to nav_cash. Append so the curve ends at the
+    # realised value (otherwise closed-trade P&L would be lost from the curve).
+    nav_curve.append(nav_cash)
 
     return BacktestRun(
-        summary=_summarize(config, data, closed_trades, open_at_end, gated_blocks),
+        summary=_summarize(config, data, closed_trades, open_at_end, gated_blocks, nav_curve),
         trades=closed_trades,
         positions_by_day=positions_by_day,
     )
@@ -2535,6 +2651,7 @@ def _summarize(
     trades: list[BacktestTrade],
     open_at_end: int,
     gated_blocks: dict[str, int] | None = None,
+    nav_curve: list[float] | None = None,
 ) -> BacktestSummary:
     closed = trades
     wins = [t for t in closed if t.pnl_pct > 0]
@@ -2542,24 +2659,6 @@ def _summarize(
     nets = [t.pnl_pct for t in closed]
     grosses = [t.gross_pnl_pct for t in closed]
     costs = [t.costs_pct for t in closed]
-
-    # Max drawdown on the cumulative net-pnl curve (ordered by close date),
-    # scaled by the per-trade position size (a 5% sleeve cannot move the
-    # account by its full pnl_pct).
-    curve: list[tuple[str, float]] = sorted(
-        (t.close_date, t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)))
-        for t in closed
-    )
-    peak = 0.0
-    cum = 0.0
-    max_dd = 0.0
-    for _, pnl in curve:
-        cum += pnl
-        if cum > peak:
-            peak = cum
-        dd = peak - cum
-        if dd > max_dd:
-            max_dd = dd
 
     buckets: dict[str, dict[str, Any]] = {}
     for t in closed:
@@ -2583,6 +2682,36 @@ def _summarize(
         b["avgNet"] = round(b["sumNet"] / b["trades"], 3) if b["trades"] else None
         del b["sumNet"]
 
+    # --- Continuous-NAV metrics (honest Sharpe / MaxDD / CAGR) ---
+    # Anchor at 1.0 (pre-trading capital); the window-end forced close is
+    # already appended to nav_curve by the caller, so the last point is the
+    # realised NAV after all exits.
+    nav_full = [1.0] + (nav_curve or [1.0])
+    nav_start = 1.0
+    nav_end = nav_full[-1]
+    daily_rets: list[float] = []
+    for i in range(1, len(nav_full)):
+        prev = nav_full[i - 1]
+        if prev > 0:
+            daily_rets.append(nav_full[i] / prev - 1.0)
+    if daily_rets:
+        mean_r = statistics.mean(daily_rets)
+        std_r = statistics.stdev(daily_rets) if len(daily_rets) > 1 else 0.0
+        sharpe_val = round(mean_r / std_r * (252 ** 0.5), 2) if std_r > 0 else None
+        n_days = len(nav_curve) - 1
+        cagr = (nav_end ** (252.0 / n_days) - 1.0) if n_days > 0 and nav_end > 0 else 0.0
+    else:
+        sharpe_val = None
+        cagr = 0.0
+    nav_peak = nav_curve[0] if nav_curve else 1.0
+    nav_max_dd = 0.0
+    for v in nav_curve:
+        if v > nav_peak:
+            nav_peak = v
+        dd = nav_peak - v
+        if dd > nav_max_dd:
+            nav_max_dd = dd
+
     return BacktestSummary(
         config=asdict(config),
         calendar_days=len(data.calendar),
@@ -2595,23 +2724,12 @@ def _summarize(
         avg_net_pnl_pct=round(sum(nets) / len(nets), 3) if nets else None,
         avg_gross_pnl_pct=round(sum(grosses) / len(grosses), 3) if grosses else None,
         avg_costs_pct=round(sum(costs) / len(costs), 3) if costs else None,
-        max_drawdown_pct=round(max_dd, 3),
-        total_net_pnl_pct=round(
-            sum(t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)) for t in closed),
-            3,
-        )
-        if closed
-        else 0.0,
-        annual_net_pnl_pct=round(
-            sum(t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)) for t in closed)
-            / _window_years(config),
-            3,
-        )
-        if closed
-        else 0.0,
+        max_drawdown_pct=round(nav_max_dd * 100.0, 3),
+        total_net_pnl_pct=round((nav_end / nav_start - 1.0) * 100.0, 3) if nav_curve else 0.0,
+        annual_net_pnl_pct=round(cagr * 100.0, 3),
         avg_win_pct=round(sum(t.pnl_pct for t in wins) / len(wins), 3) if wins else None,
         avg_loss_pct=round(sum(t.pnl_pct for t in losses) / len(losses), 3) if losses else None,
-        sharpe=_sharpe_from_closes(closed, config),
+        sharpe=sharpe_val,
         excess_vs_best_benchmark_pct=0.0,
         best_benchmark="",
         by_score_bucket=buckets,

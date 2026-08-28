@@ -900,10 +900,11 @@ def test_summary_total_net_pnl() -> None:
         BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", score_threshold=85.0),
         data=_data(calendar, scores, prices),
     )
-    # total_net_pnl_pct is scaled by the per-trade position size (5% default)
-    assert run.summary.total_net_pnl_pct == pytest.approx(
-        ((10.0 - 0.3) + (-10.0 - 0.3)) * 0.05
-    )
+    # total_net_pnl_pct is the continuous-NAV compounded return, cost-aware and
+    # consistent with the realised per-trade P&L. For small per-trade moves it
+    # equals the position-weighted sum of per-trade nets.
+    expected = sum(t.pnl_pct * float(getattr(t, "position_pct", 0.05)) for t in run.trades)
+    assert run.summary.total_net_pnl_pct == pytest.approx(expected, abs=1e-3)
 
 def test_rs_rank_filter_blocks_weak_strength() -> None:
     """rs_rank_min keeps only whole-market top-X percentile symbols."""
