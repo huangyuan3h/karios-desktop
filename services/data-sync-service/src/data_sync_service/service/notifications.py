@@ -25,6 +25,7 @@ REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports"
 # Which jobs matter to the user's trading day (intraday + post-close chain).
 TRADING_JOB_TYPES = {
     "close_sync",
+    "stock_close_sync",
     "watchlist_automation",
     "paper_s3_intake_CN",
     "paper_s3_intake_HK",

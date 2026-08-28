@@ -92,6 +92,11 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
             ⚠ 盘中预警
           </span>
         )}
+        {(h as unknown as { nearStop?: boolean; nearStopLabel?: string; nearStopDistancePct?: number }).nearStop && (
+          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+            ⚠ 临近{(h as unknown as { nearStopLabel?: string }).nearStopLabel} { (h as unknown as { nearStopDistancePct?: number }).nearStopDistancePct}% · 需更新条件单
+          </span>
+        )}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
         <span>止损线 {h.stopLossLine ?? '—'}</span>
@@ -416,6 +421,19 @@ function HealthPanel({
           <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-bold text-red-600 dark:text-red-400">
             闸门关闭 · 今日不买
           </span>
+        )}
+        {holdings.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const lines = holdings.map((h) => `${h.symbol} 止损${h.stopLossLine} 移动${h.trailingLine} 到期${h.expireDate} ${h.action === 'EXIT' ? '需卖' : '持有'}`).join('\n');
+              void navigator.clipboard.writeText(lines);
+            }}
+            className="ml-1 rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+            title="复制条件单清单到剪贴板（券商固定价单）"
+          >
+            复制条件单
+          </button>
         )}
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {block?.tradeDate ?? '—'}

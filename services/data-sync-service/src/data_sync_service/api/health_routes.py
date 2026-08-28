@@ -264,6 +264,21 @@ def job_failures_endpoint(hours: int = 24) -> dict[str, Any]:
     return recent_job_failures(hours=hours)
 
 
+@router.get("/system-events")
+def system_events_endpoint(limit: int = 100, include_resolved: bool = False) -> dict[str, Any]:
+    from data_sync_service.db.system_events import list_events
+
+    return {"ok": True, "events": list_events(limit=limit, include_resolved=include_resolved)}
+
+
+@router.post("/system-events/{event_id}/resolve")
+def system_events_resolve(event_id: int) -> dict[str, Any]:
+    from data_sync_service.db.system_events import resolve_event
+
+    ok = resolve_event(event_id)
+    return {"ok": ok}
+
+
 @router.get("/datasources")
 def datasources_endpoint() -> dict[str, Any]:
     """Per-source data freshness for Copy All header (TIP-013)."""

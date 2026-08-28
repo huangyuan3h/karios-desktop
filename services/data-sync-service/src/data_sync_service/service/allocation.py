@@ -161,3 +161,49 @@ def week_weights(day: str) -> dict[str, Any]:
     if row is None:
         return decide_week(week_start=wk, as_of_date=day)
     return {"weekStart": wk, "decision": row}
+
+
+# ---------------------------------------------------------------------------
+# R5CS: selected market internal idle eats sleeve (B-S1, 2026-08-28)
+# When CN or HK is tradable, the idle inside the selected market (1 - holdings/10)
+# is offered to the multi-asset sleeve if it is above MA200, else GC001.
+# Validated in run_walk_forward_dual R5CS: +10.8/+17.0/+30.9pt vs R5C.
+# ---------------------------------------------------------------------------
+
+
+def weights_r5cs(
+    cn_regime: str | None,
+    hk_regime: str | None,
+    cn_holdings: int = 0,
+    hk_holdings: int = 0,
+    max_positions: int = 10,
+    etf_above_ma200: bool | None = None,
+) -> tuple[float, float, float]:
+    """R5CS: (w_cn, w_hk, w_etf) with internal idle to sleeve."""
+    w_cn, w_hk = weights_from_regimes(cn_regime, hk_regime)
+    # both weak -> same as before: all to sleeve
+    if w_cn == 0 and w_hk == 0:
+        return weights_with_sleeve_from_regimes(cn_regime, hk_regime, etf_above_ma200=etf_above_ma200)
+    # sleeve availability
+    if etf_above_ma200 is None:
+        try:
+            from data_sync_service.service.multi_asset_sleeve import _pick
+
+            pick = _pick()
+            etf_above = pick is not None and bool(pick.get("above_ma200"))
+        except Exception:
+            etf_above = False
+    else:
+        etf_above = bool(etf_above_ma200)
+    if not etf_above:
+        return (w_cn, w_hk, 0.0)
+    # internal idle
+    if w_cn > 0:
+        used = min(1.0, cn_holdings / max_positions) if max_positions else 1.0
+        idle = max(0.0, 1.0 - used)
+        return (used, 0.0, idle)
+    if w_hk > 0:
+        used = min(1.0, hk_holdings / max_positions) if max_positions else 1.0
+        idle = max(0.0, 1.0 - used)
+        return (0.0, used, idle)
+    return (w_cn, w_hk, 0.0)

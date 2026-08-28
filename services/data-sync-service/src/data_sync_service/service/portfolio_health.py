@@ -240,6 +240,17 @@ def _holding_check(
         if rt_reasons:
             out["realtimeWarning"] = True
             out["realtimeAlert"] = "；".join(rt_reasons) + " · 待收盘确认（回测口径）"
+    # P1 near-stop proximity (2% buffer) — conditional order stale warning
+    # distance to line on close (and realtime if available) <2% → flag
+    price_for_proximity = rt_price if rt_price is not None else last_close
+    for label, line in (("止损", out.get("stopLossLine")), ("移动止损", out.get("trailingLine"))):
+        if line and price_for_proximity > 0:
+            dist = (price_for_proximity - float(line)) / price_for_proximity * 100.0
+            if 0 <= dist < 2.0:
+                out["nearStop"] = True
+                out["nearStopLabel"] = label
+                out["nearStopDistancePct"] = round(dist, 2)
+                break
     return out
 
 
@@ -444,7 +455,7 @@ def _build_holdings_block(
         # health card and the watchlist/copy realtime trigger agree. Peak
         # stays close-based; CN line keeps the close-caliber evaluation.
         realtime_by_ts: dict[str, float] = {}
-        if market == "HK" and hold_syms:
+        if hold_syms:
             try:
                 ts_list = [_resolve_holding_ts(s) for s in hold_syms]
                 ts_list = [t for t in ts_list if t]
@@ -456,7 +467,7 @@ def _build_holdings_block(
                         if px and px > 0 and code:
                             realtime_by_ts[code] = px
             except Exception as exc:  # noqa: BLE001
-                logger.warning("portfolio health HK realtime quotes failed: %s", exc)
+                logger.warning("portfolio health %s realtime quotes failed: %s", market, exc)
         if alpha_map is None:
             alpha_map = _alpha_events_for_symbols(hold_syms)
         if l1_map is None:

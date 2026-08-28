@@ -14,7 +14,6 @@ import {
   Star,
   Table2,
   Rocket,
-  Webhook,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -33,7 +32,6 @@ const items = [
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
-  { id: 'webhook', label: 'Webhook', icon: Webhook },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

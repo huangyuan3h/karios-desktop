@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { AI_BASE_URL } from '@/lib/endpoints';
+import { fetchSystemEvents, resolveSystemEvent, type SystemEvent } from '@/lib/queries/systemEvents';
 import { MobileButton, MobileCard, MobileSection, StatusPill } from '../primitives';
 
 /** 设置 (mobile) — theme switch + AI model profiles. §5.2 中频. */
@@ -159,11 +160,76 @@ export function MobileSettingsPage() {
         )}
       </MobileSection>
 
+      <MobileSection title="系统日志">
+        <SystemLogsMobile />
+      </MobileSection>
+
       <MobileSection title="关于">
         <MobileCard className="p-3 text-[var(--m-text-sm)] text-[var(--k-muted)]">
           Karios 手机版 · 与桌面端共享数据层 · 网关密钥由系统自动携带
         </MobileCard>
       </MobileSection>
+    </div>
+  );
+}
+
+function SystemLogsMobile() {
+  const [events, setEvents] = React.useState<SystemEvent[]>([]);
+  const [filter, setFilter] = React.useState<'all' | 'high' | 'low'>('all');
+  const load = React.useCallback(async () => {
+    try {
+      const data = await fetchSystemEvents(50);
+      setEvents(data);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+  const list = events.filter((e) => (filter === 'all' ? true : e.severity === filter));
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {(['all', 'high', 'low'] as const).map((v) => (
+          <MobileButton key={v} size="sm" variant={filter === v ? 'primary' : 'ghost'} onClick={() => setFilter(v)}>
+            {v === 'all' ? '全部' : v === 'high' ? '高' : '低'}
+          </MobileButton>
+        ))}
+        <MobileButton size="sm" variant="ghost" onClick={() => void load()}>
+          刷新
+        </MobileButton>
+      </div>
+      <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">高推 Bark，低仅落表 · 每周集中修复</div>
+      {list.length === 0 ? (
+        <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无未处理事件</MobileCard>
+      ) : (
+        <div className="space-y-2">
+          {list.slice(0, 20).map((ev) => (
+            <MobileCard key={ev.id} className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-[var(--m-text-sm)] font-medium">
+                    {ev.severity === 'high' ? '●' : '○'} {ev.title}
+                  </div>
+                  <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">{ev.detail || JSON.stringify(ev.payload).slice(0, 60)}</div>
+                  <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">{new Date(ev.createdAt).toLocaleString('zh-CN')}</div>
+                </div>
+                <MobileButton
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    await resolveSystemEvent(ev.id);
+                    await load();
+                  }}
+                >
+                  已修复
+                </MobileButton>
+              </div>
+            </MobileCard>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

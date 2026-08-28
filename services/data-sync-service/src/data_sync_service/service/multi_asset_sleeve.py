@@ -64,6 +64,7 @@ MA_WINDOW = 200
 COST = 0.0005
 MIN_IDLE_PCT = 20.0
 MIN_HOLD_DAYS = 5  # 2026-08-24 固化：最少持有5天防抖动，三窗 OOS2+17.4/train+19.3/valid+0.1 全过 vs 每天切+7.1
+TRAILING_PCT = 8.0  # 2026-08-28 固化：峰值 -8% 硬切 GC001，长窗 +32.4pt DD13.7→11.2（sleeve-exit-study）
 
 def _closes(ts: str, days: int = 260) -> list[float]:
     try:
@@ -288,7 +289,32 @@ def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_ove
                 pass
             out.update({"active": True, "action": "ROTATE", "message": f"轮动：卖出 {held_sym} → 买入 {pick['symbol']} ({pick['name']} mom60 {pick['mom60']}%)", "label": f"轮动至 {pick['key']}"})
             return out
-        # holding is still pick, check MA200 break
+        # holding is still pick, check trailing -8% then MA200 break (trail8 固化 2026-08-28)
+        # peak = max close since entry (incl. current close)
+        try:
+            held_ts = str(held.get("ts_code") or held_sym.replace("ETF:","")+".SH")
+            entry = str(held.get("entryDate") or held.get("entry_date") or "")
+            if entry:
+                bars = fetch_last_bars(held_ts, days=500)
+                peak = 0.0
+                cur_close = 0.0
+                for b in bars:
+                    d = str(b.get("trade_date") or b.get("date") or "")
+                    if d < entry[:10]:
+                        continue
+                    c = float(b.get("close") or 0)
+                    if c > peak:
+                        peak = c
+                    if d == day:
+                        cur_close = c
+                    elif not cur_close and d > day:
+                        break
+                # fallback: use pick close if bars missing
+                if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT/100):
+                    out.update({"active": True, "action": "SELL_TO_REPO", "message": f"{held_sym}峰值回撤{((peak-cur_close)/peak*100):.1f}% ≥{TRAILING_PCT:.0f}% → 卖出转逆回购（硬切）", "label": "卖出转repo(止损)"})
+                    return out
+        except Exception as exc:
+            logger.warning("multi-sleeve trailing check failed: %s", exc)
         if not pick["above_ma200"]:
             out.update({"active": True, "action": "SELL_TO_REPO", "message": f"{pick['symbol']} 跌破200日线 → 卖出转逆回购", "label": "卖出转repo"})
             return out

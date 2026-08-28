@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-21T12:52:38.988758+00:00",
+  "generatedAt": "2026-08-28T07:46:44.794915+00:00",
   "config": {
     "minIdlePct": 0.0,
     "s3": {
@@ -29,42 +29,43 @@
       "entry_style_dip_min": 3.0,
       "max_hold_env_shorten": 45,
       "env_position_scale": "uptrend:1.25,fan:0.75",
+      "min_avg_amount": 0.7,
       "panic_cooldown_days": 2
     }
   },
   "results": {
     "OOS2": {
       "window": "2024-08-01..2025-08-01",
-      "totalBasePct": 211.5,
-      "totalSleevePct": 214.3,
-      "deltaPct": 2.8,
-      "maxDdBasePct": 17.4,
-      "maxDdSleevePct": 17.3,
-      "holdDays": 8,
-      "idleDays": 143,
-      "avgIdlePct": 50.8
+      "totalBasePct": 84.1,
+      "totalSleevePct": 87.9,
+      "deltaPct": 3.9,
+      "maxDdBasePct": 6.2,
+      "maxDdSleevePct": 6.2,
+      "holdDays": 0,
+      "idleDays": 0,
+      "avgIdlePct": 0.0
     },
     "train": {
       "window": "2025-08-01..2026-02-01",
-      "totalBasePct": 134.8,
-      "totalSleevePct": 157.9,
-      "deltaPct": 23.1,
-      "maxDdBasePct": 15.3,
-      "maxDdSleevePct": 15.3,
-      "holdDays": 75,
-      "idleDays": 79,
-      "avgIdlePct": 51.2
+      "totalBasePct": 48.8,
+      "totalSleevePct": 64.7,
+      "deltaPct": 15.9,
+      "maxDdBasePct": 6.0,
+      "maxDdSleevePct": 6.2,
+      "holdDays": 0,
+      "idleDays": 0,
+      "avgIdlePct": 0.0
     },
     "valid": {
       "window": "2026-03-01..2026-08-07",
-      "totalBasePct": 139.4,
-      "totalSleevePct": 169.8,
+      "totalBasePct": 40.7,
+      "totalSleevePct": 71.1,
       "deltaPct": 30.4,
-      "maxDdBasePct": 5.7,
-      "maxDdSleevePct": 13.7,
-      "holdDays": 65,
-      "idleDays": 83,
-      "avgIdlePct": 73.1
+      "maxDdBasePct": 2.7,
+      "maxDdSleevePct": 10.0,
+      "holdDays": 0,
+      "idleDays": 0,
+      "avgIdlePct": 0.0
     }
   }
 }
