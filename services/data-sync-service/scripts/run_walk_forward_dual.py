@@ -14,16 +14,15 @@ capital pool between them when BOTH markets are strong:
        the Nasdaq ETF while it trades above its 200-day MA, else repo (T6,
        2026-08-21; sleeve leg = OPT-119 portfolio_nav_sim, same rule code)
 
-Each market's daily NAV is rebuilt from its simulated trades (per-trade
-position_pct mark-to-market along the real close path). The joint NAV is
-w_cn(t)*NAV_cn(t) + w_hk(t)*NAV_hk(t); weights are clamped to [0.2, 0.8]
-and only matter while both markets actually hold positions (each market's
-own regime gate already zeroes out a weak market).
+Each market's daily NAV comes from the engine ``nav_curve`` (cash + MTM —
+same as walk_forward totalNetPnlPct). The joint NAV compounds weighted
+daily returns; R5CS overlays idle × sleeve-asset return (513100 above
+MA200 with trail -8%, else GC001).
 
 Usage:
   PYTHONPATH=src python3 scripts/run_walk_forward_dual.py
   PYTHONPATH=src python3 scripts/run_walk_forward_dual.py --windows train,valid
-  PYTHONPATH=src python3 scripts/run_walk_forward_dual.py --rules R1,R2
+  PYTHONPATH=src python3 scripts/run_walk_forward_dual.py --rules R1,R5C,R5CS
 """
 
 from __future__ import annotations
@@ -64,11 +63,9 @@ def _mk_config(market: str, start: str, end: str) -> BacktestConfig:
 def rebuild_daily_pnl(
     run, data: BacktestData, config: BacktestConfig
 ) -> dict[str, float]:
-    """day -> net portfolio pnl% contribution from closed trades (per-day mark).
+    """Deprecated path — prefer ``nav_curve_to_daily`` / engine nav_curve.
 
-    Each round trip contributes (close_d/entry_px - 1) * position_pct on the
-    days between entry and close, following the real daily close path. Open
-    positions at window end are excluded (same convention as the summary).
+    Kept for tests that still call it; new dual main uses engine NAV.
     """
     pnl: dict[str, float] = {}
     for tr in run.trades:
@@ -90,6 +87,19 @@ def rebuild_daily_pnl(
                 pnl[day] = pnl.get(day, 0.0) + incr
                 prev = close
     return pnl
+
+
+def nav_curve_on_calendar(nav_curve: list[float], own_calendar: list[str]) -> list[float]:
+    """Engine nav_curve paired to calendar; bind terminal point to last day."""
+    n = min(len(own_calendar), len(nav_curve))
+    if n == 0:
+        return [1.0] * len(own_calendar)
+    out = [float(nav_curve[i]) for i in range(n)]
+    if len(nav_curve) > len(own_calendar):
+        out[-1] = float(nav_curve[-1])
+    while len(out) < len(own_calendar):
+        out.append(out[-1])
+    return out
 
 
 def nav_from_pnl(pnl: dict[str, float], calendar: list[str]) -> list[float]:
@@ -308,11 +318,17 @@ def main() -> int:
 
         _, data_cn, run_cn = runs["CN"]
         _, data_hk, run_hk = runs["HK"]
-        pnl_cn = rebuild_daily_pnl(run_cn, data_cn, runs["CN"][0])
-        pnl_hk = rebuild_daily_pnl(run_hk, data_hk, runs["HK"][0])
         union = sorted(set(data_cn.calendar) | set(data_hk.calendar))
-        nav_cn = _ffill(pnl_cn, data_cn.calendar, union)
-        nav_hk = _ffill(pnl_hk, data_hk.calendar, union)
+        nav_cn = _ffill_series(
+            nav_curve_on_calendar(run_cn.nav_curve, data_cn.calendar),
+            data_cn.calendar,
+            union,
+        )
+        nav_hk = _ffill_series(
+            nav_curve_on_calendar(run_hk.nav_curve, data_hk.calendar),
+            data_hk.calendar,
+            union,
+        )
 
         market_codes = {
             "cn": ["000300.SH"],
@@ -328,6 +344,8 @@ def main() -> int:
 
             cache = json.loads(CACHE_FILE.read_text())
             etf_close, repo_rate = load_third_asset_cache(cache)
+            # Pure idle sleeve series (100% cash book) — daily returns are the
+            # ETF/repo rule returns used to overlay idle capital in joint_stats.
             sleeve_sim = simulate_sleeve_nav(
                 positions_by_day=[],
                 close_by_ts_day={},
@@ -336,7 +354,17 @@ def main() -> int:
                 repo_rate_by_day=repo_rate,
                 min_idle_pct=0.0,
             )
-            sleeve_nav = [r["navSleeve"] for r in sleeve_sim["rows"]]
+            rows_s = sleeve_sim.get("rows") or []
+            if not rows_s:
+                print("ERROR: sleeve_nav rows empty — refuse R5CS", file=sys.stderr)
+                return 2
+            sleeve_nav = [float(r["navSleeve"]) for r in rows_s]
+            if len(sleeve_nav) != len(union):
+                print(
+                    f"ERROR: sleeve_nav len {len(sleeve_nav)} != union {len(union)}",
+                    file=sys.stderr,
+                )
+                return 2
         rows = [["规则", "联合收益%", "联合回撤%", "夏普", "年化%"]]
         r5c_base: dict[str, float] | None = None
         idle_by_day = None
@@ -372,16 +400,23 @@ def main() -> int:
     return 0
 
 
-def _ffill(pnl: dict[str, float], own_calendar: list[str], union: list[str]) -> list[float]:
-    """NAV on own calendar, forward-filled onto the union calendar."""
-    own_nav = nav_from_pnl(pnl, own_calendar)
+def _ffill_series(own_nav: list[float], own_calendar: list[str], union: list[str]) -> list[float]:
+    """Forward-fill a per-day NAV series onto the union calendar."""
     own_index = 0
     out: list[float] = []
     for day in union:
         while own_index < len(own_calendar) - 1 and own_calendar[own_index] < day:
             own_index += 1
-        out.append(own_nav[min(own_index, len(own_nav) - 1)] if own_calendar[own_index] == day else (out[-1] if out else 1.0))
+        if own_calendar and own_calendar[own_index] == day:
+            out.append(own_nav[min(own_index, len(own_nav) - 1)])
+        else:
+            out.append(out[-1] if out else 1.0)
     return out
+
+
+def _ffill(pnl: dict[str, float], own_calendar: list[str], union: list[str]) -> list[float]:
+    """Legacy: NAV from pnl map, forward-filled onto the union calendar."""
+    return _ffill_series(nav_from_pnl(pnl, own_calendar), own_calendar, union)
 
 
 if __name__ == "__main__":

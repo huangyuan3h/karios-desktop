@@ -69,7 +69,7 @@ S3_LIGHT_RED_BLOCK = True
 S3_CIRCUIT_PCT = -25.0
 S3_CIRCUIT_WINDOW_DAYS = 30
 S3_CIRCUIT_MIN_TRADES = 3
-S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%x20)
+S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%×10=100%)
 # 2026-08-11: paper was 5% (conservative); user decision: paper must mirror
 # the backtest exactly, so paper book results are directly comparable to the
 # backtest numbers. position_pct is a pure leverage knob (sharpe-invariant,

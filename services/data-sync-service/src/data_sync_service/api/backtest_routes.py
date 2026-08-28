@@ -106,8 +106,9 @@ def backtest_overview() -> dict[str, Any]:
                 "totalNetPnlPct": w.get("totalNetPnlPct"),
                 "winRate": w.get("winRate"),
                 "sharpe": w.get("sharpe"),
-                "trades": w.get("trades"),
+                "trades": w.get("closed") if w.get("closed") is not None else w.get("trades"),
                 "maxDrawdownPct": w.get("maxDrawdownPct"),
+                "underpowered": w.get("underpowered"),
             }
         return {
             "generatedAt": raw.get("generatedAt"),

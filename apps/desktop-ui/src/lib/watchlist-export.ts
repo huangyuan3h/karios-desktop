@@ -145,7 +145,7 @@ async function fetchBacktestOverview(): Promise<{
 function buildSystemAppendix(overview: Awaited<ReturnType<typeof fetchBacktestOverview>>): string {
   const lines: string[] = [];
   lines.push('## 策略体系（固化口径 · 可复现）');
-  lines.push('- S-3 定案（`docs/modules/strategy-params.md §1` · `db/paper_trading.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong日ATR×2） · 持有60天 · 不止盈 · 恐慌冷却3天 · 回撤熔断-25%（CN） · 单票10%×10=100%（mp10） · 创业板300排除');
+  lines.push('- S-3 定案（`docs/modules/strategy-params.md §1` · `service/paper_s3.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong日ATR×2） · 持有60天 · 不止盈 · 恐慌冷却2天 · 回撤熔断-25%（CN） · 单票10%×10=100%（mp10） · 入场次日开盘（回测） · 创业板300排除');
   lines.push('- 港股 S-3（HK线）：regime闸 · RS前40% · trail-12% · 其余同A股；A/H独立核算');
   if (overview?.cnBaseline?.windows) {
     const w = overview.cnBaseline.windows as Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }>;

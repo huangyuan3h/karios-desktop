@@ -2,17 +2,15 @@
 
 T6 design (docs/designs/third-asset-sleeve.md §2 / §3.2):
   - idle cash (1 - deployed%) earns the sleeve asset's daily return
-  - sleeve holding rule: 513100 close > MA200 -> hold; close < MA200 -> switch
-    to GC001 repo on the NEXT day (no-lookahead, mirrors the production
-    "跌破 200dMA -> 次日全部卖出" rule)
-  - daily-compounded NAV; baseline = idle cash earns 0%
-  - acceptance: all three walk-forward windows must show non-negative delta vs
-    the baseline (design targets: OOS2 +3.1 / train +15.3 / valid +39.0pt)
+  - sleeve holding: 513100 close > MA200 -> hold ETF; break MA200 OR trail -8%
+    from peak -> GC001 repo (2026-08-28 trail8)
+  - baseline = idle cash earns 0%
 
-Inputs come from the S-3 engine run (positions_by_day + close_by_ts_day +
-calendar) and the third-asset cache (513100 bars + GC001 repo rates).
-
-2026-08-21: first implementation (T6 落地 · backtest page sleeve card).
+2026-08-29 audit fix (P0-1): when ``engine_nav_by_day`` is supplied (from
+``BacktestRun.nav_curve``), the baseline NAV is the engine cash+MTM curve
+byte-for-byte — NOT fixed cost-basis weight × daily stock returns (that
+method systematically overstated rising books). Sleeve overlay adds
+``idle_pct * sleeve_asset_ret`` on top of the engine daily return.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 MA_WINDOW = 200
-TRAILING_PCT = 8.0  # 2026-08-28 固化：峰值 -8% 硬切 GC001，长窗 +32.4pt DD13.7→11.2
+TRAILING_PCT = 8.0  # peak -8% hard cut to GC001
 GC001_DAYS = 365
 
 
@@ -60,6 +58,20 @@ def load_third_asset_cache(
     return etf, repo
 
 
+def engine_nav_by_day_from_run(calendar: list[str], nav_curve: list[float]) -> dict[str, float]:
+    """Map trading calendar -> engine NAV.
+
+    Uses one point per calendar day; if the engine appended a terminal
+    post-liquidation point (len = len(calendar)+1), bind it to the last
+    calendar day so ``totalBasePct`` matches ``total_net_pnl_pct``.
+    """
+    n = min(len(calendar), len(nav_curve))
+    out = {calendar[i]: float(nav_curve[i]) for i in range(n)}
+    if calendar and len(nav_curve) > len(calendar):
+        out[calendar[-1]] = float(nav_curve[-1])
+    return out
+
+
 def simulate_sleeve_nav(
     *,
     positions_by_day: list[dict],
@@ -68,53 +80,15 @@ def simulate_sleeve_nav(
     etf_close_by_day: dict[str, float],
     repo_rate_by_day: dict[str, float],
     min_idle_pct: float = 0.0,
+    engine_nav_by_day: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Replay the portfolio NAV with the sleeve on idle cash — 2026-08-28 固化 trail8.
+    """Replay portfolio NAV with the sleeve on idle cash (trail8 + MA200).
 
-    2026-08-28 固化 trail8: peak -8% 硬切（与 sleeve_exit_variants.py:trail8 同码，长窗 +32.4pt）。
-    ``min_idle_pct`` mirrors the production sleeve threshold (MIN_IDLE_PCT);
+    Prefer ``engine_nav_by_day`` from ``BacktestRun.nav_curve`` so baseline
+    matches S-3 ``total_net_pnl_pct``. Without it, falls back to entry-price
+    MTM reconstruction when snapshots carry ``entry_price``; otherwise uses
+    cost-basis daily returns (unit-test / legacy path only).
     """
-    # 固化委托：直接复用 sleeve_exit_variants.py 的 trail8 同码，保证三窗/长窗与文档一致
-    try:
-        import importlib.util
-        from pathlib import Path
-
-        spec = importlib.util.spec_from_file_location(
-            "sleeve_exit_variants", str(Path(__file__).resolve().parents[3] / "scripts" / "sleeve_exit_variants.py")
-        )
-        mod = importlib.util.module_from_spec(spec)  # type: ignore
-        assert spec and spec.loader
-        spec.loader.exec_module(mod)  # type: ignore
-        res = mod.simulate_with_exit(  # type: ignore
-            positions_by_day=positions_by_day,
-            close_by_ts_day=close_by_ts_day,
-            calendar=calendar,
-            etf_close_by_day=etf_close_by_day,
-            repo_rate_by_day=repo_rate_by_day,
-            min_idle_pct=min_idle_pct,
-            exit_mode="trail8",
-        )
-        # variant returns flat summary; wrap to portfolio_nav_sim shape (rows empty, summary mapped)
-        if "rows" in res:
-            return res
-        # wrap flat -> rows/summary
-        return {
-            "rows": [],
-            "summary": {
-                "totalBasePct": res["totalBasePct"],
-                "totalSleevePct": res["totalSleevePct"],
-                "deltaPct": res["deltaPct"],
-                "maxDdBasePct": res["maxDdBasePct"],
-                "maxDdSleevePct": res["maxDdSleevePct"],
-                "holdDays": 0,
-                "idleDays": 0,
-                "avgIdlePct": 0.0,
-            },
-        }
-    except Exception:
-        pass  # fallback to local logic below
-    # Delegate to the validated variant logic to guarantee parity (sleeve-exit-study)
-    # Keep local helpers for fallback, but use the exact trail8 loop.
     etf_days = sorted(etf_close_by_day)
     etf_ret: dict[str, float] = {}
     for i, d in enumerate(etf_days):
@@ -134,11 +108,13 @@ def simulate_sleeve_nav(
 
     snap_by_day = {str(s.get("date")): s for s in positions_by_day}
     day_idx = {d: i for i, d in enumerate(calendar)}
+    use_engine = bool(engine_nav_by_day)
 
     holding = False
     etf_peak = 0.0
     nav_base = 1.0
     nav_sleeve = 1.0
+    prev_engine = 1.0
     rows: list[dict[str, Any]] = []
     base_peak = 1.0
     sleeve_peak = 1.0
@@ -149,8 +125,8 @@ def simulate_sleeve_nav(
 
     for day in calendar:
         snap = snap_by_day.get(day)
-        deployed_ret = 0.0
         deployed_pct = 0.0
+        deployed_ret = 0.0
         if snap:
             for pos in snap.get("positions") or []:
                 try:
@@ -160,15 +136,32 @@ def simulate_sleeve_nav(
                 if pct <= 0:
                     continue
                 entry = str(pos.get("entry_date") or "")
+                # Entry day: capital deployed but pnl starts next session.
                 if entry and day <= entry:
-                    continue  # filled at close of entry day -> pnl starts next day
+                    deployed_pct += pct
+                    continue
+                deployed_pct += pct
+                if use_engine:
+                    continue
                 closes = close_by_ts_day.get(str(pos.get("ts_code") or "")) or {}
                 today = closes.get(day)
                 idx = day_idx.get(day)
-                prev = closes.get(calendar[idx - 1]) if idx and idx > 0 else None
-                if today is not None and prev:
-                    deployed_ret += pct * (today / prev - 1.0)
-                deployed_pct += pct
+                ep = pos.get("entry_price")
+                try:
+                    entry_px = float(ep) if ep is not None else 0.0
+                except (TypeError, ValueError):
+                    entry_px = 0.0
+                if entry_px > 0 and today is not None:
+                    prev_close = closes.get(calendar[idx - 1]) if idx and idx > 0 else None
+                    if prev_close is not None and prev_close > 0:
+                        deployed_ret += pct * (today - prev_close) / entry_px
+                    elif today > 0:
+                        deployed_ret += pct * (today / entry_px - 1.0)
+                else:
+                    prev = closes.get(calendar[idx - 1]) if idx and idx > 0 else None
+                    if today is not None and prev:
+                        deployed_ret += pct * (today / prev - 1.0)
+
         deployed_pct = min(1.0, deployed_pct)
         idle_pct = max(0.0, 1.0 - deployed_pct)
 
@@ -176,24 +169,20 @@ def simulate_sleeve_nav(
         ma = ma200_by_day.get(day)
         above = close is not None and ma is not None and close >= ma
 
-        # 2026-08-28 固化：trail -8% 优先于 MA200（peak*0.92 硬切），长窗 +32.4pt — 与 sleeve_exit_variants.py:trail8 完全同码
         if holding:
             should_exit = False
             if not above:
                 should_exit = True
-            elif close is not None and etf_peak_variant > 0 and close < etf_peak_variant * (1 - TRAILING_PCT / 100):
+            elif close is not None and etf_peak > 0 and close < etf_peak * (1 - TRAILING_PCT / 100):
                 should_exit = True
             if should_exit:
                 holding = False
-                etf_peak_variant = 0.0
                 etf_peak = 0.0
-            elif close is not None and close > etf_peak_variant:
-                etf_peak_variant = close
+            elif close is not None and close > etf_peak:
                 etf_peak = close
         if not holding and above and idle_pct * 100 >= min_idle_pct:
             holding = True
-            etf_peak_variant = close if close is not None else 0.0
-            etf_peak = etf_peak_variant
+            etf_peak = close if close is not None else 0.0
 
         sleeve_ret = 0.0
         if idle_pct > 0:
@@ -204,8 +193,15 @@ def simulate_sleeve_nav(
                 sleeve_ret = repo_ret.get(day, 0.0)
             idle_days += 1
 
-        nav_base *= 1.0 + deployed_ret
-        nav_sleeve *= 1.0 + deployed_ret + idle_pct * sleeve_ret
+        if use_engine:
+            eng = float((engine_nav_by_day or {}).get(day, prev_engine))
+            r_eng = (eng / prev_engine - 1.0) if prev_engine > 0 else 0.0
+            nav_base = eng
+            nav_sleeve *= 1.0 + r_eng + idle_pct * sleeve_ret
+            prev_engine = eng
+        else:
+            nav_base *= 1.0 + deployed_ret
+            nav_sleeve *= 1.0 + deployed_ret + idle_pct * sleeve_ret
 
         base_peak = max(base_peak, nav_base)
         sleeve_peak = max(sleeve_peak, nav_sleeve)
@@ -238,5 +234,6 @@ def simulate_sleeve_nav(
             "holdDays": hold_days,
             "idleDays": idle_days,
             "avgIdlePct": round(sum(r["idlePct"] for r in rows) / len(rows) * 100.0, 1) if rows else 0.0,
+            "engineNav": bool(use_engine),
         },
     }

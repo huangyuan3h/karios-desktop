@@ -1523,6 +1523,10 @@ class BacktestRun:
     summary: BacktestSummary
     trades: list[BacktestTrade] = field(default_factory=list)
     positions_by_day: list[dict] = field(default_factory=list)
+    # Daily account NAV after each calendar day (cash + open MTM), then one
+    # terminal point after window-end forced closes. len = len(calendar) + 1.
+    # Pair calendar[i] -> nav_curve[i] for sleeve / dual overlays.
+    nav_curve: list[float] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -2560,6 +2564,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "market": config.market,
                 "ts_code": pos["ts_code"],
                 "entry_date": str(pos["entry_date"]),
+                "entry_price": round(float(pos["entry_price"]), 4),
                 "score_at_entry": pos.get("score_at_entry"),
                 "position_pct": round(float(pos.get("position_pct") or config.position_pct), 4),
             }
@@ -2642,6 +2647,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         summary=_summarize(config, data, closed_trades, open_at_end, gated_blocks, nav_curve),
         trades=closed_trades,
         positions_by_day=positions_by_day,
+        nav_curve=nav_curve,
     )
 
 

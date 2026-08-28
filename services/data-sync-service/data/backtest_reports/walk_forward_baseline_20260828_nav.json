@@ -1,0 +1,78 @@
+{
+  "generatedAt": "2026-08-28T16:16:28.556350+00:00",
+  "tag": "s3-baseline-20260828-nav",
+  "config": {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "CN",
+    "gates": "full",
+    "entry_mode": "next_open",
+    "trailing_stop_pct": -8.0,
+    "position_pct": 0.1,
+    "max_positions": 10,
+    "rs_rank_min": 0.5,
+    "diverging_scale": 1.0,
+    "drawdown_circuit_pct": -25.0,
+    "slippage_pct": 0.05,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1,
+    "exclude_boards": "300",
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": true,
+    "neutral_block": true,
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
+    "max_hold_env_shorten": 45,
+    "env_position_scale": "uptrend:1.25,fan:0.75",
+    "min_avg_amount": 0.7,
+    "panic_cooldown_days": 2
+  },
+  "results": {
+    "OOS2": {
+      "closed": 93,
+      "winRate": 0.473,
+      "winRateCI": [
+        0.3747376923069334,
+        0.5736316035328711
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": 4.398,
+      "totalNetPnlPct": 47.326,
+      "maxDrawdownPct": 18.876,
+      "sharpe": 1.26
+    },
+    "train": {
+      "closed": 51,
+      "winRate": 0.451,
+      "winRateCI": [
+        0.3226730501113224,
+        0.5861552845835076
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": 6.69,
+      "totalNetPnlPct": 34.112,
+      "maxDrawdownPct": 11.643,
+      "sharpe": 2.22
+    },
+    "valid": {
+      "closed": 16,
+      "winRate": 0.75,
+      "winRateCI": [
+        0.5050123107060135,
+        0.8981809801576265
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": 23.198,
+      "totalNetPnlPct": 38.699,
+      "maxDrawdownPct": 10.683,
+      "sharpe": 2.4
+    }
+  },
+  "baselineUsed": true,
+  "note": "NAV-based Sharpe/MaxDD/CAGR; entry_mode=next_open; survivor(delisted) guard. Supersedes legacy arithmetic walk_forward_baseline_legacy_arithmetic_20260822.json"
+}

@@ -167,7 +167,8 @@ def week_weights(day: str) -> dict[str, Any]:
 # R5CS: selected market internal idle eats sleeve (B-S1, 2026-08-28)
 # When CN or HK is tradable, the idle inside the selected market (1 - holdings/10)
 # is offered to the multi-asset sleeve if it is above MA200, else GC001.
-# Validated in run_walk_forward_dual R5CS: +10.8/+17.0/+30.9pt vs R5C.
+# Validated in run_walk_forward_dual R5CS (2026-08-29 engine-NAV):
+# vs R5C 增量 OOS2 +3.3 / train +8.4 / valid +13.5pt.
 # ---------------------------------------------------------------------------
 
 

@@ -35,12 +35,12 @@ const DEFAULT_PARAMS: BacktestParams = {
   gates: 'full',
   trailingStopPct: -8,
   positionPct: 0.1,
-  maxPositions: 20,
+  maxPositions: 10,
   rsRankMin: 0.5,
   divergingScale: 1,
   targetPnlPct: 100,
   scoreFloor: 0,
-  panicCooldownDays: 3,
+  panicCooldownDays: 2,
   slippagePct: 0.05,
   excludeBoards: '300',
 };
@@ -72,13 +72,14 @@ function tone(v: number | null): string {
 }
 
 const CN_PARAMS = [
-  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%'],
-  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'full'], ['熔断', '-25%'],
+  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%/ATR'],
+  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'full'], ['熔断', '-25%'],
+  ['恐慌冷却', '2d'], ['流动性', '≥0.7亿'],
 ];
 
 const HK_PARAMS = [
   ['score', '65'], ['RS 前', '40%'], ['止损', '-5%'], ['移动', '-12%'],
-  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'regime'],
+  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'regime'],
 ];
 
 function fmtDate(iso?: string | null): string {
@@ -215,7 +216,8 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
         />
       </div>
       <p className="mt-2 text-[10px] text-[var(--k-muted)]">
-        数字为固化基线（walk_forward_baseline.json）；回测是规则真值，实盘/paper 用同码引擎日终执行。
+        数字为固化基线（walk_forward_baseline.json · NAV + next_open）；回测是规则真值，
+        paper/watchlist 同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
       </p>
     </div>
   );
@@ -345,9 +347,8 @@ function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
             </table>
           </div>
           <p className="text-[10px] text-[var(--k-muted)]">
-            口径：S-3 持仓之外的闲置现金，513100 站上 200 日线时吃纳指ETF 日收益，破线切 GC001
-            逆回购；逐日复利 NAV，基线=闲置现金 0% 收益。规则真值：docs/designs/third-asset-sleeve.md §2。
-            验证：scripts/sleeve_nav_sim.py（三窗增量全正 = 通过）。
+            口径（2026-08-29）：基线 = S-3 引擎现金+MTM NAV（与 walk_forward 同码）；闲置吃
+            513100（MA200 + trail -8%）或 GC001。验证：scripts/sleeve_nav_sim.py（三窗增量≥0）。
           </p>
         </div>
       ) : (

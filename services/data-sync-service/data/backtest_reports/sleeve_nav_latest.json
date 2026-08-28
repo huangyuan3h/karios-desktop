@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T07:46:44.794915+00:00",
+  "generatedAt": "2026-08-28T23:12:16.874144+00:00",
   "config": {
     "minIdlePct": 0.0,
     "s3": {
@@ -10,9 +10,10 @@
       "score_floor": 0.0,
       "market": "CN",
       "gates": "full",
+      "entry_mode": "next_open",
       "trailing_stop_pct": -8.0,
       "position_pct": 0.1,
-      "max_positions": 20,
+      "max_positions": 10,
       "rs_rank_min": 0.5,
       "diverging_scale": 1.0,
       "drawdown_circuit_pct": -25.0,
@@ -36,36 +37,39 @@
   "results": {
     "OOS2": {
       "window": "2024-08-01..2025-08-01",
-      "totalBasePct": 84.1,
-      "totalSleevePct": 87.9,
-      "deltaPct": 3.9,
-      "maxDdBasePct": 6.2,
-      "maxDdSleevePct": 6.2,
-      "holdDays": 0,
-      "idleDays": 0,
-      "avgIdlePct": 0.0
+      "totalBasePct": 47.3,
+      "totalSleevePct": 50.4,
+      "deltaPct": 3.1,
+      "maxDdBasePct": 15.8,
+      "maxDdSleevePct": 15.8,
+      "holdDays": 44,
+      "idleDays": 231,
+      "avgIdlePct": 57.8,
+      "engineNav": true
     },
     "train": {
       "window": "2025-08-01..2026-02-01",
-      "totalBasePct": 48.8,
-      "totalSleevePct": 64.7,
-      "deltaPct": 15.9,
-      "maxDdBasePct": 6.0,
-      "maxDdSleevePct": 6.2,
-      "holdDays": 0,
-      "idleDays": 0,
-      "avgIdlePct": 0.0
+      "totalBasePct": 34.1,
+      "totalSleevePct": 42.5,
+      "deltaPct": 8.4,
+      "maxDdBasePct": 9.9,
+      "maxDdSleevePct": 9.4,
+      "holdDays": 120,
+      "idleDays": 125,
+      "avgIdlePct": 60.6,
+      "engineNav": true
     },
     "valid": {
       "window": "2026-03-01..2026-08-07",
-      "totalBasePct": 40.7,
-      "totalSleevePct": 71.1,
-      "deltaPct": 30.4,
-      "maxDdBasePct": 2.7,
-      "maxDdSleevePct": 10.0,
-      "holdDays": 0,
-      "idleDays": 0,
-      "avgIdlePct": 0.0
+      "totalBasePct": 38.7,
+      "totalSleevePct": 61.0,
+      "deltaPct": 22.3,
+      "maxDdBasePct": 9.5,
+      "maxDdSleevePct": 13.7,
+      "holdDays": 82,
+      "idleDays": 102,
+      "avgIdlePct": 75.9,
+      "engineNav": true
     }
   }
 }

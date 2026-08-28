@@ -134,7 +134,8 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "entry_mode": "next_open",
     "trailing_stop_pct": -12.0,
     "position_pct": 0.10,
-    "max_positions": 20,
+    # 2026-08-29: align with cash≤1.0 + paper S3_MAX_POSITIONS=10 (was 20)
+    "max_positions": 10,
     "rs_rank_min": 0.6,
     "diverging_scale": 1.0,
     "slippage_pct": 0.05,
@@ -142,6 +143,9 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "",
+    # HK amount coverage uneven — leave liquidity gate off (CN uses 0.7)
+    "min_avg_amount": 0.0,
+    "panic_cooldown_days": 2,
 }
 
 
@@ -325,10 +329,19 @@ def main() -> int:
         baseline_file.write_text(payload)
         print(f"baseline saved -> {baseline_file}")
         # V2: immutability — also save versioned copy + SHA256
-        versioned = baseline_file.with_name(f"walk_forward_baseline_{datetime.now(UTC).strftime('%Y%m%d')}.json")
+        stamp = datetime.now(UTC).strftime("%Y%m%d")
+        market_tag = "hk" if args.market == "HK" else "cn"
+        versioned = baseline_file.with_name(
+            f"walk_forward_{market_tag}_baseline_{stamp}.json"
+            if args.market == "HK"
+            else f"walk_forward_baseline_{stamp}.json"
+        )
         versioned.write_text(payload)
         sha = hashlib.sha256(payload.encode()).hexdigest()[:12]
-        print(f"versioned -> {versioned}  sha256:{sha}  tag: git tag s3-baseline-{datetime.now(UTC).strftime('%Y%m%d')}")
+        print(
+            f"versioned -> {versioned}  sha256:{sha}  "
+            f"tag: git tag s3-{market_tag}-baseline-{stamp}"
+        )
     return 0
 
 
