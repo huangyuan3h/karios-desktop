@@ -151,7 +151,10 @@ export function RecentDailyCompareCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        最近操作 vs 单轨择优
+        最近操作明细（现仓快照 · 非逐日账本）
+        <span className="rounded bg-[var(--k-bg)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
+          次级表 · 复刻差距见上方
+        </span>
         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-normal text-emerald-800 dark:text-emerald-200">
           {mode}
         </span>

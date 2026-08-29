@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery } from '@/lib/queries/backtest';
+import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 
 export function TodayActionCard() {
   const auditQuery = useBehaviorAuditQuery();
@@ -34,8 +35,22 @@ export function TodayActionCard() {
   const multiHoldings: Array<{ symbol: string; name?: string; positionPct?: number }> =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((healthQuery.data as any)?.multiAssetHoldings as Array<any>) ?? [];
-  const holdings = [...cnHoldings, ...multiHoldings];
+  const hkHoldings: Array<{ symbol: string; name?: string; positionPct?: number }> =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (((healthQuery.data as any)?.hkHealth?.holdings as Array<any>) ?? []);
+  const holdings = [...cnHoldings, ...hkHoldings, ...multiHoldings];
   const multi = (healthQuery.data as unknown as { multiAssetSleeve?: { pick?: { symbol?: string; key?: string; mom60?: number }; action?: string; label?: string; message?: string } } | undefined)?.multiAssetSleeve;
+
+  const gapHoldings: HoldingSnap[] = holdings.map((h) => ({
+    symbol: h.symbol,
+    positionPct: h.positionPct,
+    name: h.name,
+  }));
+  const gap = detectReplicaGaps({
+    pick: multi?.pick?.key ?? null,
+    holdings: gapHoldings,
+  });
+  const gapBlocks = gap.reasons.filter((r) => r.severity === 'block').slice(0, 2);
 
   // classify HOLD: show all current holdings (CN + multi) as hold chips; extraRows (should-sell) shown separately in Sell row
   const holdRows = holdings;
@@ -100,6 +115,14 @@ export function TodayActionCard() {
             过去年 基线 {baseRet.toFixed(1)}% · 单轨 {singleRet.toFixed(1)}% · 超额 {excess != null ? `${excess >= 0 ? '+' : ''}${excess.toFixed(1)}pt` : '—'}
           </span>
           <span className="ml-2 text-emerald-700">→ 今日跟单轨：{sleeveHold ? `持有 ${sleeveHold.pick?.symbol}` : buyDedup.length ? `买 ${buyDedup[0].symbol}` : '持有不动'}</span>
+        </div>
+      )}
+      {gap.verdict !== 'aligned' && gapBlocks.length > 0 && (
+        <div className="mb-2 rounded-md border border-[var(--k-border)] bg-[var(--k-bg)]/40 px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]">
+          今日仓位脚注：pick={gap.pick} · 目标腿 {gap.targetWeightPct}% · 股 {gap.stockWeightPct}% · ETF{' '}
+          {gap.etfWeightPct}%（战术看体检；
+          <span className="text-[var(--k-fg)]">本质差异看回测「归因对照」</span>
+          — 主贡献腿有没有接到）
         </div>
       )}
       <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
+import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -732,15 +733,15 @@ const PICK_LABELS: Record<string, string> = {
   OTHER: '其他',
 };
 
-function ReturnAttributionCard() {
-  const today = new Date().toISOString().slice(0, 10);
-  const defaultStart = (() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().slice(0, 10);
-  })();
-  const [start, setStart] = React.useState(defaultStart);
-  const [end, setEnd] = React.useState(today);
+function ReturnAttributionCard({
+  start,
+  end,
+  onRangeChange,
+}: {
+  start: string;
+  end: string;
+  onRangeChange?: (start: string, end: string) => void;
+}) {
   const [showStock, setShowStock] = React.useState(false);
   const q = useReturnAttributionQuery(start, end, true);
   const ps = q.data?.pickStrong;
@@ -751,25 +752,28 @@ function ReturnAttributionCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] font-medium">
         <TrendingDown className="size-3.5 rotate-180" />
-        涨跌归因（择强单轨 · 收益来自哪条腿）
+        涨跌归因（择强单轨 · 单侧拆腿）
+        <span className="rounded bg-[var(--k-bg)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
+          明细 · 对照见上方
+        </span>
         <span className="ml-auto flex items-center gap-2 text-[10px] font-normal text-[var(--k-muted)]">
           <input
             type="date"
             className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(e) => onRangeChange?.(e.target.value, end)}
           />
           <span>~</span>
           <input
             type="date"
             className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(e) => onRangeChange?.(start, e.target.value)}
           />
         </span>
       </div>
       <p className="mb-2 text-[10px] text-[var(--k-muted)]">
-        加法贡献 = 持有该腿各日涨跌之和（便于对比）；几何袖 = 仅持有该腿那些天的复利。二者之和≠总 NAV 几何收益属正常。实盘成交为已实现毛盈亏对照，非同口径 NAV。
+        只拆<strong>单轨</strong>各腿：加法贡献 / 几何袖 / 月度 / 极值日。与实盘对照请看上方「归因对照」。已实现成交附在表底仅作参考。
       </p>
       {q.isError ? (
         <div className="text-xs">
@@ -984,6 +988,18 @@ export function BacktestPage() {
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
   const [tab, setTab] = React.useState<'compare' | 'baseline'>('compare');
+  const attrEnd = new Date().toISOString().slice(0, 10);
+  const attrStartDefault = (() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [attrStart, setAttrStart] = React.useState(attrStartDefault);
+  const [attrEndState, setAttrEnd] = React.useState(attrEnd);
+  const onAttrRange = (s: string, e: string) => {
+    setAttrStart(s);
+    setAttrEnd(e);
+  };
 
   const runQ = useBacktestRunQuery(submitted, attempt);
   const sensQ = useSensitivityQuery(DEFAULT_PARAMS.start, DEFAULT_PARAMS.end, gridOn);
@@ -1009,9 +1025,10 @@ export function BacktestPage() {
         </TabsList>
         <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
           <CoreAuditCard q={coreQ} />
-          <RecentDailyCompareCard />
+          <ReplicaGapCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
+          <ReturnAttributionCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
           <TimelineCard />
-          <ReturnAttributionCard />
+          <RecentDailyCompareCard />
           <SleeveNavCard q={sleeveQ} />
           <PaperVsBacktestCard q={c4Q} />
           <ReconStrip reconQ={reconQ} />
