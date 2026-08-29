@@ -18,6 +18,7 @@ import {
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   usePaperVsBacktestQuery,
+  useReturnAttributionQuery,
   useSensitivityQuery,
   useSleeveNavQuery,
   useTimelineQuery,
@@ -718,6 +719,264 @@ function TimelineCard() {
   );
 }
 
+const PICK_LABELS: Record<string, string> = {
+  STOCK: '股票',
+  GOLD: '黄金',
+  OIL: '原油',
+  NASDAQ: '纳指',
+  BOND10: '国债',
+  REPO: '逆回购',
+  STOCK_CN: 'A股成交',
+  STOCK_HK: '港股成交',
+  OTHER_ETF: '其他ETF',
+  OTHER: '其他',
+};
+
+function ReturnAttributionCard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultStart = (() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [start, setStart] = React.useState(defaultStart);
+  const [end, setEnd] = React.useState(today);
+  const [showStock, setShowStock] = React.useState(false);
+  const q = useReturnAttributionQuery(start, end, true);
+  const ps = q.data?.pickStrong;
+  const ut = q.data?.userTrades;
+  const pickOrder = ['NASDAQ', 'GOLD', 'OIL', 'STOCK', 'BOND10', 'REPO'] as const;
+
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] font-medium">
+        <TrendingDown className="size-3.5 rotate-180" />
+        涨跌归因（择强单轨 · 收益来自哪条腿）
+        <span className="ml-auto flex items-center gap-2 text-[10px] font-normal text-[var(--k-muted)]">
+          <input
+            type="date"
+            className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
+          <span>~</span>
+          <input
+            type="date"
+            className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </span>
+      </div>
+      <p className="mb-2 text-[10px] text-[var(--k-muted)]">
+        加法贡献 = 持有该腿各日涨跌之和（便于对比）；几何袖 = 仅持有该腿那些天的复利。二者之和≠总 NAV 几何收益属正常。实盘成交为已实现毛盈亏对照，非同口径 NAV。
+      </p>
+      {q.isError ? (
+        <div className="text-xs">
+          <p className="text-red-700">{String(q.error)}</p>
+          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+            重试
+          </Button>
+        </div>
+      ) : q.isFetching && !ps ? (
+        <p className="text-xs text-[var(--k-muted)]">计算中…（首次约与 Timeline 同耗时，已共享缓存）</p>
+      ) : !ps ? (
+        <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <StatCard
+              label="择强几何总收益"
+              value={`${ps.totalGeoPct.toFixed(1)}%`}
+              sub={
+                ps.timelineFusedPct != null
+                  ? `Timeline ${ps.timelineFusedPct.toFixed(1)}% · ${ps.totalDays} 日`
+                  : `${ps.totalDays} 日`
+              }
+            />
+            <StatCard label="加法贡献合计" value={`${ps.totalAddPct.toFixed(1)}%`} sub="Σ日收益（非复利）" />
+            <StatCard
+              label="最大贡献腿"
+              value={(() => {
+                const best = pickOrder
+                  .map((k) => [k, ps.byPick[k]?.contribAddPct ?? 0] as const)
+                  .sort((a, b) => b[1] - a[1])[0];
+                return best ? `${PICK_LABELS[best[0]] ?? best[0]} ${best[1] >= 0 ? '+' : ''}${best[1].toFixed(1)}%` : '—';
+              })()}
+              sub="按加法贡献"
+            />
+            <StatCard
+              label="最大拖累腿"
+              value={(() => {
+                const worst = pickOrder
+                  .map((k) => [k, ps.byPick[k]?.contribAddPct ?? 0] as const)
+                  .sort((a, b) => a[1] - b[1])[0];
+                return worst ? `${PICK_LABELS[worst[0]] ?? worst[0]} ${worst[1].toFixed(1)}%` : '—';
+              })()}
+              sub="按加法贡献"
+            />
+          </div>
+
+          <div className="overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead>
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-3">资产</th>
+                  <th className="py-1 pr-3">天数</th>
+                  <th className="py-1 pr-3">占日历%</th>
+                  <th className="py-1 pr-3">加法贡献%</th>
+                  <th className="py-1 pr-3">几何袖%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pickOrder.map((k) => {
+                  const st = ps.byPick[k];
+                  if (!st || st.days === 0) return null;
+                  return (
+                    <tr key={k} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-3">{PICK_LABELS[k] ?? k}</td>
+                      <td className="py-1 pr-3">{st.days}</td>
+                      <td className="py-1 pr-3">{st.pctDays.toFixed(1)}</td>
+                      <td className={cn('py-1 pr-3 font-medium', tone(st.contribAddPct))}>
+                        {st.contribAddPct >= 0 ? '+' : ''}
+                        {st.contribAddPct.toFixed(2)}
+                      </td>
+                      <td className={cn('py-1 pr-3', tone(st.contribGeoPct))}>
+                        {st.contribGeoPct >= 0 ? '+' : ''}
+                        {st.contribGeoPct.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {ps.byMonth.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium">月度加法贡献</div>
+              <div className="overflow-auto">
+                <table className="w-full text-left text-[10px] tabular-nums">
+                  <thead>
+                    <tr className="text-[var(--k-muted)]">
+                      <th className="py-1 pr-2">月</th>
+                      {pickOrder.map((k) => (
+                        <th key={k} className="py-1 pr-2">
+                          {PICK_LABELS[k] ?? k}
+                        </th>
+                      ))}
+                      <th className="py-1 pr-2">合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ps.byMonth.map((m) => (
+                      <tr key={m.month} className="border-t border-[var(--k-border)]/40">
+                        <td className="py-0.5 pr-2">{m.month}</td>
+                        {pickOrder.map((k) => {
+                          const v = m.byPick[k];
+                          return (
+                            <td key={k} className={cn('py-0.5 pr-2', v != null ? tone(v) : '')}>
+                              {v != null ? v.toFixed(1) : '—'}
+                            </td>
+                          );
+                        })}
+                        <td className={cn('py-0.5 pr-2 font-medium', tone(m.totalAddPct))}>
+                          {m.totalAddPct.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {ps.topDays.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium">极值日（|日收益| Top）</div>
+              <ul className="grid gap-0.5 text-[11px] tabular-nums md:grid-cols-2">
+                {ps.topDays.map((d) => (
+                  <li key={d.date} className="flex gap-2 border-t border-[var(--k-border)]/30 py-0.5">
+                    <span className="text-[var(--k-muted)]">{d.date}</span>
+                    <span>{PICK_LABELS[d.pick] ?? d.pick}</span>
+                    <span className={cn('ml-auto font-medium', tone(d.dayRetPct))}>
+                      {d.dayRetPct >= 0 ? '+' : ''}
+                      {d.dayRetPct.toFixed(2)}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {ps.stockBreakdown && Object.keys(ps.stockBreakdown.bySymbol).length > 0 && (
+            <div>
+              <button
+                type="button"
+                className="mb-1 flex items-center gap-1 text-[11px] font-medium"
+                onClick={() => setShowStock((v) => !v)}
+              >
+                <ChevronDown className={cn('size-3 transition-transform', showStock && 'rotate-180')} />
+                STOCK 个股贡献（{ps.stockBreakdown.stockDays} 个股票日 · Top）
+              </button>
+              {showStock && (
+                <table className="w-full text-left text-[11px] tabular-nums">
+                  <thead>
+                    <tr className="text-[10px] text-[var(--k-muted)]">
+                      <th className="py-1 pr-2">标的</th>
+                      <th className="py-1 pr-2">天数</th>
+                      <th className="py-1 pr-2">加法贡献%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(ps.stockBreakdown.bySymbol)
+                      .slice(0, 15)
+                      .map(([sym, st]) => (
+                        <tr key={sym} className="border-t border-[var(--k-border)]/40">
+                          <td className="py-0.5 pr-2">{sym}</td>
+                          <td className="py-0.5 pr-2">{st.days}</td>
+                          <td className={cn('py-0.5 pr-2', tone(st.contribAddPct))}>
+                            {st.contribAddPct >= 0 ? '+' : ''}
+                            {st.contribAddPct.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          <div className="rounded border border-dashed border-[var(--k-border)] p-2">
+            <div className="mb-1 text-[11px] font-medium">我的成交对照（已实现毛盈亏）</div>
+            {!ut || ut.error ? (
+              <p className="text-[10px] text-[var(--k-muted)]">{ut?.error ?? '无成交数据'}</p>
+            ) : ut.insufficient ? (
+              <p className="text-[10px] text-[var(--k-muted)]">
+                窗口内平仓 {ut.closedCount} 笔（不足 3 笔，仅供参考）
+                {ut.closedCount > 0 &&
+                  ' · ' +
+                    Object.entries(ut.byBucket)
+                      .map(([b, s]) => `${PICK_LABELS[b] ?? b} ${s.sumPnlPct >= 0 ? '+' : ''}${s.sumPnlPct.toFixed(1)}%`)
+                      .join(' · ')}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2 text-[11px] tabular-nums">
+                {Object.entries(ut.byBucket).map(([b, s]) => (
+                  <span key={b} className={cn('rounded bg-[var(--k-bg)] px-1.5 py-0.5', tone(s.sumPnlPct))}>
+                    {PICK_LABELS[b] ?? b} ×{s.count} {s.sumPnlPct >= 0 ? '+' : ''}
+                    {s.sumPnlPct.toFixed(1)}%
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
@@ -752,6 +1011,7 @@ export function BacktestPage() {
           <CoreAuditCard q={coreQ} />
           <RecentDailyCompareCard />
           <TimelineCard />
+          <ReturnAttributionCard />
           <SleeveNavCard q={sleeveQ} />
           <PaperVsBacktestCard q={c4Q} />
           <ReconStrip reconQ={reconQ} />

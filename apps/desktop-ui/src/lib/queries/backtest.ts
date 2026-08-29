@@ -421,6 +421,54 @@ export function useTimelineQuery(start: string, end: string, enabled = true) {
   });
 }
 
+export type PickAttrStat = {
+  days: number;
+  pctDays: number;
+  contribAddPct: number;
+  contribGeoPct: number;
+};
+
+export type ReturnAttributionResponse = {
+  ok: boolean;
+  start: string;
+  end: string;
+  note?: string;
+  pickStrong?: {
+    byPick: Record<string, PickAttrStat>;
+    totalDays: number;
+    totalAddPct: number;
+    totalGeoPct: number;
+    timelineFusedPct?: number;
+    byMonth: Array<{ month: string; byPick: Record<string, number>; totalAddPct: number }>;
+    topDays: Array<{ date: string; pick: string; dayRetPct: number }>;
+    stockBreakdown: {
+      stockDays: number;
+      bySymbol: Record<string, { days: number; contribAddPct: number }>;
+    } | null;
+  };
+  userTrades?: {
+    closedCount: number;
+    bySymbol: Record<string, { count: number; sumPnlPct: number; bucket: string }>;
+    byBucket: Record<string, { count: number; sumPnlPct: number }>;
+    insufficient: boolean;
+    note?: string;
+    error?: string;
+  };
+};
+
+export function useReturnAttributionQuery(start: string, end: string, enabled = true) {
+  const q = new URLSearchParams({ start, end, books: 'pick_strong,user' });
+  return useQuery({
+    queryKey: ['backtest', 'return-attribution', start, end],
+    queryFn: () =>
+      apiGetJson<ReturnAttributionResponse>(`/api/backtest/return-attribution?${q.toString()}`, {
+        timeoutMs: 120_000,
+      }),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export type PaperVsBacktestTwin = {
   entryDate?: string | null;
   closeDate?: string | null;

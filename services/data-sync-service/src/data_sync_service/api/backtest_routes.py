@@ -32,10 +32,12 @@ from data_sync_service.service.backtest_engine import (
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 _timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
+# Engine context for stock-leg attribution (not file-persisted).
+_timeline_engine_cache: dict[tuple[str, str], dict[str, Any]] = {}
 TIMELINE_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
 TIMELINE_CACHE_TTL_HOURS = 24
-# Bump when pick logic changes so stale hard_stock file caches are ignored.
-_TIMELINE_MODE = "mom_compare"
+# Bump when pick / trail logic changes so stale file caches are ignored.
+_TIMELINE_MODE = "mom_compare_t8"
 
 
 def _timeline_file(start: str, end: str) -> Path:
@@ -344,21 +346,32 @@ def backtest_timeline(
     from datetime import date as date_type
     from datetime import timedelta
 
-    from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
-    from data_sync_service.service.pick_strong_track import build_mom_compare_timeline
-
     today = date_type.today().isoformat()
     if not start:
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
+    result, _engine = _get_or_build_timeline(start, end)
+    return result
+
+
+def _get_or_build_timeline(
+    start: str, end: str, *, need_engine: bool = False
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing."""
     cache_key = (start, end)
-    if cache_key in _timeline_cache:
-        return _timeline_cache[cache_key]
-    file_cached = _load_timeline_file(start, end)
-    if file_cached is not None:
-        _timeline_cache[cache_key] = file_cached
-        return file_cached
+    cached = _timeline_cache.get(cache_key)
+    engine = _timeline_engine_cache.get(cache_key)
+    if cached is not None and (not need_engine or engine is not None):
+        return cached, engine
+    if cached is None:
+        file_cached = _load_timeline_file(start, end)
+        if file_cached is not None and not need_engine:
+            _timeline_cache[cache_key] = file_cached
+            return file_cached, None
+
+    from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
+    from data_sync_service.service.pick_strong_track import build_mom_compare_timeline
 
     import sys
 
@@ -372,7 +385,9 @@ def backtest_timeline(
         try:
             from run_walk_forward import HK_S3_CONFIG  # noqa: E402
 
-            cfg_hk = BacktestConfig(start_date=start, end_date=end, market="HK", **HK_S3_CONFIG)  # type: ignore[arg-type]
+            cfg_hk = BacktestConfig(
+                start_date=start, end_date=end, market="HK", **HK_S3_CONFIG
+            )  # type: ignore[arg-type]
             data_hk = BacktestData(cfg_hk)
             run_hk = simulate(cfg_hk, data_hk)
             hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
@@ -406,12 +421,104 @@ def backtest_timeline(
             "strategy": built.get("strategy") or "择强单轨",
             "summary": built.get("summary"),
             "rows": built.get("rows") or [],
+            "trailPct": built.get("trailPct"),
+        }
+        engine_ctx = {
+            "calendar": data.calendar,
+            "positions_by_day": run.positions_by_day,
+            "close_by_ts_day": data.close_by_ts_day,
         }
         _timeline_cache[cache_key] = result
+        _timeline_engine_cache[cache_key] = engine_ctx
         _save_timeline_file(start, end, result)
-        return result
+        return result, engine_ctx
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc
+
+
+@router.get("/return-attribution")
+def backtest_return_attribution(
+    start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
+    end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
+    books: str = Query(
+        "pick_strong,user",
+        description="Comma books: pick_strong,user",
+    ),
+    top_k: int = Query(10, ge=1, le=50, description="Top |dayRet| days"),
+) -> dict[str, Any]:
+    """涨跌归因: pick-strong NAV by asset + optional user_trades realized pnl."""
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    from data_sync_service.service.return_attribution import (
+        attribute_pick_strong,
+        attribute_user_trades,
+        build_stock_legs_by_day,
+        day_returns_from_nav,
+    )
+
+    today = date_type.today().isoformat()
+    if not start:
+        start = (date_type.today() - timedelta(days=365)).isoformat()
+    end = end or today
+    _validate_window(start, end)
+    book_set = {b.strip() for b in books.split(",") if b.strip()}
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "start": start,
+        "end": end,
+        "note": (
+            "pickStrong = 100% hard-switch day attribution; "
+            "userTrades = realized SELL gross pnl (not same NAV path)."
+        ),
+    }
+
+    if "pick_strong" in book_set:
+        try:
+            timeline, engine = _get_or_build_timeline(start, end, need_engine=True)
+            rows = timeline.get("rows") or []
+            day_rows = day_returns_from_nav(rows)
+            stock_legs = None
+            if engine is not None:
+                stock_legs = build_stock_legs_by_day(
+                    day_rows=day_rows,
+                    positions_by_day=engine["positions_by_day"],
+                    close_by_ts_day=engine["close_by_ts_day"],
+                    calendar=engine["calendar"],
+                )
+            pick_pkg = attribute_pick_strong(
+                rows, stock_legs_by_day=stock_legs, top_k=top_k
+            )
+            # Align totalGeo with timeline summary when available
+            summary = timeline.get("summary") or {}
+            fused = summary.get("fusedPct")
+            if fused is not None:
+                pick_pkg["timelineFusedPct"] = fused
+            out["pickStrong"] = pick_pkg
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"pick_strong attribution failed: {exc}"
+            ) from exc
+
+    if "user" in book_set:
+        try:
+            from data_sync_service.db.user_trades import fetch_sell_rows
+
+            sells = fetch_sell_rows()
+            out["userTrades"] = attribute_user_trades(sells, start=start, end=end)
+        except Exception as exc:  # noqa: BLE001
+            out["userTrades"] = {
+                "closedCount": 0,
+                "bySymbol": {},
+                "byBucket": {},
+                "insufficient": True,
+                "error": str(exc),
+            }
+
+    return out
 
 
 @router.get("/latest-report")
