@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-08-28T23:33:58.572783+00:00",
+  "strategy": "择强单轨",
+  "window": "2025-08-28..2026-08-28",
+  "rule": "t-1 mom60 among assets above MA200; 100% hard switch; REPO if none",
+  "canonicalMode": "mom_compare",
+  "results": {
+    "mom_compare": {
+      "fusedPct": 93.59,
+      "basePct": 145.64,
+      "deltaPct": -52.05,
+      "maxDdFusedPct": 28.3,
+      "maxDdBasePct": 21.1,
+      "calendarDays": 253
+    },
+    "hard_stock": {
+      "fusedPct": 110.79,
+      "basePct": 145.64,
+      "deltaPct": -34.85,
+      "maxDdFusedPct": 32.0,
+      "maxDdBasePct": 21.1,
+      "calendarDays": 253
+    },
+    "cn_s3_engine": {
+      "totalNetPnlPct": 58.255,
+      "maxDrawdownPct": 22.955,
+      "closed": 81,
+      "sharpe": 1.74
+    },
+    "timeline_ui_cache": {
+      "navSingleReturnPct": 123.92,
+      "navBaseReturnPct": 101.57,
+      "picks": {
+        "REPO": 8,
+        "STOCK": 138,
+        "GOLD": 28,
+        "NASDAQ": 58,
+        "OIL": 20
+      },
+      "note": "STOCK-priority when S-3 holds; UI Timeline card"
+    }
+  }
+}

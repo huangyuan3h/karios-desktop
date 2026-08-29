@@ -23,8 +23,9 @@
 | Alpha Incubator（V4 双核捕猎） | [`modules/alpha-incubator.md`](./modules/alpha-incubator.md) |
 | 下游 AI Prompt（V7.6） | [`modules/downstream-ai-prompt.md`](./modules/downstream-ai-prompt.md) |
 | S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
+| **择强单轨（产品策略真值 · 全资产同权 100% 硬切）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
 | 回测结论 / 实验记录（2026-08-09 归档 · 现行真值见 strategy-params.md） | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) → [`archive/modules-legacy/backtest-strategy-legacy.md`](../archive/modules-legacy/backtest-strategy-legacy.md) |
-| **回测实验记录文件夹（成功/失败全记录 · 2026-08-15 已定稿结束探索）** | [`backtests/README.md`](./backtests/README.md)（先读 [`SUMMARY.md`](./backtests/SUMMARY.md)） |
+| **回测实验记录（最终指向择强单轨）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) |
 | 交易系统总纲（含 S-3 生命周期） | [`modules/trading-system.md`](./modules/trading-system.md) |
 | 行业资金流 | [`modules/industry-flow.md`](./modules/industry-flow.md) |
 | 市场情绪 | [`modules/market-sentiment.md`](./modules/market-sentiment.md) |

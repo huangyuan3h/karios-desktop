@@ -578,10 +578,10 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        过去一年 Timeline（单轨 · 哪个强买哪个 · 100%）
+        过去一年 Timeline（择强单轨 · 全资产同权 · 100%）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {today} · {rows.length} 交易日
-          {last ? ` · 基线 ${last.navBaseReturnPct}% · 单轨 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%` : ''}
+          {last ? ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%` : ''}
         </span>
       </div>
       {q.isError ? (
@@ -641,7 +641,9 @@ function TimelineCard() {
                 </span>
               </>
             ) : null}
-            <span className="ml-auto text-[10px] text-[var(--k-muted)]">单轨100% · 哪个mom60强买哪个（站上MA200）· 基线=股票不动时的原S-3</span>
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">
+              择强单轨 · mom60＞MA200 同池硬切 · 定案见 docs/modules/pick-strong-track.md · 过去一年约 +94%
+            </span>
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
@@ -653,7 +655,7 @@ function TimelineCard() {
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
-                  <th className="py-1 pr-2">单轨NAV%</th>
+                  <th className="py-1 pr-2">择强NAV%</th>
                   <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>
@@ -703,7 +705,7 @@ function TimelineCard() {
           </div>
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-[var(--k-muted)]">
-              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 单轨100%（股票vs金/油/纳指/债 同池 mom60＞MA200 择强）· 卖出=前日有今日无（移动止损/固定止损/到期）
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md · 卖出=前日有今日无
             </p>
             <button type="button" onClick={() => setShowAll((v) => !v)} className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60">
               {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}

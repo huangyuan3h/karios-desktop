@@ -1,6 +1,15 @@
+# 融合单轨 → **择强单轨**（已迁真值）
+
+> ⚠️ **本文档为 2026-08-24 设计/网格草稿。**  
+> **产品策略真值已迁至 [`modules/pick-strong-track.md`](../modules/pick-strong-track.md)**（命名：**择强单轨**）。  
+> 过去一年定案口径 `mom_compare`：**+93.6% / DD28.3%**（2025-08-28~2026-08-28）。  
+> 下文网格结论仍可参考，但终局优化只对「择强单轨」记账。
+
+---
+
 # 融合单轨优化 · A股·港股·多资产（黄金/原油/纳指/国债）100% 择强
 
-> 目标：在不过拟合（`docs/modules/strategy-params.md §3` 三窗铁律）下，调优**买入时点与资产选择**，使 `100%上限·最差GC001·每天买期望最高资产` 的单轨年末收益最大化。单轨定义见 `services/data-sync-service/src/data_sync_service/api/backtest_routes.py:305` `_past_year_timeline`。
+> 目标：在不过拟合（`docs/modules/strategy-params.md §3` 三窗铁律）下，调优**买入时点与资产选择**，使 `100%上限·最差GC001·每天买期望最高资产` 的单轨年末收益最大化。单轨定义见 `services/data-sync-service/src/data_sync_service/api/backtest_routes.py` Timeline / `scripts/fused_timeline_walk.py`。
 
 ## 0. 现状基线（待走三窗实测填数）
 
