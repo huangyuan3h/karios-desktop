@@ -65,7 +65,49 @@ COST = 0.0005
 MIN_IDLE_PCT = 20.0
 # Product 择强单轨 A0: min_hold=1 (sleeve-era hold5 rejected on fused absolute NAV).
 MIN_HOLD_DAYS = 1
-TRAILING_PCT = 8.0  # optional ETF exit aid; fused hard-switch is primary
+# Live / Watchlist ETF risk exit (sleeve-exit-study 2026-08-28).
+# Not applied in pick_strong_track mom_compare NAV — hard switch only there.
+TRAILING_PCT = 8.0
+
+
+def _etf_trail_exit(
+    held: dict[str, Any], *, day: str
+) -> dict[str, Any] | None:
+    """If held ETF close < peak_since_entry × (1 − TRAILING_PCT%), return SELL_TO_REPO."""
+    held_sym = str(held.get("symbol") or "").upper()
+    held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
+    entry = str(held.get("entryDate") or held.get("entry_date") or "")
+    if not entry:
+        return None
+    try:
+        bars = fetch_last_bars(held_ts, days=500)
+        peak = 0.0
+        cur_close = 0.0
+        for b in bars:
+            d = str(b.get("trade_date") or b.get("date") or "")
+            if d < entry[:10]:
+                continue
+            c = float(b.get("close") or 0)
+            if c > peak:
+                peak = c
+            if d == day:
+                cur_close = c
+            elif not cur_close and d > day:
+                break
+        if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT / 100):
+            dd = (peak - cur_close) / peak * 100
+            return {
+                "active": True,
+                "action": "SELL_TO_REPO",
+                "message": (
+                    f"{held_sym}峰值回撤{dd:.1f}% ≥{TRAILING_PCT:.0f}% → 转逆回购"
+                ),
+                "label": "卖出转repo(止损)",
+            }
+    except Exception as exc:
+        logger.warning("multi-sleeve trailing check failed: %s", exc)
+    return None
+
 
 def _closes(ts: str, days: int = 260) -> list[float]:
     try:
@@ -331,8 +373,12 @@ def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_ove
         )
         return out
 
-    # ETF wins
+    # ETF wins — risk trail8 before rotate / min-hold / MA hold (live Watchlist).
     if held:
+        trail = _etf_trail_exit(held, day=day)
+        if trail is not None:
+            out.update(trail)
+            return out
         held_sym = str(held.get("symbol") or "").upper()
         if held_sym != pick["symbol"]:
             try:
@@ -368,39 +414,6 @@ def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_ove
                 }
             )
             return out
-        try:
-            held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
-            entry = str(held.get("entryDate") or held.get("entry_date") or "")
-            if entry:
-                bars = fetch_last_bars(held_ts, days=500)
-                peak = 0.0
-                cur_close = 0.0
-                for b in bars:
-                    d = str(b.get("trade_date") or b.get("date") or "")
-                    if d < entry[:10]:
-                        continue
-                    c = float(b.get("close") or 0)
-                    if c > peak:
-                        peak = c
-                    if d == day:
-                        cur_close = c
-                    elif not cur_close and d > day:
-                        break
-                if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT / 100):
-                    out.update(
-                        {
-                            "active": True,
-                            "action": "SELL_TO_REPO",
-                            "message": (
-                                f"{held_sym}峰值回撤{((peak - cur_close) / peak * 100):.1f}% "
-                                f"≥{TRAILING_PCT:.0f}% → 转逆回购"
-                            ),
-                            "label": "卖出转repo(止损)",
-                        }
-                    )
-                    return out
-        except Exception as exc:
-            logger.warning("multi-sleeve trailing check failed: %s", exc)
         if not pick.get("above_ma200"):
             out.update(
                 {

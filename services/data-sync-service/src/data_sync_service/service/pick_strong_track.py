@@ -29,6 +29,8 @@ MULTI_TS: dict[str, str] = {
 LOOKBACK = 60
 MA_WINDOW = 200
 MODE = "mom_compare"
+# Absorbed into fused NAV 2026-08-29 (Q8 / pick_strong_trail8 report).
+TRAILING_PCT = 8.0
 
 
 def fetch_etf_closes() -> dict[str, dict[str, float]]:
@@ -54,11 +56,13 @@ def build_mom_compare_timeline(
     etf_close: dict[str, dict[str, float]] | None = None,
     lookback: int = LOOKBACK,
     ma_window: int = MA_WINDOW,
+    trail_pct: float = TRAILING_PCT,
 ) -> dict[str, Any]:
     """Replay 择强单轨 NAV (absolute) + daily rows for UI.
 
     navSingle = 100% to pick (STOCK basket avg ret / ETF ret / 0 for REPO).
     navBase = 100% stock basket when any position, else 0 (fused baseline).
+    ETF legs: peak since entry −trail_pct% → REPO (same day earns repo).
     """
     etf_close = etf_close or fetch_etf_closes()
     snap_by_day = {str(s.get("date")): s for s in positions_by_day}
@@ -97,6 +101,9 @@ def build_mom_compare_timeline(
     rows: list[dict[str, Any]] = []
     prev_syms: set[str] = set()
     prev_map: dict[str, str] = {}
+    held_etf: str | None = None
+    etf_peak = 0.0
+    trail_exits = 0
 
     for idx, day in enumerate(calendar):
         if idx == 0:
@@ -155,6 +162,26 @@ def build_mom_compare_timeline(
             candidates[k] = mp[prev] / ago - 1.0 if ago else -1e9
 
         pick = max(candidates, key=lambda kk: candidates[kk]) if candidates else "REPO"
+
+        # ETF trail8: peak since consecutive hold of same ETF −trail% → REPO.
+        if trail_pct > 0 and pick not in ("STOCK", "REPO"):
+            mp = etf_close.get(pick) or {}
+            close = mp.get(day)
+            if held_etf != pick:
+                held_etf = pick
+                etf_peak = float(close) if close is not None else 0.0
+            elif close is not None:
+                if etf_peak > 0 and close < etf_peak * (1.0 - trail_pct / 100.0):
+                    pick = "REPO"
+                    trail_exits += 1
+                    held_etf = None
+                    etf_peak = 0.0
+                else:
+                    etf_peak = max(etf_peak, float(close))
+        else:
+            held_etf = None
+            etf_peak = 0.0
+
         pick_ts = "STOCK_BASKET" if pick == "STOCK" else ("GC001" if pick == "REPO" else MULTI_TS.get(pick, ""))
 
         if pick == "STOCK":
@@ -229,6 +256,8 @@ def build_mom_compare_timeline(
         "strategy": "择强单轨",
         "lookback": lookback,
         "maWindow": ma_window,
+        "trailPct": trail_pct,
+        "trailExits": trail_exits,
         "rows": rows,
         "summary": {
             "fusedPct": round((nav_single - 1) * 100, 2),

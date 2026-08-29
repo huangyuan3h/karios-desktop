@@ -852,6 +852,16 @@ def build_portfolio_health(
             except Exception:
                 md = {}
             holding = {**h, "marketData": md, "isMulti": True}
+            try:
+                from data_sync_service.service.multi_asset_sleeve import _etf_trail_exit
+
+                trail = _etf_trail_exit({**h, "ts_code": ts}, day=day)
+                if trail is not None:
+                    holding["trailExit"] = True
+                    holding["action"] = trail["action"]
+                    holding["message"] = trail["message"]
+            except Exception:
+                pass
             multi_holdings.append(holding)
     return {
         "tradeDate": day,

@@ -20,12 +20,16 @@
 | **BOND10** | `511260.SH` | 同上 |
 | **REPO** | GC001 | 无人过线时的兜底 |
 
-规则（定案口径 · `mom_compare` · **2026-08-29 加固网格维持**）：
+规则（定案口径 · `mom_compare` · **2026-08-29 加固 + trail8 吸收**）：
 
 1. 用 **t-1** 收盘算各资产 `mom60`；ETF 须站上 `MA200`（防前视）。  
 2. 候选 = {STOCK（若有仓）} ∪ {站上 MA 的 ETF}，取 **`argmax mom60`**，**100%** 硬切；空 → **REPO**。  
-3. LOOKBACK=**60** · MA=**200** · **min_hold=1**（加固实验拒收 hold3/5/10）· 不计强制成本（5–10bp 压力下仍稳）。  
-4. 拒收：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`backtests/pick-strong-hardening-2026-08-29.md`](../backtests/pick-strong-hardening-2026-08-29.md)。
+3. LOOKBACK=**60** · MA=**200** · **min_hold=1** · **ETF 峰值 −8%（trail8）→ REPO** · 不计强制成本（5–10bp 压力下仍稳）。  
+4. 拒收：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`backtests/pick-strong-hardening-2026-08-29.md`](../backtests/pick-strong-hardening-2026-08-29.md)。  
+5. trail8 绝对 NAV 证据：[`backtests/pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；OOS2 持平）。
+
+> **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
+> STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。
@@ -50,21 +54,19 @@
 
 ---
 
-## 2. 过去一年验证（2026-08-29 实跑）
+## 2. 过去一年验证（2026-08-29 实跑 · trail8 吸收后更新）
 
 窗口：`2025-08-28 ~ 2026-08-28`（约 253 个交易日）  
-脚本：`scripts/fused_timeline_walk.py` · 报告：`data/backtest_reports/pick_strong_track_past_year.json`
+脚本：`scripts/pick_strong_grid.py --batch E` · 报告：`data/backtest_reports/pick_strong_trail8_20260829.json`
 
 | 口径 | 收益 | 最大回撤 | 说明 |
 |------|------|----------|------|
-| **择强单轨 `mom_compare`（定案）** | **+93.6%** | **28.3%** | 股票篮 vs 金/油/纳/债 **同权**比 mom60 |
-| 对照：`hard_stock`（有股票仓则锁 STOCK） | +110.8% | 32.0% | 旧 Timeline 偏置；**不作定案**（API 已改 `mom_compare`） |
+| **择强单轨 `mom_compare`+trail8（定案）** | **+190.7%** | **12.6%** | ETF 峰值 −8%→REPO；三窗/长窗见 trail8 文档 |
+| 对照：无 trail（旧 A0） | +93.6% | 28.3% | 仅硬切；已降级为对照 |
+| 对照：`hard_stock`（有股票仓则锁 STOCK） | +110.8% | 32.0% | 旧 Timeline 偏置；**不作定案** |
 | 对照：CN S-3 引擎单独 | +58.3% | 23.0% | 仅股票腿，现金≤100% NAV |
-| 对照：UI Timeline 缓存（旧） | 单轨 +123.9% / 基线 +101.6% | — | 已废弃；API 现走 `pick_strong_track` |
 
-**结论**：定案口径过去一年约 **+94% / DD28%**。STOCK 优先会更高，但违背「全资产同权」；后续优化以 `mom_compare` 为准。
-
-持仓日分布（UI 缓存，STOCK 优先，仅供参考）：STOCK 138 · NASDAQ 58 · GOLD 28 · OIL 20 · REPO 8。
+**结论**：定案吸收 trail8 后 past_year / valid / long 同向大幅改善，OOS2 持平。STOCK 入池加闸（n≥2 / mom>0 / MA / CN-only）已拒收 —— 见同日 STOCK 池报告。
 
 ---
 

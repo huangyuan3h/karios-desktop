@@ -1,0 +1,173 @@
+{
+  "generatedAt": "2026-08-29T01:37:36.253124+00:00",
+  "strategy": "择强单轨",
+  "baseline": "A0 mom_compare lb60 ma200 hold1 cost0 trail0",
+  "windows": {
+    "OOS2": [
+      "2024-08-01",
+      "2025-08-01"
+    ],
+    "train": [
+      "2025-08-01",
+      "2026-02-01"
+    ],
+    "valid": [
+      "2026-03-01",
+      "2026-08-07"
+    ],
+    "past_year": [
+      "2025-08-28",
+      "2026-08-28"
+    ],
+    "long": [
+      "2021-08-01",
+      "2026-08-07"
+    ]
+  },
+  "results": {
+    "A0": {
+      "params": {
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "trail_pct": 0.0
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "trailExits": 0,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "trailExits": 0,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "trailExits": 0,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "trailExits": 0,
+          "calendarDays": 253
+        },
+        "long": {
+          "fusedPct": 53.28,
+          "maxDdFusedPct": 51.3,
+          "switches": 81,
+          "trailExits": 0,
+          "calendarDays": 1270
+        }
+      }
+    },
+    "E0": {
+      "params": {
+        "id": "E0",
+        "trail_pct": 0.0,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "trailExits": 0,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "trailExits": 0,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "trailExits": 0,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "trailExits": 0,
+          "calendarDays": 253
+        },
+        "long": {
+          "fusedPct": 53.28,
+          "maxDdFusedPct": 51.3,
+          "switches": 81,
+          "trailExits": 0,
+          "calendarDays": 1270
+        }
+      }
+    },
+    "E1": {
+      "params": {
+        "id": "E1",
+        "trail_pct": 8.0,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "trailExits": 0,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 40.66,
+          "maxDdFusedPct": 8.4,
+          "switches": 12,
+          "trailExits": 1,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 139.07,
+          "maxDdFusedPct": 11.9,
+          "switches": 16,
+          "trailExits": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 190.65,
+          "maxDdFusedPct": 12.6,
+          "switches": 35,
+          "trailExits": 6,
+          "calendarDays": 253
+        },
+        "long": {
+          "fusedPct": 128.61,
+          "maxDdFusedPct": 49.9,
+          "switches": 90,
+          "trailExits": 6,
+          "calendarDays": 1270
+        }
+      }
+    }
+  }
+}

@@ -17,7 +17,7 @@
 | Q5 | past_year hard_stock > mom_compare | 有仓锁 STOCK = 偷看股票腿强势年 | 定案坚持同权；hard_stock 仅对照 |
 | Q6 | 未计切换成本 | 高频切低估真实磨损 | 成本 0 / 5bp / 10bp 单边 |
 | Q7 | 纯 mom 可比跨资产 | 油/股波动差大，高波资产被系统性抬高 | 对照 `mom/vol20`（risk-adj）1 组 |
-| Q8 | trail8 改善袖离场 | 单轨硬切已换仓，trail 是否多余 | 有余力再测；本轮非 P0 |
+| Q8 | trail8 改善袖离场 | 单轨硬切已换仓，trail 是否多余 | **已测并吸收** → [`pick-strong-trail8-and-stock-pool-2026-08-29.md`](./pick-strong-trail8-and-stock-pool-2026-08-29.md) |
 
 **预注册组合上限**：Batch-A ≤12 + Batch-B ≤4 + Batch-C ≤3 + Batch-D ≤2 ≈ **≤20**。  
 **择优协议**：在 **train** 上看收益与 DD（Calmar≈收益/DD）；**valid 一次确认**（相对基线 >5pt 劣化拒收）；**OOS2 只读不择优**；past_year 作展示。
@@ -149,7 +149,9 @@ PYTHONPATH=src:scripts python3 scripts/pick_strong_grid.py --batch B --base-lb 6
 3. 历史袖结论（hold5、短 lookback 近窗好看）在绝对 NAV 上被证伪或证伪其可迁移性。  
 4. 成本压力测试通过 → 基线数字不是「零摩擦幻觉」。
 
-**仍可后续（非本轮）**：trail 离场、STOCK 是否也施 MA 闸、Timeline API 对齐 `mom_compare`。
+**仍可后续（非本轮）**：STOCK 入池闸（见 trail8 文档 §2）；Timeline 缓存刷新后 KPI 含 trail8。
+
+**2026-08-29 补丁**：trail8 已并入定案（Q8 ✅）。
 
 ---
 

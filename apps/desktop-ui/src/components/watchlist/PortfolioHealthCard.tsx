@@ -86,7 +86,7 @@ function PickStrongOpsPanel({
     if (stockHoldingsCount > 0) steps.push(`现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
     if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
     if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
-    if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破线 → 切逆回购');
+    if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
     steps.push('今日无人过线 → 100% 逆回购 / 空仓观望');
     if (stockHoldingsCount > 0) steps.push('股票仓也应清到空（单轨不持）');

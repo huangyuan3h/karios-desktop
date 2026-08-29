@@ -53,6 +53,8 @@ MA_WINDOW = 200
 MIN_IDLE_PCT = 20.0
 # Re-sync ETF bars from tushare when the latest local bar is older than this.
 STALE_DAYS = 2
+# Align with multi_asset_sleeve / sleeve-exit-study trail8 (live only).
+TRAILING_PCT = 8.0
 
 # actions surfaced to the UI
 ACTION_BUY = "BUY_513100"
@@ -261,6 +263,21 @@ def build_third_asset_sleeve(
         out["label"] = action_label(ACTION_SELL_TO_A_SHARE)
         return out
 
+    if holding_etf and held is not None:
+        from data_sync_service.service.multi_asset_sleeve import _etf_trail_exit
+
+        trail = _etf_trail_exit(held, day=day)
+        if trail is not None:
+            out.update(
+                {
+                    "active": True,
+                    "action": ACTION_SELL_TO_REPO,
+                    "message": trail["message"],
+                    "label": action_label(ACTION_SELL_TO_REPO),
+                }
+            )
+            return out
+
     if not above_ma200:
         out["active"] = True
         out["action"] = ACTION_SELL_TO_REPO if holding_etf else ACTION_DONT_BUY
@@ -336,18 +353,28 @@ def build_third_asset_holding(
             action_label(ACTION_SELL_TO_A_SHARE),
             f"A股有买点（{st['regime']} · {len(st['candidates'])} 个候选）→ 卖出 {sym}，资金换回 A 股",
         )
-    elif not md["above_ma200"]:
-        action, label, message = (
-            ACTION_SELL_TO_REPO,
-            action_label(ACTION_SELL_TO_REPO),
-            f"{sym} 跌破200日线（现价 {md['close']:.3f} < MA200 {md['ma200']:.3f}）→ 卖出转逆回购",
-        )
     else:
-        action, label, message = (
-            ACTION_HOLD,
-            action_label(ACTION_HOLD),
-            f"{sym} 站上200日线（现价 {md['close']:.3f} > MA200 {md['ma200']:.3f}）→ 持有，破线或 A 股有买点时卖出",
-        )
+        from data_sync_service.service.multi_asset_sleeve import _etf_trail_exit
+
+        trail = _etf_trail_exit(held, day=day)
+        if trail is not None:
+            action, label, message = (
+                ACTION_SELL_TO_REPO,
+                action_label(ACTION_SELL_TO_REPO),
+                trail["message"],
+            )
+        elif not md["above_ma200"]:
+            action, label, message = (
+                ACTION_SELL_TO_REPO,
+                action_label(ACTION_SELL_TO_REPO),
+                f"{sym} 跌破200日线（现价 {md['close']:.3f} < MA200 {md['ma200']:.3f}）→ 卖出转逆回购",
+            )
+        else:
+            action, label, message = (
+                ACTION_HOLD,
+                action_label(ACTION_HOLD),
+                f"{sym} 站上200日线（现价 {md['close']:.3f} > MA200 {md['ma200']:.3f}）→ 持有，破线/峰值-8%或 A 股有买点时卖出",
+            )
 
     return {
         "active": True,

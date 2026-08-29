@@ -67,6 +67,19 @@ BATCH_D = [
     {"id": "D1", "score": "risk_adj"},
     {"id": "D2", "score": "mom", "top2": True},
 ]
+# Q8: ETF-leg peak −trail% → REPO (live already has trail8; fused NAV not yet).
+BATCH_E = [
+    {"id": "E0", "trail_pct": 0.0},
+    {"id": "E1", "trail_pct": 8.0},
+]
+# STOCK pool entry gates (baseline = A0 + trail8). Single variable each.
+BATCH_S = [
+    {"id": "S0", "stock_min_n": 1, "stock_mom_gt0": False, "stock_ma_frac": 0.0, "stock_cn_only": False},
+    {"id": "S1", "stock_min_n": 2, "stock_mom_gt0": False, "stock_ma_frac": 0.0, "stock_cn_only": False},
+    {"id": "S2", "stock_min_n": 1, "stock_mom_gt0": True, "stock_ma_frac": 0.0, "stock_cn_only": False},
+    {"id": "S3", "stock_min_n": 1, "stock_mom_gt0": False, "stock_ma_frac": 0.5, "stock_cn_only": False},
+    {"id": "S4", "stock_min_n": 1, "stock_mom_gt0": False, "stock_ma_frac": 0.0, "stock_cn_only": True},
+]
 
 
 def fetch_etf_closes() -> dict[str, dict[str, float]]:
@@ -138,8 +151,13 @@ def build_nav_from_cache(
     cost: float = 0.0,
     score: str = "mom",
     top2: bool = False,
+    trail_pct: float = 0.0,
+    stock_min_n: int = 1,
+    stock_mom_gt0: bool = False,
+    stock_ma_frac: float = 0.0,
+    stock_cn_only: bool = False,
 ) -> dict:
-    """Pick loop only — matches fused_timeline_walk mom_compare (+ hold/cost/score)."""
+    """Pick loop only — matches fused_timeline_walk mom_compare (+ hold/cost/score/trail)."""
     calendar = cache["calendar"]
     close_by_ts = cache["close_by_ts"]
     etf_close = cache["etf_close"]
@@ -170,6 +188,8 @@ def build_nav_from_cache(
     hold_pick: str | None = None
     hold_days = 0
     switches = 0
+    etf_peak = 0.0
+    trail_exits = 0
 
     for idx, day in enumerate(calendar):
         if idx == 0:
@@ -183,10 +203,14 @@ def build_nav_from_cache(
                 entry = str(pos.get("entry_date") or "")
                 if entry and day <= entry:
                     continue
+                ts = str(pos.get("ts_code") or "")
+                if stock_cn_only and (ts.endswith(".HK") or str(pos.get("symbol") or "").upper().startswith("HK:")):
+                    continue
                 stock_poses.append(pos)
 
         stock_rets: list[float] = []
         stock_moms: list[float] = []
+        above_ma_n = 0
         for pos in stock_poses:
             ts = str(pos.get("ts_code") or "")
             closes = close_by_ts.get(ts) or {}
@@ -196,12 +220,30 @@ def build_nav_from_cache(
             m = mom_at(ts, prev)
             if m is not None:
                 stock_moms.append(m)
+            if stock_ma_frac > 0 and prev_c is not None:
+                days_ts = ts_days.get(ts) or []
+                try:
+                    pi = days_ts.index(prev)
+                except ValueError:
+                    pi = -1
+                if pi >= ma_window - 1:
+                    ma_vals = [closes.get(days_ts[j]) for j in range(pi - ma_window + 1, pi + 1)]
+                    if all(v is not None and v > 0 for v in ma_vals):
+                        ma = sum(float(v) for v in ma_vals) / ma_window  # type: ignore[arg-type]
+                        if prev_c >= ma:
+                            above_ma_n += 1
         stock_ret = sum(stock_rets) / len(stock_rets) if stock_rets else 0.0
         stock_mom = sum(stock_moms) / len(stock_moms) if stock_moms else -1e9
 
         candidates: dict[str, float] = {}
-        # Equal to fused_timeline_walk: STOCK enters whenever any position exists.
-        if stock_poses:
+        stock_ok = len(stock_poses) >= stock_min_n
+        if stock_ok and stock_mom_gt0 and not (stock_moms and stock_mom > 0):
+            stock_ok = False
+        if stock_ok and stock_ma_frac > 0:
+            frac = above_ma_n / len(stock_poses) if stock_poses else 0.0
+            if frac < stock_ma_frac:
+                stock_ok = False
+        if stock_ok and stock_poses:
             if score == "risk_adj" and stock_moms:
                 mean = stock_mom if stock_mom > -1e8 else 0.0
                 vol = max(
@@ -245,13 +287,39 @@ def build_nav_from_cache(
         if hold_pick is None:
             hold_pick = new_pick
             hold_days = 1
+            etf_peak = 0.0
         elif new_pick != hold_pick and hold_days >= min_hold:
             hold_pick = new_pick
             hold_days = 1
             switches += 1
             switched = True
+            etf_peak = 0.0
         else:
             hold_days += 1
+
+        # ETF-leg trail: peak since entry −trail% → REPO (same-day exit, earn repo).
+        if (
+            trail_pct > 0
+            and hold_pick
+            and hold_pick not in ("STOCK", "REPO")
+            and not hold_pick.startswith("TOP2:")
+        ):
+            mp = etf_close.get(hold_pick) or {}
+            close = mp.get(day)
+            if close is not None:
+                if etf_peak <= 0 or switched or hold_days == 1:
+                    etf_peak = close
+                elif close < etf_peak * (1.0 - trail_pct / 100.0):
+                    hold_pick = "REPO"
+                    switches += 1
+                    switched = True
+                    trail_exits += 1
+                    etf_peak = 0.0
+                    hold_days = 1
+                else:
+                    etf_peak = max(etf_peak, close)
+        elif hold_pick in ("STOCK", "REPO") or (hold_pick and hold_pick.startswith("TOP2:")):
+            etf_peak = 0.0
 
         if hold_pick == "REPO":
             fused_ret = 0.0
@@ -278,6 +346,7 @@ def build_nav_from_cache(
         "fusedPct": round((nav - 1.0) * 100.0, 2),
         "maxDdFusedPct": round(max_dd * 100.0, 1),
         "switches": switches,
+        "trailExits": trail_exits,
         "calendarDays": len(calendar),
     }
 
@@ -306,7 +375,7 @@ def _verdict(row: dict[str, dict], baseline: dict[str, dict]) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--batch", default="A", help="A|B|C|D|all")
+    ap.add_argument("--batch", default="A", help="A|B|C|D|E|S|all")
     ap.add_argument("--windows", default="OOS2,train,valid,past_year")
     ap.add_argument("--base-lb", type=int, default=60)
     ap.add_argument("--base-ma", type=int, default=200)
@@ -325,13 +394,25 @@ def main() -> int:
 
     batches = args.batch.lower().split(",")
     if "all" in batches:
-        batches = ["a", "b", "c", "d"]
+        batches = ["a", "b", "c", "d", "e", "s"]
+
+    # STOCK-pool batch uses trail8 absorbed baseline; E compares trail on/off vs trail0.
+    base_trail = 8.0 if ("s" in batches and "e" not in batches) else 0.0
+
+    def _stock_defaults() -> dict:
+        return {
+            "stock_min_n": 1,
+            "stock_mom_gt0": False,
+            "stock_ma_frac": 0.0,
+            "stock_cn_only": False,
+        }
 
     combos: list[dict] = []
     if "a" in batches:
         for c in BATCH_A:
             combos.append(
                 {
+                    **_stock_defaults(),
                     **c,
                     "lookback": c["lookback"],
                     "ma": c["ma"],
@@ -339,12 +420,14 @@ def main() -> int:
                     "cost": 0.0,
                     "score": "mom",
                     "top2": False,
+                    "trail_pct": 0.0,
                 }
             )
     if "b" in batches:
         for c in BATCH_B:
             combos.append(
                 {
+                    **_stock_defaults(),
                     **c,
                     "lookback": args.base_lb,
                     "ma": args.base_ma,
@@ -352,12 +435,14 @@ def main() -> int:
                     "cost": 0.0,
                     "score": "mom",
                     "top2": False,
+                    "trail_pct": 0.0,
                 }
             )
     if "c" in batches:
         for c in BATCH_C:
             combos.append(
                 {
+                    **_stock_defaults(),
                     **c,
                     "lookback": args.base_lb,
                     "ma": args.base_ma,
@@ -365,12 +450,14 @@ def main() -> int:
                     "cost": c["cost"],
                     "score": "mom",
                     "top2": False,
+                    "trail_pct": 0.0,
                 }
             )
     if "d" in batches:
         for c in BATCH_D:
             combos.append(
                 {
+                    **_stock_defaults(),
                     **c,
                     "lookback": args.base_lb,
                     "ma": args.base_ma,
@@ -378,6 +465,36 @@ def main() -> int:
                     "cost": 0.0,
                     "score": c.get("score", "mom"),
                     "top2": bool(c.get("top2")),
+                    "trail_pct": 0.0,
+                }
+            )
+    if "e" in batches:
+        for c in BATCH_E:
+            combos.append(
+                {
+                    **_stock_defaults(),
+                    **c,
+                    "lookback": args.base_lb,
+                    "ma": args.base_ma,
+                    "min_hold": 1,
+                    "cost": 0.0,
+                    "score": "mom",
+                    "top2": False,
+                    "trail_pct": c["trail_pct"],
+                }
+            )
+    if "s" in batches:
+        for c in BATCH_S:
+            combos.append(
+                {
+                    **c,
+                    "lookback": args.base_lb,
+                    "ma": args.base_ma,
+                    "min_hold": 1,
+                    "cost": 0.0,
+                    "score": "mom",
+                    "top2": False,
+                    "trail_pct": 8.0,
                 }
             )
 
@@ -392,7 +509,7 @@ def main() -> int:
     def eval_params(**params) -> dict[str, dict]:
         return {w: build_nav_from_cache(caches[w], **params) for w in windows}
 
-    print("Evaluating baseline A0 …", flush=True)
+    print(f"Evaluating baseline (trail={base_trail:g}) …", flush=True)
     baseline = eval_params(
         lookback=args.base_lb,
         ma_window=args.base_ma,
@@ -400,31 +517,50 @@ def main() -> int:
         cost=0.0,
         score="mom",
         top2=False,
+        trail_pct=base_trail,
+        stock_min_n=1,
+        stock_mom_gt0=False,
+        stock_ma_frac=0.0,
+        stock_cn_only=False,
     )
     results: dict = {
-        "A0": {
-            "params": {"lookback": args.base_lb, "ma": args.base_ma, "min_hold": 1, "cost": 0.0},
+        "baseline": {
+            "params": {
+                "lookback": args.base_lb,
+                "ma": args.base_ma,
+                "min_hold": 1,
+                "cost": 0.0,
+                "trail_pct": base_trail,
+            },
             "windows": baseline,
         }
     }
 
     hdr = (
-        "| ID | lb | ma | hold | cost | score | "
+        "| ID | trail | stockGate | "
         + " | ".join(windows)
         + " | 判定 |"
     )
     print(hdr, flush=True)
-    print("|" + "|".join(["---"] * (7 + len(windows))) + "|", flush=True)
+    print("|" + "|".join(["---"] * (4 + len(windows))) + "|", flush=True)
     a0_cells = " | ".join(
         f"{baseline[w]['fusedPct']:.1f}/{baseline[w]['maxDdFusedPct']:.1f}" for w in windows
     )
     print(
-        f"| A0 | {args.base_lb} | {args.base_ma} | 1 | 0 | mom | {a0_cells} | 基线 |",
+        f"| base | {base_trail:g} | anyPos | {a0_cells} | 基线 |",
         flush=True,
     )
 
+    skip_ids = {"A0", "E0", "S0"}
     for c in uniq:
-        if c["id"] == "A0":
+        if c["id"] in skip_ids:
+            if c["id"] in ("E0", "S0"):
+                results[c["id"]] = {"params": c, "windows": baseline}
+                gate = _stock_gate_label(c)
+                print(
+                    f"| {c['id']} | {float(c.get('trail_pct') or 0):g} | {gate} | {a0_cells} | =base |",
+                    flush=True,
+                )
             continue
         params = {
             "lookback": c["lookback"],
@@ -433,6 +569,11 @@ def main() -> int:
             "cost": c["cost"],
             "score": c["score"],
             "top2": c["top2"],
+            "trail_pct": float(c.get("trail_pct") or 0.0),
+            "stock_min_n": int(c.get("stock_min_n") or 1),
+            "stock_mom_gt0": bool(c.get("stock_mom_gt0")),
+            "stock_ma_frac": float(c.get("stock_ma_frac") or 0.0),
+            "stock_cn_only": bool(c.get("stock_cn_only")),
         }
         row = eval_params(**params)
         results[c["id"]] = {"params": c, "windows": row}
@@ -440,16 +581,20 @@ def main() -> int:
             f"{row[w]['fusedPct']:.1f}/{row[w]['maxDdFusedPct']:.1f}" for w in windows
         )
         v = _verdict(row, baseline)
+        gate = _stock_gate_label(c)
+        extra = ""
+        if params["trail_pct"] > 0:
+            te = ",".join(str(row[w].get("trailExits", 0)) for w in windows)
+            extra = f" exits[{te}]"
         print(
-            f"| {c['id']} | {c['lookback']} | {c['ma']} | {c['min_hold']} | "
-            f"{c['cost']*10000:.0f}bp | {c['score']}{' top2' if c['top2'] else ''} | {cells} | {v} |",
+            f"| {c['id']} | {params['trail_pct']:g} | {gate} | {cells} | {v}{extra} |",
             flush=True,
         )
 
     report = {
         "generatedAt": datetime.now(UTC).isoformat(),
         "strategy": "择强单轨",
-        "baseline": "A0 mom_compare lb60 ma200 hold1 cost0",
+        "baseline": f"mom_compare lb60 ma200 hold1 trail{base_trail:g}",
         "windows": {w: ALL_WINDOWS[w] for w in windows},
         "results": results,
     }
@@ -461,6 +606,18 @@ def main() -> int:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     print(f"\nreport -> {out}", flush=True)
     return 0
+
+
+def _stock_gate_label(c: dict) -> str:
+    if c.get("stock_cn_only"):
+        return "CN-only"
+    if float(c.get("stock_ma_frac") or 0) > 0:
+        return f"MA≥{c['stock_ma_frac']:.0%}"
+    if c.get("stock_mom_gt0"):
+        return "mom>0"
+    if int(c.get("stock_min_n") or 1) > 1:
+        return f"n≥{c['stock_min_n']}"
+    return "anyPos"
 
 
 if __name__ == "__main__":
