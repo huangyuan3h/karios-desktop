@@ -190,7 +190,7 @@ def main():
     ap.add_argument("--windows", default="OOS2,train,valid", help="comma windows")
     ap.add_argument("--lookback", type=int, default=60)
     ap.add_argument("--ma", type=int, default=200)
-    ap.add_argument("--mode", choices=["hard_stock","mom_compare"], default="hard_stock")
+    ap.add_argument("--mode", choices=["hard_stock","mom_compare"], default="mom_compare")
     ap.add_argument("--grid", action="store_true", help="run 12-grid batch")
     ap.add_argument("--json", default="", help="output json path")
     args=ap.parse_args()

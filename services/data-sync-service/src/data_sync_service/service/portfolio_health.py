@@ -811,7 +811,7 @@ def build_portfolio_health(
             "ts_code": r.get("ts_code"),
         }
         for r in list_registry()
-        if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
+        if str(r.get("symbol") or "").upper().startswith(("CN:", "HK:", "ETF:"))
     ]
     try:
         third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)

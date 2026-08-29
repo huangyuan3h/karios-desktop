@@ -48,6 +48,117 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
   }
 }
 
+const PICK_META: Record<string, { label: string; hint: string }> = {
+  STOCK: { label: '股票篮', hint: '100% 跟 S-3 CN+HK 持仓篮（等权）' },
+  GOLD: { label: '黄金 ETF', hint: '518880 · 100% 硬切' },
+  OIL: { label: '原油 ETF', hint: '513350 · 100% 硬切' },
+  NASDAQ: { label: '纳指 ETF', hint: '513110/513100 · 100% 硬切' },
+  BOND10: { label: '国债 ETF', hint: '511260 · 100% 硬切' },
+  REPO: { label: '逆回购', hint: 'GC001 · 无人过线时兜底' },
+};
+
+type Sleeve = NonNullable<PortfolioHealthResponse['multiAssetSleeve']>;
+
+function PickStrongOpsPanel({
+  sleeve,
+  stockHoldingsCount,
+  onBuyEtf,
+}: {
+  sleeve: Sleeve | null | undefined;
+  stockHoldingsCount: number;
+  onBuyEtf?: (symbol: string, name: string | null) => void;
+}) {
+  const pickKey = sleeve?.pick?.key ?? 'REPO';
+  const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
+  const action = sleeve?.action ?? 'NONE';
+  const mom = sleeve?.pick?.mom60;
+  const etfSym = sleeve?.pick?.symbol;
+  const isStock = pickKey === 'STOCK';
+  const isRepo = pickKey === 'REPO';
+  const isEtf = !isStock && !isRepo;
+
+  const steps: string[] = [];
+  if (isStock) {
+    steps.push('今日资金 100% → 股票篮（下方展开篮内买卖）');
+    if (sleeve?.holding) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
+  } else if (isEtf) {
+    steps.push(`今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`);
+    if (stockHoldingsCount > 0) steps.push(`现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
+    if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
+    if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
+    if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破线 → 切逆回购');
+  } else {
+    steps.push('今日无人过线 → 100% 逆回购 / 空仓观望');
+    if (stockHoldingsCount > 0) steps.push('股票仓也应清到空（单轨不持）');
+    if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
+  }
+
+  return (
+    <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/5 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded bg-emerald-600/15 px-1.5 py-0.5 font-semibold text-emerald-800 dark:text-emerald-200">
+          今日 pick · {pickKey}
+        </span>
+        <span className="text-[13px] font-semibold">{meta.label}</span>
+        {mom != null && (
+          <span className="font-mono tabular-nums text-[var(--k-muted)]">mom60 {mom}%</span>
+        )}
+        {sleeve?.stockPick?.mom60 != null && pickKey !== 'STOCK' && (
+          <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+            vs 股票篮 {sleeve.stockPick.mom60}%
+          </span>
+        )}
+        {sleeve?.etfPick?.mom60 != null && pickKey === 'STOCK' && (
+          <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+            vs ETF顶 {sleeve.etfPick.key} {sleeve.etfPick.mom60}%
+          </span>
+        )}
+        <span className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px]">
+          {sleeve?.label ?? action}
+        </span>
+      </div>
+      <p className="mt-1 text-[10px] text-[var(--k-muted)]">
+        定案 mom_compare · LB60/MA200 · 100% 硬切 · {meta.hint}
+      </p>
+      {sleeve?.message ? (
+        <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
+      ) : null}
+      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
+        {steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      {isEtf && etfSym && (action === 'BUY' || action === 'ROTATE') && onBuyEtf ? (
+        <button
+          type="button"
+          onClick={() => onBuyEtf(etfSym, sleeve?.pick?.name ?? meta.label)}
+          className="mt-2 inline-flex items-center rounded border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
+        >
+          记录买入 {etfSym}（模拟盘）
+        </button>
+      ) : null}
+      {sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] tabular-nums text-[var(--k-muted)]">
+          {Object.entries(sleeve.pick.all_mom).map(([k, v]) => (
+            <span
+              key={k}
+              className={cn(
+                'rounded border px-1.5 py-0.5',
+                k === pickKey
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                  : 'border-[var(--k-border)]',
+              )}
+            >
+              {k} {v}%
+              {sleeve.pick?.all_above?.[k] === false ? ' ✗MA' : ''}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: string) => void }) {
   const exit = h.action === 'EXIT';
   const pnlTone = (h.pnlPct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
@@ -187,7 +298,7 @@ function BuyList({
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>下午 2 点买入清单 · 按 score 排序取前 5（已去重）</span>
+        <span>下午 2 点 · 股票篮买入（单轨 pick=STOCK · score 前 5）</span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -314,7 +425,7 @@ function ReconBlock({
         >
           {clean ? '✓' : '⚠'}
         </span>
-        <span className="font-medium">回测口径 · {recon.reconDate} 对账</span>
+        <span className="font-medium">股票篮对账 · {recon.reconDate}</span>
         <span className="tabular-nums">
           回测应持 {recon.expected} · 实持 {recon.actual} · 缺 {recon.missing} · 多 {recon.extra}
         </span>
@@ -392,6 +503,8 @@ function HealthPanel({
   remindedSymbols,
   boughtSymbols,
   overall,
+  allowStockBuys,
+  rotateOutStocks,
 }: {
   title: string;
   tag: string;
@@ -403,21 +516,29 @@ function HealthPanel({
   remindedSymbols: Set<string>;
   boughtSymbols: Set<string>;
   overall?: PortfolioHealthResponse | null;
+  allowStockBuys: boolean;
+  rotateOutStocks: boolean;
 }) {
   const holdings = block?.holdings ?? [];
   const candidates = block?.s3Candidates ?? [];
   const regime = regimeBadge(block?.regime);
   const idSuffix = tag === 'HK' ? '-hk' : '';
   const gateClosed = isMarketGateClosed(block);
-  const overallIdle = overall?.multiAssetSleeve?.idlePct ?? overall?.thirdAssetSleeve?.idlePct ?? 100;
-  const sleevePick = overall?.multiAssetSleeve?.pick?.key ?? 'REPO';
-  const notActionable = overallIdle === 0 && sleevePick !== 'STOCK' && tag !== 'REPO' && candidates.length > 0 && block?.regime !== 'Weak';
+  const sleevePick = overall?.multiAssetSleeve?.pick?.key ?? null;
+  const showBuyList =
+    allowStockBuys && candidates.length > 0 && block?.regime !== 'Weak' && !gateClosed;
+
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
         {title}
-        {gateClosed && (
+        {rotateOutStocks && holdings.length > 0 && (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+            单轨非 STOCK · 应轮出
+          </span>
+        )}
+        {gateClosed && allowStockBuys && (
           <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-bold text-red-600 dark:text-red-400">
             闸门关闭 · 今日不买
           </span>
@@ -426,7 +547,14 @@ function HealthPanel({
           <button
             type="button"
             onClick={() => {
-              const lines = holdings.map((h) => `${h.symbol} 止损${h.stopLossLine} 移动${h.trailingLine} 到期${h.expireDate} ${h.action === 'EXIT' ? '需卖' : '持有'}`).join('\n');
+              const lines = holdings
+                .map(
+                  (h) =>
+                    `${h.symbol} 止损${h.stopLossLine} 移动${h.trailingLine} 到期${h.expireDate} ${
+                      rotateOutStocks || h.action === 'EXIT' ? '需卖' : '持有'
+                    }`,
+                )
+                .join('\n');
               void navigator.clipboard.writeText(lines);
             }}
             className="ml-1 rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
@@ -442,16 +570,8 @@ function HealthPanel({
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>{regime.label}</span>
         {block?.strength != null && (
-          <span
-            className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 tabular-nums"
-            title="T2 regime 强度分（0-100，同构口径；仅用于双市场资金分配参考，不作闸门）"
-          >
+          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 tabular-nums">
             strength {block.strength.toFixed(1)}
-          </span>
-        )}
-        {block?.sentiment != null && (
-          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
-            sentiment: {block.sentiment}
           </span>
         )}
         {block?.panicCooldown?.active ? (
@@ -460,23 +580,13 @@ function HealthPanel({
           </span>
         ) : null}
         {block?.circuitBlocked ? (
-          <span
-            className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-300"
-            title="近 30 天已实现盈亏 ≤ -25%（净值约 -2.5%）→ 回撤熔断，暂停新开仓（2026-08-12 长窗定案）"
-          >
+          <span className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-300">
             回撤熔断·暂停开仓
           </span>
         ) : null}
-        {block && block.scoreFresh === false ? (
-          <span
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
-            title="分数由收盘任务 17:30（及盘中 10:30 / 14:00 实时价任务）写入"
-          >
-            分数截至 {block.scoreDataAsOfDate ?? '—'}
-          </span>
-        ) : null}
         <span className="text-[var(--k-muted)]">
-          S-3 候选：{block ? (block.s3Candidates?.length ?? 0) : '…'} 只
+          篮内候选 {block ? (block.s3Candidates?.length ?? 0) : '…'}
+          {sleevePick ? ` · 单轨 pick ${sleevePick}` : ''}
         </span>
       </div>
       {block?.infoSummary && (
@@ -502,26 +612,41 @@ function HealthPanel({
           )}
         </div>
       )}
-      <ReconBlock
-        recon={recon}
-        onRemind={onRemind}
-        remindedSymbols={remindedSymbols}
-        blockId={`recon${idSuffix}`}
-      />
+      {block && block.scoreFresh === false ? (
+        <span className="w-fit rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+          分数截至 {block.scoreDataAsOfDate ?? '—'}
+        </span>
+      ) : null}
+      {allowStockBuys ? (
+        <ReconBlock
+          recon={recon}
+          onRemind={onRemind}
+          remindedSymbols={remindedSymbols}
+          blockId={`recon${idSuffix}`}
+        />
+      ) : null}
       {holdings.length === 0 ? (
         <div className="text-xs text-[var(--k-muted)]">当前无持仓（未录入成本/仓位的 watchlist 票不算持仓）</div>
       ) : (
         <div id={`holdings${idSuffix}`} className="flex flex-col gap-1.5">
           {holdings.map((h) => (
-            <HoldingRow key={h.symbol} h={h} onOpen={onOpen} />
+            <HoldingRow
+              key={h.symbol}
+              h={
+                rotateOutStocks && h.action !== 'EXIT'
+                  ? {
+                      ...h,
+                      action: 'EXIT',
+                      reason: h.reason ?? `单轨今日 pick=${sleevePick}，股票篮应轮出`,
+                    }
+                  : h
+              }
+              onOpen={onOpen}
+            />
           ))}
         </div>
       )}
-      {notActionable ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-          回测有 {candidates.length} 只候选（{tag} {block?.regime}），但单轨择强为 <strong>{sleevePick}</strong> 且闲置 {overallIdle}% → 需先卖 {sleevePick} 腾仓才可买，不主动提示买入
-        </div>
-      ) : candidates.length > 0 ? (
+      {showBuyList ? (
         <BuyList
           candidates={candidates}
           total={block?.s3CandidateTotal}
@@ -532,15 +657,21 @@ function HealthPanel({
           onRemind={onRemind}
           onBuy={onBuy}
         />
-      ) : block ? (
+      ) : !allowStockBuys && candidates.length > 0 ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          单轨 pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选 {candidates.length} 只<strong>不执行买入</strong>
+        </div>
+      ) : allowStockBuys && block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
           {block.regime === 'Weak'
-            ? '今日无开仓候选（regime=Weak：S-3 规定空仓观望）'
+            ? '今日无开仓候选（regime=Weak：股票篮空仓观望）'
             : block.circuitBlocked
-              ? '回撤熔断中：近 30 天已实现 ≤ -25%（净值约 -2.5%），暂停新开仓'
+              ? '回撤熔断中：暂停新开仓'
               : block.scoreFresh === false
-                ? `分数未更新（截至 ${block.scoreDataAsOfDate ?? '—'}）· 盘中暂无候选（收盘任务 17:30 更新当日分数）`
-                : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
+                ? `分数未更新（截至 ${block.scoreDataAsOfDate ?? '—'}）· 盘中暂无候选`
+                : gateClosed
+                  ? '闸门关闭 · 今日不买'
+                  : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
         </div>
       ) : null}
     </div>
@@ -662,11 +793,33 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
     });
   }
 
+  function handleBuyEtf(symbol: string, name: string | null) {
+    setBuyTarget({
+      symbol,
+      name,
+      score: null,
+      rs: null,
+      sizePct: 100,
+    });
+  }
+
+  const sleeve = data?.multiAssetSleeve;
+  const pickKey = sleeve?.pick?.key ?? null;
+  const allowStockBuys = pickKey === 'STOCK';
+  const rotateOutStocks = pickKey != null && pickKey !== 'STOCK';
+  const stockHoldingsCount =
+    (data?.holdings?.length ?? 0) + (data?.hkHealth?.holdings?.length ?? 0);
+  const [stockOpen, setStockOpen] = React.useState(allowStockBuys);
+
+  React.useEffect(() => {
+    setStockOpen(allowStockBuys);
+  }, [allowStockBuys]);
+
   if (q.isError && !data) {
     return (
       <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-2.5 text-xs text-[var(--k-muted)]">
         <ShieldAlert size={13} className="mr-1 inline-block" />
-        持仓体检暂不可用（data-sync-service 未响应）
+        单轨择优暂不可用（data-sync-service 未响应）
       </div>
     );
   }
@@ -674,14 +827,15 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">S-3 持仓体检 · A 股 / 港股并行</span>
+        <span className="text-[12px] font-semibold">单轨择优 · 今日复刻（mom_compare）</span>
+        <span className="text-[10px] text-[var(--k-muted)]">100% 硬切 · 与 Timeline 同源</span>
         <Button
           variant="ghost"
           size="sm"
           className="ml-auto h-6 px-1.5"
           onClick={() => void q.refetch()}
           disabled={q.isFetching}
-          title="刷新体检"
+          title="刷新"
         >
           <RefreshCw size={12} className={q.isFetching ? 'animate-spin' : ''} />
         </Button>
@@ -691,30 +845,22 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
             <BellRing size={11} className="inline-block" />
-            买入提醒（{reminders.length}）· 已加入自选，行情/趋势/信号/体检自动盯盘
+            买入提醒（{reminders.length}）
           </div>
           <div className="flex flex-col gap-1">
             {reminders.map((r) => (
               <div key={r.symbol} className="flex flex-wrap items-center gap-x-2 text-[11px]">
                 <span className="font-medium">{r.name ?? r.symbol}</span>
-                <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
-                  {r.symbol}
-                </span>
+                <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">{r.symbol}</span>
                 {r.targetPrice != null && (
                   <span className="rounded bg-sky-500/10 px-1 py-0.5 font-mono text-[10px] text-sky-700 dark:text-sky-300">
                     目标价 {r.targetPrice}
-                  </span>
-                )}
-                {r.note && (
-                  <span className="max-w-[260px] truncate text-[var(--k-muted)]" title={r.note}>
-                    {r.note}
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => removeBuyReminder(r.symbol)}
                   className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-red-500/50 hover:text-red-500"
-                  title="移除提醒（自选保留）"
                 >
                   移除提醒
                 </button>
@@ -725,31 +871,69 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
       )}
 
       <div className="flex flex-col gap-2">
-        <HealthPanel
-          title="A 股 S-3（全闸门 · 含 A 股 ETF）"
-          tag="CN"
-          block={data}
-          recon={reconByMarket.get('CN')}
+        {sleeve ? (
+          <PickStrongOpsPanel
+            sleeve={sleeve}
+            stockHoldingsCount={stockHoldingsCount}
+            onBuyEtf={handleBuyEtf}
+          />
+        ) : (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+            live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离单轨）
+          </div>
+        )}
+
+        <MultiAssetHealthBlock
+          holdings={data?.multiAssetHoldings}
+          sleeve={sleeve}
           onOpen={onOpenStock}
-          onRemind={handleRemind}
-          onBuy={handleBuy}
-          remindedSymbols={remindedSymbols}
-          boughtSymbols={boughtSymbols}
-          overall={data}
         />
-        <HealthPanel
-          title="港股 S-3（regime 档 · trail -12%）"
-          tag="HK"
-          block={data?.hkHealth}
-          recon={reconByMarket.get('HK')}
-          onOpen={onOpenStock}
-          onRemind={handleRemind}
-          onBuy={handleBuy}
-          remindedSymbols={remindedSymbols}
-          boughtSymbols={boughtSymbols}
-          overall={data}
-        />
-        <MultiAssetHealthBlock holdings={data?.multiAssetHoldings} sleeve={data?.multiAssetSleeve} onOpen={onOpenStock} />
+
+        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
+          <button
+            type="button"
+            onClick={() => setStockOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold"
+          >
+            <span>股票篮细节（仅 pick=STOCK 时开仓）</span>
+            <span className="text-[10px] font-normal text-[var(--k-muted)]">
+              {allowStockBuys ? '今日可执行' : pickKey ? `今日 pick=${pickKey} · 只看仓/轮出` : '等待 pick'}
+            </span>
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">{stockOpen ? '收起' : '展开'}</span>
+          </button>
+          {stockOpen ? (
+            <div className="flex flex-col gap-2 border-t border-[var(--k-border)] p-2.5">
+              <HealthPanel
+                title="A股线（股票篮生成器）"
+                tag="CN"
+                block={data}
+                recon={reconByMarket.get('CN')}
+                onOpen={onOpenStock}
+                onRemind={handleRemind}
+                onBuy={handleBuy}
+                remindedSymbols={remindedSymbols}
+                boughtSymbols={boughtSymbols}
+                overall={data}
+                allowStockBuys={allowStockBuys}
+                rotateOutStocks={rotateOutStocks}
+              />
+              <HealthPanel
+                title="港股线（股票篮生成器）"
+                tag="HK"
+                block={data?.hkHealth}
+                recon={reconByMarket.get('HK')}
+                onOpen={onOpenStock}
+                onRemind={handleRemind}
+                onBuy={handleBuy}
+                remindedSymbols={remindedSymbols}
+                boughtSymbols={boughtSymbols}
+                overall={data}
+                allowStockBuys={allowStockBuys}
+                rotateOutStocks={rotateOutStocks}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {reminderTarget && (

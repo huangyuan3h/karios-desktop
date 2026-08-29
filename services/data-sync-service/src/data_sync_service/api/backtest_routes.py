@@ -34,10 +34,14 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 _timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
 TIMELINE_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
 TIMELINE_CACHE_TTL_HOURS = 24
+# Bump when pick logic changes so stale hard_stock file caches are ignored.
+_TIMELINE_MODE = "mom_compare"
+
 
 def _timeline_file(start: str, end: str) -> Path:
-    safe = f"{start}_{end}.json"
+    safe = f"{start}_{end}_{_TIMELINE_MODE}.json"
     return TIMELINE_CACHE_DIR / safe
+
 
 def _load_timeline_file(start: str, end: str) -> dict[str, Any] | None:
     p = _timeline_file(start, end)
@@ -45,9 +49,13 @@ def _load_timeline_file(start: str, end: str) -> dict[str, Any] | None:
         return None
     try:
         import time
+
         if time.time() - p.stat().st_mtime > TIMELINE_CACHE_TTL_HOURS * 3600:
             return None
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if data.get("mode") != _TIMELINE_MODE:
+            return None
+        return data
     except Exception:
         return None
 
@@ -328,21 +336,16 @@ def backtest_timeline(
     start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
 ) -> dict[str, Any]:
-    """Past-year timeline: single-track unified pick (STOCK vs GOLD/OIL/NASDAQ/BOND).
+    """Past-year timeline: 择强单轨 ``mom_compare`` (equal-asset pool).
 
-    Returns rows with date, pick (STOCK/GOLD/OIL/NASDAQ/BOND10/REPO), navBase (stock-only)
-    and navSingle (unified 100% to strongest mom60>MA200). Uses S3_CONFIG mp10 10%×10.
-    Default window = past 365 days.
+    Pick = argmax mom60 among {STOCK basket if any position} ∪ {ETFs above MA200}.
+    100% hard switch; empty → REPO. Canonical product mode (not STOCK-priority).
     """
     from datetime import date as date_type
     from datetime import timedelta
 
     from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
-    from data_sync_service.service.multi_asset_sleeve import CANDIDATES
-    from data_sync_service.service.portfolio_nav_sim import (
-        load_third_asset_cache,
-        simulate_sleeve_nav,
-    )
+    from data_sync_service.service.pick_strong_track import build_mom_compare_timeline
 
     today = date_type.today().isoformat()
     if not start:
@@ -352,12 +355,11 @@ def backtest_timeline(
     cache_key = (start, end)
     if cache_key in _timeline_cache:
         return _timeline_cache[cache_key]
-    # file cache (warm daily by scheduler 08:20)
     file_cached = _load_timeline_file(start, end)
     if file_cached is not None:
         _timeline_cache[cache_key] = file_cached
         return file_cached
-    # S3 run (scripts/ is not in src, add to path)
+
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
@@ -367,285 +369,44 @@ def backtest_timeline(
     try:
         data = BacktestData(cfg)
         run = simulate(cfg, data)
-        # Also load HK for combined A+H view (best effort)
         try:
             from run_walk_forward import HK_S3_CONFIG  # noqa: E402
 
             cfg_hk = BacktestConfig(start_date=start, end_date=end, market="HK", **HK_S3_CONFIG)  # type: ignore[arg-type]
             data_hk = BacktestData(cfg_hk)
             run_hk = simulate(cfg_hk, data_hk)
-            # merge HK positions into CN run for timeline display
             hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
             for s in run.positions_by_day:
                 day = str(s.get("date"))
                 hk_s = hk_by_day.get(day)
                 if hk_s:
-                    # merge positions
                     s["positions"] = (s.get("positions") or []) + (hk_s.get("positions") or [])
-            # merge close maps and calendar (union)
             for ts, mp in data_hk.close_by_ts_day.items():
                 if ts not in data.close_by_ts_day:
                     data.close_by_ts_day[ts] = mp
                 else:
                     data.close_by_ts_day[ts].update(mp)
-            # calendar union
             data.calendar = sorted(set(data.calendar) | set(data_hk.calendar))
         except Exception:
             pass
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline S-3 failed: {exc}") from exc
-    cache_path = REPORTS_DIR / ".." / "third_asset_cache.json"
-    if not cache_path.exists():
-        cache_path = Path(__file__).resolve().parents[3] / "data" / "third_asset_cache.json"
-    # single sleeve NAV rows
+
     try:
-        cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
-        etf_close, repo_rate = load_third_asset_cache(cache)
-        single = simulate_sleeve_nav(
+        built = build_mom_compare_timeline(
+            calendar=data.calendar,
             positions_by_day=run.positions_by_day,
             close_by_ts_day=data.close_by_ts_day,
-            calendar=data.calendar,
-            etf_close_by_day=etf_close,
-            repo_rate_by_day=repo_rate,
-            min_idle_pct=20.0,
         )
-        single_rows = {r["date"]: r for r in single.get("rows", [])}
-    except Exception:  # noqa: BLE001
-        single_rows = {}
-    # unified single-track pick: STOCK vs 4 ETFs (pure mom60>MA200, no Nasdaq-first)
-    try:
-        import psycopg
-
-        from data_sync_service.config import get_settings
-        from data_sync_service.service.multi_asset_sleeve import CANDIDATES
-
-        s = get_settings()
-        conn = psycopg.connect(s.database_url)
-        cur = conn.cursor()
-        multi_close: dict[str, dict[str, float]] = {}
-        for ts in [c["ts"] for c in CANDIDATES]:
-            cur.execute("select trade_date, close from daily where ts_code=%s order by trade_date", (ts,))
-            multi_close[ts] = {str(r[0]): float(r[1]) for r in cur.fetchall()}
-        conn.close()
-        # precompute unified pick per day (t-1 mom60)
-        pick_by_day: dict[str, str] = {}
-        stock_mom_by_day: dict[str, float] = {}
-        for idx, day in enumerate(data.calendar):
-            if idx == 0:
-                continue
-            prev = data.calendar[idx - 1]
-            mom: dict[str, float] = {}
-            above: dict[str, bool] = {}
-            for c in CANDIDATES:
-                ts = c["ts"]
-                mp = multi_close.get(ts, {})
-                days_sorted = sorted(mp.keys())
-                try:
-                    pi = days_sorted.index(prev)
-                except ValueError:
-                    continue
-                if pi < 260:
-                    continue
-                ma200 = sum(mp[days_sorted[j]] for j in range(pi - 200 + 1, pi + 1)) / 200
-                mom60 = mp[prev] / mp[days_sorted[pi - 60]] - 1 if mp[days_sorted[pi - 60]] != 0 else -1e9
-                mom[c["key"]] = mom60
-                above[c["key"]] = mp[prev] >= ma200
-            # STOCK strength = avg mom60 of held positions at prev day
-            snap_prev = {str(s.get("date")): s for s in run.positions_by_day}.get(prev)
-            stock_moms: list[float] = []
-            stock_above_cnt = 0
-            if snap_prev:
-                for pos in snap_prev.get("positions") or []:
-                    ts_code = str(pos.get("ts_code") or "")
-                    mp = data.close_by_ts_day.get(ts_code) or {}
-                    if not mp:
-                        continue
-                    days_s = sorted(mp.keys())
-                    try:
-                        pi2 = days_s.index(prev)
-                    except ValueError:
-                        continue
-                    if pi2 < 60:
-                        continue
-                    if mp[days_s[pi2]] == 0 or mp[days_s[pi2 - 60]] == 0:
-                        continue
-                    win = min(200, pi2 + 1)
-                    ma200_s = sum(mp[days_s[j]] for j in range(pi2 - win + 1, pi2 + 1)) / win
-                    mom60_s = mp[days_s[pi2]] / mp[days_s[pi2 - 60]] - 1
-                    stock_moms.append(mom60_s)
-                    if mp[days_s[pi2]] >= ma200_s:
-                        stock_above_cnt += 1
-            filt = {k: v for k, v in mom.items() if above.get(k)}
-            # STOCK priority: if S-3 holds anything at prev day, stock is the pick (single-track = stock beats sleeve)
-            has_stock = bool(snap_prev and (snap_prev.get("positions") or []))
-            if has_stock:
-                # still compute avg mom for display
-                if stock_moms:
-                    stock_mom_by_day[day] = sum(stock_moms) / len(stock_moms)
-                pick_by_day[day] = "STOCK"
-                continue
-            if not filt:
-                continue
-            pick_by_day[day] = max(filt, key=lambda k: filt[k])
-        # multi NAV (reuse simulate_sleeve logic with multi picks)
-        # Build ret map
-        ret_by_ts: dict[str, dict[str, float]] = {}
-        for ts, mp in multi_close.items():
-            days_sorted = sorted(mp.keys())
-            ret: dict[str, float] = {}
-            for i in range(1, len(days_sorted)):
-                d = days_sorted[i]
-                prev = days_sorted[i - 1]
-                if mp[prev] != 0:
-                    ret[d] = mp[d] / mp[prev] - 1
-            ret_by_ts[ts] = ret
-        key_to_ts = {c["key"]: c["ts"] for c in CANDIDATES}
-        snap_by_day = {str(s.get("date")): s for s in run.positions_by_day}
-        day_idx = {d: i for i, d in enumerate(data.calendar)}
-        nav_base = 1.0
-        nav_single = 1.0
-        rows = []
-        # repo rate for REPO (GC001) - reload from cache
-        repo_by_day: dict[str, float] = {}
-        try:
-            _cache2 = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
-            _, _repo_rate2 = load_third_asset_cache(_cache2)
-            repo_by_day = {k: float(v) / 100 / 365 for k, v in (_repo_rate2 or {}).items()}
-        except Exception:
-            repo_by_day = {}
-        # precompute stock avg daily ret for single-track (100% to stock basket when pick=STOCK)
-        stock_avg_ret_by_day: dict[str, float] = {}
-        for day in data.calendar:
-            idx_d = day_idx.get(day)
-            if idx_d is None or idx_d == 0:
-                continue
-            snap_d = snap_by_day.get(day)
-            if not snap_d:
-                continue
-            rets: list[float] = []
-            for pos in snap_d.get("positions") or []:
-                entry = str(pos.get("entry_date") or "")
-                if entry and day <= entry:
-                    continue
-                ts_code = str(pos.get("ts_code") or "")
-                closes_d = data.close_by_ts_day.get(ts_code) or {}
-                prev_d = data.calendar[idx_d - 1]
-                today_c = closes_d.get(day)
-                prev_c = closes_d.get(prev_d)
-                if today_c is not None and prev_c and prev_c != 0:
-                    rets.append(today_c / prev_c - 1)
-            if rets:
-                stock_avg_ret_by_day[day] = sum(rets) / len(rets)
-        # build sold map: prev positions - current positions (by ts_code)
-        sold_by_day: dict[str, list[str]] = {}
-        prev_syms: set[str] = set()
-        prev_map: dict[str, str] = {}
-        for day in data.calendar:
-            cur_snap = snap_by_day.get(day)
-            cur_syms = {str(p.get("ts_code") or p.get("symbol") or "") for p in (cur_snap.get("positions") or []) if cur_snap}
-            cur_syms = {s for s in cur_syms if s}
-            sold = sorted(prev_syms - cur_syms)
-            if sold:
-                # map to display symbol (try symbol field first)
-                sold_labels = []
-                for ts in sold:
-                    # find name from prev_map
-                    sold_labels.append(prev_map.get(ts, ts))
-                sold_by_day[day] = sold_labels
-            # update
-            prev_syms = cur_syms
-            prev_map = {}
-            if cur_snap:
-                for p in cur_snap.get("positions") or []:
-                    ts = str(p.get("ts_code") or p.get("symbol") or "")
-                    sym = str(p.get("symbol") or ts)
-                    if ts:
-                        prev_map[ts] = sym
-        for day in data.calendar:
-            snap = snap_by_day.get(day)
-            deployed_ret = 0.0
-            deployed_pct = 0.0
-            cn_cnt = 0
-            hk_cnt = 0
-            stock_syms: list[str] = []
-            if snap:
-                for pos in snap.get("positions") or []:
-                    try:
-                        pct = float(pos.get("position_pct") or 0)
-                    except (TypeError, ValueError):
-                        continue
-                    if pct <= 0:
-                        continue
-                    entry = str(pos.get("entry_date") or "")
-                    if entry and day <= entry:
-                        continue
-                    ts_code = str(pos.get("ts_code") or "")
-                    closes_d = data.close_by_ts_day.get(ts_code) or {}
-                    today = closes_d.get(day)
-                    idx = day_idx.get(day)
-                    prev = closes_d.get(data.calendar[idx - 1]) if idx and idx > 0 else None
-                    if today is not None and prev:
-                        deployed_ret += pct * (today / prev - 1.0)
-                    deployed_pct += pct
-                    if ts_code.endswith(".HK") or ts_code.startswith("HK"):
-                        hk_cnt += 1
-                    else:
-                        cn_cnt += 1
-                    sym = pos.get("symbol") or ts_code
-                    if len(stock_syms) < 3:
-                        stock_syms.append(str(sym))
-            deployed_pct = min(1.0, deployed_pct)
-            idle_pct = max(0.0, 1.0 - deployed_pct)
-            pick_key = pick_by_day.get(day)
-            if not pick_key:
-                pick_key = "REPO"
-                pick_ts = "GC001"
-            else:
-                pick_ts = key_to_ts.get(pick_key) if pick_key != "STOCK" else "STOCK_BASKET"
-            if cn_cnt and hk_cnt:
-                stock_market = "A+H"
-            elif hk_cnt:
-                stock_market = "HK"
-            elif cn_cnt:
-                stock_market = "A股"
-            else:
-                stock_market = "空仓"
-            # single-track NAV: 100% to unified pick
-            if pick_key == "STOCK":
-                single_ret = stock_avg_ret_by_day.get(day, deployed_ret if deployed_pct > 0 else 0.0)
-                # scale deployed_ret to 100% if basket had partial pct, use avg ret
-            elif pick_key == "REPO":
-                single_ret = repo_by_day.get(day, 0.0)
-            else:
-                single_ret = ret_by_ts.get(pick_ts, {}).get(day, 0.0) if pick_ts else 0.0
-            nav_base *= 1 + deployed_ret
-            nav_single *= 1 + single_ret
-            single_row = single_rows.get(day, {})
-            rows.append(
-                {
-                    "date": day,
-                    "deployedPct": round(deployed_pct * 100, 1),
-                    "idlePct": round(idle_pct * 100, 1),
-                    "positions": len((snap or {}).get("positions") or []),
-                    "cnPositions": cn_cnt,
-                    "hkPositions": hk_cnt,
-                    "stockMarket": stock_market,
-                    "stockSymbols": stock_syms,
-                    "exits": sold_by_day.get(day, []),
-                    "exitsCount": len(sold_by_day.get(day, [])),
-                    "pick": pick_key,
-                    "pickTs": pick_ts,
-                    "stockMom": round(stock_mom_by_day.get(day, 0) * 100, 2) if day in stock_mom_by_day else None,
-                    "navBase": round(nav_base, 6),
-                    "navSleeve": single_row.get("navSleeve"),
-                    "navSingle": round(nav_single, 6),
-                    "navMulti": round(nav_single, 6),
-                    "navBaseReturnPct": round((nav_base - 1) * 100, 2),
-                    "navSingleReturnPct": round((nav_single - 1) * 100, 2),
-                    "navMultiReturnPct": round((nav_single - 1) * 100, 2),
-                }
-            )
-        result = {"ok": True, "start": start, "end": end, "rows": rows}
+        result = {
+            "ok": True,
+            "start": start,
+            "end": end,
+            "mode": built.get("mode") or _TIMELINE_MODE,
+            "strategy": built.get("strategy") or "择强单轨",
+            "summary": built.get("summary"),
+            "rows": built.get("rows") or [],
+        }
         _timeline_cache[cache_key] = result
         _save_timeline_file(start, end, result)
         return result

@@ -51,7 +51,7 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
                 detail.append(f"闲置 {sleeve['idlePct']}%")
             sleeve_lines = [
                 "",
-                f"{icon} 第三资产：{sleeve.get('label') or sleeve.get('action')}",
+                f"{icon} 择强单轨：{sleeve.get('label') or sleeve.get('action')}",
                 f"  {sleeve.get('message') or ''}",
             ]
             if detail:

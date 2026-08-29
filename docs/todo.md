@@ -22,7 +22,7 @@
 ## 当前方向（验证+维护期）
 
 - **P0：择强单轨**（全资产同权 100% 硬切）——只优化择强打分/切换；S-3 不扫参。真值 `modules/pick-strong-track.md`
-- 验证闭环：`user_trades` / paper ≥20笔 → C4；Timeline 与 `mom_compare` 定案对齐
+- 验证闭环：`user_trades` / paper ≥20笔 → C4；Timeline/`mom_compare` 对齐 **[done] 2026-08-29**
 - 系统健康：季度复核 + rolling OOS
 - 脉冲天平（金/油）仅观察层，不升格为独立策略
 

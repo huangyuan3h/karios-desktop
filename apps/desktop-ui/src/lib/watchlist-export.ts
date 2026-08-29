@@ -160,8 +160,8 @@ function buildSystemAppendix(overview: Awaited<ReturnType<typeof fetchBacktestOv
     const l = overview.longWindowCN;
     lines.push(`- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔（全市场 5226 · 含回撤熔断）`);
   }
-  lines.push('- 单轨 100% 择强（`GET /api/backtest/timeline`）：A股持仓时优先持有股票，空仓时金/油/纳指/债按 mom60>MA200 择强，空档逆回购 GC001；日频单选 · 哪个强买哪个');
-  lines.push('- 多资产（`services/data-sync-service/src/data_sync_service/service/multi_asset_sleeve.py`）：GOLD 518880 / OIL 513350 / NASDAQ 513100 / BOND10 511260 · mom60+MA200 · 纸上1.4×可杠杆，实盘自选');
+  lines.push('- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮 ∪ 金518880/油513350/纳指513100·513110/债511260 同权比 t-1 mom60（ETF须≥MA200），argmax 100%硬切，空档 GC001；LB60·MA200·hold1');
+  lines.push('- S-3 = 股票腿生成器（非终局产品）；多资产腿规则在 `multi_asset_sleeve.py`，live pick 同 mom_compare');
   lines.push('- 形态因子（`ml_forecast/morphology.py strong_scoop_exhaustion`）：强股勺型耗尽顶≥80%（ret60>0.4+放量 89-92%胜率）· 方向判别层，不改S-3');
   lines.push('- 数据：Postgres + Alembic（`alembic upgrade head`）· score全市场日更17:30/10:30/14:00 · TrendOK=信号真值');
   lines.push('');

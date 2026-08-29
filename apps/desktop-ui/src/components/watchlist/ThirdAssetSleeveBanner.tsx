@@ -25,13 +25,8 @@ export function ThirdAssetSleeveBanner() {
     () => (q.data as PortfolioHealthResponse | undefined)?.multiAssetSleeve ?? null,
     [q.data],
   );
-  const single = React.useMemo(
-    () => (q.data as PortfolioHealthResponse | undefined)?.thirdAssetSleeve ?? null,
-    [q.data],
-  );
-  // Prefer multi-asset rotation (Nasdaq-first) when active, fallback to single NASDAQ T6
-  const sleeve = multi?.active && multi.action !== 'NONE' ? multi : single;
-  const isMulti = sleeve === multi;
+  // Prefer multi-asset 择强单轨 only — do not fall back to T6 thirdAsset as「择强」.
+  const sleeve = multi?.active && multi.action !== 'NONE' ? multi : null;
 
   if (!sleeve?.active || !sleeve.action || sleeve.action === 'NONE') {
     return null;
@@ -79,10 +74,8 @@ export function ThirdAssetSleeveBanner() {
     DONT_BUY: '⏸',
   };
 
-  const etfLabel = isMulti
-    ? pick?.symbol ?? (sleeve as unknown as { etf?: string }).etf ?? '多资产'
-    : (sleeve as unknown as { etf?: string }).etf ?? (sleeve as unknown as { tsCode?: string }).tsCode ?? '513100';
-  const titlePrefix = isMulti ? '多资产轮动' : '第三资产套筒';
+  const etfLabel = pick?.symbol ?? (sleeve as unknown as { etf?: string }).etf ?? '择强';
+  const titlePrefix = '择强单轨';
 
   return (
     <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles[sleeve.action] ?? styles.DONT_BUY}`}>

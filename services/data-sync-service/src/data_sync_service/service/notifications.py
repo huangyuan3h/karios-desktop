@@ -256,25 +256,30 @@ def _pyramid_trigger_alerts() -> list[dict[str, Any]]:
 
 
 def _third_asset_notification() -> list[dict[str, Any]]:
-    """T6 (2026-08-19): 513100 idle-cash sleeve hint as a notification.
+    """择强单轨 actionable hint (same source as Watchlist multiAssetSleeve)."""
+    from data_sync_service.service.portfolio_health import build_portfolio_health
 
-    Only actionable actions (BUY / SELL_TO_A_SHARE / SELL_TO_REPO) are pushed —
-    DONT_BUY (gate closed / broke MA / fully deployed) stays informational on
-    the watchlist banner only, so a closed-gate day never nags to buy.
-    """
-    blocks = _anchor_blocks()
-    block = blocks.get("CN") or {}
-    sleeve = block.get("thirdAssetSleeve") or {}
-    if not sleeve.get("active") or sleeve.get("action") in ("NONE", "DONT_BUY"):
+    try:
+        h = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("notifications pick-strong failed: %s", exc)
         return []
-    severity = {"BUY_513100": "medium", "SELL_TO_A_SHARE": "high", "SELL_TO_REPO": "high"}.get(
-        str(sleeve.get("action")), "medium"
-    )
+    sleeve = h.get("multiAssetSleeve") or {}
+    if not sleeve.get("active") or sleeve.get("action") in ("NONE", "DONT_BUY", None):
+        return []
+    severity = {
+        "BUY": "medium",
+        "BUY_513100": "medium",
+        "ROTATE": "medium",
+        "SELL_TO_A_SHARE": "high",
+        "SELL_TO_REPO": "high",
+    }.get(str(sleeve.get("action")), "medium")
+    pick = (sleeve.get("pick") or {}).get("key") if isinstance(sleeve.get("pick"), dict) else None
     return [{
-        "id": f"sleeve:{sleeve.get('asOfDate')}:{sleeve.get('action')}",
-        "type": "third_asset",
+        "id": f"pick-strong:{pick or ''}:{sleeve.get('action')}",
+        "type": "pick_strong",
         "severity": severity,
-        "title": f"第三资产套筒 · {sleeve.get('label') or sleeve.get('action')}",
+        "title": f"择强单轨 · {sleeve.get('label') or sleeve.get('action')}",
         "detail": str(sleeve.get("message") or ""),
         "anchor": "watchlist",
         "createdAt": datetime.now(UTC).isoformat(),

@@ -47,6 +47,14 @@ beforeEach(() => {
 describe('PortfolioHealthCard', () => {
   it('renders market state + holdings from the health endpoint', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-07',
       regime: 'Weak',
       sentiment: 'normal',
@@ -56,17 +64,27 @@ describe('PortfolioHealthCard', () => {
       hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText(/S-3 持仓体检 · A 股 \/ 港股并行/)).toBeDefined();
+    expect(await screen.findByText(/单轨择优 · 今日复刻/)).toBeDefined();
     expect(await screen.findByText("Weak · 空仓观望")).toBeDefined();
     expect(await screen.findByText("Strong · 进攻")).toBeDefined();
     expect(await screen.findByText("腾讯控股")).toBeDefined();
     expect(await screen.findByText("✅ 持有")).toBeDefined();
     expect(await screen.findByText("2026-08-07")).toBeDefined();
+    const exp = screen.queryByText('展开');
+    if (exp) fireEvent.click(exp);
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
   });
 
   it('renders alpha events + industry fund flow info layers', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-12',
       regime: 'Weak',
       sentiment: 'normal',
@@ -101,6 +119,14 @@ describe('PortfolioHealthCard', () => {
 
   it('flags EXIT holdings with the trigger reason', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-07',
       regime: 'Strong',
       sentiment: 'normal',
@@ -114,6 +140,14 @@ describe('PortfolioHealthCard', () => {
 
   it('shows weak-regime no-candidate note and candidate chips when present', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-07',
       regime: 'Strong',
       sentiment: 'normal',
@@ -130,11 +164,19 @@ describe('PortfolioHealthCard', () => {
   it('shows a fallback note when the endpoint is unreachable', async () => {
     fetchPortfolioHealth.mockRejectedValue(new Error('fetch failed'));
     renderCard();
-    expect(await screen.findByText(/持仓体检暂不可用/)).toBeDefined();
+    expect(await screen.findByText(/单轨择优暂不可用/)).toBeDefined();
   });
 
   it('distinguishes stale scores from a real no-candidate decision', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-11',
       regime: 'Strong',
       s3Candidates: [],
@@ -144,6 +186,10 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
+    const exp2 = await screen.findByText(/单轨择优 · 今日复刻/);
+    expect(exp2).toBeDefined();
+    const expandBtn = screen.queryByText('展开');
+    if (expandBtn) fireEvent.click(expandBtn);
     expect(await screen.findByText(/分数未更新（截至 2026-08-10）/)).toBeDefined();
     expect(screen.getByText(/分数截至 2026-08-10/)).toBeDefined();
   });
@@ -151,6 +197,14 @@ describe('PortfolioHealthCard', () => {
   it('collapses candidates to the top-5 buy list with backtest size + expand toggle', async () => {
     const mk = (n: string, s: number) => ({ symbol: `HK:${s}`, name: n, score: s, rs: 0.8 });
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-10',
       regime: 'Strong',
       s3Candidates: [mk('A', 100), mk('B', 99), mk('C', 98), mk('D', 97), mk('E', 96), mk('F', 95)],
@@ -160,7 +214,10 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点 · 股票篮买入/)).toBeDefined();
+    // expand stock basket if collapsed
+    const expand = screen.queryByText('展开');
+    if (expand) fireEvent.click(expand);
     expect(screen.getByText(/候选池 19 只/)).toBeDefined();
     expect(screen.getByText(/每票建议 10%/)).toBeDefined();
     expect(screen.getAllByText('买 10%').length).toBe(5);
@@ -172,6 +229,14 @@ describe('PortfolioHealthCard', () => {
   it('uses env-scaled sleeve when envScaleToday present (D3)', async () => {
     const mk = (n: string, s: number) => ({ symbol: `CN:${s}`, name: n, score: s, rs: 0.8 });
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-15',
       regime: 'Strong',
       s3Candidates: [mk('A', 100), mk('B', 99)],
@@ -187,6 +252,14 @@ describe('PortfolioHealthCard', () => {
 
   it('opens the stock page when a holding row is clicked', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-07',
       regime: 'Weak',
       sentiment: 'normal',
@@ -211,6 +284,14 @@ describe('PortfolioHealthCard', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-10',
       regime: 'Strong',
       s3Candidates: [
@@ -222,7 +303,10 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点 · 股票篮买入/)).toBeDefined();
+    // expand stock basket if collapsed
+    const expand = screen.queryByText('展开');
+    if (expand) fireEvent.click(expand);
 
     const remindButtons = screen.getAllByText('提醒买入');
     expect(remindButtons.length).toBe(2);
@@ -268,6 +352,14 @@ describe('PortfolioHealthCard', () => {
       ]),
     );
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-10',
       regime: 'Strong',
       s3Candidates: [],
@@ -287,6 +379,14 @@ describe('PortfolioHealthCard', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-10',
       regime: 'Strong',
       s3Candidates: [
@@ -298,7 +398,10 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点 · 股票篮买入/)).toBeDefined();
+    // expand stock basket if collapsed
+    const expand = screen.queryByText('展开');
+    if (expand) fireEvent.click(expand);
 
     const buyButtons = screen.getAllByText('买入');
     expect(buyButtons.length).toBe(2);
@@ -382,6 +485,14 @@ describe('PortfolioHealthCard', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-10',
       regime: 'Strong',
       s3Candidates: [],
@@ -389,7 +500,7 @@ describe('PortfolioHealthCard', () => {
       hkHealth: { regime: 'Diverging', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect((await screen.findAllByText(/回测口径 · 2026-08-07 对账/)).length).toBe(2);
+    expect((await screen.findAllByText(/股票篮对账 · 2026-08-07/)).length).toBe(2);
     expect(screen.getByText(/回测应持 19 · 实持 0 · 缺 19 · 多 0/)).toBeDefined();
     expect(screen.getByText(/看缺票（19）/)).toBeDefined();
 
@@ -406,6 +517,14 @@ describe('PortfolioHealthCard', () => {
 
   it('renders signal summary line + candidate info layers', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-12',
       regime: 'Strong',
       sentiment: 'hot',
@@ -431,13 +550,21 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/信号 · 1 持仓/)).toBeDefined();
     expect(screen.getByText(/1 只有 α 事件/)).toBeDefined();
     expect(screen.getByText(/1 只行业资金流出/)).toBeDefined();
-    expect(screen.getByText(/下午 2 点买入清单/)).toBeDefined();
+    expect(screen.getByText(/下午 2 点 · 股票篮买入/)).toBeDefined();
     expect(screen.getByText(/稀土催化/)).toBeDefined();
     expect(screen.getByText(/有色金属 5日\+8.2亿（第2\/31）/)).toBeDefined();
   });
 
   it('marks gate-closed states boldly (Weak / panic / circuit)', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-12',
       regime: 'Weak',
       sentiment: 'hot',
@@ -460,6 +587,14 @@ describe('PortfolioHealthCard', () => {
 
   it('does not mark the gate when open (Strong / Diverging)', async () => {
     fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 12, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
       tradeDate: '2026-08-12',
       regime: 'Diverging',
       sentiment: 'hot',

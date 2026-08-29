@@ -7,6 +7,7 @@ type MultiHolding = NonNullable<PortfolioHealthResponse['multiAssetHoldings']>[n
 type MultiSleeve = PortfolioHealthResponse['multiAssetSleeve'];
 
 const KEY_META: Record<string, { label: string; icon: string; color: string }> = {
+  STOCK: { label: '股票篮', icon: '📈', color: 'border-violet-500/30 bg-violet-500/5' },
   GOLD: { label: '黄金', icon: '🪙', color: 'border-amber-500/30 bg-amber-500/5' },
   OIL: { label: '原油', icon: '🛢️', color: 'border-slate-500/30 bg-slate-500/5' },
   NASDAQ: { label: '纳指', icon: '🇺🇸', color: 'border-blue-500/30 bg-blue-500/5' },
@@ -40,10 +41,10 @@ export function MultiAssetHealthBlock({
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">多资产</span>
-        黄金 · 原油 · 纳指 · 国债
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">择强单轨</span>
+        STOCK · 金 · 油 · 纳 · 债
         {pickKey ? (
-          <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">择强：{pickKey}</span>
+          <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">今日：{pickKey}</span>
         ) : null}
         {sleeve?.idlePct != null ? (
           <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">闲置 {sleeve.idlePct}%</span>

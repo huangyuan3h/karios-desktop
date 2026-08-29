@@ -126,7 +126,7 @@ export async function queryHoldingsHealth(): Promise<string> {
   ];
   const sleeve = data.thirdAssetSleeve;
   if (sleeve?.active && sleeve.message) {
-    lines.push(`- 第三资产套筒（${sleeve.label ?? sleeve.action ?? ''}）：${sleeve.message}`);
+    lines.push(`- 择强单轨（${sleeve.label ?? sleeve.action ?? ''}）：${sleeve.message}`);
   }
   const holds = data.holdings ?? [];
   if (holds.length === 0) {

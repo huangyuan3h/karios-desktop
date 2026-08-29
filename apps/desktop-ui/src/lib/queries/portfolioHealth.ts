@@ -154,7 +154,7 @@ export interface PortfolioHealthResponse {
     gateOpen?: boolean;
     note?: string;
   } | null;
-  /** 2026-08-24 multi-asset rotation sleeve (GOLD/OIL/NASDAQ/BOND10 mom60>0 top2 Nasdaq-first). */
+  /** 择强单轨 live pick (mom_compare: STOCK basket ∪ GOLD/OIL/NASDAQ/BOND10). */
   multiAssetSleeve?: {
     active?: boolean;
     action?: 'BUY' | 'ROTATE' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'HOLD' | 'DONT_BUY' | 'NONE';
@@ -162,6 +162,8 @@ export interface PortfolioHealthResponse {
     message?: string;
     idlePct?: number;
     s3BuySetup?: boolean;
+    mode?: string;
+    strategy?: string;
     pick?: {
       key?: string;
       ts?: string;
@@ -171,8 +173,20 @@ export interface PortfolioHealthResponse {
       close?: number;
       ma200?: number;
       above_ma200?: boolean;
+      n?: number;
       all_mom?: Record<string, number>;
       all_above?: Record<string, boolean>;
+    } | null;
+    etfPick?: {
+      key?: string;
+      symbol?: string;
+      mom60?: number;
+      name?: string;
+    } | null;
+    stockPick?: {
+      key?: string;
+      mom60?: number;
+      n?: number;
     } | null;
     holding?: boolean;
     note?: string;

@@ -55,7 +55,7 @@ NAV 重固化：OOS2 **+31.3%** / train **+1.9%** / valid **+60.7%** —— trai
 
 | 方向 | 状态 |
 |------|------|
-| Timeline / live 与 `mom_compare` 定案对齐 | 待办（优先） |
+| Timeline / live 与 `mom_compare` 定案对齐 | **[done] 2026-08-29** API+导出+Watchlist 文案/live pick |
 | 择强 LB/MA/hold/cost/risk-adj/Top2 网格 | **[done] 2026-08-29** 维持 A0 |
 | C4 paper 对照 | 进行中 |
 | 新 S-3 信号 / 扫参 | **冻结** |

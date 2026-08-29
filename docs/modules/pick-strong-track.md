@@ -58,9 +58,9 @@
 | 口径 | 收益 | 最大回撤 | 说明 |
 |------|------|----------|------|
 | **择强单轨 `mom_compare`（定案）** | **+93.6%** | **28.3%** | 股票篮 vs 金/油/纳/债 **同权**比 mom60 |
-| 对照：`hard_stock`（有股票仓则锁 STOCK） | +110.8% | 32.0% | UI Timeline 旧逻辑偏置；**不作定案** |
+| 对照：`hard_stock`（有股票仓则锁 STOCK） | +110.8% | 32.0% | 旧 Timeline 偏置；**不作定案**（API 已改 `mom_compare`） |
 | 对照：CN S-3 引擎单独 | +58.3% | 23.0% | 仅股票腿，现金≤100% NAV |
-| 对照：UI Timeline 缓存 | 单轨 +123.9% / 基线 +101.6% | — | STOCK 优先 + 另一套净值构造；与定案脚本不同 |
+| 对照：UI Timeline 缓存（旧） | 单轨 +123.9% / 基线 +101.6% | — | 已废弃；API 现走 `pick_strong_track` |
 
 **结论**：定案口径过去一年约 **+94% / DD28%**。STOCK 优先会更高，但违背「全资产同权」；后续优化以 `mom_compare` 为准。
 
@@ -76,7 +76,8 @@
 4. **工具**：  
    - 网格 / 三窗：`PYTHONPATH=src:scripts python3 scripts/pick_strong_grid.py --batch all`  
    - 单窗核对：`PYTHONPATH=src:scripts python3 scripts/fused_timeline_walk.py --windows past_year --mode mom_compare`  
-   - UI：回测页 Timeline（逐步改为展示定案 `mom_compare`）  
+   - **UI / API**：`GET /api/backtest/timeline` · `mode=mom_compare`（与定案同权；缓存键含 mode，旧 hard_stock 缓存自动失效）  
+   - Watchlist live pick：`multi_asset_sleeve.build_multi_asset_sleeve` 同 `mom_compare`（含 STOCK 篮）  
 5. **实验记录**：一律写回 `docs/backtests/`；最近加固定案见 `pick-strong-hardening-2026-08-29.md`。
 
 ---

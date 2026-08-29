@@ -63,8 +63,9 @@ LOOKBACK = 60
 MA_WINDOW = 200
 COST = 0.0005
 MIN_IDLE_PCT = 20.0
-MIN_HOLD_DAYS = 5  # 2026-08-24 固化：最少持有5天防抖动，三窗 OOS2+17.4/train+19.3/valid+0.1 全过 vs 每天切+7.1
-TRAILING_PCT = 8.0  # 2026-08-28 固化：峰值 -8% 硬切 GC001，长窗 +32.4pt DD13.7→11.2（sleeve-exit-study）
+# Product 择强单轨 A0: min_hold=1 (sleeve-era hold5 rejected on fused absolute NAV).
+MIN_HOLD_DAYS = 1
+TRAILING_PCT = 8.0  # optional ETF exit aid; fused hard-switch is primary
 
 def _closes(ts: str, days: int = 260) -> list[float]:
     try:
@@ -80,19 +81,16 @@ def _closes(ts: str, days: int = 260) -> list[float]:
     return out
 
 def _pick() -> dict[str, Any] | None:
-    """Return today's pick: Nasdaq-first, weak -> rotate to strongest.
+    """Return today's ETF-leg pick: pure argmax mom60 among above-MA200.
 
-    Rule (optimized 2026-08-24): Nasdaq is default when above MA200 and mom60>0
-    and rank <=1 (top2) among above-MA200 candidates. Otherwise pick max mom60
-    among above-MA200. This matches walk-forward OOS2+19.3/train+17.9/valid+14.4
-    all-positive, vs pure max_mom valid -1.0 and pure Nasdaq-first valid -25.4.
-    NASDAQ aliases (513110/513100) are merged by best mom/price.
+    Aligns with product 择强单轨 ``mom_compare`` (no Nasdaq-first bias).
+    STOCK is merged later in ``build_multi_asset_sleeve`` when holdings exist.
     """
     # Group closes by key (NASDAQ has two aliases, keep best liquidity/mom)
     raw_map: dict[str, list[list[float]]] = {}
     for c in CANDIDATES:
         closes = _closes(c["ts"], 260)
-        if len(closes) < MA_WINDOW+LOOKBACK:
+        if len(closes) < MA_WINDOW + LOOKBACK:
             logger.warning("multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes))
             continue
         raw_map.setdefault(c["key"], []).append(closes)
@@ -100,61 +98,82 @@ def _pick() -> dict[str, Any] | None:
     for key, lists in raw_map.items():
         if not lists:
             return None
-        # pick alias with highest mom proxy (latest close / close 60 ago) for ranking
-        best = max(lists, key=lambda lst: lst[-1]/lst[-LOOKBACK] if lst[-LOOKBACK]!=0 else -1)
+        best = max(lists, key=lambda lst: lst[-1] / lst[-LOOKBACK] if lst[-LOOKBACK] != 0 else -1)
         closes_map[key] = best
-    if any(k not in closes_map for k in ["GOLD","OIL","NASDAQ","BOND10"]):
-        # allow missing if at least 3 present; log but don't hard fail
+    if any(k not in closes_map for k in ["GOLD", "OIL", "NASDAQ", "BOND10"]):
         if len(closes_map) < 3:
             return None
-    # compute mom60 and MA200 at t-1
-    mom={}
-    above={}
-    for c in CANDIDATES:
-        closes = closes_map[c["key"]]
-        # t-1 values (exclude last close to avoid lookahead)
+    mom: dict[str, float] = {}
+    above: dict[str, bool] = {}
+    for key, closes in closes_map.items():
         closes_t1 = closes[:-1]
         if len(closes_t1) < MA_WINDOW:
             continue
-        ma200 = sum(closes_t1[-MA_WINDOW:])/MA_WINDOW
+        ma200 = sum(closes_t1[-MA_WINDOW:]) / MA_WINDOW
         close_t1 = closes_t1[-1]
-        mom60 = close_t1 / closes_t1[-LOOKBACK] -1 if closes_t1[-LOOKBACK]!=0 else -1e9
-        mom[c["key"]] = mom60
-        above[c["key"]] = close_t1 >= ma200
-    filtered = {k: v for k,v in mom.items() if above.get(k)}
+        mom60 = close_t1 / closes_t1[-LOOKBACK] - 1 if closes_t1[-LOOKBACK] != 0 else -1e9
+        mom[key] = mom60
+        above[key] = close_t1 >= ma200
+    filtered = {k: v for k, v in mom.items() if above.get(k)}
     if not filtered:
         return None
-    # Nasdaq-first, weak -> rotate
-    nasdaq_key = "NASDAQ"
-    if above.get(nasdaq_key) and mom.get(nasdaq_key, -1) > 0:
-        # rank check
-        sorted_mom = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
-        rank = [k for k,_ in sorted_mom].index(nasdaq_key) if nasdaq_key in filtered else 99
-        if rank <= 1:
-            pick_key = nasdaq_key
-            pick = next(x for x in CANDIDATES if x["key"]==pick_key)
-            closes_pick = closes_map[pick_key]
-            return {
-                "key": pick_key, "ts": pick["ts"], "symbol": pick["symbol"], "name": pick["name"],
-                "mom60": round(filtered[pick_key]*100,2),
-                "close": round(closes_pick[-1],3),
-                "ma200": round(sum(closes_pick[-MA_WINDOW:])/MA_WINDOW,3),
-                "above_ma200": above[pick_key],
-                "all_mom": {k: round(v*100,2) for k,v in mom.items()},
-                "all_above": above,
-            }
     pick_key = max(filtered, key=lambda k: filtered[k])
-    pick = next(x for x in CANDIDATES if x["key"]==pick_key)
-    # current price for display
+    pick = next(x for x in CANDIDATES if x["key"] == pick_key)
     closes_pick = closes_map[pick_key]
     return {
-        "key": pick_key, "ts": pick["ts"], "symbol": pick["symbol"], "name": pick["name"],
-        "mom60": round(filtered[pick_key]*100,2),
-        "close": round(closes_pick[-1],3),
-        "ma200": round(sum(closes_pick[-MA_WINDOW:])/MA_WINDOW,3),
+        "key": pick_key,
+        "ts": pick["ts"],
+        "symbol": pick["symbol"],
+        "name": pick["name"],
+        "mom60": round(filtered[pick_key] * 100, 2),
+        "close": round(closes_pick[-1], 3),
+        "ma200": round(sum(closes_pick[-MA_WINDOW:]) / MA_WINDOW, 3),
         "above_ma200": above[pick_key],
-        "all_mom": {k: round(v*100,2) for k,v in mom.items()},
+        "all_mom": {k: round(v * 100, 2) for k, v in mom.items()},
         "all_above": above,
+    }
+
+
+def _stock_basket_mom_from_holdings(holdings: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Avg mom60 (t-1) of CN/HK stock holdings — STOCK leg for mom_compare."""
+    moms: list[float] = []
+    for h in holdings:
+        sym = str(h.get("symbol") or "").upper()
+        if not (sym.startswith("CN:") or sym.startswith("HK:")):
+            continue
+        ts = str(h.get("ts_code") or "").strip()
+        if not ts:
+            # best-effort: CN:600000 -> 600000.SH / .SZ
+            bare = sym.split(":", 1)[-1]
+            if bare.startswith("6"):
+                ts = f"{bare}.SH"
+            elif bare.startswith(("0", "3")):
+                ts = f"{bare}.SZ"
+            elif bare.isdigit() and len(bare) == 5:
+                ts = f"{bare}.HK"
+            else:
+                continue
+        closes = _closes(ts, 260)
+        if len(closes) < LOOKBACK + 2:
+            continue
+        closes_t1 = closes[:-1]
+        if len(closes_t1) < LOOKBACK:
+            continue
+        ago = closes_t1[-LOOKBACK]
+        if not ago:
+            continue
+        moms.append(closes_t1[-1] / ago - 1.0)
+    if not moms:
+        return None
+    avg = sum(moms) / len(moms)
+    return {
+        "key": "STOCK",
+        "ts": "STOCK_BASKET",
+        "symbol": "STOCK",
+        "name": "S-3 股票篮",
+        "mom60": round(avg * 100, 2),
+        "above_ma200": True,  # STOCK gate = has holdings (matches backtest)
+        "n": len(moms),
     }
 
 def _rsi(closes: list[float], period: int = 14) -> float | None:
@@ -239,60 +258,118 @@ def _idle_pct(holdings: list[dict[str, Any]]) -> float:
     return max(0.0, 100-min(deployed,100))
 
 def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_override=None) -> dict[str, Any]:
+    """Live 择强单轨 hint: equal-asset mom_compare (STOCK basket ∪ ETF pool).
+
+    No Nasdaq-first / no auto SELL_TO_A_SHARE when S-3 has candidates — STOCK
+    only wins when its basket mom60 beats ETFs above MA200.
+    """
     holdings = holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
     idle = _idle_pct(holdings)
-    # market state: same as third_asset_sleeve - s3 buy setup forces sell to A-share
     regime = cn_block.get("regime")
     panic = bool((cn_block.get("panicCooldown") or {}).get("active"))
     circuit = bool(cn_block.get("circuitBlocked"))
     cands = cn_block.get("s3Candidates") or []
-    gate_open = regime in ("Strong","Diverging") and not panic and not circuit
-    s3_buy_setup = gate_open and len(cands)>0
+    gate_open = regime in ("Strong", "Diverging") and not panic and not circuit
+    s3_buy_setup = gate_open and len(cands) > 0
 
-    # find held sleeve etf (any candidate)
-    held=None
+    held = None
     for h in holdings:
-        sym=str(h.get("symbol") or "").upper()
-        ts=str(h.get("ts_code") or "").upper()
+        sym = str(h.get("symbol") or "").upper()
+        ts = str(h.get("ts_code") or "").upper()
         for c in CANDIDATES:
-            if sym==c["symbol"] or ts==c["ts"]:
-                held=h
+            if sym == c["symbol"] or ts == c["ts"]:
+                held = h
                 break
-    pick = _pick()
-    out: dict[str, Any] = {"active": False, "action": "NONE", "idlePct": round(idle,1), "s3BuySetup": s3_buy_setup}
-    if pick is None:
-        out["note"]="候选数据不足 260 根"
-        return out
-    out.update({"pick": pick, "holding": bool(held)})
 
-    if s3_buy_setup:
-        out.update({"active": True, "action": "SELL_TO_A_SHARE", "message": f"A股有买点（{regime} {len(cands)}候选）→ 卖出 {pick['symbol']} 回 A 股", "label": "卖出转A股"})
+    etf_pick = _pick()
+    stock_pick = _stock_basket_mom_from_holdings(holdings)
+    out: dict[str, Any] = {
+        "active": False,
+        "action": "NONE",
+        "idlePct": round(idle, 1),
+        "s3BuySetup": s3_buy_setup,
+        "mode": "mom_compare",
+        "strategy": "择强单轨",
+    }
+
+    # Equal pool: STOCK (if held) vs ETF above-MA picks.
+    pool: dict[str, dict[str, Any]] = {}
+    if etf_pick is not None:
+        pool[etf_pick["key"]] = etf_pick
+    if stock_pick is not None:
+        pool["STOCK"] = stock_pick
+    if not pool:
+        out["note"] = "候选数据不足（无 ETF 过线且无股票持仓）"
         return out
-    # if holding, check if still top? If not top, suggest rotation (with 5-day min hold防抖)
+
+    pick_key = max(pool.keys(), key=lambda k: float(pool[k].get("mom60") or -1e9))
+    pick = pool[pick_key]
+    out.update({"pick": pick, "holding": bool(held), "etfPick": etf_pick, "stockPick": stock_pick})
+
+    # STOCK wins → follow stock leg; sell ETF sleeve if held.
+    if pick_key == "STOCK":
+        if held:
+            out.update(
+                {
+                    "active": True,
+                    "action": "SELL_TO_A_SHARE",
+                    "message": (
+                        f"择强 STOCK（mom60 {pick['mom60']}%）> ETF → 卖出 "
+                        f"{held.get('symbol')} 回股票篮"
+                    ),
+                    "label": "择强→股票",
+                }
+            )
+            return out
+        out.update(
+            {
+                "active": True,
+                "action": "HOLD",
+                "message": f"择强 STOCK（mom60 {pick['mom60']}% · n={pick.get('n')}）· 跟股票篮",
+                "label": "持有股票篮",
+            }
+        )
+        return out
+
+    # ETF wins
     if held:
-        held_sym=str(held.get("symbol") or "").upper()
+        held_sym = str(held.get("symbol") or "").upper()
         if held_sym != pick["symbol"]:
-            # min-hold check: if held <5 days and still above MA200, keep it
             try:
                 from datetime import date as _date
-                entry=str(held.get("entryDate") or held.get("entry_date") or "")
-                if entry:
-                    held_days=(_date.fromisoformat(day) - _date.fromisoformat(entry[:10])).days
+
+                entry = str(held.get("entryDate") or held.get("entry_date") or "")
+                if entry and MIN_HOLD_DAYS > 1:
+                    held_days = (_date.fromisoformat(day) - _date.fromisoformat(entry[:10])).days
                     if held_days < MIN_HOLD_DAYS:
-                        # check held still above MA200
-                        held_ts=str(held.get("ts_code") or held_sym.replace("ETF:","")+".SH")
-                        md=_etf_market_data(held_ts)
+                        held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
+                        md = _etf_market_data(held_ts)
                         if md.get("ok") and md.get("above"):
-                            out.update({"active": True, "action": "HOLD", "message": f"持有 {held_sym}（已持{held_days}天<5天防抖，虽非最强但仍站上200日线）", "label": "持有（防抖）"})
+                            out.update(
+                                {
+                                    "active": True,
+                                    "action": "HOLD",
+                                    "message": f"持有 {held_sym}（防抖 {held_days}d）",
+                                    "label": "持有（防抖）",
+                                }
+                            )
                             return out
             except Exception:
                 pass
-            out.update({"active": True, "action": "ROTATE", "message": f"轮动：卖出 {held_sym} → 买入 {pick['symbol']} ({pick['name']} mom60 {pick['mom60']}%)", "label": f"轮动至 {pick['key']}"})
+            out.update(
+                {
+                    "active": True,
+                    "action": "ROTATE",
+                    "message": (
+                        f"择强轮动：卖出 {held_sym} → {pick['symbol']} "
+                        f"({pick['name']} mom60 {pick['mom60']}%)"
+                    ),
+                    "label": f"轮动至 {pick['key']}",
+                }
+            )
             return out
-        # holding is still pick, check trailing -8% then MA200 break (trail8 固化 2026-08-28)
-        # peak = max close since entry (incl. current close)
         try:
-            held_ts = str(held.get("ts_code") or held_sym.replace("ETF:","")+".SH")
+            held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
             entry = str(held.get("entryDate") or held.get("entry_date") or "")
             if entry:
                 bars = fetch_last_bars(held_ts, days=500)
@@ -309,23 +386,90 @@ def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_ove
                         cur_close = c
                     elif not cur_close and d > day:
                         break
-                # fallback: use pick close if bars missing
-                if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT/100):
-                    out.update({"active": True, "action": "SELL_TO_REPO", "message": f"{held_sym}峰值回撤{((peak-cur_close)/peak*100):.1f}% ≥{TRAILING_PCT:.0f}% → 卖出转逆回购（硬切）", "label": "卖出转repo(止损)"})
+                if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT / 100):
+                    out.update(
+                        {
+                            "active": True,
+                            "action": "SELL_TO_REPO",
+                            "message": (
+                                f"{held_sym}峰值回撤{((peak - cur_close) / peak * 100):.1f}% "
+                                f"≥{TRAILING_PCT:.0f}% → 转逆回购"
+                            ),
+                            "label": "卖出转repo(止损)",
+                        }
+                    )
                     return out
         except Exception as exc:
             logger.warning("multi-sleeve trailing check failed: %s", exc)
-        if not pick["above_ma200"]:
-            out.update({"active": True, "action": "SELL_TO_REPO", "message": f"{pick['symbol']} 跌破200日线 → 卖出转逆回购", "label": "卖出转repo"})
+        if not pick.get("above_ma200"):
+            out.update(
+                {
+                    "active": True,
+                    "action": "SELL_TO_REPO",
+                    "message": f"{pick['symbol']} 跌破200日线 → 转逆回购",
+                    "label": "卖出转repo",
+                }
+            )
             return out
-        out.update({"active": True, "action": "HOLD", "message": f"持有 {pick['symbol']}（mom60 {pick['mom60']}% 全市场最强且站上200日线）", "label": "持有"})
+        out.update(
+            {
+                "active": True,
+                "action": "HOLD",
+                "message": (
+                    f"择强持有 {pick['symbol']}（mom60 {pick['mom60']}% · "
+                    f"强于股票篮 {stock_pick['mom60'] if stock_pick else '—'}%）"
+                ),
+                "label": "持有",
+            }
+        )
         return out
-    # not holding
-    if not pick["above_ma200"]:
-        out.update({"active": True, "action": "DONT_BUY", "message": f"{pick['symbol']} 虽最强但已破200日线，不买", "label": "今日不买"})
+
+    # not holding ETF
+    if not pick.get("above_ma200"):
+        out.update(
+            {
+                "active": True,
+                "action": "DONT_BUY",
+                "message": f"{pick['symbol']} 虽最强但已破200日线，不买",
+                "label": "今日不买",
+            }
+        )
+        return out
+    # Stocks held but ETF wins → hard-switch message (do not BUY ETF on top blindly).
+    has_stock = any(
+        str(h.get("symbol") or "").upper().startswith(("CN:", "HK:")) for h in holdings
+    )
+    if has_stock:
+        out.update(
+            {
+                "active": True,
+                "action": "ROTATE",
+                "message": (
+                    f"择强 {pick['key']}（mom60 {pick['mom60']}%）> STOCK → "
+                    f"减股票篮、买入 {pick['symbol']}"
+                ),
+                "label": f"切至 {pick['key']}",
+            }
+        )
         return out
     if idle >= MIN_IDLE_PCT:
-        out.update({"active": True, "action": "BUY", "message": f"闲置 {idle:.0f}% 且 {pick['symbol']} 最强（mom60 {pick['mom60']}%）→ 建议买入", "label": f"买入 {pick['key']}"})
+        out.update(
+            {
+                "active": True,
+                "action": "BUY",
+                "message": (
+                    f"择强 {pick['symbol']}（mom60 {pick['mom60']}%）· 闲置 {idle:.0f}% → 买入"
+                ),
+                "label": f"买入 {pick['key']}",
+            }
+        )
         return out
-    out.update({"active": True, "action": "DONT_BUY", "message": f"{pick['symbol']} 最强但资金已部署 闲置{idle:.0f}% → 不买", "label": "不买"})
+    out.update(
+        {
+            "active": True,
+            "action": "DONT_BUY",
+            "message": f"{pick['symbol']} 最强但闲置{idle:.0f}%不足",
+            "label": "不买",
+        }
+    )
     return out

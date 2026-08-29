@@ -509,7 +509,7 @@ function buildStrategyAppendixDash(overview: Awaited<ReturnType<typeof fetchBack
     const l = overview.longWindowCN;
     lines.push(`- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔`);
   }
-  lines.push('- 单轨100%择强（`GET /api/backtest/timeline` 一年）：持仓优先股票·空仓时金518880/油513350/纳指513100/债511260 按mom60>MA200择强·空档GC001');
+  lines.push('- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮∪金/油/纳/债同权比t-1 mom60（ETF≥MA200），argmax 100%硬切，空档GC001；LB60·MA200·hold1');
   lines.push('- 多资产 sleeve：GOLD 518880·OIL 513350·NASDAQ 513100·BOND10 511260 · 多头轮动·可1.4×杠杆');
   lines.push('- 形态：strong_scoop_exhaustion 勺型耗尽顶 89-92%（ret60>0.4+放量）· 方向判别层');
   lines.push('');

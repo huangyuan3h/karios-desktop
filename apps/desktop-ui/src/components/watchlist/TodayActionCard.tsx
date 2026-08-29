@@ -95,7 +95,7 @@ export function TodayActionCard() {
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
       {baseRet != null && singleRet != null && (
         <div className="mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
-          <span className="font-semibold text-emerald-700">最优路径：单轨100%（择强 {pick}）</span>
+          <span className="font-semibold text-emerald-700">最优路径：择强单轨 100%（今日 {pick}）</span>
           <span className="ml-2 tabular-nums text-[var(--k-muted)]">
             过去年 基线 {baseRet.toFixed(1)}% · 单轨 {singleRet.toFixed(1)}% · 超额 {excess != null ? `${excess >= 0 ? '+' : ''}${excess.toFixed(1)}pt` : '—'}
           </span>

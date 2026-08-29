@@ -169,9 +169,9 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        S-3 回测结论（定案口径 · 回测 = source of truth）
+        S-3 股票腿三窗（非产品主策略 · 择强单轨见上方 Timeline）
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          三窗 walk-forward · 长窗 2021-08 起 · 全市场 universe
+          固化 walk_forward_baseline · 仅 STOCK 腿生成器
         </span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
@@ -216,8 +216,8 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
         />
       </div>
       <p className="mt-2 text-[10px] text-[var(--k-muted)]">
-        数字为固化基线（walk_forward_baseline.json · NAV + next_open）；回测是规则真值，
-        paper/watchlist 同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
+        产品真值 = 择强单轨（docs/modules/pick-strong-track.md）。本卡仅为 S-3 股票腿基线；
+        paper/watchlist 股票规则同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
       </p>
     </div>
   );
@@ -305,7 +305,7 @@ function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <TrendingDown className="size-3.5" />
-        T6 · 第三资产套筒（闲置现金 NAV 对比）
+        历史 · 闲置现金套筒 NAV（非定案；定案见上方 Timeline 择强单轨）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {report?.generatedAt ? `报告 ${report.generatedAt.slice(0, 10)}` : ''}
         </span>
@@ -642,7 +642,8 @@ function TimelineCard() {
               </>
             ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
-              择强单轨 · mom60＞MA200 同池硬切 · 定案见 docs/modules/pick-strong-track.md · 过去一年约 +94%
+              择强单轨 · mom_compare · pick_strong_track 同源 · 累计{' '}
+              {last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 {last?.navBaseReturnPct ?? '—'}%
             </span>
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
