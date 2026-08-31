@@ -518,7 +518,9 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
           </div>
           <p className="text-[10px] text-[var(--k-muted)]">
             孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 ·
-            样本 &lt;20 笔不作统计结论（C4 未定案）。
+            样本 &lt;20 笔不作统计结论（C4 未定案）。paper 入场已对齐回测
+            ``next_open``（信号日收盘定价 → 下一交易日开盘成交；开盘未到库时先占位，
+            ``run_update`` 回填）。
           </p>
         </div>
       ) : (

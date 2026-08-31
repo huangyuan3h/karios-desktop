@@ -180,9 +180,17 @@ def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_trade intake fetch_last_ohlcv_batch failed: %s", exc)
 
+    from data_sync_service.service.paper_entry_fill import resolve_next_open_fill
+
     for ch, market, ts in candidates:
         if ts not in closes_by_ts:
             reason = "no-close-price"
+            summary["skipped"] += 1
+            summary["skippedReasons"][reason] = summary["skippedReasons"].get(reason, 0) + 1
+            continue
+        fill = resolve_next_open_fill(ts, trade_date, signal_close=closes_by_ts[ts])
+        if fill is None:
+            reason = "no-next-open"
             summary["skipped"] += 1
             summary["skippedReasons"][reason] = summary["skippedReasons"].get(reason, 0) + 1
             continue
@@ -197,13 +205,14 @@ def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
         try:
             row = pt_db.insert_paper_trade(
                 symbol=sym,
-                entry_date=trade_date,
+                entry_date=str(fill["entry_date"]),
                 side=action,
-                entry_price=closes_by_ts[ts],
+                entry_price=float(fill["entry_price"]),
                 # The journal does not store score/why/sleeve (field/newValue
                 # only) — these stay None and close conditions read live data.
                 source=source,
                 market=market,
+                signal_snapshot=fill.get("signal_snapshot"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_trade insert failed for %s: %s", sym, exc)
@@ -277,6 +286,42 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
 
     if not open_trades:
         return summary
+
+    # next_open: patch placeholder entry_price once the fill bar's open lands.
+    from data_sync_service.service.paper_entry_fill import try_resolve_pending_open
+
+    pending_fixed = 0
+    for t in open_trades:
+        snap = t.get("signalSnapshot") or t.get("signal_snapshot") or {}
+        if not isinstance(snap, dict) or not snap.get("pendingOpenFill"):
+            continue
+        resolved = _resolve_ts_code(str(t.get("symbol") or ""))
+        if not resolved:
+            continue
+        open_px = try_resolve_pending_open(
+            ts_code=resolved[1],
+            entry_date=str(t.get("entryDate") or t.get("entry_date") or ""),
+            signal_snapshot=snap,
+        )
+        if open_px is None:
+            continue
+        new_snap = dict(snap)
+        new_snap["pendingOpenFill"] = False
+        new_snap["filledOpen"] = open_px
+        try:
+            patched = pt_db.patch_paper_entry_fill(
+                trade_id=str(t.get("id") or ""),
+                entry_price=open_px,
+                signal_snapshot=new_snap,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_trade pending next_open fill failed: %s", exc)
+            continue
+        if patched:
+            pending_fixed += 1
+            t["entryPrice"] = open_px
+            t["signalSnapshot"] = new_snap
+    summary["pendingOpenFilled"] = pending_fixed
 
     # Batch-fetch latest closes for the open symbols' CN/HK ts_codes.
     ts_codes: list[str] = []
@@ -356,7 +401,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         # Mirrors the backtest engine's max_hold_env_shorten.
         max_hold = pt_db.MAX_HOLD_DAYS
         try:
-            snap = t.get("signal_snapshot") or {}
+            snap = t.get("signalSnapshot") or t.get("signal_snapshot") or {}
             if (
                 str(t.get("source") or "") in ("S3", "S3HK")
                 and str(snap.get("entryEnv") or "") == "uptrend"

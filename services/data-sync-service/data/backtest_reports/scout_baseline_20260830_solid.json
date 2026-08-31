@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-08-30T16:00:00Z",
+  "tag": "scout-baseline-20260830-breadth0.5-amp_q10-10d",
+  "status": "solidified baseline (tri-window all positive, hold 57% -> valid 28%)",
+  "universe": "20-80亿",
+  "signal": {"factor": "amplitude", "quintile": "Q10", "definition": "(high-low)/close bottom 10%"},
+  "gate": {"type": "breadth", "threshold": 0.5, "definition": "20-80池内 close>MA20 占比>0.5"},
+  "execution": {"entry": "next_open", "position_pct": 0.10, "max_positions": 10, "slippage_pct": 0.15, "hold": 10, "early": "none"},
+  "windows": {
+    "OOS2": {"total_pnl": 12.4, "daily_avg": 0.0488, "cagr": 12.3, "max_dd": 12.9, "sharpe": 0.54, "hold_ratio": 80.7, "trades": 80, "win_rate": 0.561},
+    "train": {"total_pnl": 0.9, "daily_avg": 0.0068, "cagr": 1.7, "max_dd": 9.3, "sharpe": 0.28, "hold_ratio": 61.7, "trades": 61, "win_rate": 0.522},
+    "valid": {"total_pnl": 6.0, "daily_avg": 0.0535, "cagr": 14.0, "max_dd": 2.7, "sharpe": 1.45, "hold_ratio": 28.6, "trades": 28, "win_rate": 0.50},
+    "past_year": {"total_pnl": 2.4, "daily_avg": 0.0094, "hold_ratio": 51.0},
+    "long": {"total_pnl": 15.3, "daily_avg": 0.012, "hold_ratio": 26.6}
+  },
+  "variant_trail5": {
+    "tag": "scout-variant-20260830-breadth0.55-amp_q10-10d-trail5",
+    "gate": 0.55,
+    "early": "trail-5",
+    "windows": {
+      "OOS2": {"total_pnl": 28.5, "daily_avg": 0.1121, "cagr": 28.2, "hold_ratio": 65.6},
+      "train": {"total_pnl": -3.2, "daily_avg": -0.0251, "cagr": -6.2, "hold_ratio": 50.4},
+      "valid": {"total_pnl": 7.3, "daily_avg": 0.0652, "cagr": 17.2, "hold_ratio": 25.8}
+    },
+    "note": "valid daily +22% vs baseline but train -3.2, hold 47% (<50%)"
+  },
+  "momentum_note": "R0-IC ret5/dist_high5/gap/neg_mv IR<0.5 not in baseline, orthogonal (|r|<0.1) for future combination with other system"
+}

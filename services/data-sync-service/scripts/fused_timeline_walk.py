@@ -92,6 +92,9 @@ def build_fused_nav(cfg_cn, cfg_hk, etf_close, lookback=60, ma_window=200, mode=
     nav_fused=1.0
     nav_base=1.0  # stock-only fused baseline (100% to stock basket when any stock held, else 0/repo? base = stock basket deployed)
     nav_multi_sleeve=1.0  # old sleeve (idle enhancement) for comparison? skip
+    nav_map={}
+    if calendar:
+        nav_map[calendar[0]]=1.0
     peak_fused=1.0
     max_dd_fused=0.0
     peak_base=1.0
@@ -175,6 +178,7 @@ def build_fused_nav(cfg_cn, cfg_hk, etf_close, lookback=60, ma_window=200, mode=
         peak_base=max(peak_base, nav_base)
         if peak_fused>0: max_dd_fused=max(max_dd_fused, (peak_fused-nav_fused)/peak_fused)
         if peak_base>0: max_dd_base=max(max_dd_base, (peak_base-nav_base)/peak_base)
+        nav_map[day]=nav_fused
     return {
         "fusedPct": round((nav_fused-1)*100,2),
         "basePct": round((nav_base-1)*100,2),
@@ -182,6 +186,7 @@ def build_fused_nav(cfg_cn, cfg_hk, etf_close, lookback=60, ma_window=200, mode=
         "maxDdFusedPct": round(max_dd_fused*100,1),
         "maxDdBasePct": round(max_dd_base*100,1),
         "calendarDays": len(calendar),
+        "nav": nav_map,
     }
 
 def main():

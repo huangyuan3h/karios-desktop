@@ -1,0 +1,89 @@
+{
+  "generated_at": "2026-08-30T09:16:24.450243+00:00",
+  "factor": "turnover_spike",
+  "quintile": "Q1",
+  "holds": [
+    5,
+    10
+  ],
+  "results": {
+    "OOS2": {
+      "h5": {
+        "window": "OOS2",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 5,
+        "trades": 579,
+        "win_rate": 0.48704663212435234,
+        "avg_net": 0.8113211530320988,
+        "total_pnl": 46.97549476055866,
+        "max_dd": 28.1430288289781,
+        "sharpe": 1.1921886495115104
+      },
+      "h10": {
+        "window": "OOS2",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 10,
+        "trades": 269,
+        "win_rate": 0.46096654275092935,
+        "avg_net": 0.8731246619704135,
+        "total_pnl": 23.487053407004137,
+        "max_dd": 30.361543567197952,
+        "sharpe": 0.7382733134241684
+      }
+    },
+    "train": {
+      "h5": {
+        "window": "train",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 5,
+        "trades": 294,
+        "win_rate": 0.48639455782312924,
+        "avg_net": 1.4467008128717334,
+        "total_pnl": 42.53300389842896,
+        "max_dd": 12.598926696565133,
+        "sharpe": 3.267658971909459
+      },
+      "h10": {
+        "window": "train",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 10,
+        "trades": 128,
+        "win_rate": 0.5,
+        "avg_net": 2.1485082603086085,
+        "total_pnl": 27.500905731950194,
+        "max_dd": 8.272383612102654,
+        "sharpe": 2.186136878888686
+      }
+    },
+    "valid": {
+      "h5": {
+        "window": "valid",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 5,
+        "trades": 280,
+        "win_rate": 0.43214285714285716,
+        "avg_net": -1.4302813684792386,
+        "total_pnl": -40.0478783174187,
+        "max_dd": 63.986386504325424,
+        "sharpe": -1.4384700505339616
+      },
+      "h10": {
+        "window": "valid",
+        "factor": "turnover_spike",
+        "quintile": "Q1",
+        "hold": 10,
+        "trades": 128,
+        "win_rate": 0.5234375,
+        "avg_net": -0.7865595261393595,
+        "total_pnl": -10.067961934583808,
+        "max_dd": 40.46389644757881,
+        "sharpe": -0.2992115634451804
+      }
+    }
+  }
+}

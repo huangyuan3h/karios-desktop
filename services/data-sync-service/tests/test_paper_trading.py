@@ -335,6 +335,19 @@ def test_run_intake_inserts_only_unfollowed() -> None:
             },
         ),
         patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
+        ),
+        patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
             return_value={"id": "x"},
         ) as mock_insert,
@@ -347,7 +360,8 @@ def test_run_intake_inserts_only_unfollowed() -> None:
     # Insert was called with 600519, not 000001.
     assert mock_insert.call_args.kwargs["symbol"] == "CN:600519"
     assert mock_insert.call_args.kwargs["entry_price"] == 1700.0
-
+    assert mock_insert.call_args.kwargs["entry_date"] == "2026-08-04"
+    assert mock_insert.call_args.kwargs["signal_snapshot"]["entryMode"] == "next_open"
 
 def test_run_intake_treats_idempotent_insert_as_skip() -> None:
     """If pt_db.insert_paper_trade returns None, the (symbol, date, side)

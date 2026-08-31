@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-08-30T09:10:24.145055+00:00",
+  "holds": [
+    5,
+    10
+  ],
+  "stop": null,
+  "regime": "ma20",
+  "universe": "20.0-80.0亿",
+  "slippage": 0.15,
+  "results": {
+    "OOS2": {
+      "h5": {
+        "window": "OOS2",
+        "hold": 5,
+        "stop": null,
+        "trades": 340,
+        "wins": 183,
+        "losses": 157,
+        "win_rate": 0.538235294117647,
+        "avg_net": 0.5306874329330927,
+        "total_pnl": 18.043372719725145,
+        "max_dd": 18.428769509383677,
+        "sharpe": 0.8630307145695293
+      },
+      "h10": {
+        "window": "OOS2",
+        "hold": 10,
+        "stop": null,
+        "trades": 209,
+        "wins": 116,
+        "losses": 93,
+        "win_rate": 0.5550239234449761,
+        "avg_net": 0.9253819160819863,
+        "total_pnl": 19.3404820461135,
+        "max_dd": 12.545741475552715,
+        "sharpe": 0.7574857950314134
+      }
+    },
+    "train": {
+      "h5": {
+        "window": "train",
+        "hold": 5,
+        "stop": null,
+        "trades": 260,
+        "wins": 129,
+        "losses": 131,
+        "win_rate": 0.49615384615384617,
+        "avg_net": 0.0008655244471752332,
+        "total_pnl": 0.022503635626548994,
+        "max_dd": 12.61387927410363,
+        "sharpe": 0.1142472801777274
+      },
+      "h10": {
+        "window": "train",
+        "hold": 10,
+        "stop": null,
+        "trades": 109,
+        "wins": 62,
+        "losses": 47,
+        "win_rate": 0.5688073394495413,
+        "avg_net": 1.1543651441032943,
+        "total_pnl": 12.58258007072591,
+        "max_dd": 8.272076791716213,
+        "sharpe": 1.958734516283267
+      }
+    },
+    "valid": {
+      "h5": {
+        "window": "valid",
+        "hold": 5,
+        "stop": null,
+        "trades": 150,
+        "wins": 55,
+        "losses": 95,
+        "win_rate": 0.36666666666666664,
+        "avg_net": -1.2354650629928141,
+        "total_pnl": -18.531975944892213,
+        "max_dd": 23.259571975886463,
+        "sharpe": -2.508159357039034
+      },
+      "h10": {
+        "window": "valid",
+        "hold": 10,
+        "stop": null,
+        "trades": 80,
+        "wins": 20,
+        "losses": 60,
+        "win_rate": 0.25,
+        "avg_net": -3.9687079038375948,
+        "total_pnl": -31.749663230700754,
+        "max_dd": 32.46077374335669,
+        "sharpe": -4.5587997827221125
+      }
+    }
+  }
+}

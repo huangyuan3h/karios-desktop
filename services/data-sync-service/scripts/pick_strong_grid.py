@@ -190,6 +190,9 @@ def build_nav_from_cache(
     switches = 0
     etf_peak = 0.0
     trail_exits = 0
+    nav_map = {}
+    if calendar:
+        nav_map[calendar[0]] = 1.0
 
     for idx, day in enumerate(calendar):
         if idx == 0:
@@ -341,6 +344,7 @@ def build_nav_from_cache(
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
+        nav_map[day] = nav
 
     return {
         "fusedPct": round((nav - 1.0) * 100.0, 2),
@@ -348,6 +352,7 @@ def build_nav_from_cache(
         "switches": switches,
         "trailExits": trail_exits,
         "calendarDays": len(calendar),
+        "nav": nav_map,
     }
 
 

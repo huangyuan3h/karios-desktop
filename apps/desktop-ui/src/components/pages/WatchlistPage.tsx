@@ -5,6 +5,8 @@ import * as React from 'react';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { TodayActionCard } from '@/components/watchlist/TodayActionCard';
 import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
+import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
+import { EtfExecutionLogCard } from '@/components/watchlist/EtfExecutionLogCard';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
@@ -346,6 +348,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         <TodayActionCard />
+        <PickStrongAlignBanner />
+        <EtfExecutionLogCard />
         <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
           <summary className="cursor-pointer text-xs text-[var(--k-muted)]">展开旧提醒（行为对账 / 轮动 / Gate 详情）</summary>
           <div className="mt-3">

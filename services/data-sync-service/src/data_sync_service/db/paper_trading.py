@@ -325,6 +325,36 @@ def update_paper_trade_price(
     return _row_to_dict(row) if row else None
 
 
+def patch_paper_entry_fill(
+    *,
+    trade_id: str,
+    entry_price: float,
+    signal_snapshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Patch entry_price + signal_snapshot on an open row (next_open fill-in)."""
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                f"""
+                UPDATE {PAPER_TRADES_TABLE}
+                SET entry_price = %s,
+                    signal_snapshot = %s,
+                    updated_at = now()
+                WHERE id = %s AND status = 'open'
+                RETURNING *
+                """,
+                (
+                    float(entry_price),
+                    Json(signal_snapshot) if signal_snapshot is not None else None,
+                    trade_id,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _row_to_dict(row) if row else None
+
+
 def close_paper_trade(
     *,
     trade_id: str,
@@ -495,6 +525,7 @@ def _row_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "closeReason": row.get("close_reason"),
         "source": row.get("source"),
         "market": row.get("market") or "CN",
+        "signalSnapshot": row.get("signal_snapshot"),
         "createdAt": ts,
         "updatedAt": _iso_timestamp(row.get("updated_at")),
     }
