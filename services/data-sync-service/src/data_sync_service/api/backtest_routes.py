@@ -31,6 +31,21 @@ from data_sync_service.service.backtest_engine import (
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
+
+@router.get("/twin-star/action")
+def twin_star_action() -> dict[str, Any]:
+    """双子星 (Twin-Star) 今日操作信号: core pick-strong target + S-gap 卫星闸/候选.
+
+    Signals from the latest completed close (t-1) -> next open execution, same
+    semantics as the frozen strategy (docs/backtests/state-bucket-algo-2026-08-31.md §7).
+    """
+    from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
+
+    try:
+        return {"ok": True, **build_twin_star_daily_action()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
+
 _timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
 # Engine context for stock-leg attribution (not file-persisted).
 _timeline_engine_cache: dict[tuple[str, str], dict[str, Any]] = {}
@@ -337,11 +352,15 @@ def backtest_sleeve_nav() -> dict[str, Any]:
 def backtest_timeline(
     start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
+    strategy: str = Query(
+        "pick_strong",
+        description="pick_strong (单轨) | twin_star (双子星: 择强核心+S-gap卫星 50/50)",
+    ),
 ) -> dict[str, Any]:
-    """Past-year timeline: 择强单轨 ``mom_compare`` (equal-asset pool).
+    """Past-year timeline.
 
-    Pick = argmax mom60 among {STOCK basket if any position} ∪ {ETFs above MA200}.
-    100% hard switch; empty → REPO. Canonical product mode (not STOCK-priority).
+    - strategy=pick_strong: 择强单轨 ``mom_compare`` (equal-asset pool).
+    - strategy=twin_star: 双子星 — 择强单轨作核心 (50%) + S-gap 状态分桶卫星 (50%)。
     """
     from datetime import date as date_type
     from datetime import timedelta
@@ -351,20 +370,20 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    result, _engine = _get_or_build_timeline(start, end)
+    result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
 
 
 def _get_or_build_timeline(
-    start: str, end: str, *, need_engine: bool = False
+    start: str, end: str, *, strategy: str = "pick_strong", need_engine: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing."""
-    cache_key = (start, end)
+    cache_key = (start, end, strategy)
     cached = _timeline_cache.get(cache_key)
     engine = _timeline_engine_cache.get(cache_key)
     if cached is not None and (not need_engine or engine is not None):
         return cached, engine
-    if cached is None:
+    if cached is None and strategy == "pick_strong":
         file_cached = _load_timeline_file(start, end)
         if file_cached is not None and not need_engine:
             _timeline_cache[cache_key] = file_cached
@@ -386,7 +405,7 @@ def _get_or_build_timeline(
             from run_walk_forward import HK_S3_CONFIG  # noqa: E402
 
             cfg_hk = BacktestConfig(
-                start_date=start, end_date=end, market="HK", **HK_S3_CONFIG
+                start_date=start, end_date=end, **HK_S3_CONFIG
             )  # type: ignore[arg-type]
             data_hk = BacktestData(cfg_hk)
             run_hk = simulate(cfg_hk, data_hk)
@@ -428,9 +447,34 @@ def _get_or_build_timeline(
             "positions_by_day": run.positions_by_day,
             "close_by_ts_day": data.close_by_ts_day,
         }
+        if strategy == "twin_star":
+            from data_sync_service.service.pick_strong_track import build_twin_star_timeline
+            from data_sync_service.service.state_bucket_track import build_sgap_timeline
+
+            sat = build_sgap_timeline(start=start, end=end)
+            built = build_twin_star_timeline(
+                core_rows=result["rows"],
+                core_summary=result["summary"],
+                sat_rows=sat["rows"],
+            )
+            result = {
+                "ok": True,
+                "start": start,
+                "end": end,
+                "mode": built.get("mode") or "twin_star",
+                "strategy": built.get("strategy") or "双子星 (Twin-Star)",
+                "summary": built.get("summary"),
+                "rows": built.get("rows") or [],
+                "coreMode": built.get("coreMode"),
+                "coreWeight": built.get("coreWeight"),
+                "satWeight": built.get("satWeight"),
+                "satSummary": sat.get("summary"),
+                "trailPct": built.get("trailPct"),
+            }
         _timeline_cache[cache_key] = result
         _timeline_engine_cache[cache_key] = engine_ctx
-        _save_timeline_file(start, end, result)
+        if strategy == "pick_strong":
+            _save_timeline_file(start, end, result)
         return result, engine_ctx
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc

@@ -110,12 +110,38 @@ def _etf_trail_exit(
 
 
 def _closes(ts: str, days: int = 260) -> list[float]:
+    """Latest closes including today's bar if present (display layer)."""
     try:
         bars = fetch_last_bars(ts, days=days)
     except Exception:
         return []
     out=[]
     for b in bars:
+        try:
+            c=float(b.get("close"))
+            if c>0: out.append(c)
+        except: pass
+    return out
+
+def _signal_closes(ts: str, days: int = 260) -> list[float]:
+    """Closes up to the latest COMPLETED trading day (excludes today's bar).
+
+    Decision signals must use t-1 close only (same semantics as the backtest:
+    signal at t-1 close -> execute at t). During the session the daily table
+    has no today bar yet, so the naive ``closes[:-1]`` would fall back to t-2.
+    """
+    from data_sync_service.service.trade_calendar_utils import shanghai_today
+
+    today = shanghai_today().isoformat()
+    try:
+        bars = fetch_last_bars(ts, days=days + 5)
+    except Exception:
+        return []
+    out=[]
+    for b in bars:
+        d = str(b.get("date") or b.get("trade_date") or "")
+        if d >= today:
+            continue
         try:
             c=float(b.get("close"))
             if c>0: out.append(c)
@@ -131,7 +157,7 @@ def _pick() -> dict[str, Any] | None:
     # Group closes by key (NASDAQ has two aliases, keep best liquidity/mom)
     raw_map: dict[str, list[list[float]]] = {}
     for c in CANDIDATES:
-        closes = _closes(c["ts"], 260)
+        closes = _signal_closes(c["ts"], 260)
         if len(closes) < MA_WINDOW + LOOKBACK:
             logger.warning("multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes))
             continue
@@ -148,7 +174,7 @@ def _pick() -> dict[str, Any] | None:
     mom: dict[str, float] = {}
     above: dict[str, bool] = {}
     for key, closes in closes_map.items():
-        closes_t1 = closes[:-1]
+        closes_t1 = closes
         if len(closes_t1) < MA_WINDOW:
             continue
         ma200 = sum(closes_t1[-MA_WINDOW:]) / MA_WINDOW
@@ -195,10 +221,10 @@ def _stock_basket_mom_from_holdings(holdings: list[dict[str, Any]]) -> dict[str,
                 ts = f"{bare}.HK"
             else:
                 continue
-        closes = _closes(ts, 260)
+        closes = _signal_closes(ts, 260)
         if len(closes) < LOOKBACK + 2:
             continue
-        closes_t1 = closes[:-1]
+        closes_t1 = closes
         if len(closes_t1) < LOOKBACK:
             continue
         ago = closes_t1[-LOOKBACK]
@@ -250,11 +276,11 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
     d = day or _date.today().isoformat()
     hints: list[dict[str, Any]] = []
     try:
-        closes_gold=_closes("518880.SH", 260)
-        closes_oil=_closes("513350.SH", 260)
-        closes_nas=_closes("513100.SH", 260)
+        closes_gold=_signal_closes("518880.SH", 260)
+        closes_oil=_signal_closes("513350.SH", 260)
+        closes_nas=_signal_closes("513100.SH", 260)
         # R4 oil RSI>80
-        rsi_oil=_rsi(closes_oil[:-1]) if len(closes_oil)>=15 else None  # t-1
+        rsi_oil=_rsi(closes_oil) if len(closes_oil)>=15 else None  # t-1 close
         active_rsi = rsi_oil is not None and rsi_oil > 80
         hints.append({
             "id":"R4_oil_rsi80", "label":"油超买 RSI>80",
@@ -266,7 +292,7 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
         # R2 nas mom20<-5%
         mom_nas=None
         if len(closes_nas)>=21:
-            mom_nas=closes_nas[-2]/closes_nas[-22]-1 if closes_nas[-22]!=0 else None
+            mom_nas=closes_nas[-1]/closes_nas[-21]-1 if closes_nas[-21]!=0 else None
         active_nas = mom_nas is not None and mom_nas < -0.05
         hints.append({
             "id":"R2_nas_mom20_neg5", "label":"纳指弱势 mom20<-5%",
@@ -278,7 +304,7 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
         # R3 oil vol low20% (approx threshold 0.0126 from 2023-11+ distribution)
         vol_oil=None
         if len(closes_oil)>=21:
-            rets=[closes_oil[i]/closes_oil[i-1]-1 for i in range(len(closes_oil)-20, len(closes_oil)-1)]
+            rets=[closes_oil[i]/closes_oil[i-1]-1 for i in range(len(closes_oil)-20, len(closes_oil))]
             vol_oil=float(np.std(rets)) if rets else None
         active_vol = vol_oil is not None and vol_oil < 0.0126
         hints.append({

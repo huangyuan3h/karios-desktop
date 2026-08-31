@@ -1,6 +1,6 @@
 {
   "tag": "core-satellite-frozen-2026-08-31",
-  "scheme": "择强核心(trail8) + S-gap(优化)卫星, 50/50",
+  "scheme": "双子星 (Twin-Star): 择强核心(trail8) + S-gap(优化)卫星, 50/50",
   "structure": {
     "core": {
       "name": "择强单轨 trail8 (E1 定案)",
@@ -27,44 +27,141 @@
   },
   "per_window": {
     "OOS2": {
-      "core": {"total_pct": 17.82, "cagr": 17.67, "max_dd": 17.98, "sharpe": 0.72},
-      "sat": {"total_pct": 228.72, "cagr": 225.66, "max_dd": 22.1, "sharpe": 3.14},
-      "blend50": {"total_pct": 102.26, "cagr": 101.14, "max_dd": 18.22, "sharpe": 2.88},
+      "core": {
+        "total_pct": 17.82,
+        "cagr": 17.67,
+        "max_dd": 17.98,
+        "sharpe": 0.72
+      },
+      "sat": {
+        "total_pct": 228.72,
+        "cagr": 225.66,
+        "max_dd": 22.1,
+        "sharpe": 3.14
+      },
+      "blend50": {
+        "total_pct": 102.26,
+        "cagr": 101.14,
+        "max_dd": 18.22,
+        "sharpe": 2.88
+      },
       "corr": 0.084
     },
     "train": {
-      "core": {"total_pct": 40.66, "cagr": 95.76, "max_dd": 8.39, "sharpe": 3.01},
-      "sat": {"total_pct": 100.45, "cagr": 293.15, "max_dd": 7.96, "sharpe": 4.65},
-      "blend50": {"total_pct": 69.5, "cagr": 182.6, "max_dd": 5.16, "sharpe": 5.48},
+      "core": {
+        "total_pct": 40.66,
+        "cagr": 95.76,
+        "max_dd": 8.39,
+        "sharpe": 3.01
+      },
+      "sat": {
+        "total_pct": 100.45,
+        "cagr": 293.15,
+        "max_dd": 7.96,
+        "sharpe": 4.65
+      },
+      "blend50": {
+        "total_pct": 69.5,
+        "cagr": 182.6,
+        "max_dd": 5.16,
+        "sharpe": 5.48
+      },
       "corr": 0.014
     },
     "valid": {
-      "core": {"total_pct": 139.07, "cagr": 610.69, "max_dd": 11.88, "sharpe": 3.37},
-      "sat": {"total_pct": 58.61, "cagr": 182.32, "max_dd": 5.94, "sharpe": 4.69},
-      "blend50": {"total_pct": 99.39, "cagr": 372.43, "max_dd": 5.99, "sharpe": 4.74},
+      "core": {
+        "total_pct": 139.07,
+        "cagr": 610.69,
+        "max_dd": 11.88,
+        "sharpe": 3.37
+      },
+      "sat": {
+        "total_pct": 58.61,
+        "cagr": 182.32,
+        "max_dd": 5.94,
+        "sharpe": 4.69
+      },
+      "blend50": {
+        "total_pct": 99.39,
+        "cagr": 372.43,
+        "max_dd": 5.99,
+        "sharpe": 4.74
+      },
       "corr": 0.002
     },
     "past_year": {
-      "core": {"total_pct": 181.16, "cagr": 175.57, "max_dd": 12.64, "sharpe": 2.43},
-      "sat": {"total_pct": 156.44, "cagr": 151.79, "max_dd": 8.2, "sharpe": 4.0},
-      "blend50": {"total_pct": 177.16, "cagr": 171.71, "max_dd": 6.41, "sharpe": 3.98},
+      "core": {
+        "total_pct": 181.16,
+        "cagr": 175.57,
+        "max_dd": 12.64,
+        "sharpe": 2.43
+      },
+      "sat": {
+        "total_pct": 156.44,
+        "cagr": 151.79,
+        "max_dd": 8.2,
+        "sharpe": 4.0
+      },
+      "blend50": {
+        "total_pct": 177.16,
+        "cagr": 171.71,
+        "max_dd": 6.41,
+        "sharpe": 3.98
+      },
       "corr": 0.011
     },
     "aligned": {
-      "core": {"total_pct": 190.65, "cagr": 189.42, "max_dd": 12.64, "sharpe": 2.54},
-      "sat": {"total_pct": 132.83, "cagr": 132.05, "max_dd": 9.24, "sharpe": 3.67},
-      "blend50": {"total_pct": 168.39, "cagr": 167.34, "max_dd": 6.41, "sharpe": 3.93},
-      "corr": 0.006
+      "core": {
+        "total_pct": 190.65,
+        "cagr": 189.42,
+        "max_dd": 12.64,
+        "sharpe": 2.54
+      },
+      "sat": {
+        "total_pct": 126.31,
+        "cagr": 125.64,
+        "max_dd": 13.3,
+        "sharpe": 3.31
+      },
+      "blend50": {
+        "total_pct": 164.88,
+        "cagr": 163.98,
+        "max_dd": 8.14,
+        "sharpe": 3.81
+      },
+      "corr": 0.008
+    },
+    "long2y": {
+      "core": {
+        "total_pct": 198.12,
+        "cagr": 68.93,
+        "max_dd": 18.16,
+        "sharpe": 1.54
+      },
+      "sat": {
+        "total_pct": 364.37,
+        "cagr": 108.97,
+        "max_dd": 22.1,
+        "sharpe": 2.66
+      },
+      "blend50": {
+        "total_pct": 293.17,
+        "cagr": 92.93,
+        "max_dd": 18.22,
+        "sharpe": 2.77
+      },
+      "corr": 0.044
     }
   },
   "verdict": "R11 逐态寻优+逐态×择强组合: S-gap(bucket_q=3,15槽,body3) 单态卫星全窗最优 (corr 最低 0.00~0.08, sr 全窗 3.14~4.65); S-limit 并入稀释。blend50 全窗 sharpe 2.88/5.48/4.74/3.98/3.93 全面超 R10 slice2 卫星版。",
   "discipline": "选参仅用 OOS2+train; valid/past_year/aligned 样本外验证仍优 → 非过拟合。S-shrink 寻优 valid 崩盘已拒收。",
   "caveats": [
-    "sat 单独 dd 偏高 (OOS2 22.1), blend50 后除 OOS2 (18.2) 外全窗 <=6.4",
+    "sat 单独 dd 偏高 (OOS2 22.1), blend50 后除 OOS2 (18.2) 外全窗 <=8.2",
     "核心不计交易成本, 卫星计 0.3% 往返",
-    "holdout (2026-08-08~) 数据未到齐, 待补验"
+    "2026-08-31 v2 重固化: aligned 窗 sat/blend 修正 (sat 132.83→126.31, blend 168.39→164.88, dd 6.41→8.14)——初版 168.39 固化时 stock_dailybasic 停更 08-07, 卫星最后 3 周被'无 mv 剔除'强制空仓 (躲过 08-10~08-28 实亏段 -6.3%); OPT-057 补齐 mv 后同窗重跑为真实值, 其余窗 (OOS2/train/valid, 均止于 08-07 前) 逐位不变",
+    "long2y (2024-08-01~2026-08-31) 为数据完整起点起的全窗扩展验证: blend +293.2%/dd18.2%/sr2.77, corr 0.044, 无过拟合退化"
   ],
-  "status": "FROZEN 2026-08-31 (拍板)",
-  "name": "核心-卫星 (择强+S-gap卫星)",
-  "name_en": "Core-Satellite"
+  "status": "FROZEN 2026-08-31 v2 (数据修复后重固化 · aligned 窗真实值)",
+  "name": "双子星 (Twin-Star)",
+  "name_en": "Twin-Star"
 }

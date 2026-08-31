@@ -407,16 +407,77 @@ export type TimelineRow = {
   navBaseReturnPct: number;
   navSingleReturnPct: number;
   navMultiReturnPct: number;
+  /** twin_star (双子星) satellite leg */
+  satNav?: number | null;
+  satNavReturnPct?: number | null;
+  satPositions?: number | null;
 };
 
-export type TimelineResponse = { ok: boolean; start: string; end: string; rows: TimelineRow[] };
+export type TimelineResponse = {
+  ok: boolean;
+  start: string;
+  end: string;
+  strategy?: string;
+  mode?: string;
+  rows: TimelineRow[];
+};
 
-export function useTimelineQuery(start: string, end: string, enabled = true) {
-  const q = new URLSearchParams({ start, end });
+export type TimelineStrategy = 'pick_strong' | 'twin_star';
+
+export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
+  pick_strong: '单轨择强',
+  twin_star: '双子星 (Twin-Star)',
+};
+
+export function useTimelineQuery(
+  start: string,
+  end: string,
+  strategy: TimelineStrategy = 'pick_strong',
+  enabled = true,
+) {
+  const q = new URLSearchParams({ start, end, strategy });
   return useQuery({
-    queryKey: ['backtest', 'timeline', start, end],
+    queryKey: ['backtest', 'timeline', start, end, strategy],
     queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 90_000 }),
     staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export type TwinStarSatCandidate = {
+  ts: string;
+  amp: number | null;
+  gapPct: number | null;
+  close: number | null;
+};
+
+export type TwinStarAction = {
+  ok: boolean;
+  core: {
+    pick?: string | null;
+    symbol?: string | null;
+    label?: string | null;
+    action?: string | null;
+    message?: string | null;
+    active?: boolean | null;
+  };
+  sat: {
+    asOf?: string | null;
+    gateOpen?: boolean | null;
+    breadth?: number | null;
+    gapCount?: number | null;
+    candidates?: TwinStarSatCandidate[] | null;
+    note?: string | null;
+  };
+};
+
+/** 双子星 (Twin-Star) 今日操作信号: 核心择强目标 + S-gap 卫星闸/候选. */
+export function useTwinStarActionQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'twin-star', 'action'],
+    queryFn: () => apiGetJson<TwinStarAction>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
+    staleTime: 10 * 60_000,
+    refetchInterval: 30 * 60_000,
     enabled,
   });
 }

@@ -1,0 +1,140 @@
+"""双子星 (Twin-Star) 每日操作信号 — 14:30 前提醒用。
+
+core  = live multi_asset_sleeve (择强单轨 mom_compare + trail8 同源) 当前目标
+sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选 (信号 t-1 → 下一交易日开盘执行)
+
+Truth: docs/backtests/state-bucket-algo-2026-08-31.md §7
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+from typing import Any
+
+from data_sync_service.service.state_bucket_track import (
+    R_WIDE_THRESHOLD,
+    _day_features,
+    _load_calendar,
+    _load_mv,
+    _load_rows,
+)
+
+LOOKBACK_DAYS = 90
+TOP_N = 5
+
+
+def _sat_signal(today: date) -> dict[str, Any] | None:
+    """Satellite signal from the latest completed close before `today`."""
+    w_start = (today - timedelta(days=LOOKBACK_DAYS)).isoformat()
+    w_end = today.isoformat()
+    try:
+        cal = _load_calendar(w_start, w_end)
+        per_ts = _load_rows(w_start, w_end)
+        mv_map = _load_mv(w_start, w_end)
+    except Exception:
+        return None
+    if not cal:
+        return None
+    # signal day: most recent close strictly before today if today is a trading
+    # day (execute next open), else the last close (weekend -> Monday execution).
+    # stock_dailybasic (mv) may lag daily bars -> fall back to the latest day
+    # that actually has mv coverage, and report the lag.
+    if today.isoformat() in cal:
+        cal = [d for d in cal if d < today.isoformat()]
+    if not cal:
+        return None
+    signal_day = cal[-1]
+    lag_note = None
+    mv_floor = max(1, int(len(per_ts) * 0.5))
+    for d in reversed(cal):
+        if len(mv_map.get(d, {})) >= mv_floor:
+            if d != signal_day:
+                lag_note = f"卫星数据滞后（mv 至 {d}，最新日线 {signal_day}）"
+            signal_day = d
+            break
+    date_idx = {ts: {r["date"]: i for i, r in enumerate(series)} for ts, series in per_ts.items()}
+    day_all, breadth = _day_features(per_ts, mv_map, cal, signal_day, date_idx)
+    gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
+    gap_stocks.sort(key=lambda x: x[1])
+    qn = max(1, len(gap_stocks) // 3)
+    candidates = []
+    for ts, amp, gap in gap_stocks[: min(qn, TOP_N)]:
+        series = per_ts.get(ts)
+        idx = date_idx.get(ts, {}).get(signal_day, -1)
+        close = series[idx]["close"] if idx >= 0 and series else None
+        candidates.append(
+            {
+                "ts": ts,
+                "amp": round(float(amp) * 100, 2),
+                "gapPct": round(float(gap) * 100, 2),
+                "close": float(close) if close else None,
+            }
+        )
+    return {
+        "asOf": signal_day,
+        "gateOpen": breadth > R_WIDE_THRESHOLD,
+        "breadth": round(float(breadth), 3),
+        "gapCount": len(gap_stocks),
+        "candidates": candidates,
+        "note": lag_note,
+    }
+
+
+def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
+    """双子星今日操作信号 (core pick + satellite gate/candidates)."""
+    today = today or date.today()
+    core: dict[str, Any] = {"pick": None, "label": None, "action": None, "message": None}
+    try:
+        from data_sync_service.service.portfolio_health import build_portfolio_health
+
+        h = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
+        sleeve = (h or {}).get("multiAssetSleeve") or {}
+        pick = sleeve.get("pick") or {}
+        core = {
+            "pick": (pick or {}).get("key") if isinstance(pick, dict) else None,
+            "symbol": (pick or {}).get("symbol") if isinstance(pick, dict) else None,
+            "label": sleeve.get("label"),
+            "action": sleeve.get("action"),
+            "message": sleeve.get("message"),
+            "active": bool(sleeve.get("active")),
+        }
+    except Exception:
+        pass
+    sat = _sat_signal(today)
+    return {"core": core, "sat": sat or {"asOf": None, "gateOpen": None, "breadth": None, "gapCount": 0, "candidates": []}}
+
+
+def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any]:
+    """Text payload for the 14:20 webhook + notifications hub."""
+    action = build_twin_star_daily_action(today)
+    core = action["core"]
+    sat = action["sat"]
+    core_line = (
+        f"核心: {core.get('label') or core.get('pick') or 'REPO'} "
+        f"({core.get('action') or 'HOLD'})"
+        if core.get("pick") or core.get("action")
+        else "核心: 信号不可用"
+    )
+    if sat.get("asOf") is None:
+        sat_line = "卫星: 数据不可用"
+    elif not sat["gateOpen"]:
+        sat_line = f"卫星: R-wide 关闸 (breadth {sat['breadth']}) — 今日不开仓"
+    else:
+        cands = ", ".join(f"{c['ts']}(amp{c['amp']}%)" for c in sat["candidates"][:3]) or "无候选"
+        sat_line = (
+            f"卫星: R-wide 开闸 (breadth {sat['breadth']}) · {sat['gapCount']} 只缺口票 · "
+            f"低波候选 {cands}"
+        )
+    if sat.get("note"):
+        sat_line += f" · {sat['note']}"
+    return {
+        "title": "双子星 · 14:30 前操作提醒",
+        "detail": f"{core_line} · {sat_line}",
+        "core": core,
+        "sat": sat,
+    }
+
+
+def now_cn() -> datetime:
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Shanghai"))

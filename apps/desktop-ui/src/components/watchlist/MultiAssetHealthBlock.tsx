@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { useStrategyMode } from '@/lib/strategy-settings';
 import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 
 type MultiHolding = NonNullable<PortfolioHealthResponse['multiAssetHoldings']>[number];
@@ -13,6 +14,9 @@ const KEY_META: Record<string, { label: string; icon: string; color: string }> =
   NASDAQ: { label: '纳指', icon: '🇺🇸', color: 'border-blue-500/30 bg-blue-500/5' },
   BOND10: { label: '国债', icon: '🏦', color: 'border-emerald-500/30 bg-emerald-500/5' },
 };
+
+// 双子星核心腿目标权重：核心腿独享 50% 资金，全部配置到当日 pick（择强满仓切换）。
+const CORE_TARGET_PCT = 50;
 
 function holdingKey(sym: string): string {
   const s = sym.toUpperCase();
@@ -35,13 +39,15 @@ export function MultiAssetHealthBlock({
   const hasHoldings = holdings && holdings.length > 0;
   const pickKey = (sleeve as unknown as { pick?: { key?: string } })?.pick?.key;
   const actionable = sleeve?.action && sleeve.action !== 'NONE' && sleeve.action !== 'DONT_BUY';
+  const [strategyMode] = useStrategyMode();
+  const twinStar = strategyMode !== 'single_track';
 
   if (!hasHoldings && !actionable) return null;
 
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">择强单轨</span>
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{twinStar ? '核心腿' : '择强单轨'}</span>
         STOCK · 金 · 油 · 纳 · 债
         {pickKey ? (
           <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">今日：{pickKey}</span>
@@ -59,13 +65,31 @@ export function MultiAssetHealthBlock({
             const md = (h as unknown as { marketData?: { close?: number; ma200?: number; above?: boolean } }).marketData;
             const pnl = (h as unknown as { pnlPct?: number }).pnlPct;
             const above = md?.above;
+            const pos = typeof h.positionPct === 'number' ? h.positionPct : null;
+            const isPick = twinStar && pickKey != null && key === pickKey;
+            const adjust =
+              twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
+                ? { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
+                : isPick
+                  ? pos != null && pos < CORE_TARGET_PCT - 1
+                    ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${CORE_TARGET_PCT}%（当前 ${pos.toFixed(1)}%）` }
+                    : { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: `今日 pick（mom_compare 定案）` }
+                  : null;
             return (
               <div key={h.symbol} className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-2 text-xs', meta.color)}>
                 <span>{meta.icon}</span>
                 <button type="button" onClick={() => onOpen?.(h.symbol)} className="font-medium hover:underline">
                   {h.symbol}
                 </button>
-                <span className="text-[11px] text-[var(--k-muted)]">{meta.label} · 仓位 {h.positionPct ?? '—'}%</span>
+                {adjust ? (
+                  <span
+                    className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', adjust.cls)}
+                    title={adjust.tip}
+                  >
+                    {adjust.label}
+                  </span>
+                ) : null}
+                <span className="text-[11px] text-[var(--k-muted)]">{meta.label} · 仓位 {pos?.toFixed(1) ?? '—'}%</span>
                 {typeof pnl === 'number' ? (
                   <span className={cn('font-mono text-[11px]', pnl >= 0 ? 'text-emerald-600' : 'text-red-600')}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%</span>
                 ) : null}
@@ -74,9 +98,14 @@ export function MultiAssetHealthBlock({
                     {md.close} / MA200 {md.ma200?.toFixed(2)} {above ? '· 站上' : '· 跌破'}
                   </span>
                 ) : null}
-                <span className={cn('ml-auto rounded px-1.5 py-0.5 text-[10px]', above ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-600')}>
-                  {above ? '持有' : '预警'}
-                </span>
+                {!twinStar ? (
+                  <span className={cn('ml-auto rounded px-1.5 py-0.5 text-[10px]', above ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-600')}>
+                    {above ? '持有' : '预警'}
+                  </span>
+                ) : null}
+                {adjust && adjust.label !== '持有' ? (
+                  <span className="w-full text-[10px] text-[var(--k-muted)]">{adjust.tip}</span>
+                ) : null}
               </div>
             );
           })}

@@ -14,6 +14,35 @@ vi.mock('@/lib/queries/portfolioHealth', async () => {
   return { ...actual, fetchPortfolioHealth };
 });
 
+const SAT_OPEN = {
+  data: {
+    sat: {
+      asOf: '2026-08-28',
+      gateOpen: true,
+      breadth: 0.588,
+      gapCount: 111,
+      candidates: [{ ts: '000712.SZ', amp: 1, gapPct: 5, close: 10 }],
+      note: null,
+    },
+  },
+  isError: false,
+  dataUpdatedAt: Date.now(),
+  isFetching: false,
+};
+
+const twinStarMock = vi.hoisted(() => ({
+  useTwinStarActionQuery: vi.fn(() => SAT_OPEN),
+}));
+type TwinStarQuery = ReturnType<typeof import('@/lib/queries/backtest').useTwinStarActionQuery>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const useTwinStarActionQueryMock = twinStarMock.useTwinStarActionQuery as any;
+vi.mock('@/lib/queries/backtest', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries/backtest')>(
+    '@/lib/queries/backtest',
+  );
+  return { ...actual, useTwinStarActionQuery: twinStarMock.useTwinStarActionQuery };
+});
+
 const HOLDING = {
   symbol: 'HK:00700',
   name: '腾讯控股',
@@ -40,12 +69,19 @@ function renderCard() {
   );
 }
 
+function setStrategyMode(mode: 'twin_star' | 'single_track') {
+  window.localStorage.setItem('karios.strategyMode', JSON.stringify(mode));
+}
+
 beforeEach(() => {
   fetchPortfolioHealth.mockReset();
+  useTwinStarActionQueryMock.mockReturnValue(SAT_OPEN);
+  window.localStorage.removeItem('karios.strategyMode');
 });
 
 describe('PortfolioHealthCard', () => {
   it('renders market state + holdings from the health endpoint', async () => {
+    setStrategyMode('single_track');
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,
@@ -73,6 +109,62 @@ describe('PortfolioHealthCard', () => {
     const exp = screen.queryByText('展开');
     if (exp) fireEvent.click(exp);
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
+  });
+
+  it('shows twin-star copy by default (core-leg wording, no 100% hard-switch)', async () => {
+    window.localStorage.removeItem('karios.strategyMode');
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-08-28',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      multiAssetHoldings: [],
+      holdings: [],
+      hkHealth: null,
+      markets: { CN: { regime: 'Diverging' }, HK: { regime: 'Weak' } },
+    });
+    renderCard();
+    expect(await screen.findByText(/双子星 · 今日决策/)).toBeDefined();
+    expect(screen.queryByText(/100% 硬切/)).toBeNull();
+    expect(screen.queryByText(/单轨择优/)).toBeNull();
+    expect(screen.findByText(/买入候选 000712\.SZ/)).toBeDefined();
+    expect(screen.findByText(/卫星闸 · 可买入/)).toBeDefined();
+  });
+
+  it('flags satellite data failure with a retry badge', async () => {
+    window.localStorage.removeItem('karios.strategyMode');
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-08-28',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      multiAssetHoldings: [],
+      holdings: [],
+      hkHealth: null,
+      markets: { CN: { regime: 'Diverging' }, HK: { regime: 'Weak' } },
+    });
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: undefined,
+      isError: true,
+      dataUpdatedAt: 0,
+      isFetching: false,
+    });
+    renderCard();
+    expect(await screen.findByText(/⚠ 数据失败 · 重试中/)).toBeDefined();
   });
 
   it('renders alpha events + industry fund flow info layers', async () => {
@@ -134,7 +226,7 @@ describe('PortfolioHealthCard', () => {
       holdings: [{ ...HOLDING, action: 'EXIT', reason: 'trailing_stop（峰值回撤8.5% >= 8% 阈值）' }],
     });
     renderCard();
-    expect(await screen.findByText('🔴 建议退出')).toBeDefined();
+    expect(await screen.findByText('🔴 卖出')).toBeDefined();
     expect(screen.getByText(/trailing_stop/)).toBeDefined();
   });
 
@@ -162,12 +254,14 @@ describe('PortfolioHealthCard', () => {
   });
 
   it('shows a fallback note when the endpoint is unreachable', async () => {
+    setStrategyMode('single_track');
     fetchPortfolioHealth.mockRejectedValue(new Error('fetch failed'));
     renderCard();
     expect(await screen.findByText(/单轨择优暂不可用/)).toBeDefined();
   });
 
   it('distinguishes stale scores from a real no-candidate decision', async () => {
+    setStrategyMode('single_track');
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,

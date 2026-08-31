@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-not-found]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
 from apscheduler.triggers.date import DateTrigger
 
 from data_sync_service.scheduler import (
@@ -20,6 +21,7 @@ from data_sync_service.scheduler import (
     close_sync_job,
     cn_industry_post_close_job,
     daily_sync_job,
+    daily_basic_job,
     decision_action_job,
     decision_outcome_job,
     decision_snapshot_job,
@@ -49,6 +51,7 @@ from data_sync_service.scheduler import (
     stock_basic_job,
     timeline_warmup_job,
     trading_brief_job,
+    twin_star_reminder_job,
     watchlist_automation_job,
     webhook_delivery_job,
     weekly_review_job,
@@ -93,6 +96,12 @@ def create_scheduler() -> BackgroundScheduler:
         etf_daily_job.run,
         etf_daily_job.build_trigger(),
         id=etf_daily_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        etf_daily_job.run_full,
+        CronTrigger.from_crontab(etf_daily_job.FULL_CRON_EXPRESSION, timezone="Asia/Shanghai"),
+        id=etf_daily_job.FULL_JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -189,6 +198,13 @@ def create_scheduler() -> BackgroundScheduler:
         index_basic_job.run,
         index_basic_job.build_trigger(),
         id=index_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    # stock_dailybasic (total_mv) — Twin-Star satellite dependency (17:20).
+    scheduler.add_job(
+        daily_basic_job.run,
+        daily_basic_job.build_trigger(),
+        id=daily_basic_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -347,6 +363,13 @@ def create_scheduler() -> BackgroundScheduler:
         timeline_warmup_job.run,
         timeline_warmup_job.build_trigger(),
         id=timeline_warmup_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Twin-Star 14:30-before reminder (14:20 weekdays) -> webhook + notifications hub
+    scheduler.add_job(
+        twin_star_reminder_job.run,
+        twin_star_reminder_job.build_trigger(),
+        id=twin_star_reminder_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

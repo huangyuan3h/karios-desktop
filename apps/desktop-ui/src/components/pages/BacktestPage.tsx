@@ -537,7 +537,9 @@ function TimelineCard() {
     d.setFullYear(d.getFullYear() - 1);
     return d.toISOString().slice(0, 10);
   })();
-  const q = useTimelineQuery(start, today, true);
+  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong'>('twin_star');
+  const isTwin = strategy === 'twin_star';
+  const q = useTimelineQuery(start, today, strategy, true);
   const rows = q.data?.rows ?? [];
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
@@ -582,10 +584,30 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        过去一年 Timeline（择强单轨 · 全资产同权 · 100%）
+        过去一年 Timeline（{isTwin ? '双子星 · 择强核心+S-gap卫星 50/50' : '择强单轨 · 全资产同权 · 100%'}）
+        <span className="ml-2 flex overflow-hidden rounded border border-[var(--k-border)] text-[10px]">
+          <button
+            type="button"
+            onClick={() => setStrategy('twin_star')}
+            className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+          >
+            双子星
+          </button>
+          <button
+            type="button"
+            onClick={() => setStrategy('pick_strong')}
+            className={cn('px-2 py-0.5', !isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+          >
+            单轨择强
+          </button>
+        </span>
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {today} · {rows.length} 交易日
-          {last ? ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%` : ''}
+          {last
+            ? isTwin
+              ? ` · 卫星 ${last.satNavReturnPct ?? '—'}% · 双子星 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
+              : ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
+            : ''}
         </span>
       </div>
       {q.isError ? (
@@ -646,8 +668,9 @@ function TimelineCard() {
               </>
             ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
-              择强单轨 · mom_compare · pick_strong_track 同源 · 累计{' '}
-              {last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 {last?.navBaseReturnPct ?? '—'}%
+              {isTwin
+                ? `双子星 · 择强核心(mom_compare_t8) + S-gap卫星 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 卫星 ${last?.satNavReturnPct ?? '—'}% / 核心 ${(q.data as unknown as { summary?: { corePct?: number } } | undefined)?.summary?.corePct != null ? `${(q.data as unknown as { summary?: { corePct?: number } }).summary?.corePct}%` : '—'}`
+                : `择强单轨 · mom_compare · pick_strong_track 同源 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 ${last?.navBaseReturnPct ?? '—'}%`}
             </span>
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
@@ -660,7 +683,8 @@ function TimelineCard() {
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
-                  <th className="py-1 pr-2">择强NAV%</th>
+                  <th className="py-1 pr-2">{isTwin ? '双子星NAV%' : '择强NAV%'}</th>
+                  {isTwin ? <th className="py-1 pr-2">卫星NAV%(仓)</th> : null}
                   <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>
@@ -701,6 +725,18 @@ function TimelineCard() {
                       </td>
                       <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct))}>{r.navBaseReturnPct.toFixed(2)}%</td>
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
+                      {isTwin ? (
+                        <td className={cn('py-1 pr-2 text-[var(--k-muted)]')}>
+                          {r.satNavReturnPct != null ? (
+                            <>
+                              <span className={cn(tone(r.satNavReturnPct))}>{r.satNavReturnPct.toFixed(2)}%</span>
+                              <span className="text-[10px]"> ({r.satPositions ?? 0}仓)</span>
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      ) : null}
                       <td className={cn('py-1 pr-2', tone(single - r.navBaseReturnPct))}>{(single - r.navBaseReturnPct).toFixed(2)}%</td>
                     </tr>
                   );
@@ -710,7 +746,11 @@ function TimelineCard() {
           </div>
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-[var(--k-muted)]">
-              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md · 卖出=前日有今日无
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
+              {isTwin
+                ? '双子星 (Twin-Star)：择强核心(50%) + S-gap卫星(50%) · 定案 docs/backtests/state-bucket-algo-2026-08-31.md §7'
+                : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
+              · 卖出=前日有今日无
             </p>
             <button type="button" onClick={() => setShowAll((v) => !v)} className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60">
               {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}

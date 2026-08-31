@@ -23,7 +23,10 @@ import {
   type PortfolioHealthResponse,
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
-import { useBacktestReconQuery, type ReconItem } from '@/lib/queries/backtest';
+import { useBacktestReconQuery, useTwinStarActionQuery, type ReconItem } from '@/lib/queries/backtest';
+import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
+import { parseExecutionGate } from '@/lib/execution-action';
+import { useStrategyMode } from '@/lib/strategy-settings';
 import { cn } from '@/lib/utils';
 import { loadWatchlist, saveWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
@@ -50,10 +53,10 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
 
 const PICK_META: Record<string, { label: string; hint: string }> = {
   STOCK: { label: '股票篮', hint: '100% 跟 S-3 CN+HK 持仓篮（等权）' },
-  GOLD: { label: '黄金 ETF', hint: '518880 · 100% 硬切' },
-  OIL: { label: '原油 ETF', hint: '513350 · 100% 硬切' },
-  NASDAQ: { label: '纳指 ETF', hint: '513110/513100 · 100% 硬切' },
-  BOND10: { label: '国债 ETF', hint: '511260 · 100% 硬切' },
+  GOLD: { label: '黄金 ETF', hint: '518880' },
+  OIL: { label: '原油 ETF', hint: '513350' },
+  NASDAQ: { label: '纳指 ETF', hint: '513110/513100' },
+  BOND10: { label: '国债 ETF', hint: '511260' },
   REPO: { label: '逆回购', hint: 'GC001 · 无人过线时兜底' },
 };
 
@@ -63,10 +66,14 @@ function PickStrongOpsPanel({
   sleeve,
   stockHoldingsCount,
   onBuyEtf,
+  twinStar,
+  gateBlocksNew,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
   onBuyEtf?: (symbol: string, name: string | null) => void;
+  twinStar: boolean;
+  gateBlocksNew: boolean;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
@@ -79,17 +86,19 @@ function PickStrongOpsPanel({
 
   const steps: string[] = [];
   if (isStock) {
-    steps.push('今日资金 100% → 股票篮（下方展开篮内买卖）');
-    if (sleeve?.holding) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
+    steps.push(twinStar ? '核心腿 50% → 股票篮（下方展开篮内买卖）' : '今日资金 100% → 股票篮（下方展开篮内买卖）');
+    if (sleeve?.holding) steps.push(twinStar ? '若仍持有 ETF：先卖出 ETF，再配股票' : '若仍持有 ETF：先卖出 ETF，再配股票');
   } else if (isEtf) {
-    steps.push(`今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`);
-    if (stockHoldingsCount > 0) steps.push(`现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
-    if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
+    steps.push(twinStar ? `核心腿 50% → ${meta.label}（${etfSym ?? pickKey}）` : `今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`);
+    if (stockHoldingsCount > 0) steps.push(twinStar ? `现有 ${stockHoldingsCount} 只股票仓（属卫星/S-3 体系 · 核心腿按 50% 资金配 ETF）` : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
+    if (gateBlocksNew) {
+      steps.push(`闸门关闭（${sleeve?.pick ? '' : ''}Execution Gate DEFEND）· 今日不开新仓 — 维持 ${etfSym}`);
+    } else if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
     if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
     if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
-    steps.push('今日无人过线 → 100% 逆回购 / 空仓观望');
-    if (stockHoldingsCount > 0) steps.push('股票仓也应清到空（单轨不持）');
+    steps.push(twinStar ? '今日无人过线 → 核心腿转逆回购 / 观望' : '今日无人过线 → 100% 逆回购 / 空仓观望');
+    if (stockHoldingsCount > 0) steps.push(twinStar ? '股票仓属卫星/S-3 体系（核心腿不持股票）' : '股票仓也应清到空（单轨不持）');
     if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
   }
 
@@ -118,9 +127,9 @@ function PickStrongOpsPanel({
         </span>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
-        定案 mom_compare · LB60/MA200 · 100% 硬切 · {meta.hint}
+        {twinStar ? '核心腿 50%' : '100% 硬切'} · 定案 mom_compare · LB60/MA200
       </p>
-      {sleeve?.message ? (
+      {sleeve?.message && (action !== 'HOLD' || !twinStar) ? (
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
       ) : null}
       <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
@@ -137,7 +146,7 @@ function PickStrongOpsPanel({
           记录买入 {etfSym}（模拟盘）
         </button>
       ) : null}
-      {sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
+      {!twinStar && sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] tabular-nums text-[var(--k-muted)]">
           {Object.entries(sleeve.pick.all_mom).map(([k, v]) => (
             <span
@@ -191,7 +200,7 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
               : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
           )}
         >
-          {exit ? '🔴 建议退出' : '✅ 持有'}
+          {exit ? '🔴 卖出' : '✅ 持有'}
         </span>
         {h.pyramidAdded && (
           <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">
@@ -280,6 +289,7 @@ function BuyList({
   boughtSymbols,
   onRemind,
   onBuy,
+  twinStar,
 }: {
   candidates: PortfolioCandidate[];
   total?: number;
@@ -289,6 +299,7 @@ function BuyList({
   boughtSymbols: Set<string>;
   onRemind: (c: PortfolioCandidate, sizePct: number) => void;
   onBuy: (c: PortfolioCandidate, sizePct: number) => void;
+  twinStar: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const size = suggestedSizePct ?? 5;
@@ -298,7 +309,7 @@ function BuyList({
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>下午 2 点 · 股票篮买入（单轨 pick=STOCK · score 前 5）</span>
+        <span>下午 2 点 · 股票篮买入（{twinStar ? '核心腿' : '单轨'} pick=STOCK · score 前 5）</span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -505,6 +516,7 @@ function HealthPanel({
   overall,
   allowStockBuys,
   rotateOutStocks,
+  twinStar,
 }: {
   title: string;
   tag: string;
@@ -518,6 +530,7 @@ function HealthPanel({
   overall?: PortfolioHealthResponse | null;
   allowStockBuys: boolean;
   rotateOutStocks: boolean;
+  twinStar: boolean;
 }) {
   const holdings = block?.holdings ?? [];
   const candidates = block?.s3Candidates ?? [];
@@ -535,7 +548,7 @@ function HealthPanel({
         {title}
         {rotateOutStocks && holdings.length > 0 && (
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
-            单轨非 STOCK · 应轮出
+            {twinStar ? '核心腿' : '单轨'}非 STOCK · 应轮出
           </span>
         )}
         {gateClosed && allowStockBuys && (
@@ -586,7 +599,7 @@ function HealthPanel({
         ) : null}
         <span className="text-[var(--k-muted)]">
           篮内候选 {block ? (block.s3Candidates?.length ?? 0) : '…'}
-          {sleevePick ? ` · 单轨 pick ${sleevePick}` : ''}
+          {sleevePick ? ` · ${twinStar ? '核心腿' : '单轨'} pick ${sleevePick}` : ''}
         </span>
       </div>
       {block?.infoSummary && (
@@ -637,7 +650,7 @@ function HealthPanel({
                   ? {
                       ...h,
                       action: 'EXIT',
-                      reason: h.reason ?? `单轨今日 pick=${sleevePick}，股票篮应轮出`,
+                      reason: h.reason ?? `${twinStar ? '核心腿' : '单轨'}今日 pick=${sleevePick}，股票篮应轮出`,
                     }
                   : h
               }
@@ -656,10 +669,11 @@ function HealthPanel({
           boughtSymbols={boughtSymbols}
           onRemind={onRemind}
           onBuy={onBuy}
+          twinStar={twinStar}
         />
       ) : !allowStockBuys && candidates.length > 0 ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-          单轨 pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选 {candidates.length} 只<strong>不执行买入</strong>
+          {twinStar ? '核心腿' : '单轨'} pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选 {candidates.length} 只<strong>不执行买入</strong>
         </div>
       ) : allowStockBuys && block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
@@ -679,6 +693,19 @@ function HealthPanel({
 }
 
 export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  const [strategyMode] = useStrategyMode();
+  const twinStar = strategyMode !== 'single_track';
+  const twinStarQ = useTwinStarActionQuery(twinStar);
+  const sentimentQ = useDashboardSentimentQuery();
+  const executionGate = React.useMemo(
+    () =>
+      parseExecutionGate(
+        (sentimentQ.data as { marketSentiment?: { executionGate?: unknown } } | undefined)
+          ?.marketSentiment?.executionGate,
+      ),
+    [sentimentQ.data],
+  );
+  const gateBlocksNew = twinStar && executionGate != null && !executionGate.allowNewEntries;
   const q = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
@@ -819,7 +846,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
     return (
       <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-2.5 text-xs text-[var(--k-muted)]">
         <ShieldAlert size={13} className="mr-1 inline-block" />
-        单轨择优暂不可用（data-sync-service 未响应）
+        {twinStar ? '核心腿择优暂不可用' : '单轨择优暂不可用'}（data-sync-service 未响应）
       </div>
     );
   }
@@ -827,8 +854,27 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">单轨择优 · 今日复刻（mom_compare）</span>
-        <span className="text-[10px] text-[var(--k-muted)]">100% 硬切 · 与 Timeline 同源</span>
+        <span className="text-[12px] font-semibold">{twinStar ? '双子星 · 今日决策（Twin-Star）' : '单轨择优 · 今日复刻（mom_compare）'}</span>
+        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '核心腿 50% · S-gap 卫星 50% · R12 冻结' : '100% 硬切 · 与 Timeline 同源'}</span>
+        {twinStar ? (
+          <span
+            className={cn(
+              'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+              q.isError || twinStarQ.isError || sentimentQ.isError
+                ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+            )}
+            title={
+              q.isError || twinStarQ.isError || sentimentQ.isError
+                ? '部分数据获取失败，react-query 自动重试中'
+                : `数据更新于 ${new Date(Math.max(q.dataUpdatedAt, twinStarQ.dataUpdatedAt, sentimentQ.dataUpdatedAt)).toLocaleTimeString('zh-CN')} · 核心腿/闸门每 5 分钟轮询，卫星每 30 分钟`
+            }
+          >
+            {q.isError || twinStarQ.isError || sentimentQ.isError
+              ? '⚠ 数据失败 · 重试中'
+              : `实时 · ${new Date(Math.max(q.dataUpdatedAt, twinStarQ.dataUpdatedAt, sentimentQ.dataUpdatedAt)).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
+        ) : null}
         <Button
           variant="ghost"
           size="sm"
@@ -871,15 +917,53 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
       )}
 
       <div className="flex flex-col gap-2">
+        {twinStar && sleeve ? (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
+            <span className="font-semibold text-emerald-700">今日结论</span>
+            <span className="ml-2">
+              {gateBlocksNew ? '🔒 闸门关闭（DEFEND）· 不开新仓 · ' : ''}核心腿：{sleeve.label ?? sleeve.action} {sleeve.pick?.symbol ?? ''}
+            </span>
+            {twinStarQ.data?.sat?.asOf != null ? (
+              <span className="ml-2">
+                · 卫星：
+                {!twinStarQ.data.sat.gateOpen
+                  ? 'R-wide 关闸（不开仓）'
+                  : gateBlocksNew
+                    ? `R-wide 开闸（闸门关闭暂不买入）· 候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                    : `R-wide 开闸 → 买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {twinStar && twinStarQ.data?.sat?.asOf != null ? (
+          <div className="rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 text-[11px]">
+            <span className="font-semibold text-sky-700">卫星闸{twinStarQ.data.sat.gateOpen && !gateBlocksNew ? ' · 可买入' : ''}</span>
+            <span className="ml-2 text-[var(--k-muted)]">
+              {twinStarQ.data.sat.gateOpen
+                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
+                : `R-wide 关闸 (breadth ${twinStarQ.data.sat.breadth})`}
+              {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''}
+            </span>
+            <span className="ml-2 text-[10px] text-[var(--k-muted)]">信号日 {twinStarQ.data.sat.asOf} · 14:30 前调整</span>
+          </div>
+        ) : null}
+        {twinStar && q.data?.tradeDate && twinStarQ.data?.sat?.asOf != null && twinStarQ.data.sat.asOf < q.data.tradeDate ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
+            ⚠ 卫星信号滞后：信号日 {twinStarQ.data.sat.asOf} &lt; 体检数据 {q.data.tradeDate}——卫星判断可能不是最新，请检查数据同步。
+          </div>
+        ) : null}
+
         {sleeve ? (
           <PickStrongOpsPanel
             sleeve={sleeve}
             stockHoldingsCount={stockHoldingsCount}
             onBuyEtf={handleBuyEtf}
+            twinStar={twinStar}
+            gateBlocksNew={gateBlocksNew}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
-            live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离单轨）
+            live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离{twinStar ? '核心腿' : '单轨'}）
           </div>
         )}
 
@@ -916,6 +1000,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 overall={data}
                 allowStockBuys={allowStockBuys}
                 rotateOutStocks={rotateOutStocks}
+                twinStar={twinStar}
               />
               <HealthPanel
                 title="港股线（股票篮生成器）"
@@ -930,6 +1015,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 overall={data}
                 allowStockBuys={allowStockBuys}
                 rotateOutStocks={rotateOutStocks}
+                twinStar={twinStar}
               />
             </div>
           ) : null}

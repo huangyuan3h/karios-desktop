@@ -7,6 +7,7 @@ ts_code with resume-from-failure semantics similar to hk_daily_full.
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -125,6 +126,58 @@ def sync_etf_daily_full() -> dict[str, Any]:
 
     insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
     return {"ok": True, "updated": total_rows}
+
+
+SLEEVE_ETF_TS_CODES = ["518880.SH", "513350.SH", "513110.SH", "513100.SH", "511260.SH"]
+
+
+def sync_sleeve_etfs() -> dict[str, Any]:
+    """Incremental daily sync for the 5 Twin-Star core-leg ETFs only.
+
+    The full-market ``etf_daily_full`` cron runs monthly and keeps failing on
+    the tushare per-minute rate limit (200 calls/min for ~1000 ETFs), which
+    left GOLD/BOND10 stale since 2026-08-21 and distorted mom_compare picks.
+    Five per-ts_code calls with a small sleep stay far below the limit.
+    """
+    from data_sync_service.db.daily import get_last_trade_date as _gld
+
+    JOB_TYPE = "sleeve_etf_daily_sync"
+    settings = get_settings()
+    if not settings.tu_share_api_key:
+        insert_record(job_type=JOB_TYPE, success=False, error_message="TU_SHARE_API_KEY is not set")
+        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+
+    pro = ts.pro_api(settings.tu_share_api_key)
+    end_date = _sync_end_date(SLEEVE_ETF_TS_CODES[0])
+    total = 0
+    for ts_code in SLEEVE_ETF_TS_CODES:
+        try:
+            last_date = get_last_trade_date(ts_code)
+            if last_date is None:
+                start_date = FULL_START_DATE
+            else:
+                start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
+            if start_date > end_date:
+                continue
+            df = pro.fund_daily(
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                fields=",".join(DAILY_FIELDS),
+            )
+            if df is not None and not df.empty:
+                total += upsert_from_dataframe(df)
+        except Exception as exc:  # noqa: BLE001
+            insert_record(
+                job_type=JOB_TYPE,
+                success=False,
+                last_ts_code=ts_code,
+                error_message=str(exc),
+            )
+            return {"ok": False, "error": str(exc), "ts_code": ts_code, "updated": total}
+        time.sleep(0.35)
+    insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
+    return {"ok": True, "updated": total}
 
 
 def get_etf_daily_sync_status() -> dict[str, Any]:

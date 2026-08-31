@@ -265,3 +265,71 @@ def build_mom_compare_timeline(
             "maxDdFusedPct": round(max_dd * 100, 1),
         },
     }
+
+
+def build_twin_star_timeline(
+    *,
+    core_rows: list[dict[str, Any]],
+    core_summary: dict[str, Any],
+    sat_rows: list[dict[str, Any]],
+    core_weight: float = 0.5,
+    sat_weight: float = 0.5,
+) -> dict[str, Any]:
+    """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 双子星 (Twin-Star) rows.
+
+    blend_ret = core_weight * core_ret + sat_weight * sat_ret (daily, compounded).
+    Keeps all core fields; navSingle/navMulti become the blended NAV; adds
+    satNav / satNavReturnPct / satPositions. Frozen R12 (core_satellite_frozen_2026-08-31.json).
+    """
+    sat_by_day = {r["date"]: r for r in sat_rows}
+    nav = 1.0
+    peak = 1.0
+    max_dd = 0.0
+    prev_core = 1.0
+    prev_sat = 1.0
+    last_sat_row: dict[str, Any] | None = None
+    blended: list[dict[str, Any]] = []
+    for r in core_rows:
+        day = r["date"]
+        sat_r = sat_by_day.get(day) or last_sat_row
+        last_sat_row = sat_r or last_sat_row
+        if sat_r is None:
+            blended.append({**r, "satNav": None, "satNavReturnPct": None, "satPositions": None})
+            continue
+        sat_nav = float(sat_r["satNav"])
+        core_nav = float(r["navSingle"])
+        core_ret = core_nav / prev_core - 1 if prev_core > 0 else 0.0
+        sat_ret = sat_nav / prev_sat - 1 if prev_sat > 0 else 0.0
+        prev_core = core_nav
+        prev_sat = sat_nav
+        nav *= 1.0 + core_weight * core_ret + sat_weight * sat_ret
+        peak = max(peak, nav)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - nav) / peak)
+        blended.append(
+            {
+                **r,
+                "navSingle": round(nav, 6),
+                "navMulti": round(nav, 6),
+                "navSingleReturnPct": round((nav - 1) * 100, 2),
+                "navMultiReturnPct": round((nav - 1) * 100, 2),
+                "satNav": round(sat_nav, 6),
+                "satNavReturnPct": round((sat_nav - 1) * 100, 2),
+                "satPositions": int(sat_r.get("satPositions") or 0),
+            }
+        )
+    return {
+        "ok": True,
+        "mode": "twin_star",
+        "strategy": "双子星 (Twin-Star)",
+        "coreMode": MODE,
+        "coreWeight": core_weight,
+        "satWeight": sat_weight,
+        "rows": blended,
+        "summary": {
+            "fusedPct": round((nav - 1) * 100, 2),
+            "corePct": round((core_summary.get("fusedPct") or 0.0), 2),
+            "basePct": round(core_summary.get("basePct") or 0.0, 2),
+            "maxDdFusedPct": round(max_dd * 100, 1),
+        },
+    }

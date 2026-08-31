@@ -41,7 +41,7 @@ export function RecentDailyCompareCard() {
     d.setMonth(d.getMonth() - 2);
     return d.toISOString().slice(0, 10);
   });
-  const timelineQ = useTimelineQuery(start, today, true);
+  const timelineQ = useTimelineQuery(start, today, 'pick_strong', true);
   const healthQ = useQuery({
     queryKey: ['portfolio-health', 'recent-ops-vs-pick-strong'],
     queryFn: () => fetchPortfolioHealth(),

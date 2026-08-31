@@ -286,6 +286,43 @@ def _third_asset_notification() -> list[dict[str, Any]]:
     }]
 
 
+def _twin_star_notification() -> list[dict[str, Any]]:
+    """双子星 (Twin-Star) 14:30 前操作提醒 — core target + satellite gate/candidates.
+
+    Only surfaced on CN trading weekdays (the reminder is an intraday product).
+    """
+    from datetime import date as date_type
+
+    from data_sync_service.service.twin_star_daily import (
+        build_twin_star_reminder_payload,
+        now_cn,
+    )
+
+    try:
+        now = now_cn()
+        if now.weekday() >= 5:
+            return []
+        payload = build_twin_star_reminder_payload(date_type.today())
+        detail = payload.get("detail") or ""
+        if not detail:
+            return []
+        sat = payload.get("sat") or {}
+        gate = sat.get("gateOpen")
+        severity = "medium" if gate else "low"
+        return [{
+            "id": f"twin-star:{now.date().isoformat()}",
+            "type": "twin_star",
+            "severity": severity,
+            "title": payload.get("title") or "双子星 · 14:30 前操作提醒",
+            "detail": detail,
+            "anchor": "watchlist",
+            "createdAt": now.isoformat(),
+        }]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("notifications twin-star failed: %s", exc)
+        return []
+
+
 def build_notifications() -> list[dict[str, Any]]:
     """All actionable notifications, most severe first."""
     items = (
@@ -295,6 +332,7 @@ def build_notifications() -> list[dict[str, Any]]:
         + _recon_alerts()
         + _rolling_oos_warning()
         + _third_asset_notification()
+        + _twin_star_notification()
     )
     order = {"high": 0, "medium": 1}
     items.sort(key=lambda x: order.get(str(x.get("severity")), 2))

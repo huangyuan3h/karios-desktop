@@ -25,6 +25,15 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "thresholdMinutes": 24 * 60,
     },
     {
+        "source": "daily_basic",
+        "weekendTolerant": True,
+        "label": "估值（市值）",
+        "jobType": "stock_daily_basic_sync",
+        "table": "stock_dailybasic",
+        "tableTsColumn": "trade_date",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
         "source": "news",
         "label": "新闻",
         "jobType": "news_fetch_job",

@@ -31,6 +31,8 @@
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
+> **双子星 (Twin-Star)（R12，2026-08-31 冻结）**：本单轨现作为整体策略的**核心腿**（50%），与**状态分桶 S-gap 卫星**（50%）组合（官方名「双子星」）（`backtests/state-bucket-algo-2026-08-31.md` §3.0/§7 + `core_satellite_frozen_2026-08-31.json`）。单轨单独口径仍以本文为准；组合口径见状态分桶文档。
+
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。
 
