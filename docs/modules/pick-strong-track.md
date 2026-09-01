@@ -31,7 +31,7 @@
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
-> **机会双子星 (Opportunity Twin-Star)（2026-09-01 定案，替代旧双子星）**：本单轨是整体策略的**主干**（卫星资金平时 100% 跟核心），S-gap 卫星作**机会增强**（R-wide 开闸 + 候选可执行才切 50% 切片）（`backtests/state-bucket-algo-2026-08-31.md` §3.0/§7 + `core_satellite_frozen_2026-08-31.json`）。旧 50/50 双子星（R12 2026-08-31）因"一字板可成交"虚高口径被替代。单轨单独口径仍以本文为准；组合口径见状态分桶文档。
+> **机会双子星 v2（2026-09-01）**：可选增强——卫星资金平时跟核心，开闸可买或持仓中才切 50%；**退出日 `satActive` 计入成本**。修正后 past_year/aligned 输给纯核心 → **实盘默认仍是本单轨**；双子星 Settings opt-in（`backtests/state-bucket-algo-2026-08-31.md` §3.0/§7）。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。

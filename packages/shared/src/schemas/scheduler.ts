@@ -644,6 +644,17 @@ meta(
     true,
      25,
   ),
+  meta(
+    'twin_star_intraday',
+    'watchlistAutomation',
+    '机会双子星盘中近似快照',
+    '工作日 12:30 拉取全市场午间快照，以快照价近似当日收盘重跑 S-gap 卫星筛（R-wide/gap/低波33%/涨停剔除），缓存供 14:30 后买入候选使用；失败回退 t-1 信号。',
+    '工作日 12:30',
+    null,
+    'cron',
+    true,
+     26,
+  ),
 ];
 
 /** Group display order in the UI. */

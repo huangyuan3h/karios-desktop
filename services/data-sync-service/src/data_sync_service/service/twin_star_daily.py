@@ -1,7 +1,9 @@
 """机会双子星 (Opportunity Twin-Star) 每日操作信号 — 14:30 前提醒用。
 
 core  = live multi_asset_sleeve (择强单轨 mom_compare + trail8 同源) 当前目标
-sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选 (信号 t-1 → 下一交易日开盘执行)
+sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选
+        + 引擎回放持仓簿 (openPositions / exitsDue)
+资金  = 机会口径: 无卫星仓且今日不开新仓 → 核心 100%; 否则核心 50% / 卫星 50%
 
 Truth: docs/backtests/state-bucket-algo-2026-08-31.md §7
 """
@@ -11,14 +13,17 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from data_sync_service.service.state_bucket_track import (
+    BODY,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
     _load_mv,
     _load_rows,
+    build_sgap_timeline,
 )
 
 LOOKBACK_DAYS = 90
+BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = 5
 
 
@@ -95,8 +100,50 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
     }
 
 
+def _sat_book(today: date) -> dict[str, Any]:
+    """Replay recent S-gap engine for open holdings + exits due (body=3).
+
+    This is the live satellite position book: same rules as backtest
+    (skip_t1_limit=True), ending at the latest completed session before today.
+    """
+    end = (today - timedelta(days=1)).isoformat()
+    start = (today - timedelta(days=BOOK_LOOKBACK_CAL_DAYS)).isoformat()
+    try:
+        built = build_sgap_timeline(start=start, end=end, skip_t1_limit=True)
+    except Exception:
+        return {"asOf": None, "holdings": [], "exitsDue": [], "error": "book_unavailable"}
+    holdings = list(built.get("openPositions") or [])
+    # Also surface names that just hit body on the last replay day (already closed
+    # in openPositions, but exit reminder still useful from last row satActive).
+    exits_due = [h for h in holdings if int(h.get("daysLeft") or 0) <= 0]
+    # holdings with daysLeft==0 should exit at today's/next close — keep in list
+    # but also mirror into exitsDue for the reminder card.
+    if not exits_due:
+        # positions that exit on the next session after end (daysLeft==1 and today
+        # is that session): daysLeft counts remaining body days including today.
+        exits_due = [h for h in holdings if int(h.get("daysLeft") or 99) <= 1]
+    return {
+        "asOf": end,
+        "holdings": holdings,
+        "exitsDue": exits_due,
+        "body": BODY,
+    }
+
+
+def _core_target_pct(*, gate_open: bool, candidates: list, holdings: list) -> int:
+    """Opportunity capital split for live guidance.
+
+    100% core when satellite is idle (no open book and not opening new today).
+    50% core / 50% sat when holding or opening.
+    """
+    opening = bool(gate_open) and bool(candidates)
+    if holdings or opening:
+        return 50
+    return 100
+
+
 def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
-    """机会双子星今日操作信号 (core pick + satellite gate/candidates)."""
+    """机会双子星今日操作信号 (core pick + satellite gate/candidates/book)."""
     today = today or date.today()
     core: dict[str, Any] = {"pick": None, "label": None, "action": None, "message": None}
     try:
@@ -115,8 +162,35 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
         }
     except Exception:
         pass
-    sat = _sat_signal(today)
-    return {"core": core, "sat": sat or {"asOf": None, "gateOpen": None, "breadth": None, "gapCount": 0, "candidates": []}}
+    sat = _sat_signal(today) or {
+        "asOf": None,
+        "gateOpen": None,
+        "breadth": None,
+        "gapCount": 0,
+        "candidates": [],
+    }
+    try:
+        from data_sync_service.service.twin_star_intraday import load_intraday_sat
+
+        intraday = load_intraday_sat(today)
+        if intraday is not None:
+            sat = intraday
+    except Exception:
+        pass
+    book = _sat_book(today)
+    holdings = book.get("holdings") or []
+    core_pct = _core_target_pct(
+        gate_open=bool(sat.get("gateOpen")),
+        candidates=list(sat.get("candidates") or []),
+        holdings=holdings,
+    )
+    sat = {
+        **sat,
+        "book": book,
+        "coreTargetPct": core_pct,
+        "satTargetPct": 100 - core_pct,
+    }
+    return {"core": core, "sat": sat}
 
 
 def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any]:
@@ -124,11 +198,12 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
     action = build_twin_star_daily_action(today)
     core = action["core"]
     sat = action["sat"]
+    core_pct = sat.get("coreTargetPct") or 100
     core_line = (
-        f"核心: {core.get('label') or core.get('pick') or 'REPO'} "
+        f"核心{core_pct}%: {core.get('label') or core.get('pick') or 'REPO'} "
         f"({core.get('action') or 'HOLD'})"
         if core.get("pick") or core.get("action")
-        else "核心: 信号不可用"
+        else f"核心{core_pct}%: 信号不可用"
     )
     if sat.get("asOf") is None:
         sat_line = "卫星: 数据不可用"
@@ -140,6 +215,18 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
             f"卫星: R-wide 开闸 (breadth {sat['breadth']}) · {sat['gapCount']} 只缺口票 · "
             f"低波候选 {cands}"
         )
+    if sat.get("approx"):
+        sat_line += " · 12:30 快照近似（模拟收盘价）"
+    book = sat.get("book") or {}
+    holdings = book.get("holdings") or []
+    exits = book.get("exitsDue") or []
+    if holdings:
+        hold_bits = ", ".join(
+            f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in holdings[:3]
+        )
+        sat_line += f" · 持仓簿 {len(holdings)}只: {hold_bits}"
+    if exits:
+        sat_line += f" · 今日/到期卖出 {', '.join(e['ts'] for e in exits[:3])}"
     if sat.get("note"):
         sat_line += f" · {sat['note']}"
     return {

@@ -748,7 +748,7 @@ function TimelineCard() {
             <p className="text-[10px] text-[var(--k-muted)]">
               {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
               {isTwin
-                ? '机会双子星：择强核心为主 + S-gap 卫星机会增强（开闸可买才切）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7'
+                  ? '机会双子星 v2：择强为主 + S-gap 机会增强（退出日计入成本；关闸/无仓→核心100%）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7 · 实盘默认仍是单轨择强'
                 : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
               · 卖出=前日有今日无
             </p>

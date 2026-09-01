@@ -51,6 +51,7 @@ from data_sync_service.scheduler import (
     stock_basic_job,
     timeline_warmup_job,
     trading_brief_job,
+    twin_star_intraday_job,
     twin_star_reminder_job,
     watchlist_automation_job,
     webhook_delivery_job,
@@ -370,6 +371,13 @@ def create_scheduler() -> BackgroundScheduler:
         twin_star_reminder_job.run,
         twin_star_reminder_job.build_trigger(),
         id=twin_star_reminder_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Twin-Star intraday approximate signal (12:30 weekdays) -> snapshot + cache
+    scheduler.add_job(
+        twin_star_intraday_job.run,
+        twin_star_intraday_job.build_trigger(),
+        id=twin_star_intraday_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

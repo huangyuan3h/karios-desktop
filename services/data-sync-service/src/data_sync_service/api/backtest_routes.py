@@ -38,6 +38,8 @@ def twin_star_action() -> dict[str, Any]:
 
     Signals from the latest completed close (t-1) -> next open execution, same
     semantics as the frozen strategy (docs/backtests/state-bucket-algo-2026-08-31.md §7).
+    When today's 12:30 intraday snapshot cache exists (simulated close -> buy
+    at 14:30) the satellite leg uses it instead of the t-1 signal.
     """
     from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
 

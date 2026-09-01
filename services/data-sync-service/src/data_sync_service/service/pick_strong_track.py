@@ -278,17 +278,16 @@ def build_twin_star_timeline(
 ) -> dict[str, Any]:
     """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 机会双子星 (Opportunity Twin-Star) rows.
 
-    Opportunity mode (default, frozen 2026-09-01): the satellite capital follows
-    the core 100% of the time (100% capital utilisation); on days the satellite
-    actually holds candidates (R-wide open + executable fills), its return
-    replaces the core return for that slice:
-        opp_ret = core_ret if satPositions == 0 else core_ret + sat_weight*(sat_ret - core_ret)
-    Fixed 50/50 daily-return blending (opportunity=False) is kept for audit —
-    it overstates the satellite (fills assume limit-up buys are executable)
-    and dilutes the core (frozen R12 numbers superseded).
+    Opportunity mode (default, frozen 2026-09-01, exit-day fix 2026-09-01):
+    satellite capital follows the core when idle; on days the satellite occupied
+    capital (overnight hold OR exit-at-close — see satActive), its return
+    replaces the core return for that sat_weight slice:
+        opp_ret = core_ret if not sat_active else core_ret + sat_weight*(sat_ret - core_ret)
+    Exit days must stay active so round-trip costs in satNav enter the blend
+    (pre-fix used satPositions>0 only, which zeroed the exit day and overstated
+    opportunity NAV by ~25pt on the aligned window).
 
-    Keeps all core fields; navSingle/navMulti become the blended NAV; adds
-    satNav / satNavReturnPct / satPositions.
+    Fixed 50/50 daily-return blending (opportunity=False) is kept for audit.
     """
     sat_by_day = {r["date"]: r for r in sat_rows}
     nav = 1.0
@@ -303,7 +302,15 @@ def build_twin_star_timeline(
         sat_r = sat_by_day.get(day) or last_sat_row
         last_sat_row = sat_r or last_sat_row
         if sat_r is None:
-            blended.append({**r, "satNav": None, "satNavReturnPct": None, "satPositions": None})
+            blended.append(
+                {
+                    **r,
+                    "satNav": None,
+                    "satNavReturnPct": None,
+                    "satPositions": None,
+                    "satActive": None,
+                }
+            )
             continue
         sat_nav = float(sat_r["satNav"])
         core_nav = float(r["navSingle"])
@@ -311,8 +318,12 @@ def build_twin_star_timeline(
         sat_ret = sat_nav / prev_sat - 1 if prev_sat > 0 else 0.0
         prev_core = core_nav
         prev_sat = sat_nav
-        if opportunity:
+        if "satActive" in sat_r and sat_r["satActive"] is not None:
+            has_sat = bool(sat_r["satActive"])
+        else:
+            # Legacy rows without satActive: overnight positions only (understates costs).
             has_sat = int(sat_r.get("satPositions") or 0) > 0
+        if opportunity:
             ret = core_ret + sat_weight * (sat_ret - core_ret) if has_sat else core_ret
         else:
             ret = core_weight * core_ret + sat_weight * sat_ret
@@ -330,6 +341,7 @@ def build_twin_star_timeline(
                 "satNav": round(sat_nav, 6),
                 "satNavReturnPct": round((sat_nav - 1) * 100, 2),
                 "satPositions": int(sat_r.get("satPositions") or 0),
+                "satActive": has_sat,
             }
         )
     return {

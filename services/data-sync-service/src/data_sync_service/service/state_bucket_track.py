@@ -188,12 +188,16 @@ def build_sgap_timeline(
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
-    Returns {rows: [{date, satNav, satNavReturnPct, satPositions}], summary: {...}}.
+    Returns {rows: [{date, satNav, satNavReturnPct, satPositions, satActive}],
+             openPositions: [...], summary: {...}}.
+    satActive is True when capital was in the satellite anytime that day
+    (overnight hold OR body exit at close) — opportunity blend must use it
+    so round-trip costs on the exit day enter the fused NAV.
+
     debug_fills: optional out-list collecting (entry_day, ts) — for tests/audit.
-    skip_unfillable: when True, entries whose T-day open cannot actually be
-    filled (one-word limit board open==high==low, or open at the price limit)
-    are skipped — an audit of how much the backtest overstates returns when
-    the satellite cannot buy the candidate.
+    skip_unfillable: when True, skip T-day opens that cannot fill (one-word /
+    limit-open) — audit only; API default leaves this False.
+    skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
     """
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
     per_ts = _load_rows(w_start, end)
@@ -222,6 +226,9 @@ def build_sgap_timeline(
             held = ci - ei + 1 if ei >= 0 and ci >= 0 else 999
             if held >= body:
                 to_close.append(ts)
+        # Positions closed at today's close still occupied capital for the day —
+        # opportunity blend must count this day (incl. round-trip costs in satNav).
+        closed_today = list(to_close)
         for ts in to_close:
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
@@ -263,15 +270,40 @@ def build_sgap_timeline(
             cc = close_by_ts.get(ts, {}).get(day)
             mtm += POSITION_PCT * (cc / p["entry_price"]) if cc and p["entry_price"] else POSITION_PCT
         nav = 1.0 + realized + (mtm - len(positions) * POSITION_PCT)
+        # satActive: capital was in sat anytime today (overnight hold OR exit at close).
+        sat_active = len(positions) > 0 or len(closed_today) > 0
         rows.append(
             {
                 "date": day,
                 "satNav": round(nav, 6),
                 "satNavReturnPct": round((nav - 1) * 100, 2),
                 "satPositions": len(positions),
+                "satActive": sat_active,
             }
         )
-    last_day = cal[-1]
+    last_day = cal[-1] if cal else end
+    open_positions: list[dict[str, Any]] = []
+    for ts, p in positions.items():
+        cc = close_by_ts.get(ts, {}).get(last_day)
+        ei = idx_by_day.get(p["entry_date"], -1)
+        ci = idx_by_day.get(last_day, -1)
+        held = ci - ei + 1 if ei >= 0 and ci >= 0 else 0
+        days_left = max(0, body - held)
+        exit_due = cal[ei + body - 1] if ei >= 0 and ei + body - 1 < len(cal) else last_day
+        open_positions.append(
+            {
+                "ts": ts,
+                "entryDate": p["entry_date"],
+                "entryPrice": round(float(p["entry_price"]), 4) if p["entry_price"] else None,
+                "close": round(float(cc), 4) if cc else None,
+                "heldDays": held,
+                "daysLeft": days_left,
+                "exitDue": exit_due,
+                "pnlPct": round((cc / p["entry_price"] - 1) * 100, 2)
+                if cc and p["entry_price"]
+                else None,
+            }
+        )
     for ts, p in list(positions.items()):
         cc = close_by_ts.get(ts, {}).get(last_day)
         if cc and p["entry_price"]:
@@ -289,6 +321,7 @@ def build_sgap_timeline(
             max_dd = max(max_dd, (peak - nav) / peak)
     return {
         "rows": rows,
+        "openPositions": open_positions,
         "summary": {
             "satPct": round((final_nav - 1) * 100, 2),
             "satMaxDdPct": round(max_dd * 100, 1),

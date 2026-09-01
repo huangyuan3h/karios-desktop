@@ -451,6 +451,17 @@ export type TwinStarSatCandidate = {
   close: number | null;
 };
 
+export type TwinStarSatHolding = {
+  ts: string;
+  entryDate?: string | null;
+  entryPrice?: number | null;
+  close?: number | null;
+  heldDays?: number | null;
+  daysLeft?: number | null;
+  exitDue?: string | null;
+  pnlPct?: number | null;
+};
+
 export type TwinStarAction = {
   ok: boolean;
   core: {
@@ -468,6 +479,15 @@ export type TwinStarAction = {
     gapCount?: number | null;
     candidates?: TwinStarSatCandidate[] | null;
     note?: string | null;
+    approx?: boolean | null;
+    coreTargetPct?: number | null;
+    satTargetPct?: number | null;
+    book?: {
+      asOf?: string | null;
+      holdings?: TwinStarSatHolding[] | null;
+      exitsDue?: TwinStarSatHolding[] | null;
+      body?: number | null;
+    } | null;
   };
 };
 

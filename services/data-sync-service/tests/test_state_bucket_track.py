@@ -95,9 +95,17 @@ class TestBuildSgapTimeline:
         # entered day 21 (next open after gap on day 20)
         entry_day = [i for i, row in enumerate(rows) if row["satPositions"] == 1]
         assert entry_day and rows[entry_day[0]]["date"] == dates[21]
-        # body=3: held days 21,22 visible, exit AT day-23 close (pos removed before row)
+        # body=3: held days 21,22 overnight (pos=1); exit AT day-23 close
+        # (pos=0 after close, but satActive=True so opportunity blend keeps costs)
         held_days = [i for i, row in enumerate(rows) if row["satPositions"] == 1]
         assert len(held_days) == 2
+        exit_row = next(row for row in rows if row["date"] == dates[23])
+        assert exit_row["satPositions"] == 0
+        assert exit_row["satActive"] is True
+        # open book empty after body exit (and window ends with no new fill)
+        assert r.get("openPositions") == [] or all(
+            p["ts"] != "A.SH" for p in r.get("openPositions") or []
+        )
         # no entry before idx>=20 eligibility / no entry on first window day
         assert rows[0]["satPositions"] == 0
         # final NAV: entry next_open, exit at 3rd-day close, 0.3% round trip cost

@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { useStrategyMode } from '@/lib/strategy-settings';
+import { useTwinStarActionQuery } from '@/lib/queries/backtest';
 import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 
 type MultiHolding = NonNullable<PortfolioHealthResponse['multiAssetHoldings']>[number];
@@ -14,9 +15,6 @@ const KEY_META: Record<string, { label: string; icon: string; color: string }> =
   NASDAQ: { label: '纳指', icon: '🇺🇸', color: 'border-blue-500/30 bg-blue-500/5' },
   BOND10: { label: '国债', icon: '🏦', color: 'border-emerald-500/30 bg-emerald-500/5' },
 };
-
-// 双子星核心腿目标权重：核心腿独享 50% 资金，全部配置到当日 pick（择强满仓切换）。
-const CORE_TARGET_PCT = 50;
 
 function holdingKey(sym: string): string {
   const s = sym.toUpperCase();
@@ -41,6 +39,9 @@ export function MultiAssetHealthBlock({
   const actionable = sleeve?.action && sleeve.action !== 'NONE' && sleeve.action !== 'DONT_BUY';
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
+  const twinStarQ = useTwinStarActionQuery(twinStar);
+  // Opportunity口径: idle → 100% core; opening/holding → 50%.
+  const coreTargetPct = twinStar ? (twinStarQ.data?.sat?.coreTargetPct ?? 100) : 100;
 
   if (!hasHoldings && !actionable) return null;
 
@@ -51,6 +52,11 @@ export function MultiAssetHealthBlock({
         STOCK · 金 · 油 · 纳 · 债
         {pickKey ? (
           <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">今日：{pickKey}</span>
+        ) : null}
+        {twinStar ? (
+          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
+            目标 {coreTargetPct}%
+          </span>
         ) : null}
         {sleeve?.idlePct != null ? (
           <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">闲置 {sleeve.idlePct}%</span>
@@ -71,8 +77,8 @@ export function MultiAssetHealthBlock({
               twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
                 ? { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
                 : isPick
-                  ? pos != null && pos < CORE_TARGET_PCT - 1
-                    ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${CORE_TARGET_PCT}%（当前 ${pos.toFixed(1)}%）` }
+                  ? pos != null && pos < coreTargetPct - 1
+                    ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）` }
                     : { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: `今日 pick（mom_compare 定案）` }
                   : null;
             return (

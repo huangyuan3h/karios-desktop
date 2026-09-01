@@ -15,7 +15,9 @@ export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
 
 export function getStrategyMode(): StrategyMode {
   const v = loadJson<StrategyMode | null>(STORAGE_KEY, null);
-  return v === 'single_track' ? v : 'twin_star';
+  // 2026-09-01 v2: after exit-day cost fix, past_year/aligned lose to pure core →
+  // default live mode is single_track; twin_star remains opt-in.
+  return v === 'twin_star' ? v : 'single_track';
 }
 
 export function setStrategyMode(mode: StrategyMode): void {

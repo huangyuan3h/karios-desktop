@@ -14,6 +14,14 @@ vi.mock('@/lib/queries/portfolioHealth', async () => {
   return { ...actual, fetchPortfolioHealth };
 });
 
+const marketHoursMock = vi.hoisted(() => ({
+  getShanghaiMinutes: vi.fn(() => 15 * 60),
+}));
+vi.mock('@/lib/market-hours', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/market-hours')>('@/lib/market-hours');
+  return { ...actual, getShanghaiMinutes: marketHoursMock.getShanghaiMinutes };
+});
+
 const SAT_OPEN = {
   data: {
     sat: {
@@ -23,6 +31,9 @@ const SAT_OPEN = {
       gapCount: 111,
       candidates: [{ ts: '000712.SZ', amp: 1, gapPct: 5, close: 10 }],
       note: null,
+      coreTargetPct: 50,
+      satTargetPct: 50,
+      book: { asOf: '2026-08-28', holdings: [], exitsDue: [], body: 3 },
     },
   },
   isError: false,
@@ -41,6 +52,23 @@ vi.mock('@/lib/queries/backtest', async () => {
     '@/lib/queries/backtest',
   );
   return { ...actual, useTwinStarActionQuery: twinStarMock.useTwinStarActionQuery };
+});
+
+const sentimentMock = vi.hoisted(() => ({
+  useDashboardSentimentQuery: vi.fn(() => ({
+    data: undefined,
+    isError: false,
+    dataUpdatedAt: 0,
+    isFetching: false,
+  })),
+}));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const useDashboardSentimentQueryMock = sentimentMock.useDashboardSentimentQuery as any;
+vi.mock('@/lib/queries/sentiment', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries/sentiment')>(
+    '@/lib/queries/sentiment',
+  );
+  return { ...actual, useDashboardSentimentQuery: sentimentMock.useDashboardSentimentQuery };
 });
 
 const HOLDING = {
@@ -75,7 +103,14 @@ function setStrategyMode(mode: 'twin_star' | 'single_track') {
 
 beforeEach(() => {
   fetchPortfolioHealth.mockReset();
+  marketHoursMock.getShanghaiMinutes.mockReturnValue(15 * 60);
   useTwinStarActionQueryMock.mockReturnValue(SAT_OPEN);
+  useDashboardSentimentQueryMock.mockReturnValue({
+    data: undefined,
+    isError: false,
+    dataUpdatedAt: 0,
+    isFetching: false,
+  });
   window.localStorage.removeItem('karios.strategyMode');
 });
 
@@ -111,8 +146,8 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
   });
 
-  it('shows twin-star copy by default (core-leg wording, no 100% hard-switch)', async () => {
-    window.localStorage.removeItem('karios.strategyMode');
+  it('shows twin-star copy when opt-in (core-leg wording, no 100% hard-switch)', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,
@@ -131,15 +166,17 @@ describe('PortfolioHealthCard', () => {
       markets: { CN: { regime: 'Diverging' }, HK: { regime: 'Weak' } },
     });
     renderCard();
-    expect(await screen.findByText(/双子星 · 今日决策/)).toBeDefined();
+    expect(await screen.findByText(/机会双子星 · 今日决策/)).toBeDefined();
     expect(screen.queryByText(/100% 硬切/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
-    expect(await screen.findByText(/R-wide 开闸 → 买入候选 000712\.SZ/)).toBeDefined();
+    expect(await screen.findByText(/机会口径 · 核心 50%/)).toBeDefined();
+    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
+    expect(await screen.findByText(/持仓簿空/)).toBeDefined();
   });
 
   it('flags satellite data failure with a retry badge', async () => {
-    window.localStorage.removeItem('karios.strategyMode');
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,
@@ -701,5 +738,119 @@ describe('PortfolioHealthCard', () => {
     renderCard();
     await screen.findByText(/Diverging · 满仓进攻/);
     expect(screen.queryByText(/闸门关闭/)).toBeNull();
+  });
+
+  it('keeps satellite buys on the R-wide gate only — S-3 Execution Gate DEFEND does not block twin-star satellite candidates', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-01',
+      regime: 'Weak',
+      sentiment: 'normal',
+      panicCooldown: { active: true, cooldownEndDate: '2026-09-01' },
+      circuitBlocked: false,
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    useDashboardSentimentQueryMock.mockReturnValue({
+      data: {
+        marketSentiment: {
+          executionGate: {
+            mode: 'DEFEND',
+            allowNewEntries: false,
+            marketRegime: 'Weak',
+            indexLight: '红',
+            srvLevel: null,
+            reasons: ['regime_weak'],
+          },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    renderCard();
+    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
+    expect(screen.queryByText(/暂不买入/)).toBeNull();
+    expect(screen.queryByText(/闸门关闭/)).toBeNull();
+  });
+
+  it('hides satellite candidates before 14:30 (buy window is 14:30 at simulated close price)', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    marketHoursMock.getShanghaiMinutes.mockReturnValue(10 * 60);
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-01',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/R-wide 开闸 · 候选 14:30 后公布（模拟收盘价买入）/)).toBeDefined();
+    expect(screen.queryByText(/000712\.SZ/)).toBeNull();
+    expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
+  });
+
+  it('labels the S-3 gate only when the core leg picks STOCK', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 6.88, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-01',
+      regime: 'Weak',
+      sentiment: 'normal',
+      panicCooldown: { active: true, cooldownEndDate: '2026-09-01' },
+      circuitBlocked: false,
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    useDashboardSentimentQueryMock.mockReturnValue({
+      data: {
+        marketSentiment: {
+          executionGate: {
+            mode: 'DEFEND',
+            allowNewEntries: false,
+            marketRegime: 'Weak',
+            indexLight: '红',
+            srvLevel: null,
+            reasons: ['regime_weak'],
+          },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    renderCard();
+    expect(await screen.findByText(/🔒 S-3 闸门关闭 · 不开新仓 ·/)).toBeDefined();
+    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
   });
 });

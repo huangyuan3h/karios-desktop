@@ -6,6 +6,7 @@ import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/be
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery, useTwinStarActionQuery } from '@/lib/queries/backtest';
 import { useStrategyMode } from '@/lib/strategy-settings';
+import { getShanghaiMinutes } from '@/lib/market-hours';
 import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 
 export function TodayActionCard() {
@@ -25,6 +26,7 @@ export function TodayActionCard() {
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
   const twinStarQ = useTwinStarActionQuery(true);
+  const afterSatWindow = getShanghaiMinutes() >= 14 * 60 + 30;
   const refresh = useRefreshBehaviorAudit();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -114,23 +116,34 @@ export function TodayActionCard() {
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
       {baseRet != null && singleRet != null && (
         <div className="mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
-          <span className="font-semibold text-emerald-700">{twinStar ? `机会双子星核心腿 · 择强 50%（今日 ${pick}）` : `最优路径：择强单轨 100%（今日 ${pick}）`}</span>
+          <span className="font-semibold text-emerald-700">{twinStar ? `机会双子星 · 核心 ${twinStarQ.data?.sat?.coreTargetPct ?? 100}%（今日 ${pick}）` : `最优路径：择强单轨 100%（今日 ${pick}）`}</span>
           <span className="ml-2 tabular-nums text-[var(--k-muted)]">
             过去年 基线 {baseRet.toFixed(1)}% · 单轨 {singleRet.toFixed(1)}% · 超额 {excess != null ? `${excess >= 0 ? '+' : ''}${excess.toFixed(1)}pt` : '—'}
           </span>
           <span className="ml-2 text-emerald-700">{twinStar ? '→ 核心腿今日：' : '→ 今日跟单轨：'}{sleeveHold ? `持有 ${sleeveHold.pick?.symbol}` : buyDedup.length ? `买 ${buyDedup[0].symbol}` : '持有不动'}</span>
         </div>
       )}
-      {twinStarQ.data?.sat?.asOf != null && (
+      {twinStar && twinStarQ.data?.sat?.asOf != null && (
         <div className="mb-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 text-[11px]">
-          <span className="font-semibold text-sky-700">双子星卫星（S-gap）</span>
+          <span className="font-semibold text-sky-700">机会卫星（S-gap）</span>
           <span className="ml-2 text-[var(--k-muted)]">
             {twinStarQ.data.sat.gateOpen
-              ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+              ? afterSatWindow
+                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                : `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 候选 14:30 后公布（模拟收盘价买入）`
               : `R-wide 关闸 (breadth ${twinStarQ.data.sat.breadth}) — 今日不开仓`}
+            {(twinStarQ.data.sat.book?.holdings?.length ?? 0) > 0
+              ? ` · 持仓 ${(twinStarQ.data.sat.book!.holdings ?? []).map((h) => `${h.ts}(剩${h.daysLeft}d)`).slice(0, 3).join(', ')}`
+              : ''}
+            {(twinStarQ.data.sat.book?.exitsDue?.length ?? 0) > 0
+              ? ` · 到期卖 ${(twinStarQ.data.sat.book!.exitsDue ?? []).map((h) => h.ts).slice(0, 3).join(', ')}`
+              : ''}
             {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''}
           </span>
-          <span className="ml-2 text-[10px] text-[var(--k-muted)]">信号日 {twinStarQ.data.sat.asOf} · 14:30 前调整</span>
+          <span className="ml-2 text-[10px] text-[var(--k-muted)]">
+            信号日 {twinStarQ.data.sat.asOf} · 核心目标 {twinStarQ.data.sat.coreTargetPct ?? 100}%
+            {twinStarQ.data.sat.approx ? ' · 盘中近似（12:30 快照）' : ''}
+          </span>
         </div>
       )}
       {gap.verdict !== 'aligned' && gapBlocks.length > 0 && (

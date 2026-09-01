@@ -29,6 +29,13 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
+    # 12:30 intraday snapshot already pushed the simulated-close signal (more
+    # accurate than the t-1 reminder) — skip to avoid a stale duplicate.
+    from data_sync_service.service.twin_star_intraday import load_intraday_sat
+
+    if load_intraday_sat(now_cn().date()) is not None:
+        logger.info("twin_star_reminder skipped: intraday snapshot already emitted today")
+        return
     payload = build_twin_star_reminder_payload()
     if not payload.get("detail"):
         return

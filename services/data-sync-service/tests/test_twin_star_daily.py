@@ -97,6 +97,32 @@ class TestReminderPayload:
             "note": None,
         })
         monkeypatch.setattr(
+            tsd,
+            "_sat_book",
+            lambda today: {
+                "asOf": "2026-01-20",
+                "holdings": [
+                    {
+                        "ts": "B.SH",
+                        "entryDate": "2026-01-19",
+                        "heldDays": 2,
+                        "daysLeft": 1,
+                        "exitDue": "2026-01-21",
+                    }
+                ],
+                "exitsDue": [
+                    {
+                        "ts": "B.SH",
+                        "entryDate": "2026-01-19",
+                        "heldDays": 2,
+                        "daysLeft": 1,
+                        "exitDue": "2026-01-21",
+                    }
+                ],
+                "body": 3,
+            },
+        )
+        monkeypatch.setattr(
             "data_sync_service.service.portfolio_health.build_portfolio_health",
             lambda **kw: {
                 "multiAssetSleeve": {
@@ -113,3 +139,20 @@ class TestReminderPayload:
         assert "GOLD" in payload["detail"] or "买入" in payload["detail"]
         assert "A.SH" in payload["detail"]
         assert "R-wide 开闸" in payload["detail"]
+        assert "核心50%" in payload["detail"]
+        assert "B.SH" in payload["detail"]
+        assert payload["sat"]["coreTargetPct"] == 50
+
+
+class TestCoreTargetPct:
+    def test_idle_is_100(self) -> None:
+        assert tsd._core_target_pct(gate_open=False, candidates=[], holdings=[]) == 100
+        assert tsd._core_target_pct(gate_open=True, candidates=[], holdings=[]) == 100
+
+    def test_open_or_holding_is_50(self) -> None:
+        assert tsd._core_target_pct(
+            gate_open=True, candidates=[{"ts": "A"}], holdings=[]
+        ) == 50
+        assert tsd._core_target_pct(
+            gate_open=False, candidates=[], holdings=[{"ts": "A"}]
+        ) == 50

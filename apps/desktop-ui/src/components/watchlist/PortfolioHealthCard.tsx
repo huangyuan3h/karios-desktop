@@ -27,6 +27,7 @@ import { useBacktestReconQuery, useTwinStarActionQuery, type ReconItem } from '@
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { useStrategyMode } from '@/lib/strategy-settings';
+import { getShanghaiMinutes } from '@/lib/market-hours';
 import { cn } from '@/lib/utils';
 import { loadWatchlist, saveWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
@@ -67,13 +68,14 @@ function PickStrongOpsPanel({
   stockHoldingsCount,
   onBuyEtf,
   twinStar,
-  gateBlocksNew,
+  coreTargetPct = 100,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
   onBuyEtf?: (symbol: string, name: string | null) => void;
   twinStar: boolean;
-  gateBlocksNew: boolean;
+  /** Opportunity: 100 when sat idle, 50 when opening/holding. */
+  coreTargetPct?: number;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
@@ -83,21 +85,40 @@ function PickStrongOpsPanel({
   const isStock = pickKey === 'STOCK';
   const isRepo = pickKey === 'REPO';
   const isEtf = !isStock && !isRepo;
+  const corePct = twinStar ? coreTargetPct : 100;
 
   const steps: string[] = [];
   if (isStock) {
-    steps.push(twinStar ? '核心腿 50% → 股票篮（下方展开篮内买卖）' : '今日资金 100% → 股票篮（下方展开篮内买卖）');
-    if (sleeve?.holding) steps.push(twinStar ? '若仍持有 ETF：先卖出 ETF，再配股票' : '若仍持有 ETF：先卖出 ETF，再配股票');
+    steps.push(
+      twinStar
+        ? `核心腿 ${corePct}% → 股票篮（下方展开篮内买卖）`
+        : '今日资金 100% → 股票篮（下方展开篮内买卖）',
+    );
+    if (sleeve?.holding) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
   } else if (isEtf) {
-    steps.push(twinStar ? `核心腿 50% → ${meta.label}（${etfSym ?? pickKey}）` : `今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`);
-    if (stockHoldingsCount > 0) steps.push(twinStar ? `现有 ${stockHoldingsCount} 只股票仓（属卫星/S-3 体系 · 核心腿按 50% 资金配 ETF）` : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
-    if (gateBlocksNew) {
-      steps.push(`闸门关闭（${sleeve?.pick ? '' : ''}Execution Gate DEFEND）· 今日不开新仓 — 维持 ${etfSym}`);
-    } else if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
+    steps.push(
+      twinStar
+        ? `核心腿 ${corePct}% → ${meta.label}（${etfSym ?? pickKey}）`
+        : `今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`,
+    );
+    if (stockHoldingsCount > 0) {
+      steps.push(
+        twinStar
+          ? corePct >= 100
+            ? `现有 ${stockHoldingsCount} 只股票仓（卫星/S-3）· 今日无卫星占用 → 核心 100% 配 ETF`
+            : `现有 ${stockHoldingsCount} 只股票仓（卫星/S-3 · 核心 ${corePct}% 配 ETF）`
+          : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`,
+      );
+    }
+    if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
     if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
     if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
-    steps.push(twinStar ? '今日无人过线 → 核心腿转逆回购 / 观望' : '今日无人过线 → 100% 逆回购 / 空仓观望');
+    steps.push(
+      twinStar
+        ? `今日无人过线 → 核心腿 ${corePct}% 转逆回购 / 观望`
+        : '今日无人过线 → 100% 逆回购 / 空仓观望',
+    );
     if (stockHoldingsCount > 0) steps.push(twinStar ? '股票仓属卫星/S-3 体系（核心腿不持股票）' : '股票仓也应清到空（单轨不持）');
     if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
   }
@@ -127,7 +148,7 @@ function PickStrongOpsPanel({
         </span>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
-        {twinStar ? '核心腿 50%' : '100% 硬切'} · 定案 mom_compare · LB60/MA200
+        {twinStar ? `机会口径 · 核心 ${corePct}%` : '100% 硬切'} · 定案 mom_compare · LB60/MA200
       </p>
       {sleeve?.message && (action !== 'HOLD' || !twinStar) ? (
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
@@ -696,6 +717,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
   const twinStarQ = useTwinStarActionQuery(twinStar);
+  const afterSatWindow = getShanghaiMinutes() >= 14 * 60 + 30;
   const sentimentQ = useDashboardSentimentQuery();
   const executionGate = React.useMemo(
     () =>
@@ -855,7 +877,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[12px] font-semibold">{twinStar ? '机会双子星 · 今日决策' : '单轨择优 · 今日复刻（mom_compare）'}</span>
-        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '卫星资金跟核心 · 开闸可买才切候选' : '100% 硬切 · 与 Timeline 同源'}</span>
+        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '关闸/无仓 → 核心 100% · 开闸或持仓才切 50%' : '100% 硬切 · 与 Timeline 同源'}</span>
         {twinStar ? (
           <span
             className={cn(
@@ -921,16 +943,20 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
             <span className="font-semibold text-emerald-700">今日结论</span>
             <span className="ml-2">
-              {gateBlocksNew ? '🔒 闸门关闭 · 不开新仓 · ' : ''}核心腿：{sleeve.label ?? sleeve.action} {sleeve.pick?.symbol ?? ''}
+              {gateBlocksNew && sleeve?.pick?.key === 'STOCK'
+                ? '🔒 S-3 闸门关闭 · 不开新仓 · '
+                : ''}
+              核心 {twinStarQ.data?.sat?.coreTargetPct ?? 100}%：{sleeve.label ?? sleeve.action}{' '}
+              {sleeve.pick?.symbol ?? ''}
             </span>
             {twinStarQ.data?.sat?.asOf != null ? (
               <span className="ml-2">
                 · 卫星：
                 {!twinStarQ.data.sat.gateOpen
                   ? 'R-wide 关闸（不开仓）'
-                  : gateBlocksNew
-                    ? `R-wide 开闸（闸门关闭暂不买入）· 候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
-                    : `R-wide 开闸 → 买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`}
+                  : afterSatWindow
+                    ? `R-wide 开闸 → 14:30 模拟收盘价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                    : 'R-wide 开闸 · 候选 14:30 后公布（模拟收盘价买入）'}
               </span>
             ) : null}
             {twinStarQ.data?.sat?.asOf != null ? (
@@ -938,7 +964,14 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 {twinStarQ.data.sat.gateOpen
                   ? `卫星闸 · R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
                   : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}`}
-                {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf} · 14:30 前调整
+                {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf}
+                {twinStarQ.data.sat.approx ? ' · 盘中近似（12:30 快照）' : ''}
+                {(twinStarQ.data.sat.book?.holdings?.length ?? 0) > 0
+                  ? ` · 持仓簿 ${twinStarQ.data.sat.book!.holdings!.length} 只`
+                  : ' · 持仓簿空'}
+                {(twinStarQ.data.sat.book?.exitsDue?.length ?? 0) > 0
+                  ? ` · 到期卖 ${(twinStarQ.data.sat.book!.exitsDue ?? []).map((h) => h.ts).slice(0, 3).join(', ')}`
+                  : ''}
               </div>
             ) : null}
           </div>
@@ -955,7 +988,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
             stockHoldingsCount={stockHoldingsCount}
             onBuyEtf={handleBuyEtf}
             twinStar={twinStar}
-            gateBlocksNew={gateBlocksNew}
+            coreTargetPct={twinStarQ.data?.sat?.coreTargetPct ?? 100}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">

@@ -11,14 +11,14 @@ import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: StrategyMode; title: string; desc: string }[] = [
   {
-    value: 'twin_star',
-    title: '机会双子星 (Opportunity Twin-Star)',
-    desc: '择强单轨为主，卫星资金平时跟核心（资金利用率 100%），S-gap 开闸且有可执行候选时才切候选（2026-09-01 定案，替代旧 50/50 双子星）。',
+    value: 'single_track',
+    title: '单轨择强（默认）',
+    desc: 'mom60+MA200+trail8 满仓切换。2026-09-01 退出日成本修正后，过去一年机会双子星输给纯核心 → 实盘默认本模式。',
   },
   {
-    value: 'single_track',
-    title: '单轨择强',
-    desc: 'mom60+MA200+trail8 满仓切换口径。显示择强日对齐 / ETF 执行卡 / 第三资产袖横幅。',
+    value: 'twin_star',
+    title: '机会双子星 (Opportunity Twin-Star)',
+    desc: '择强为主；无卫星仓且不开新仓时核心 100%，开闸可买或持仓中才切 50% 卫星。可选增强，非默认。',
   },
 ];
 
@@ -56,11 +56,15 @@ export function StrategySettingsPanel() {
                   )}
                 />
                 <span className="text-[13px] font-medium">{opt.title}</span>
-                {opt.value === 'twin_star' ? (
-                  <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">
-                    推荐
+                {opt.value === 'single_track' ? (
+                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                    默认
                   </span>
-                ) : null}
+                ) : (
+                  <span className="rounded bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)]">
+                    可选
+                  </span>
+                )}
               </div>
               <div className="mt-1 pl-5 text-xs text-[var(--k-muted)]">{opt.desc}</div>
             </button>
