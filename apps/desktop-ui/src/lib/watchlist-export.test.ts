@@ -196,7 +196,7 @@ describe('S-3 backtest candidate block', () => {
       mainlineAllow: { ready: true, names: new Set(['计算机']), byName: new Map() } as never,
       sectorOutflowBlock: false,
     });
-    expect(md).toContain('S-3 回测口径买入候选（趋势跟随 · 双市场 top5 · 已去重）');
+    expect(md).toContain('S-3 回测口径买入候选（趋势跟随 · 双市场 top5）');
     const s3Block = md.slice(md.indexOf('S-3 回测口径买入候选'), md.indexOf('A股 卫星仓'));
     expect(s3Block).toContain('| CN:600001 | 测试A |');
     expect(s3Block).toContain('| HK:00700 | 腾讯控股 |');

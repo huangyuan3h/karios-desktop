@@ -67,6 +67,15 @@ beforeEach(() => {
         ],
       };
     }
+    if (String(path).includes('/api/backtest/core-audit')) {
+      return {
+        ok: true,
+        day: '2026-09-01',
+        gate: { regime: '—', panicActive: false, gateOpen: false },
+        holdings: [],
+        counts: { ok: 0, warn: 0, violation: 0 },
+      };
+    }
     if (String(path).includes('/api/backtest/paper-vs-backtest')) {
       return {
         ok: true,
@@ -92,6 +101,8 @@ beforeEach(() => {
         },
       };
     }
+    if (String(path).includes('/api/backtest/sleeve-nav')) return {};
+    if (String(path).includes('/api/backtest/timeline')) return { rows: [], summary: {}, last: null };
     throw new Error(`unexpected call: ${path}`);
   });
 });
@@ -99,7 +110,8 @@ beforeEach(() => {
 describe('BacktestPage', () => {
   it('shows the S-3 conclusion board with baselines, long window and params', async () => {
     renderPage();
-    expect(await screen.findByText(/S-3 回测结论（定案口径/)).toBeDefined();
+    fireEvent.click(screen.getByText('回测基线'));
+    expect(await screen.findByText(/S-3 股票腿三窗/)).toBeDefined();
     expect(await screen.findByText('112.7%')).toBeDefined();
     expect(screen.getByText('88.2%')).toBeDefined();
     expect(screen.getByText('+250.8%')).toBeDefined();
@@ -114,6 +126,7 @@ describe('BacktestPage', () => {
 
   it('shows rolling OOS warning and recon strip', async () => {
     renderPage();
+    fireEvent.click(screen.getByText('回测基线'));
     expect(await screen.findByText(/滚动 OOS（最近 90 天/)).toBeDefined();
     expect(screen.getByText(/HK: -8.5% dd=19.5% sharpe=-3.2 trades=55/)).toBeDefined();
     expect(screen.getAllByText('港股').length).toBeGreaterThanOrEqual(1);
