@@ -307,6 +307,7 @@ def build_twin_star_timeline(
                     "satNav": None,
                     "satNavReturnPct": None,
                     "satPositions": None,
+                    "satSlots": None,
                     "satActive": None,
                 }
             )
@@ -330,6 +331,8 @@ def build_twin_star_timeline(
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
+        sat_pos = int(sat_r.get("satPositions") or 0)
+        sat_slots = int(sat_r.get("satSlots") or sat_pos)
         blended.append(
             {
                 **r,
@@ -339,7 +342,8 @@ def build_twin_star_timeline(
                 "navMultiReturnPct": round((nav - 1) * 100, 2),
                 "satNav": round(sat_nav, 6),
                 "satNavReturnPct": round((sat_nav - 1) * 100, 2),
-                "satPositions": int(sat_r.get("satPositions") or 0),
+                "satPositions": sat_pos,
+                "satSlots": sat_slots,
                 "satActive": has_sat,
             }
         )

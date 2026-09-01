@@ -153,7 +153,9 @@ def _core_target_pct(*, gate_open: bool, candidates: list, holdings: list) -> in
 
 def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
     """机会双子星今日操作信号 (core pick + satellite gate/candidates/book)."""
-    today = today or date.today()
+    from data_sync_service.service.twin_star_intraday import session_date
+
+    today = today or session_date()
     core: dict[str, Any] = {"pick": None, "label": None, "action": None, "message": None}
     try:
         from data_sync_service.service.portfolio_health import build_portfolio_health

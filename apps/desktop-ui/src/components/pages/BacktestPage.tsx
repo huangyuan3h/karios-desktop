@@ -26,7 +26,9 @@ import {
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
+  type TimelineRow,
 } from '@/lib/queries/backtest';
+import { TWIN_STAR_LIVE_RECIPE, twinStarRecipeLine } from '@/lib/twin-star-trade-plan';
 
 const DEFAULT_PARAMS: BacktestParams = {
   start: '2025-08-01',
@@ -542,6 +544,8 @@ function TimelineCard() {
   const isSgap = strategy === 'state_bucket';
   const q = useTimelineQuery(start, today, strategy, true);
   const rows = q.data?.rows ?? [];
+  const summary = q.data?.summary;
+  const satActiveDays = rows.filter((r) => r.satActive).length;
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = r.pick ?? 'REPO';
@@ -549,7 +553,7 @@ function TimelineCard() {
     return acc;
   }, {});
   const distMarket = rows.reduce<Record<string, number>>((acc, r) => {
-    const sm = (r as unknown as { stockMarket?: string }).stockMarket ?? '—';
+    const sm = r.stockMarket ?? '—';
     if ((r.pick ?? 'REPO') === 'STOCK') {
       acc[sm] = (acc[sm] ?? 0) + 1;
     }
@@ -565,9 +569,9 @@ function TimelineCard() {
     BOND10: 'bg-emerald-600',
     REPO: 'bg-zinc-300 dark:bg-zinc-700',
   };
-  const stockBarColor = (r: (typeof rows)[number]): string => {
+  const stockBarColor = (r: TimelineRow): string => {
     if ((r.pick ?? 'REPO') !== 'STOCK') return pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300';
-    const m = (r as unknown as { stockMarket?: string }).stockMarket ?? '';
+    const m = r.stockMarket ?? '';
     if (m === 'A股') return 'bg-red-500';
     if (m === 'HK') return 'bg-cyan-600';
     if (m === 'A+H') return 'bg-fuchsia-600';
@@ -581,13 +585,14 @@ function TimelineCard() {
     BOND10: '国债',
     REPO: '逆回购',
   };
+  const twinSlotNavPct = TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 50;
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
         过去一年 Timeline（
         {isTwin
-          ? '机会双子星 · 择强核心 + S-gap 机会增强'
+          ? '机会双子星 v3 · 与 Watchlist 同源'
           : isSgap
             ? '状态分桶 S-gap · 可执行独立腿（涨停可能买不进）'
             : '择强单轨 · 全资产同权 · 100%'}
@@ -651,21 +656,34 @@ function TimelineCard() {
           <div className="flex flex-col gap-1">
             <div className="flex h-4 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
               {rows.map((r) => {
-                const sm = (r as unknown as { stockMarket?: string; stockSymbols?: string[] }).stockMarket ?? '';
-                const syms = ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(',');
-                const stkMom = (r as unknown as { stockMom?: number | null }).stockMom;
-                const exits = ((r as unknown as { exits?: string[] }).exits ?? []).join(',');
+                const syms = (r.stockSymbols ?? []).join(',');
+                const exits = (r.exits ?? []).join(',');
                 return (
                   <div
                     key={`single-${r.date}`}
                     className={cn('h-full flex-1', stockBarColor(r))}
-                    title={`${r.date} 该买:${r.pick ?? 'REPO'}${stkMom != null ? ` 股票mom${stkMom}%` : ''} 持仓:${sm} ${r.deployedPct}% ${syms}${exits ? ` 卖出:${exits}` : ''} 基线${r.navBaseReturnPct}% 单轨${(r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct}%`}
+                    title={`${r.date} 核心该买:${r.pick ?? 'REPO'}${r.stockMom != null ? ` 股票mom${r.stockMom}%` : ''} 持仓:${r.stockMarket ?? ''} ${r.deployedPct}% ${syms}${exits ? ` 卖出:${exits}` : ''}${isTwin ? ` · 卫星${r.satActive ? '占用50%' : '闲置→核心100%'}` : ''} 基线${r.navBaseReturnPct}% 合成${r.navSingleReturnPct ?? r.navMultiReturnPct}%`}
                   />
                 );
               })}
             </div>
+            {isTwin ? (
+              <div className="flex h-2 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+                {rows.map((r) => (
+                  <div
+                    key={`sat-${r.date}`}
+                    className={cn('h-full flex-1', r.satActive ? 'bg-sky-500/80' : 'bg-[var(--k-surface-2)]')}
+                    title={`${r.date} · ${r.satActive ? '卫星占用 · 核心50%/卫星50%' : '卫星闲置 · 核心100%'} · 仓${r.satSlots ?? r.satPositions ?? 0}`}
+                  />
+                ))}
+              </div>
+            ) : null}
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
-              <span>单轨：A股红 / 港股橙 / A+H紫 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买（红色细分港/A）</span>
+              <span>
+                {isTwin
+                  ? '上条=核心择强该买 · 下条=卫星占用（天蓝=50/50，灰=核心100%）'
+                  : '单轨：A股红 / 港股橙 / A+H紫 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买'}
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
@@ -693,18 +711,23 @@ function TimelineCard() {
             ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
               {isTwin
-                ? `机会双子星 · 择强核心(mom_compare_t8) + S-gap机会 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 卫星 ${last?.satNavReturnPct ?? '—'}% / 核心 ${(q.data as unknown as { summary?: { corePct?: number } } | undefined)?.summary?.corePct != null ? `${(q.data as unknown as { summary?: { corePct?: number } }).summary?.corePct}%` : '—'}`
+                ? `机会双子星累计 ${summary?.fusedPct ?? last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% · dd ${summary?.maxDdFusedPct ?? '—'}% · 择强单轨累计 ${summary?.corePct ?? '—'}% · 卫星累计 ${last?.satNavReturnPct ?? '—'}% · 卫星占用 ${satActiveDays}/${rows.length} 日`
                 : isSgap
-                  ? `状态分桶 S-gap 独立腿 · 可执行(skip_t1_limit) · 累计 ${last?.navSingleReturnPct ?? last?.satNavReturnPct ?? '—'}% / dd ${(q.data as unknown as { summary?: { maxDdFusedPct?: number } } | undefined)?.summary?.maxDdFusedPct ?? '—'}%`
+                  ? `状态分桶 S-gap 独立腿 · 可执行(skip_t1_limit) · 累计 ${last?.navSingleReturnPct ?? last?.satNavReturnPct ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}%`
                   : `择强单轨 · mom_compare · pick_strong_track 同源 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 ${last?.navBaseReturnPct ?? '—'}%`}
             </span>
           </div>
+          {isTwin ? (
+            <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
+              {twinStarRecipeLine(twinSlotNavPct)} · satActive→50/50 · idle→核心100% · 非 PS-G50 静态对半 · 与 Watchlist「今日下单」同一冻结配方
+            </div>
+          ) : null}
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
               <thead className="sticky top-0 bg-[var(--k-surface)]">
                 <tr className="text-[10px] text-[var(--k-muted)]">
                   <th className="py-1 pr-2 pl-2">日期</th>
-                  <th className="py-1 pr-2">该买</th>
+                  <th className="py-1 pr-2">{isTwin ? '核心该买' : '该买'}</th>
                   <th className="py-1 pr-2">持仓(A/H)</th>
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
@@ -712,22 +735,25 @@ function TimelineCard() {
                   <th className="py-1 pr-2">
                     {isTwin ? '机会双子星NAV%' : isSgap ? 'S-gap NAV%' : '择强NAV%'}
                   </th>
-                  {isTwin || isSgap ? <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(仓)'}</th> : null}
+                  {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(槽)'}</th> : null}
                   {!isSgap ? <th className="py-1 pr-2">超额</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {(showAll ? rows : rows.slice(-30)).map((r) => {
-                  const single = (r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ?? r.navMultiReturnPct;
-                  const exits = (r as unknown as { exits?: string[] }).exits ?? [];
+                  const single = r.navSingleReturnPct ?? r.navMultiReturnPct;
+                  const exits = r.exits ?? [];
                   const isStock = (r.pick ?? 'REPO') === 'STOCK';
                   const isSgapPick = (r.pick ?? '') === 'S-GAP';
                   const pickSym = r.pick === 'GOLD' ? '518880' : r.pick === 'OIL' ? '513350' : r.pick === 'NASDAQ' ? '513110' : r.pick === 'BOND10' ? '511260' : r.pick === 'REPO' ? 'GC001' : r.pick ?? 'REPO';
                   const syms = isStock
-                    ? (((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(' ') || '—')
+                    ? ((r.stockSymbols ?? []).join(' ') || '—')
                     : isSgapPick
                       ? `${r.satPositions ?? 0}仓`
                       : `${pickSym} 1票`;
+                  const coreTargetPct = isTwin ? (r.satActive ? 50 : 100) : null;
+                  const satOcc = r.satSlots ?? r.satPositions ?? 0;
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
@@ -739,9 +765,9 @@ function TimelineCard() {
                       <td className="py-1 pr-2 text-[var(--k-muted)]">
                         {isStock ? (
                           <>
-                            {(r as unknown as { stockMarket?: string }).stockMarket ?? ''} {r.positions}票{' '}
+                            {r.stockMarket ?? ''} {r.positions}票{' '}
                             <span className="text-[10px]">
-                              A{(r as unknown as { cnPositions?: number }).cnPositions ?? 0}/H{(r as unknown as { hkPositions?: number }).hkPositions ?? 0}
+                              A{r.cnPositions ?? 0}/H{r.hkPositions ?? 0}
                             </span>
                           </>
                         ) : isSgapPick ? (
@@ -762,6 +788,21 @@ function TimelineCard() {
                         </td>
                       ) : null}
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
+                      {isTwin ? (
+                        <td className="py-1 pr-2">
+                          <span
+                            className={cn(
+                              'rounded px-1 py-px text-[10px]',
+                              coreTargetPct === 50
+                                ? 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
+                                : 'bg-[var(--k-surface-2)] text-[var(--k-muted)]',
+                            )}
+                            title={r.satActive ? 'satActive · 含过夜或当日到期卖' : '卫星闲置 · 全日跟核心'}
+                          >
+                            {coreTargetPct}%
+                          </span>
+                        </td>
+                      ) : null}
                       {isTwin || isSgap ? (
                         <td className={cn('py-1 pr-2 text-[var(--k-muted)]')}>
                           {isSgap ? (
@@ -769,7 +810,10 @@ function TimelineCard() {
                           ) : r.satNavReturnPct != null ? (
                             <>
                               <span className={cn(tone(r.satNavReturnPct))}>{r.satNavReturnPct.toFixed(2)}%</span>
-                              <span className="text-[10px]"> ({r.satPositions ?? 0}仓)</span>
+                              <span className="text-[10px]">
+                                {' '}
+                                ({satOcc}槽{r.satActive && (r.satPositions ?? 0) === 0 ? '·到期日' : ''})
+                              </span>
                             </>
                           ) : (
                             '—'
@@ -791,7 +835,7 @@ function TimelineCard() {
             <p className="text-[10px] text-[var(--k-muted)]">
               {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
               {isTwin
-                  ? '机会双子星 v2：择强为主 + S-gap 机会增强（涨停可能买不进 → 可执行口径；退出日计入成本；关闸/无仓→核心100%）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7 · 实盘默认仍是单轨择强'
+                ? '机会双子星 v3：择强 mom_compare+trail8 为核心；卫星 S-gap strict/skip_t1 · R-wide · body3 · bq3 · 15槽×套筒10%；satActive 日 50/50，闲置日核心100%（非 PS-G50 静态对半）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7 · 实盘 Settings 默认仍是单轨，opt-in 后与本表同口径'
                 : isSgap
                   ? '状态分桶 S-gap 独立腿（bq3/15槽/body3/R-wide · skip_t1_limit）· 与双子星卫星同源引擎 · 非择强替换件 · docs/backtests/state-bucket-algo-2026-08-31.md'
                   : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}

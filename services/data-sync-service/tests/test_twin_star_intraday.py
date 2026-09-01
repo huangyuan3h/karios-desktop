@@ -140,8 +140,57 @@ class TestBuildIntradaySat:
         m.cache_intraday_sat(sat, self.today)
         loaded = m.load_intraday_sat(self.today)
         assert loaded == sat
-        assert m.load_intraday_sat(date(2026, 8, 21)) is None
+        assert m.load_intraday_sat(date(2026, 8, 21), lookback=False) is None
+        overnight = m.load_intraday_sat(date(2026, 8, 21))
+        assert overnight is not None
+        assert overnight.get("heldOvernight") is True
 
     def test_missing_snapshot_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(m, "fetch_market_snapshot", lambda: {})
         assert m.build_intraday_sat(self.today) is None
+
+
+class TestSessionWindow:
+    def test_session_date_before_9am_is_yesterday(self) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime(2026, 9, 2, 8, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+        assert m.session_date(now) == date(2026, 9, 1)
+
+    def test_session_date_after_9am_is_today(self) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime(2026, 9, 2, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        assert m.session_date(now) == date(2026, 9, 2)
+
+    def test_live_window(self) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Asia/Shanghai")
+        assert m.in_live_tape_window(datetime(2026, 9, 1, 10, 0, tzinfo=tz)) is True
+        assert m.in_live_tape_window(datetime(2026, 9, 1, 8, 0, tzinfo=tz)) is False
+        assert m.in_live_tape_window(datetime(2026, 9, 1, 15, 1, tzinfo=tz)) is False
+        assert m.in_live_tape_window(datetime(2026, 9, 5, 10, 0, tzinfo=tz)) is False  # Saturday
+
+    def test_overnight_skips_refresh(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        monkeypatch.setattr(m, "_CACHE_DIR", str(tmp_path))
+        called = {"n": 0}
+
+        def boom() -> dict:
+            called["n"] += 1
+            return {}
+
+        monkeypatch.setattr(m, "build_intraday_sat", boom)
+        cached = {"asOf": "2026-09-01", "snapshotAt": "2026-09-01T15:00:00+08:00", "candidates": []}
+        m.cache_intraday_sat(cached, date(2026, 9, 1))
+        now = datetime(2026, 9, 2, 8, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        out = m.maybe_refresh_intraday_sat(now=now)
+        assert out is not None
+        assert out["asOf"] == "2026-09-01"
+        assert called["n"] == 0

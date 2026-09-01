@@ -38,6 +38,7 @@ def _sat_rows(
     pos: list[int],
     *,
     active: list[bool] | None = None,
+    slots: list[int] | None = None,
 ) -> list[dict]:
     rows = []
     nav = 1.0
@@ -50,6 +51,8 @@ def _sat_rows(
             "satNavReturnPct": round((nav - 1) * 100, 2),
             "satPositions": p,
         }
+        if slots is not None:
+            row["satSlots"] = slots[i] if i < len(slots) else p
         if active is not None:
             row["satActive"] = active[i] if i < len(active) else bool(p)
         rows.append(row)
@@ -102,6 +105,7 @@ class TestOpportunityBlend:
             [0.03, 0.03, -0.02],
             [1, 1, 0],
             active=[True, True, True],
+            slots=[1, 1, 1],
         )
         out = build_twin_star_timeline(
             core_rows=core, core_summary={"fusedPct": 0.0, "basePct": 0.0}, sat_rows=sat
@@ -110,6 +114,7 @@ class TestOpportunityBlend:
         expected = ((1.015 * 1.015 * 0.99) - 1) * 100
         assert out["rows"][-1]["navSingleReturnPct"] == pytest.approx(expected, abs=0.05)
         assert out["rows"][-1]["satActive"] is True
+        assert out["rows"][-1]["satSlots"] == 1
         assert out["rows"][-1]["satPositions"] == 0
 
         # Regression: legacy rows without satActive (pos-only) miss the exit day

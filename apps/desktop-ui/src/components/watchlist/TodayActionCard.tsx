@@ -6,7 +6,6 @@ import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/be
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery, useTwinStarActionQuery } from '@/lib/queries/backtest';
 import { useStrategyMode } from '@/lib/strategy-settings';
-import { getShanghaiMinutes } from '@/lib/market-hours';
 import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 
 export function TodayActionCard() {
@@ -26,7 +25,11 @@ export function TodayActionCard() {
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
   const twinStarQ = useTwinStarActionQuery(true);
-  const afterSatWindow = getShanghaiMinutes() >= 14 * 60 + 30;
+  const afterSatWindow = Boolean(
+    twinStarQ.data?.sat?.snapshotAt ||
+      twinStarQ.data?.sat?.approx ||
+      (twinStarQ.data?.sat?.candidates?.length ?? 0) > 0,
+  );
   const refresh = useRefreshBehaviorAudit();
   const [refreshing, setRefreshing] = React.useState(false);
 

@@ -102,12 +102,62 @@ beforeEach(() => {
       };
     }
     if (String(path).includes('/api/backtest/sleeve-nav')) return {};
-    if (String(path).includes('/api/backtest/timeline')) return { rows: [], summary: {}, last: null };
-    throw new Error(`unexpected call: ${path}`);
+    if (String(path).includes('/api/backtest/timeline')) {
+      return {
+        ok: true,
+        strategy: 'twin_star',
+        mode: 'opportunity_twin_star',
+        opportunity: true,
+        summary: { fusedPct: 12.5, corePct: 8.1, basePct: 3.2, maxDdFusedPct: 9.4 },
+        rows: [
+          {
+            date: '2026-08-01',
+            deployedPct: 100,
+            idlePct: 0,
+            positions: 0,
+            cnPositions: 0,
+            hkPositions: 0,
+            stockMarket: '',
+            stockSymbols: [],
+            stockMom: null,
+            pick: 'GOLD',
+            pickTs: '518880.SH',
+            navBase: 1.01,
+            navSleeve: null,
+            navSingle: 1.05,
+            navMulti: 1.05,
+            navBaseReturnPct: 1,
+            navSingleReturnPct: 5,
+            navMultiReturnPct: 5,
+            satNav: 1.02,
+            satNavReturnPct: 2,
+            satPositions: 1,
+            satSlots: 1,
+            satActive: true,
+            exits: [],
+          },
+        ],
+      };
+    }
+    if (String(path).includes('/api/backtest/return-attribution')) {
+      return { ok: true, rows: [], summary: {} };
+    }
+    if (String(path).includes('/api/backtest/twin-star')) {
+      return { ok: true, core: {}, sat: {} };
+    }
+    // Keep other compare-tab endpoints from throwing and unmounting the page.
+    if (String(path).includes('/api/backtest/')) return { ok: true };
+    return { ok: true };
   });
 });
 
 describe('BacktestPage', () => {
+  it('shows opportunity twin-star v3 timeline on compare tab', async () => {
+    renderPage();
+    expect(await screen.findByText(/机会双子星 v3 · 与 Watchlist 同源/)).toBeDefined();
+    expect(await screen.findByText(/核心目标%/)).toBeDefined();
+    expect(screen.getByText(/择强单轨累计/)).toBeDefined();
+  });
   it('shows the S-3 conclusion board with baselines, long window and params', async () => {
     renderPage();
     fireEvent.click(screen.getByText('回测基线'));

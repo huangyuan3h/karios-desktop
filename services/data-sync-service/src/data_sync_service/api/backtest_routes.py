@@ -36,11 +36,16 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 def twin_star_action() -> dict[str, Any]:
     """双子星 (Twin-Star) 今日操作信号: core pick-strong target + S-gap 卫星闸/候选.
 
-    14:20 job (and POST /twin-star/refresh) cache a same-day snapshot so the
-    14:30 live list uses afternoon prices, not the 12:30 lunch tape.
+    In-session the cache refreshes from a full A-share snapshot at most once a
+    minute. After 15:00 the last tape is frozen until 09:00 the next morning.
     """
     from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
+    from data_sync_service.service.twin_star_intraday import maybe_refresh_intraday_sat
 
+    try:
+        maybe_refresh_intraday_sat()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         return {"ok": True, **build_twin_star_daily_action()}
     except Exception as exc:  # noqa: BLE001
@@ -51,17 +56,11 @@ def twin_star_action() -> dict[str, Any]:
 def twin_star_refresh() -> dict[str, Any]:
     """Pull a fresh East Money snapshot and rebuild today's satellite screen."""
     from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
-    from data_sync_service.service.twin_star_intraday import (
-        build_intraday_sat,
-        cache_intraday_sat,
-    )
+    from data_sync_service.service.twin_star_intraday import maybe_refresh_intraday_sat
 
-    refreshed = False
     try:
-        sat = build_intraday_sat()
-        if sat is not None:
-            cache_intraday_sat(sat)
-            refreshed = True
+        sat = maybe_refresh_intraday_sat(force=True)
+        refreshed = sat is not None
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"twin-star refresh failed: {exc}") from exc
     try:

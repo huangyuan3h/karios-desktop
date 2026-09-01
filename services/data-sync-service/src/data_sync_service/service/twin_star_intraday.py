@@ -1,8 +1,9 @@
 """Twin-Star intraday approximate satellite signal.
 
-12:30: lunch snapshot (preview cache).
-14:20: refresh with the afternoon tape so 14:30 buys use same-day prices.
-Manual POST /api/backtest/twin-star/refresh pulls a new snapshot on demand.
+During the CN session (09:30–15:00) a full A-share clist snapshot is merged
+as *today's last bar* so the S-gap screen tracks live prices. After 15:00 the
+last snapshot is frozen and served until 09:00 the next calendar morning
+(weekend: keep serving the last session file).
 
 Formulas match the frozen S-gap engine. Live also returns limit-up names in
 the bucket plus fillable alternates so the user can swap.
@@ -13,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -50,6 +52,11 @@ _CACHE_DIR = os.path.join(
     "data",
     "twin_star_intraday",
 )
+CN_TZ = ZoneInfo("Asia/Shanghai")
+LIVE_TAPE_START_MIN = 9 * 60 + 30
+LIVE_TAPE_END_MIN = 15 * 60
+REFRESH_MAX_AGE_SEC = 60
+_REFRESH_LOCK = threading.Lock()
 
 
 def _cache_path(today: date) -> str:
@@ -159,13 +166,61 @@ def _f(val: Any) -> float | None:
         return None
 
 
+def now_cn() -> datetime:
+    return datetime.now(CN_TZ)
+
+
+def session_date(now: datetime | None = None) -> date:
+    """Session the live tape belongs to.
+
+    Before 09:00 Asia/Shanghai the previous calendar date is still "last
+    session" so overnight analysis keeps yesterday's freeze.
+    """
+    now = now or now_cn()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=CN_TZ)
+    else:
+        now = now.astimezone(CN_TZ)
+    if now.hour < 9:
+        return (now.date() - timedelta(days=1))
+    return now.date()
+
+
+def in_live_tape_window(now: datetime | None = None) -> bool:
+    now = now or now_cn()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=CN_TZ)
+    else:
+        now = now.astimezone(CN_TZ)
+    if now.weekday() >= 5:
+        return False
+    mins = now.hour * 60 + now.minute
+    return LIVE_TAPE_START_MIN <= mins <= LIVE_TAPE_END_MIN
+
+
+def snapshot_age_seconds(sat: dict[str, Any] | None, now: datetime | None = None) -> float | None:
+    if not sat:
+        return None
+    raw = sat.get("snapshotAt")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=CN_TZ)
+    now = now or now_cn()
+    return (now.astimezone(CN_TZ) - ts.astimezone(CN_TZ)).total_seconds()
+
+
 def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
-    """Simulated-close satellite signal from the 12:30 snapshot.
+    """Satellite screen using a full-market snapshot as today's last bar.
 
     Returns the same shape as twin_star_daily._sat_signal plus ``approx: True``,
     or None when the snapshot / data is unavailable.
     """
-    today = today or date.today()
+    today = today or session_date()
     w_start = (today - timedelta(days=WARMUP_DAYS)).isoformat()
     try:
         snapshot = fetch_market_snapshot()
@@ -242,7 +297,7 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
             )
         return out
 
-    snapshot_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
+    snapshot_at = datetime.now(CN_TZ).isoformat(timespec="seconds")
     return {
         "asOf": today_s,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
@@ -254,21 +309,94 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
         "approx": True,
         "snapshotAt": snapshot_at,
         "note": None,
+        "frozen": False,
     }
 
 
+def _read_cache(day: date) -> dict[str, Any] | None:
+    path = _cache_path(day)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def cache_intraday_sat(sat: dict[str, Any], today: date | None = None) -> None:
-    today = today or date.today()
+    today = today or session_date()
     os.makedirs(_CACHE_DIR, exist_ok=True)
     with open(_cache_path(today), "w", encoding="utf-8") as fh:
         json.dump(sat, fh, ensure_ascii=False)
 
 
-def load_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
-    today = today or date.today()
-    path = _cache_path(today)
+def load_intraday_sat(
+    today: date | None = None,
+    *,
+    now: datetime | None = None,
+    lookback: bool = True,
+) -> dict[str, Any] | None:
+    """Load the session cache. ``lookback`` walks back up to 7 days (overnight / weekend)."""
+    now = now or now_cn()
+    today = today or session_date(now)
+    sat = _read_cache(today)
+    if sat is not None or not lookback:
+        return sat
+    for i in range(1, 8):
+        prev = _read_cache(today - timedelta(days=i))
+        if prev is not None:
+            return {**prev, "heldOvernight": True}
+    return None
+
+
+def maybe_refresh_intraday_sat(
+    *,
+    force: bool = False,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Refresh the live tape at most once a minute in-session; freeze after close.
+
+    Overnight (before 09:00) and after 15:00: return the last cached session
+    without hitting East Money.
+    """
+    now = now or now_cn()
+    session = session_date(now)
+    cached_today = _read_cache(session)
+
+    if not force and not in_live_tape_window(now):
+        return cached_today or load_intraday_sat(session, now=now)
+
+    age = snapshot_age_seconds(cached_today, now)
+    path = _cache_path(session)
+    mtime_age: float | None = None
     try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return None
+        mtime_age = time.time() - os.path.getmtime(path)
+    except OSError:
+        pass
+    fresh = (age is not None and 0 <= age < REFRESH_MAX_AGE_SEC) or (
+        mtime_age is not None and 0 <= mtime_age < REFRESH_MAX_AGE_SEC
+    )
+    if not force and cached_today and fresh:
+        return cached_today
+
+    with _REFRESH_LOCK:
+        cached_today = _read_cache(session)
+        age = snapshot_age_seconds(cached_today, now)
+        try:
+            mtime_age = time.time() - os.path.getmtime(path)
+        except OSError:
+            mtime_age = None
+        fresh = (age is not None and 0 <= age < REFRESH_MAX_AGE_SEC) or (
+            mtime_age is not None and 0 <= mtime_age < REFRESH_MAX_AGE_SEC
+        )
+        if not force and cached_today and fresh:
+            return cached_today
+        sat = build_intraday_sat(session)
+        if sat is None:
+            return cached_today or load_intraday_sat(session, now=now)
+        mins = now.hour * 60 + now.minute
+        if mins >= LIVE_TAPE_END_MIN:
+            sat["frozen"] = True
+            sat["note"] = "收盘冻结 · 保留至次日 09:00"
+        cache_intraday_sat(sat, session)
+        return sat

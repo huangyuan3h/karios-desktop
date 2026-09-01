@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import { getShanghaiMinutes, isWeekdayShanghai } from '@/lib/market-hours';
 
 export type BacktestSummary = {
   config: {
@@ -407,10 +408,22 @@ export type TimelineRow = {
   navBaseReturnPct: number;
   navSingleReturnPct: number;
   navMultiReturnPct: number;
-  /** twin_star (双子星) satellite leg */
+  /** twin_star / state_bucket satellite leg */
   satNav?: number | null;
   satNavReturnPct?: number | null;
   satPositions?: number | null;
+  /** Overnight + body-exit occupancy (opportunity blend gate). */
+  satActive?: boolean | null;
+  /** Slots used that day including exits (may exceed satPositions). */
+  satSlots?: number | null;
+  exits?: string[];
+};
+
+export type TimelineSummary = {
+  fusedPct?: number;
+  corePct?: number;
+  basePct?: number;
+  maxDdFusedPct?: number;
 };
 
 export type TimelineResponse = {
@@ -419,6 +432,11 @@ export type TimelineResponse = {
   end: string;
   strategy?: string;
   mode?: string;
+  opportunity?: boolean;
+  trailPct?: number;
+  coreWeight?: number;
+  satWeight?: number;
+  summary?: TimelineSummary;
   rows: TimelineRow[];
 };
 
@@ -486,6 +504,8 @@ export type TwinStarAction = {
     note?: string | null;
     approx?: boolean | null;
     snapshotAt?: string | null;
+    frozen?: boolean | null;
+    heldOvernight?: boolean | null;
     coreTargetPct?: number | null;
     satTargetPct?: number | null;
     book?: {
@@ -498,12 +518,20 @@ export type TwinStarAction = {
 };
 
 /** 双子星 (Twin-Star) 今日操作信号: 核心择强目标 + S-gap 卫星闸/候选. */
+export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
+  const mins = getShanghaiMinutes(now);
+  const live = isWeekdayShanghai(now) && mins >= 9 * 60 + 30 && mins <= 15 * 60;
+  if (live) return 60_000;
+  if (mins < 9 * 60 || mins >= 15 * 60) return 5 * 60_000;
+  return 30 * 60_000;
+}
+
 export function useTwinStarActionQuery(enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'twin-star', 'action'],
     queryFn: () => apiGetJson<TwinStarAction>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
-    staleTime: 10 * 60_000,
-    refetchInterval: 30 * 60_000,
+    staleTime: 15_000,
+    refetchInterval: () => twinStarRefetchIntervalMs(),
     enabled,
   });
 }

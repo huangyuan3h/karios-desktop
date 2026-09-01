@@ -30,12 +30,16 @@ export function MultiAssetHealthBlock({
   sleeve,
   onOpen,
   coreDestinationReady = true,
+  etfTrims,
+  onTrim,
 }: {
   holdings: MultiHolding[] | undefined | null;
   sleeve: MultiSleeve | undefined | null;
   onOpen?: (symbol: string) => void;
   /** When pick=STOCK but the basket has 0 executable names, keep ETFs. */
   coreDestinationReady?: boolean;
+  etfTrims?: Array<{ symbol: string; navPct: number; reason: string }>;
+  onTrim?: (symbol: string, name: string | null, navPct: number) => void;
 }) {
   const hasHoldings = holdings && holdings.length > 0;
   const pickKey = (sleeve as unknown as { pick?: { key?: string } })?.pick?.key;
@@ -76,20 +80,27 @@ export function MultiAssetHealthBlock({
             const above = md?.above;
             const pos = typeof h.positionPct === 'number' ? h.positionPct : null;
             const isPick = twinStar && pickKey != null && key === pickKey;
-            const adjust =
-              twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
-                ? pickKey === 'STOCK' && !coreDestinationReady
-                  ? {
-                      label: '暂留',
-                      cls: 'bg-amber-500/10 text-amber-700',
-                      tip: '今日 pick=STOCK 但篮内 0 只可买，勿清空 ETF 后空仓',
-                    }
-                  : { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
+            const trim = (etfTrims ?? []).find((t) => t.symbol === h.symbol);
+            const holdTip =
+              twinStar && pickKey === 'STOCK' && !coreDestinationReady
+                ? `核心 ${coreTargetPct}% 继续持有（STOCK 篮空，不清仓）。${trim ? `今日从本只减仓总资产 ${trim.navPct}% 买卫星股票。` : ''}`
                 : isPick
-                  ? pos != null && pos < coreTargetPct - 1
-                    ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）` }
-                    : { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: `今日 pick（mom_compare 定案）` }
-                  : null;
+                  ? `今日 pick（mom_compare 定案）· 目标 ${coreTargetPct}%`
+                  : undefined;
+            const adjust =
+              trim != null
+                ? null
+                : twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
+                  ? pickKey === 'STOCK' && !coreDestinationReady
+                    ? null
+                    : { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
+                  : isPick
+                    ? pos != null && pos < coreTargetPct - 1
+                      ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）` }
+                      : { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip ?? `今日 pick（mom_compare 定案）` }
+                    : holdTip
+                      ? { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip }
+                      : null;
             return (
               <div key={h.symbol} className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-2 text-xs', meta.color)}>
                 <span>{meta.icon}</span>
@@ -103,6 +114,20 @@ export function MultiAssetHealthBlock({
                   >
                     {adjust.label}
                   </span>
+                ) : holdTip ? (
+                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700" title={holdTip}>
+                    持有
+                  </span>
+                ) : null}
+                {trim && onTrim ? (
+                  <button
+                    type="button"
+                    onClick={() => onTrim(h.symbol, h.name ?? null, trim.navPct)}
+                    className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 hover:bg-amber-500/20"
+                    title={trim.reason}
+                  >
+                    减仓 {trim.navPct}%
+                  </button>
                 ) : null}
                 <span className="text-[11px] text-[var(--k-muted)]">{meta.label} · 仓位 {pos?.toFixed(1) ?? '—'}%</span>
                 {typeof pnl === 'number' ? (
@@ -117,9 +142,6 @@ export function MultiAssetHealthBlock({
                   <span className={cn('ml-auto rounded px-1.5 py-0.5 text-[10px]', above ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-600')}>
                     {above ? '持有' : '预警'}
                   </span>
-                ) : null}
-                {adjust && adjust.label !== '持有' ? (
-                  <span className="w-full text-[10px] text-[var(--k-muted)]">{adjust.tip}</span>
                 ) : null}
               </div>
             );

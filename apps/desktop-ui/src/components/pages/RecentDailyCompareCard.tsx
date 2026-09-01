@@ -28,10 +28,10 @@ const PICK_TS: Record<string, string> = {
 };
 
 /**
- * 最近操作 vs 单轨择优（mom_compare）逐日对比。
+ * 最近操作 vs Timeline 定案逐日对比。
  *
- * 左/定案列：GET /api/backtest/timeline → pick_strong_track（与产品真值同源）
- * 右/操作列：portfolio-health 当前持仓 + /market/stocks/{sym}/bars 相对成本加权收益
+ * 左/定案列：GET /api/backtest/timeline（可切 机会双子星 / 单轨择强）
+ * 右/操作列：portfolio-health 当前持仓 + bars 相对成本加权收益
  *            （当前快照套到每一行，非逐日账本回放）
  */
 export function RecentDailyCompareCard() {
@@ -41,7 +41,9 @@ export function RecentDailyCompareCard() {
     d.setMonth(d.getMonth() - 2);
     return d.toISOString().slice(0, 10);
   });
-  const timelineQ = useTimelineQuery(start, today, 'pick_strong', true);
+  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong'>('twin_star');
+  const isTwin = strategy === 'twin_star';
+  const timelineQ = useTimelineQuery(start, today, strategy, true);
   const healthQ = useQuery({
     queryKey: ['portfolio-health', 'recent-ops-vs-pick-strong'],
     queryFn: () => fetchPortfolioHealth(),
@@ -155,6 +157,22 @@ export function RecentDailyCompareCard() {
         <span className="rounded bg-[var(--k-bg)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
           次级表 · 复刻差距见上方
         </span>
+        <span className="flex overflow-hidden rounded border border-[var(--k-border)] text-[10px] font-normal">
+          <button
+            type="button"
+            onClick={() => setStrategy('twin_star')}
+            className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+          >
+            机会双子星
+          </button>
+          <button
+            type="button"
+            onClick={() => setStrategy('pick_strong')}
+            className={cn('px-2 py-0.5', !isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+          >
+            单轨择强
+          </button>
+        </span>
         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-normal text-emerald-800 dark:text-emerald-200">
           {mode}
         </span>
@@ -184,10 +202,11 @@ export function RecentDailyCompareCard() {
 
       <div className="mb-2 grid grid-cols-3 gap-2 text-[11px]">
         <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
-          <div className="text-[var(--k-muted)]">单轨择优累计</div>
+          <div className="text-[var(--k-muted)]">{isTwin ? '机会双子星累计' : '单轨择优累计'}</div>
           <div className={cn('font-semibold tabular-nums', tone(lastNav))}>{lastNav.toFixed(2)}%</div>
           <div className="text-[10px] text-[var(--k-muted)]">
-            Timeline pick={last.pick ?? '—'} · live={livePick ?? '—'}
+            Timeline pick={last.pick ?? '—'}
+            {isTwin ? ` · 目标${last.satActive ? 50 : 100}%` : ''} · live={livePick ?? '—'}
           </div>
         </div>
         <div className="rounded border border-[var(--k-border)] px-2 py-1.5">
@@ -209,7 +228,7 @@ export function RecentDailyCompareCard() {
           >
             {avgOpsPnl != null ? `${(lastNav - avgOpsPnl).toFixed(2)}%` : '—'}
           </div>
-          <div className="text-[10px] text-[var(--k-muted)]">单轨 − 最近操作</div>
+          <div className="text-[10px] text-[var(--k-muted)]">{isTwin ? '双子星' : '单轨'} − 最近操作</div>
         </div>
       </div>
 
@@ -218,22 +237,20 @@ export function RecentDailyCompareCard() {
           <thead className="sticky top-0 bg-[var(--k-surface)]">
             <tr className="text-[10px] text-[var(--k-muted)]">
               <th className="py-1 pl-2 pr-2">日期</th>
-              <th className="py-1 pr-2">单轨应持（pick）</th>
+              <th className="py-1 pr-2">{isTwin ? '核心该买' : '单轨应持（pick）'}</th>
+              {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
               <th className="py-1 pr-2">最近操作（现仓快照）</th>
-              <th className="py-1 pr-2">单轨NAV%</th>
+              <th className="py-1 pr-2">{isTwin ? '双子星NAV%' : '单轨NAV%'}</th>
               <th className="py-1 pr-2">操作收益%</th>
             </tr>
           </thead>
           <tbody>
             {show.map((r) => {
-              const single =
-                (r as unknown as { navSingleReturnPct?: number }).navSingleReturnPct ??
-                r.navMultiReturnPct;
+              const single = r.navSingleReturnPct ?? r.navMultiReturnPct;
               const isStock = r.pick === 'STOCK';
               const pickSym = PICK_TS[r.pick ?? ''] ?? '';
               const optimalHolding = isStock
-                ? ((r as unknown as { stockSymbols?: string[] }).stockSymbols ?? []).join(' ') ||
-                  'STOCK'
+                ? (r.stockSymbols ?? []).join(' ') || 'STOCK'
                 : `${r.pick ?? 'REPO'}${pickSym ? ` ${pickSym}` : ''}`;
               const actualHolding = holdings.map((h) => h.symbol).join(', ') || '—';
               const opsYield = opsDaily[r.date] ?? avgOpsPnl;
@@ -243,6 +260,9 @@ export function RecentDailyCompareCard() {
                   <td className="max-w-[200px] truncate py-1 pr-2 text-[11px]" title={optimalHolding}>
                     {optimalHolding}
                   </td>
+                  {isTwin ? (
+                    <td className="py-1 pr-2 text-[10px] text-[var(--k-muted)]">{r.satActive ? '50' : '100'}%</td>
+                  ) : null}
                   <td
                     className="min-w-[220px] whitespace-normal break-words py-1 pr-2 text-[11px] text-[var(--k-muted)]"
                     title={`${actualHolding}（当前快照，非当日账本）`}
@@ -260,8 +280,10 @@ export function RecentDailyCompareCard() {
         </table>
       </div>
       <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
-        <strong>单轨择优</strong> = <code>GET /api/backtest/timeline</code>（
-        <code>pick_strong_track</code> · mom_compare · 100% 硬切）。
+        <strong>{isTwin ? '机会双子星' : '单轨择优'}</strong> = <code>GET /api/backtest/timeline?strategy={strategy}</code>
+        {isTwin
+          ? '（opportunity v3 · satActive→50/50 · idle→核心100% · 与 Watchlist 同源）。'
+          : '（pick_strong_track · mom_compare · 100% 硬切）。'}
         <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产 ETF）相对成本的加权收益（bars）。
         「现仓快照」每日行相同——不是历史逐日持仓回放。
       </p>

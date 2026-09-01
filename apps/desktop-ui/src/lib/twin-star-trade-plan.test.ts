@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SAT_MAX_POS,
+  SAT_SLOT_OF_SLEEVE,
+  TWIN_STAR_LIVE_RECIPE,
+  allocateSatFundTrims,
   buildTwinStarTradePlan,
   satConclusionLine,
   type TwinStarTradePlanInput,
@@ -38,6 +41,27 @@ function recipeBook(n = SAT_MAX_POS) {
 }
 
 describe('buildTwinStarTradePlan', () => {
+  it('locks live sizing to the frozen S-gap engine constants', () => {
+    expect(TWIN_STAR_LIVE_RECIPE.maxPos).toBe(15);
+    expect(TWIN_STAR_LIVE_RECIPE.slotOfSleeve).toBe(0.1);
+    expect(TWIN_STAR_LIVE_RECIPE.bucketQ).toBe(3);
+    expect(TWIN_STAR_LIVE_RECIPE.body).toBe(3);
+    expect(SAT_MAX_POS).toBe(TWIN_STAR_LIVE_RECIPE.maxPos);
+    expect(SAT_SLOT_OF_SLEEVE).toBe(TWIN_STAR_LIVE_RECIPE.slotOfSleeve);
+  });
+
+  it('drains the weaker ETF before touching the core park ETF', () => {
+    const trims = allocateSatFundTrims({
+      holdings: [
+        { symbol: 'ETF:513110', key: 'NASDAQ', positionPct: 48.6 },
+        { symbol: 'ETF:513350', key: 'OIL', positionPct: 42 },
+      ],
+      trimTotal: 25,
+      parkKey: 'NASDAQ',
+      momByKey: { NASDAQ: 5.16, OIL: 4.98 },
+    });
+    expect(trims.map((t) => ({ key: t.holding.key, cut: t.cut }))).toEqual([{ key: 'OIL', cut: 25 }]);
+  });
   it('sizes each satellite slot as 10% of the sat sleeve (5% of NAV at 50/50)', () => {
     const plan = buildTwinStarTradePlan(base());
     expect(plan.satSlotNavPct).toBe(5);
@@ -130,13 +154,13 @@ describe('buildTwinStarTradePlan', () => {
     expect(buy?.swapFrom).toBe('600003.SH');
   });
 
-  it('hides satellite buys before 14:30 even when the gate is open', () => {
+  it('hides satellite buys until a market snapshot exists', () => {
     const plan = buildTwinStarTradePlan(base({ afterSatWindow: false }));
     expect(plan.buys.filter((r) => r.sleeve === 'sat')).toHaveLength(0);
-    expect(plan.satHeadline).toMatch(/14:20 拉当日行情/);
+    expect(plan.satHeadline).toMatch(/等待全市场快照/);
   });
 
-  it('keeps ETFs in the same plan when pick=STOCK has zero executable names', () => {
+  it('cuts the weaker ETF first and parks the core in the strongest ETF', () => {
     const plan = buildTwinStarTradePlan(
       base({
         pickKey: 'STOCK',
@@ -144,18 +168,26 @@ describe('buildTwinStarTradePlan', () => {
         pickName: '股票篮',
         cnCandidates: [],
         cnAllowBuys: true,
+        satCandidates: [
+          { ts: '600352.SH', amp: 1, gapPct: 2, close: 10 },
+          { ts: '603339.SH', amp: 1, gapPct: 2, close: 10 },
+        ],
+        coreParkEtfKey: 'NASDAQ',
+        etfMomByKey: { NASDAQ: 5.16, OIL: 4.98, GOLD: 1, BOND10: 0.5, STOCK: 6.88 },
         etfHoldings: [
           { symbol: 'ETF:513110', key: 'NASDAQ', name: '纳指', positionPct: 48.6 },
           { symbol: 'ETF:513350', key: 'OIL', name: '原油', positionPct: 42 },
         ],
       }),
     );
-    expect(plan.coreBuyable).toBe(false);
-    expect(plan.buys.filter((r) => r.sleeve === 'core')).toHaveLength(0);
-    expect(plan.sells.filter((r) => r.sleeve === 'core')).toHaveLength(0);
-    expect(plan.holds.filter((r) => r.kind === 'etf')).toHaveLength(2);
-    expect(plan.coreHeadline).toMatch(/不要为 STOCK 清空 ETF/);
-    expect(plan.etfHeadline).toMatch(/多出约 40\.6%/);
+    expect(plan.stockBuyNavPct).toBe(10);
+    expect(plan.etfTrimPct).toBe(10);
+    const funds = plan.sells.filter((r) => r.purpose === 'sat-fund');
+    expect(funds).toHaveLength(1);
+    expect(funds[0]?.symbol).toBe('ETF:513350');
+    expect(funds[0]?.navPct).toBe(10);
+    expect(plan.sells.some((r) => r.symbol === 'ETF:513110' && r.purpose === 'sat-fund')).toBe(false);
+    expect(plan.etfHeadline).toMatch(/先砍弱 ETF/);
   });
 
   it('lists core STOCK buys as % of total NAV and sells non-pick ETFs only then', () => {

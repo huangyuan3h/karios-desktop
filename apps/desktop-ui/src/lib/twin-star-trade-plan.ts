@@ -20,6 +20,21 @@ import type { PortfolioCandidate } from '@/lib/queries/portfolioHealth';
 
 export const SAT_MAX_POS = 15;
 export const SAT_SLOT_OF_SLEEVE = 0.1;
+/** Frozen live mapping of opportunity_twin_star_v3 — keep in lockstep with state_bucket_track.py. */
+export const TWIN_STAR_LIVE_RECIPE = {
+  core: 'pick_strong mom_compare trail8',
+  sat: 'S-gap',
+  gate: 'R-wide breadth>0.5',
+  pool: 'strict skip_t1_limit',
+  bucketQ: 3,
+  maxPos: SAT_MAX_POS,
+  slotOfSleeve: SAT_SLOT_OF_SLEEVE,
+  body: 3,
+} as const;
+
+export function twinStarRecipeLine(slotNavPct: number): string {
+  return `口径核 · 核心择强 mom_compare · 卫星 ${TWIN_STAR_LIVE_RECIPE.sat} ${TWIN_STAR_LIVE_RECIPE.pool} · ${TWIN_STAR_LIVE_RECIPE.gate} · 每槽套筒${TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 100}%=总资产${slotNavPct}% · body${TWIN_STAR_LIVE_RECIPE.body} · 空篮留最强ETF`;
+}
 
 export function roundNavPct(n: number): number {
   return Math.round(n * 10) / 10;
@@ -39,6 +54,8 @@ export type TwinStarTradeRow = {
   reason: string;
   swapFrom?: string | null;
   limitLocked?: boolean;
+  /** sat-fund = trim ETF to pay for today's satellite stock buys. */
+  purpose?: 'sat-fill' | 'sat-exit' | 'sat-fund' | 'core-buy' | 'core-rotate' | 'hold';
 };
 
 export type TwinStarEtfHolding = {
@@ -77,6 +94,10 @@ export type TwinStarTradePlanInput = {
   etfHoldings: TwinStarEtfHolding[];
   /** User-recorded CN stock positions (satellite occupancy). */
   liveStockHoldings?: TwinStarLiveStock[];
+  /** Strongest ETF when pick=STOCK cannot execute (pick-strong runner-up). */
+  coreParkEtfKey?: string | null;
+  /** mom60 by sleeve key, used to cut the weakest ETF first. */
+  etfMomByKey?: Record<string, number | null>;
 };
 
 export type TwinStarRecipeName = {
@@ -99,6 +120,10 @@ export type TwinStarTradePlan = {
   bookNote: string;
   etfTotalPct: number;
   etfSparePct: number;
+  /** Sum of today's stock BUY rows as % of NAV. */
+  stockBuyNavPct: number;
+  /** ETF trim today to fund those stock buys (≤ spare). */
+  etfTrimPct: number;
   recipeNames: TwinStarRecipeName[];
   buys: TwinStarTradeRow[];
   holds: TwinStarTradeRow[];
@@ -128,6 +153,40 @@ function candidateSymbol(c: PortfolioCandidate): string {
 
 function liveTsCode(symbol: string): string | null {
   return toTsCodeFromSymbol(symbol);
+}
+
+function etfMom(h: TwinStarEtfHolding, momByKey?: Record<string, number | null>): number {
+  const v = momByKey?.[h.key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+}
+
+/** Cut weakest ETFs first; keep the pick-strong runner-up as the core park. */
+export function allocateSatFundTrims(input: {
+  holdings: TwinStarEtfHolding[];
+  trimTotal: number;
+  parkKey: string | null;
+  momByKey?: Record<string, number | null>;
+}): Array<{ holding: TwinStarEtfHolding; cut: number }> {
+  const { holdings, trimTotal, parkKey, momByKey } = input;
+  if (trimTotal <= 0) return [];
+  const usable = holdings.filter((h) => h.key !== 'OTHER' && (Number(h.positionPct) || 0) > 0);
+  const ordered = [...usable].sort((a, b) => {
+    const aPark = parkKey != null && a.key === parkKey ? 1 : 0;
+    const bPark = parkKey != null && b.key === parkKey ? 1 : 0;
+    if (aPark !== bPark) return aPark - bPark;
+    return etfMom(a, momByKey) - etfMom(b, momByKey);
+  });
+  let left = trimTotal;
+  const out: Array<{ holding: TwinStarEtfHolding; cut: number }> = [];
+  for (const h of ordered) {
+    if (left <= 0) break;
+    const pos = Number(h.positionPct) || 0;
+    const cut = roundNavPct(Math.min(pos, left));
+    if (cut <= 0) continue;
+    out.push({ holding: h, cut });
+    left = roundNavPct(left - cut);
+  }
+  return out;
 }
 
 export function satConclusionLine(plan: TwinStarTradePlan, gateOpen: boolean): string {
@@ -186,7 +245,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
   } else if (satFreeSlots <= 0) {
     satHeadline = `R-wide 开闸 · 你卫星仓满 ${satHeld}/${SAT_MAX_POS} · 今日不买新票`;
   } else if (!input.afterSatWindow) {
-    satHeadline = `R-wide 开闸 · 你卫星仓 ${satHeld}/${SAT_MAX_POS} · 14:20 拉当日行情后公布`;
+      satHeadline = `R-wide 开闸 · 你卫星仓 ${satHeld}/${SAT_MAX_POS} · 等待全市场快照`;
   } else {
     const fillable = [
       ...(input.satCandidates ?? []).filter((c) => c.ts && !liveHeldTs.has(c.ts) && !c.limitLocked),
@@ -217,8 +276,9 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
           navPct: satSlotNavPct,
           reason: skipped
             ? `涨停 ${skipped.ts} → 换 ${c.ts}`
-            : `卫星空槽 · 当日行情 · 总资产 ${satSlotNavPct}%`,
+            : `卫星空槽 · 当日行情 · 每只总资产 ${satSlotNavPct}%`,
           swapFrom: skipped ? skipped.ts : null,
+          purpose: 'sat-fill',
         });
       }
     }
@@ -330,27 +390,47 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
       }
     }
   } else if (pickKey === 'STOCK' && !coreBuyable) {
-    for (const h of input.etfHoldings) {
-      if (h.key === 'OTHER') continue;
-      const already = holds.some((r) => r.symbol === h.symbol) || sells.some((r) => r.symbol === h.symbol);
-      if (already) continue;
-      pushRow(holds, {
-        side: 'HOLD',
-        sleeve: 'core',
+    const stockBuysNav = roundNavPct(
+      buys.filter((r) => r.kind === 'stock' && r.side === 'BUY').reduce((s, r) => s + r.navPct, 0),
+    );
+    const trimTotal = roundNavPct(Math.min(etfSparePct, stockBuysNav));
+    const parkKey = input.coreParkEtfKey ?? null;
+    const trims = allocateSatFundTrims({
+      holdings: input.etfHoldings,
+      trimTotal,
+      parkKey,
+      momByKey: input.etfMomByKey,
+    });
+    for (const { holding: h, cut } of trims) {
+      const keptPark = parkKey != null && h.key === parkKey;
+      pushRow(sells, {
+        side: 'SELL',
+        sleeve: 'sat',
         symbol: h.symbol,
         name: h.name ?? h.symbol,
-        navPct: h.positionPct ?? 0,
-        reason: '核心 STOCK 今日 0 只可买 · 暂留，勿清仓',
+        navPct: cut,
+        reason: keptPark
+          ? `弱 ETF 不够腾 ${trimTotal}% · 从核心停泊 ${h.key} 再减总资产 ${cut}%`
+          : `先砍弱 ETF ${h.key} · 减仓总资产 ${cut}% 买卫星 · 核心 ${coreTargetPct}% 留在 ${parkKey ?? '最强ETF'}`,
+        purpose: 'sat-fund',
       });
     }
   }
 
+  const stockBuyNavPct = roundNavPct(
+    buys.filter((r) => r.kind === 'stock' && r.side === 'BUY').reduce((s, r) => s + r.navPct, 0),
+  );
+  const etfTrimPct = roundNavPct(
+    sells.filter((r) => r.purpose === 'sat-fund').reduce((s, r) => s + r.navPct, 0),
+  );
   const etfHeadline =
     input.etfHoldings.length === 0
       ? `ETF 未录入 · 核心目标 ${coreTargetPct}%`
-      : etfSparePct > 0
-        ? `ETF 合计 ${etfTotalPct}% · 核心只需 ${coreTargetPct}% · 多出约 ${etfSparePct}% 可腾给卫星股票`
-        : `ETF 合计 ${etfTotalPct}% · 核心目标 ${coreTargetPct}%`;
+      : etfTrimPct > 0
+        ? `ETF 合计 ${etfTotalPct}% · 先砍弱 ETF 腾 ${etfTrimPct}% 买卫星 · 核心 ${coreTargetPct}% 留最强`
+        : etfSparePct > 0
+          ? `ETF 合计 ${etfTotalPct}% · 核心只需 ${coreTargetPct}% · 多出约 ${etfSparePct}% 可腾给卫星股票`
+          : `ETF 合计 ${etfTotalPct}% · 核心目标 ${coreTargetPct}%`;
 
   let bookNote: string;
   if (recipeSatHeld === 0 && satHeld === 0) {
@@ -375,6 +455,8 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     bookNote,
     etfTotalPct,
     etfSparePct,
+    stockBuyNavPct,
+    etfTrimPct,
     recipeNames: recipe.map((h) => ({ ts: h.ts, daysLeft: h.daysLeft ?? null })),
     buys,
     holds,

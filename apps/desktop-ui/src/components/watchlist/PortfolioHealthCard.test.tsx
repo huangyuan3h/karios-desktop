@@ -784,7 +784,7 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText(/闸门关闭/)).toBeNull();
   });
 
-  it('hides satellite candidates before 14:30 (buy window is 14:30 at simulated close price)', async () => {
+  it('shows satellite candidates once a snapshot exists, even before 14:30', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     marketHoursMock.getShanghaiMinutes.mockReturnValue(10 * 60);
     fetchPortfolioHealth.mockResolvedValue({
@@ -806,8 +806,8 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect((await screen.findAllByText(/14:20 拉当日行情/)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/000712\.SZ/)).toBeNull();
+    expect((await screen.findAllByText(/000712\.SZ/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/14:20 拉当日行情/)).toBeNull();
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
 
@@ -904,11 +904,11 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/今日下单/)).toBeDefined();
+    expect(await screen.findByText(/^今日$/)).toBeDefined();
     expect(screen.getByText(/模拟仓，不是券商持仓/)).toBeDefined();
     expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/持仓簿满 15\/15/)).toBeNull();
-    expect(screen.getByText(/刷新当日行情/)).toBeDefined();
+    expect(screen.getByText(/刷新行情/)).toBeDefined();
   });
 
   it('keeps ETFs and lists buy size as % of NAV when STOCK has no executable names', async () => {
@@ -941,7 +941,13 @@ describe('PortfolioHealthCard', () => {
         action: 'HOLD',
         label: '择强→股票',
         message: '择强 STOCK（mom60 6.88%）> ETF → 卖出 ETF:513350 回股票篮',
-        pick: { key: 'STOCK', mom60: 6.88, symbol: 'STOCK' },
+        pick: {
+          key: 'STOCK',
+          mom60: 6.88,
+          symbol: 'STOCK',
+          all_mom: { STOCK: 6.88, NASDAQ: 5.16, OIL: 4.98, GOLD: 1, BOND10: 0.4 },
+        },
+        etfPick: { key: 'NASDAQ', mom60: 5.16, symbol: 'ETF:513110' },
         mode: 'mom_compare',
       },
       tradeDate: '2026-09-01',
@@ -958,11 +964,12 @@ describe('PortfolioHealthCard', () => {
     });
     renderCard();
     expect((await screen.findAllByText(/不要为 STOCK 清空 ETF/)).length).toBeGreaterThan(0);
-    expect(await screen.findByText(/今日下单/)).toBeDefined();
+    expect(await screen.findByText(/^今日$/)).toBeDefined();
     expect(screen.queryByText(/今日无买卖/)).toBeNull();
     expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('暂留').length).toBeGreaterThan(0);
-    expect(screen.getByText(/多出约 40/)).toBeDefined();
+    expect(screen.getAllByText('持有').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/减仓 5/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/减仓 2/)).toBeNull();
     expect(screen.queryByText(/资金调向 STOCK/)).toBeNull();
   });
 });
