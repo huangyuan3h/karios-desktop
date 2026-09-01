@@ -53,7 +53,7 @@ def _rsi(closes: list[float], period: int = 14) -> float | None:
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
-    return 100 - 100 / (1 + rs)
+    return float(100 - 100 / (1 + rs))
 
 def _ma(closes: list[float], n: int) -> float | None:
     if len(closes) < n:

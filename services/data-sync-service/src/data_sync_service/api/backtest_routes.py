@@ -395,14 +395,16 @@ def _get_or_build_timeline(
     from data_sync_service.service.pick_strong_track import build_mom_compare_timeline
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-    from run_walk_forward import S3_CONFIG  # noqa: E402
+    from run_walk_forward import S3_CONFIG  # noqa: E402  # pyright: ignore[reportMissingImports]
 
     cfg = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
     try:
         data = BacktestData(cfg)
         run = simulate(cfg, data)
         try:
-            from run_walk_forward import HK_S3_CONFIG  # noqa: E402
+            from run_walk_forward import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+                HK_S3_CONFIG,
+            )
 
             cfg_hk = BacktestConfig(
                 start_date=start, end_date=end, **HK_S3_CONFIG
