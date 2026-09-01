@@ -1002,7 +1002,7 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-31 | **OPT-058 完成**：双子星 14:30 决策链路审计——① `_pick()` 盘中回退 t-2 信号 bug（`closes[:-1]` 假设含当日 bar，实际盘中 daily 表只有 t-1）→ `_signal_closes` 显式剔除当日 bar；② 5 只核心腿 ETF 日线停更（全市场 `etf_daily_full` 月频 + tushare 限速失败，GOLD/BOND10 停更 7 天）→ 新增 `sleeve_etf_daily_sync`（工作日 17:25，fund_daily 增量）+ `/sync/sleeve-etfs` + catalog，补齐 08-24~08-31 |
 | 2026-09-01 | **OPT-059 完成**：涨停可成交审计 + 机会双子星定案（v1）——一字板审计 / universe / 机会口径 |
 | 2026-09-01 | **OPT-060 完成**：机会双子星 v2——① 退出日 `satActive` 记账修正（成本入 NAV，aligned 205.9→180.6，虚高 ~25pt）；② 六窗重冻 + holdout partial（−2.7pt vs 核心）；③ past_year/aligned 输核心 → **实盘默认改单轨择强**；④ UI 机会口径（关闸 100% 核心）；⑤ 卫星持仓簿（`openPositions`/`exitsDue`/`coreTargetPct`）|
-| 2026-09-01 | **OPT-122 完成**：机会双子星盘中近似信号——① UI 修正：卫星只认 R-wide 闸（S-3 Execution Gate DEFEND 不再拦截卫星候选，仅 STOCK 核心腿标注）；② 14:30 时间门控（14:30 前不显示候选，14:30 后显示「模拟收盘价买入」）；③ `twin_star_intraday`（工作日 12:30 全市场东财快照 → 快照价近似当日收盘重跑 S-gap 筛，涨停剔除、mv 取 t-1，缓存 `data/twin_star_intraday/`，14:30 后 API 返回 `approx` 信号，失败回退 t-1）|
+| 2026-09-01 | **OPT-123**：机会双子星 v3 固化——strict S-gap + 无仓回核；window-local 三窗全过；实盘信号与回测对齐（禁止 replace 扩池）；口径铁律写入 `state-bucket-algo` 文首 |
 
 ### OPT-060：机会双子星 v2（退出日成本修正 + 默认改单轨）
 
@@ -3143,3 +3143,17 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 **近似口径**：信号公式与冻结回测完全一致，仅"收盘价"被 12:30 快照价近似（无当日分钟数据可用的前提下，用户实盘即按此价在 14:30 买入）；涨停剔除用快照价判定（盘中已封板 → 放弃）。
 
 **验证**：`test_twin_star_intraday` 5 例（近似信号形状 / 涨停剔除 / breadth / 缓存往返 / 缺快照回退）；真实快照跑通（09-01 breadth 0.586 开闸、34 只缺口、5 只候选）；前端 PortfolioHealthCard 21 例 + watchlist 90 例；ruff / tsc 干净。
+
+### OPT-123：机会双子星 v3 固化（strict + 无仓回核 · 口径铁律入档）
+
+**状态**：[x] done · 2026-09-01  
+**背景**：PS-G50 / 扩池 / 空槽回核实验后，可执行最优仍是已有机会双子星，但文档还写「输给单轨」，实盘信号曾是 replace（先剔涨停再取 1/3）。
+
+**定案**：
+- 配方：`skip_t1_limit` + `pool_mode=strict` + `opportunity` 合成（`satActive` 含退出日）
+- 冻结：`opportunity_twin_star_v3_frozen.json`（window-local 五窗）
+- 真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「纠结的点与口径铁律」
+- 实盘默认仍 `single_track`（opt-in）
+- 实盘/盘中信号与回测同一套 `select_strict_gap_candidates`（涨停不补仓）
+
+**验证**：`test_state_bucket_track` / `test_twin_star*` / `test_ps_g50_blend` / `test_twin_star_daily`（strict 不 refill）

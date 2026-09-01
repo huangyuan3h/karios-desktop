@@ -14,12 +14,14 @@ from typing import Any
 
 from data_sync_service.service.state_bucket_track import (
     BODY,
+    BUCKET_Q,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
     _load_mv,
     _load_rows,
     build_sgap_timeline,
+    select_strict_gap_candidates,
 )
 
 LOOKBACK_DAYS = 90
@@ -74,11 +76,13 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
         return float(r["close"]) >= pc * (1 + lim - 0.004)
 
-    gap_stocks = [g for g in gap_stocks if not _limit_locked(g[0])]
-    gap_stocks.sort(key=lambda x: x[1])
-    qn = max(1, len(gap_stocks) // 3)
+    gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
+    locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
+    picked = select_strict_gap_candidates(
+        gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
+    )
     candidates = []
-    for ts, amp, gap in gap_stocks[: min(qn, TOP_N)]:
+    for ts, amp, gap in picked:
         series = per_ts.get(ts)
         idx = date_idx.get(ts, {}).get(signal_day, -1)
         close = series[idx]["close"] if idx >= 0 and series else None
@@ -109,7 +113,9 @@ def _sat_book(today: date) -> dict[str, Any]:
     end = (today - timedelta(days=1)).isoformat()
     start = (today - timedelta(days=BOOK_LOOKBACK_CAL_DAYS)).isoformat()
     try:
-        built = build_sgap_timeline(start=start, end=end, skip_t1_limit=True)
+        built = build_sgap_timeline(
+            start=start, end=end, skip_t1_limit=True, pool_mode="strict"
+        )
     except Exception:
         return {"asOf": None, "holdings": [], "exitsDue": [], "error": "book_unavailable"}
     holdings = list(built.get("openPositions") or [])

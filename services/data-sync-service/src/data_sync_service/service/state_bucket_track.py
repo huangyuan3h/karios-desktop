@@ -175,30 +175,8 @@ def _t1_limit_locked(
     return float(r["close"]) >= pc * (1 + lim - 0.004)
 
 
-def build_sgap_timeline(
-    *,
-    start: str,
-    end: str,
-    bucket_q: int = BUCKET_Q,
-    max_pos: int = MAX_POS,
-    body: int = BODY,
-    debug_fills: list[tuple[str, str]] | None = None,
-    skip_unfillable: bool = False,
-    skip_t1_limit: bool = False,
-) -> dict[str, Any]:
-    """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
-
-    Returns {rows: [{date, satNav, satNavReturnPct, satPositions, satActive}],
-             openPositions: [...], summary: {...}}.
-    satActive is True when capital was in the satellite anytime that day
-    (overnight hold OR body exit at close) — opportunity blend must use it
-    so round-trip costs on the exit day enter the fused NAV.
-
-    debug_fills: optional out-list collecting (entry_day, ts) — for tests/audit.
-    skip_unfillable: when True, skip T-day opens that cannot fill (one-word /
-    limit-open) — audit only; API default leaves this False.
-    skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
-    """
+def load_sgap_context(start: str, end: str) -> dict[str, Any]:
+    """Load OHLCV/MV/calendar once; replays with different pool modes reuse this."""
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
     per_ts = _load_rows(w_start, end)
     mv_map = _load_mv(w_start, end)
@@ -210,14 +188,99 @@ def build_sgap_timeline(
         m = {r["date"]: r["close"] for r in series if r["date"] in cal_set and r["close"]}
         if m:
             close_by_ts[ts] = m
-    idx_by_day = {d: i for i, d in enumerate(cal)}
+    return {
+        "per_ts": per_ts,
+        "mv_map": mv_map,
+        "cal": cal,
+        "date_idx": date_idx,
+        "close_by_ts": close_by_ts,
+        "idx_by_day": {d: i for i, d in enumerate(cal)},
+        "feat_cache": {},
+    }
+
+
+def _cached_day_features(ctx: dict[str, Any], day: str) -> tuple[dict[str, dict[str, float]], float]:
+    cache = ctx["feat_cache"]
+    hit = cache.get(day)
+    if hit is None:
+        hit = _day_features(ctx["per_ts"], ctx["mv_map"], ctx["cal"], day, ctx["date_idx"])
+        cache[day] = hit
+    return hit
+
+
+def _entry_pool(
+    ranked: list[str],
+    qn: int,
+    *,
+    skip_t1_limit: bool,
+    pool_mode: str,
+    locked: set[str],
+) -> list[str]:
+    """strict: top-qn then skip locked (slots may go idle).
+    replace: top-qn of fillable names (same count, next-best low-amp).
+    fallback: all fillable (quality dump — research only).
+    """
+    if not skip_t1_limit:
+        return ranked[:qn]
+    if pool_mode == "fallback":
+        return [ts for ts in ranked if ts not in locked]
+    if pool_mode == "replace":
+        return [ts for ts in ranked if ts not in locked][:qn]
+    return ranked[:qn]
+
+
+def select_strict_gap_candidates(
+    items: list[tuple[str, float, float]],
+    locked: set[str],
+    *,
+    bucket_q: int = BUCKET_Q,
+    top_n: int | None = None,
+) -> list[tuple[str, float, float]]:
+    """Live/intraday candidate list matching backtest ``pool_mode=strict``.
+
+    Rank all S-gap names by amplitude, take the top 1/bucket_q, *then* drop
+    T-1 limit-locked names. Do not refill from worse ranks (that is ``replace``,
+    which lost on past_year vs strict).
+    """
+    ranked = sorted(items, key=lambda x: x[1])
+    if not ranked:
+        return []
+    qn = max(1, len(ranked) // bucket_q)
+    pool = [g for g in ranked[:qn] if g[0] not in locked]
+    if top_n is not None:
+        return pool[:top_n]
+    return pool
+
+
+def replay_sgap_from_context(
+    ctx: dict[str, Any],
+    *,
+    start: str,
+    end: str,
+    bucket_q: int = BUCKET_Q,
+    max_pos: int = MAX_POS,
+    body: int = BODY,
+    debug_fills: list[tuple[str, str]] | None = None,
+    skip_unfillable: bool = False,
+    skip_t1_limit: bool = False,
+    limit_fallback: bool = False,
+    pool_mode: str | None = None,
+) -> dict[str, Any]:
+    """Replay S-gap on a preloaded context. Positions start empty at ``start``."""
+    if pool_mode is None:
+        pool_mode = "fallback" if limit_fallback else "strict"
+    per_ts = ctx["per_ts"]
+    cal = ctx["cal"]
+    date_idx = ctx["date_idx"]
+    close_by_ts = ctx["close_by_ts"]
+    idx_by_day = ctx["idx_by_day"]
     positions: dict[str, dict[str, Any]] = {}
     realized = 0.0
     rows: list[dict[str, Any]] = []
     for day in cal:
-        if day < start:
+        if day < start or day > end:
             continue
-        day_all, breadth = _day_features(per_ts, mv_map, cal, day, date_idx)
+        _day_all, breadth = _cached_day_features(ctx, day)
         r_wide = breadth > R_WIDE_THRESHOLD
         to_close = []
         for ts, p in list(positions.items()):
@@ -226,8 +289,6 @@ def build_sgap_timeline(
             held = ci - ei + 1 if ei >= 0 and ci >= 0 else 999
             if held >= body:
                 to_close.append(ts)
-        # Positions closed at today's close still occupied capital for the day —
-        # opportunity blend must count this day (incl. round-trip costs in satNav).
         closed_today = list(to_close)
         for ts in to_close:
             p = positions.pop(ts)
@@ -236,18 +297,22 @@ def build_sgap_timeline(
                 realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * POSITION_PCT
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
             prev_day = cal[idx_by_day[day] - 1]
-            prev_all, _ = _day_features(per_ts, mv_map, cal, prev_day, date_idx)
+            prev_all, _ = _cached_day_features(ctx, prev_day)
             gap_stocks = [ts for ts, d in prev_all.items() if d["is_gap"]]
-            if skip_t1_limit:
-                gap_stocks = [
-                    ts
-                    for ts in gap_stocks
-                    if not _t1_limit_locked(per_ts, date_idx, prev_day, ts)
-                ]
             ranked = sorted(gap_stocks, key=lambda ts: prev_all[ts]["amp"])
             qn = max(1, len(ranked) // bucket_q)
-            for ts in ranked[:qn]:
+            locked = {
+                ts
+                for ts in ranked
+                if skip_t1_limit and _t1_limit_locked(per_ts, date_idx, prev_day, ts)
+            }
+            pool = _entry_pool(
+                ranked, qn, skip_t1_limit=skip_t1_limit, pool_mode=pool_mode, locked=locked
+            )
+            for ts in pool:
                 if ts in positions or len(positions) >= max_pos:
+                    continue
+                if ts in locked:
                     continue
                 series = per_ts.get(ts)
                 di = date_idx.get(ts, {}).get(day, -1)
@@ -258,7 +323,7 @@ def build_sgap_timeline(
                         pc = cur.get("pre_close")
                         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
                         if pc and pc > 0 and (
-                            cur["high"] == cur["low"] == cur["open"]  # one-word board
+                            cur["high"] == cur["low"] == cur["open"]
                             or open_px >= pc * (1 + lim - 0.004)
                         ):
                             continue
@@ -270,18 +335,23 @@ def build_sgap_timeline(
             cc = close_by_ts.get(ts, {}).get(day)
             mtm += POSITION_PCT * (cc / p["entry_price"]) if cc and p["entry_price"] else POSITION_PCT
         nav = 1.0 + realized + (mtm - len(positions) * POSITION_PCT)
-        # satActive: capital was in sat anytime today (overnight hold OR exit at close).
         sat_active = len(positions) > 0 or len(closed_today) > 0
+        sat_slots = len(positions) + len(closed_today)
         rows.append(
             {
                 "date": day,
                 "satNav": round(nav, 6),
                 "satNavReturnPct": round((nav - 1) * 100, 2),
                 "satPositions": len(positions),
+                "satSlots": sat_slots,
                 "satActive": sat_active,
             }
         )
-    last_day = cal[-1] if cal else end
+    last_day = end
+    for d in reversed(cal):
+        if start <= d <= end:
+            last_day = d
+            break
     open_positions: list[dict[str, Any]] = []
     for ts, p in positions.items():
         cc = close_by_ts.get(ts, {}).get(last_day)
@@ -326,4 +396,100 @@ def build_sgap_timeline(
             "satPct": round((final_nav - 1) * 100, 2),
             "satMaxDdPct": round(max_dd * 100, 1),
         },
+        "pool_mode": pool_mode,
     }
+
+
+def build_sgap_timeline(
+    *,
+    start: str,
+    end: str,
+    bucket_q: int = BUCKET_Q,
+    max_pos: int = MAX_POS,
+    body: int = BODY,
+    debug_fills: list[tuple[str, str]] | None = None,
+    skip_unfillable: bool = False,
+    skip_t1_limit: bool = False,
+    limit_fallback: bool = False,
+    pool_mode: str | None = None,
+) -> dict[str, Any]:
+    """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
+
+    Returns {rows: [{date, satNav, satNavReturnPct, satPositions, satSlots, satActive}],
+             openPositions: [...], summary: {...}}.
+    skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
+    pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
+    """
+    ctx = load_sgap_context(start, end)
+    return replay_sgap_from_context(
+        ctx,
+        start=start,
+        end=end,
+        bucket_q=bucket_q,
+        max_pos=max_pos,
+        body=body,
+        debug_fills=debug_fills,
+        skip_unfillable=skip_unfillable,
+        skip_t1_limit=skip_t1_limit,
+        limit_fallback=limit_fallback,
+        pool_mode=pool_mode,
+    )
+
+
+def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
+    """Adapt ``build_sgap_timeline`` output to Timeline API shape (standalone leg)."""
+    rows: list[dict[str, Any]] = []
+    for r in sat.get("rows") or []:
+        nav = float(r.get("satNav") or 1.0)
+        ret_pct = r.get("satNavReturnPct")
+        if ret_pct is None:
+            ret_pct = round((nav - 1.0) * 100, 2)
+        rows.append(
+            {
+                "date": r["date"],
+                "pick": "S-GAP",
+                "pickTs": "",
+                "navSingle": nav,
+                "navMulti": nav,
+                "navSingleReturnPct": ret_pct,
+                "navMultiReturnPct": ret_pct,
+                "satNav": nav,
+                "satNavReturnPct": ret_pct,
+                "satPositions": int(r.get("satPositions") or 0),
+                "satSlots": int(r.get("satSlots") or r.get("satPositions") or 0),
+                "satActive": bool(r.get("satActive")) if "satActive" in r else None,
+            }
+        )
+    summary = sat.get("summary") or {}
+    sat_pct = float(summary.get("satPct") or 0.0)
+    sat_dd = float(summary.get("satMaxDdPct") or 0.0)
+    return {
+        "ok": True,
+        "mode": "state_bucket_sgap",
+        "strategy": "状态分桶 S-gap (可执行)",
+        "rows": rows,
+        "summary": {
+            "fusedPct": round(sat_pct, 2),
+            "corePct": None,
+            "basePct": None,
+            "maxDdFusedPct": round(sat_dd, 1),
+            "satPct": round(sat_pct, 2),
+            "satMaxDdPct": round(sat_dd, 1),
+        },
+        "openPositions": sat.get("openPositions") or [],
+        "opportunity": False,
+        "note": (
+            "Standalone S-gap leg (bucket_q=3, 15 slots, body=3, R-wide). "
+            "Executable口径: skip_t1_limit=True "
+            "(涨停可能买不进 → 不假设开盘能成交; 机会双子星同口径)."
+        ),
+    }
+
+
+def build_state_bucket_timeline(*, start: str, end: str) -> dict[str, Any]:
+    """Product Timeline entry for the standalone state-bucket S-gap strategy."""
+    sat = build_sgap_timeline(start=start, end=end, skip_t1_limit=True, pool_mode="strict")
+    out = sgap_to_timeline_rows(sat)
+    out["start"] = start
+    out["end"] = end
+    return out

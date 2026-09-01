@@ -26,11 +26,13 @@ from typing import Any
 
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.state_bucket_track import (
+    BUCKET_Q,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
     _load_mv,
     _load_rows,
+    select_strict_gap_candidates,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,11 +226,12 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
         return float(r["close"]) >= pc * (1 + lim - 0.004)
 
     gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
-    gap_stocks = [g for g in gap_stocks if not _limit_locked(g[0])]
-    gap_stocks.sort(key=lambda x: x[1])
-    qn = max(1, len(gap_stocks) // 3)
+    locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
+    picked = select_strict_gap_candidates(
+        gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
+    )
     candidates = []
-    for ts, amp, gap in gap_stocks[: min(qn, TOP_N)]:
+    for ts, amp, gap in picked:
         series = per_ts.get(ts)
         idx = date_idx.get(ts, {}).get(today_s, -1)
         close = series[idx]["close"] if idx >= 0 and series else None

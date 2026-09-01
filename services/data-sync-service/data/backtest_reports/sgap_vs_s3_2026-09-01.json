@@ -1,0 +1,158 @@
+{
+  "tag": "sgap-vs-s3-2026-09-01",
+  "generated_at": "2026-09-01T03:46:56.794677+00:00",
+  "scheme": "Standalone S-gap (executable) vs CN S-3 (independent stock legs)",
+  "sgap": {
+    "engine": "state_bucket_track.build_sgap_timeline",
+    "params": "bucket_q=3, max_pos=15, body=3, R-wide, skip_t1_limit=True",
+    "note": "涨停可能买不进 → T-1 limit candidates skipped (same as 机会双子星 satellite)"
+  },
+  "s3": {
+    "engine": "backtest_engine.simulate",
+    "config": "run_walk_forward.S3_CONFIG (strategy-params.md §1)"
+  },
+  "windows": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01"
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01"
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07"
+    },
+    "past_year": {
+      "start": "2025-08-28",
+      "end": "2026-08-07"
+    },
+    "aligned": {
+      "start": "2025-08-28",
+      "end": "2026-08-28"
+    },
+    "long2y": {
+      "start": "2024-08-01",
+      "end": "2026-08-28"
+    }
+  },
+  "per_window": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "sgap": {
+        "total_pct": 111.39,
+        "max_dd": 13.7,
+        "sharpe": 2.41,
+        "n_days": 254
+      },
+      "s3": {
+        "total_pct": 47.326,
+        "max_dd": 18.876,
+        "sharpe": 1.26,
+        "n_days": 255,
+        "closed": 93
+      },
+      "delta_pt": 64.06
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "sgap": {
+        "total_pct": 35.33,
+        "max_dd": 7.3,
+        "sharpe": 2.98,
+        "n_days": 128
+      },
+      "s3": {
+        "total_pct": 34.112,
+        "max_dd": 11.643,
+        "sharpe": 2.22,
+        "n_days": 129,
+        "closed": 51
+      },
+      "delta_pt": 1.22
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "sgap": {
+        "total_pct": 10.33,
+        "max_dd": 12.2,
+        "sharpe": 1.05,
+        "n_days": 112
+      },
+      "s3": {
+        "total_pct": 38.699,
+        "max_dd": 10.683,
+        "sharpe": 2.4,
+        "n_days": 113,
+        "closed": 16
+      },
+      "delta_pt": -28.37
+    },
+    "past_year": {
+      "start": "2025-08-28",
+      "end": "2026-08-07",
+      "sgap": {
+        "total_pct": 29.81,
+        "max_dd": 11.5,
+        "sharpe": 1.33,
+        "n_days": 238
+      },
+      "s3": {
+        "total_pct": 58.255,
+        "max_dd": 22.955,
+        "sharpe": 1.79,
+        "n_days": 239,
+        "closed": 81
+      },
+      "delta_pt": -28.45
+    },
+    "aligned": {
+      "start": "2025-08-28",
+      "end": "2026-08-28",
+      "sgap": {
+        "total_pct": 25.41,
+        "max_dd": 11.9,
+        "sharpe": 1.02,
+        "n_days": 253
+      },
+      "s3": {
+        "total_pct": 58.255,
+        "max_dd": 22.955,
+        "sharpe": 1.74,
+        "n_days": 254,
+        "closed": 81
+      },
+      "delta_pt": -32.84
+    },
+    "long2y": {
+      "start": "2024-08-01",
+      "end": "2026-08-28",
+      "sgap": {
+        "total_pct": 151.31,
+        "max_dd": 13.7,
+        "sharpe": 1.9,
+        "n_days": 525
+      },
+      "s3": {
+        "total_pct": 115.847,
+        "max_dd": 22.955,
+        "sharpe": 1.44,
+        "n_days": 526,
+        "closed": 166
+      },
+      "delta_pt": 35.46
+    }
+  },
+  "markdown_table": "| 窗口 | S-gap total% | S-gap dd | S-gap sr | S-3 total% | S-3 dd | S-3 sr | Δ(sgap−s3) |\n|------|-------------:|---------:|---------:|-----------:|-------:|-------:|-----------:|\n| OOS2 (2024-08-01~2025-08-01) | +111.4 | 13.7 | 2.41 | +47.3 | 18.9 | 1.26 | +64.1pt |\n| train (2025-08-01~2026-02-01) | +35.3 | 7.3 | 2.98 | +34.1 | 11.6 | 2.22 | +1.2pt |\n| valid (2026-03-01~2026-08-07) | +10.3 | 12.2 | 1.05 | +38.7 | 10.7 | 2.4 | -28.4pt |\n| past_year (2025-08-28~2026-08-07) | +29.8 | 11.5 | 1.33 | +58.3 | 23.0 | 1.79 | -28.4pt |\n| aligned (2025-08-28~2026-08-28) | +25.4 | 11.9 | 1.02 | +58.3 | 23.0 | 1.74 | -32.8pt |\n| long2y (2024-08-01~2026-08-28) | +151.3 | 13.7 | 1.9 | +115.8 | 23.0 | 1.44 | +35.5pt |",
+  "verdict": "Executable S-gap beats CN S-3 on total in 3/6 windows. Do NOT cite pre-audit +122.8% (R7/R8); that assumed limit-up fills.",
+  "caveats": [
+    "R7/R8 past_year +122.8% was pre limit-up fill audit — not truth for this compare",
+    "S-gap costs COSTS_ROUNDTRIP=0.003; S-3 uses engine slippage/costs",
+    "Not a pick-strong STOCK-leg replacement (R8 rejected argmax swap)",
+    "Live default remains single_track; this is research/observation only"
+  ]
+}

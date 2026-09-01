@@ -356,13 +356,17 @@ def backtest_timeline(
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "pick_strong",
-        description="pick_strong (单轨) | twin_star (双子星: 择强核心+S-gap卫星 50/50)",
+        description=(
+            "pick_strong | twin_star (机会双子星) | state_bucket (独立 S-gap 可执行)"
+        ),
     ),
 ) -> dict[str, Any]:
     """Past-year timeline.
 
     - strategy=pick_strong: 择强单轨 ``mom_compare`` (equal-asset pool).
-    - strategy=twin_star: 双子星 — 择强单轨作核心 (50%) + S-gap 状态分桶卫星 (50%)。
+    - strategy=twin_star: 机会双子星 — 择强核心 + S-gap 机会增强
+      (涨停可能买不进 → 可执行口径；闲置跟核心).
+    - strategy=state_bucket: 状态分桶 S-gap 独立腿 (同可执行口径，不混合择强).
     """
     from datetime import date as date_type
     from datetime import timedelta
@@ -372,6 +376,11 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
+    if strategy not in ("pick_strong", "twin_star", "state_bucket"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown strategy={strategy!r}; use pick_strong|twin_star|state_bucket",
+        )
     result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
 
@@ -390,6 +399,19 @@ def _get_or_build_timeline(
         if file_cached is not None and not need_engine:
             _timeline_cache[cache_key] = file_cached
             return file_cached, None
+
+    # Standalone state-bucket: no S-3 / pick-strong dependency.
+    if strategy == "state_bucket":
+        from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
+
+        try:
+            result = build_state_bucket_timeline(start=start, end=end)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline state_bucket failed: {exc}"
+            ) from exc
+        _timeline_cache[cache_key] = result
+        return result, None
 
     import sys
 
@@ -455,8 +477,10 @@ def _get_or_build_timeline(
             from data_sync_service.service.pick_strong_track import build_twin_star_timeline
             from data_sync_service.service.state_bucket_track import build_sgap_timeline
 
-            # 机会双子星: 可执行口径卫星 (T-1 涨停候选剔除 — 回测不假设买不进能成交)
-            sat = build_sgap_timeline(start=start, end=end, skip_t1_limit=True)
+            # 机会双子星: 涨停可能买不进 → T-1 涨停候选剔除 (不假设一字板能成交)
+            sat = build_sgap_timeline(
+                start=start, end=end, skip_t1_limit=True, pool_mode="strict"
+            )
             built = build_twin_star_timeline(
                 core_rows=result["rows"],
                 core_summary=result["summary"],

@@ -422,11 +422,12 @@ export type TimelineResponse = {
   rows: TimelineRow[];
 };
 
-export type TimelineStrategy = 'pick_strong' | 'twin_star';
+export type TimelineStrategy = 'pick_strong' | 'twin_star' | 'state_bucket';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   pick_strong: '单轨择强',
   twin_star: '机会双子星',
+  state_bucket: '状态分桶 S-gap',
 };
 
 export function useTimelineQuery(

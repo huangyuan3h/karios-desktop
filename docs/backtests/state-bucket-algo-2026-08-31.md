@@ -1,10 +1,57 @@
-# 状态分桶（State-Bucket）算法真值【2026-09-01 v2 定案 · 机会双子星 · 退出日成本修正】
+# 状态分桶（State-Bucket）算法真值【2026-09-01 v3 · 机会双子星 strict + 无仓回核】
 
-> **一句话**：**择强单轨（trail8）为主干，S-gap 卫星作"机会增强"**——卫星资金平时 100% 跟核心；大盘宽度上行（R-wide 开闸）且候选可执行时才切 50% 切片；**退出日仍算卫星占用**（`satActive`，往返成本必须进机会 NAV）。
-> **2026-09-01 v2 记账修正**：v1 用 `satPositions>0` 判 active，body 退出日仓位已清 → 成本逃逸，aligned 虚高 ~25pt（205.9→正确 ~180）。修正后 **past_year/aligned 输给纯核心** → **实盘默认改为单轨择强**；机会双子星保留为可选增强。
-> **2026-09-01 涨停审计**：旧 50/50 假设一字板可成交被弃；机会口径 + T-1 涨停剔除保留。
+> **一句话**：**择强单轨（trail8）为主干，S-gap 卫星作"机会增强"**——无仓时 100% 跟核心；R-wide 开闸且候选**可执行**时切 50%；**退出日仍算卫星占用**（`satActive`）。卫星 **`skip_t1_limit` + `pool_mode=strict`**（涨停跳过，**不**顺位补更差的缺口票）。
+> **2026-09-01 v3**：window-local 可执行对照结案——机会双子星 **三窗 walk-forward 全过**单轨；past_year +10pt / Sharpe 略高 / 回撤持平。历史 PS-G50 sr≈4 **不是**可执行真值。
+> **2026-09-01 v2 记账修正仍成立**：v1 `satPositions>0` 退出日成本逃逸（aligned 虚高 ~25pt）。v2 表里 past_year/aligned「输核心」是**另一套窗口切法 + 连续簿**，不要和 v3 window-local 混读。
+> **2026-09-01 涨停审计仍成立**：旧静态 50/50 假设一字板可成交已弃。
+> **命名动机**：涨停可能买得进也可能买不进——卫星是**机会**，不是刚性半仓。
 >
-> **定位**：小资金（≤200 万）可选增强层；默认实盘跟择强单轨。
+> **角色（勿混）**：
+> | 角色 | 含义 | 入口 | 地位 |
+> |------|------|------|------|
+> | **机会双子星 v3** | 择强 + strict S-gap + 无仓回核 | Timeline `strategy=twin_star` · `opportunity_twin_star_v3_frozen.json` | **最优可执行**；Settings **opt-in**（实盘默认仍单轨） |
+> | **择强单轨** | 无卫星 | Timeline `pick_strong` | 实盘默认；aligned 与双子星打平 |
+> | **PS-G50** | 静态 50/50 · **历史成交** | `pick_strong_g50_baseline_frozen.json` | 研究上限（Sharpe≈4），**不可实盘** |
+> | **独立腿 / slice** | 单态或分态，替 S-3 | `compare_sliced_vs_s3.py` | 可执行 slice **未过**三窗 |
+> | **作废虚高** | R7/R8 union +122.8%、v1 +205.9 | — | 禁止再引用为真值 |
+
+---
+
+## 纠结的点与口径铁律（2026-09-01 结案 · 勿再重跑一轮才想起）
+
+### 我们到底想要什么
+
+看见过「择强 + 半仓卫星」的风险形态（Sharpe 更高、回撤更小、弱市不惨），但诚实成交后数字塌掉。想要的是：**可执行**、涨停买不进时钱去**别的真资产**（核心会切金/油/纳/债/股票），总收益别崩，Sharpe/回撤仍更好。
+
+### 不要再混的四件事
+
+| # | 容易混 | 真值 |
+|---|--------|------|
+| 1 | **机会双子星** vs **PS-G50** | 双子星 = `satActive` 二元切仓（无仓=100%核心）。PS-G50 = **每天**死扛 50/50。PS-G50 好看是因为没过滤涨停。 |
+| 2 | **历史成交** vs **可执行** | 可执行 = `skip_t1_limit=True`。审计：约 33% 一字/涨停开盘买不进。历史 sat past_year ~156% → 可执行 ~52%（window-local）或更低（连续簿）。 |
+| 3 | **strict / replace / fallback** | **strict**（定案）：先取全体缺口低波 1/3，再丢掉涨停。**replace**：先丢掉涨停再取 1/3（等于补了更差的票）。**fallback**：整个可成交池。v3 实锤 replace/fallback 卫星质量更差。 |
+| 4 | **window-local 空簿** vs **连续簿** | 与择强 walk-forward 对齐用 **每窗空仓起步**。从 2024-08 连续跑再切片，卫星 past_year 会矮一截（持仓路径依赖）。v2 冻结表 ≠ v3 表，不是又发现记账 bug。 |
+
+### 实验路径（拒收记录）
+
+| 尝试 | 结果 | 结论 |
+|------|------|------|
+| 四态 union 替 S-3 | 历史赢、可执行 valid 崩 | 禁止用 +122.8% |
+| 四态 slice 加权 | 可执行 valid −23~−31pt | 不替 STOCK 腿 |
+| 顺位买下一个 S-gap | past_year sat 更差 | **不要扩池** |
+| 静态 50/50 可执行 | past_year −70~−88pt | 空卫星在吃 0 |
+| 空槽按比例回核 x70 | 塌方修好，Sharpe 贴回单轨 | 接近但不如二元机会切 |
+| **strict + 机会双子星** | 三窗全过；past_year +10pt；dd 持平 | **定案可执行** |
+| 历史 PS-G50 sr≈4 / dd≈6 | 涨停虚成交 | **买不回来**，停止追 |
+
+### 复现脚本
+
+```bash
+cd services/data-sync-service
+PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
+# → data/backtest_reports/ps_g50x_deep_YYYY-MM-DD.json
+# 冻结摘要：data/backtest_reports/opportunity_twin_star_v3_frozen.json
+```
 
 ---
 
@@ -61,7 +108,7 @@
 | regime 闸 | `R-wide`：`close>MA20 占比>0.5` 才开仓 |
 | body hold | `S-gap=3` · 可选 `S-limit=3` / `S-shrink=15` |
 | 入场 | next_open、滑点 0.15% 单边、15 槽×10% |
-| 结构 | **机会双子星 v2（可选）**：择强 trail8 主干 + S-gap 机会增强；退出日 satActive；实盘默认单轨择强 |
+| 结构 | **机会双子星 v3**：择强 trail8 + strict S-gap + 无仓回核；实盘默认仍单轨（opt-in） |
 | 成本 | `COSTS_ROUNDTRIP=0.003`（单边 15bp，仅卫星计） |
 | 容量硬上限 | ≤200 万（低波尾宽度有限，天然卫星） |
 
@@ -69,23 +116,22 @@
 
 ## 3. 表现（回测，非实盘）
 
-### 3.0 冻结：机会双子星 v2（2026-09-01 · exit-day satActive · `core_satellite_frozen_2026-08-31.json`）
-| 窗口 | 择强核心 | S-gap 卫星(可执行) | **机会双子星 total/dd/sr** | vs 核心 |
-|------|---------|--------------------|---------------------------|---------|
-| OOS2 | +17.8% | +111.4% | **+62.9 / 16.8 / 1.98** | +45.1pt |
-| train | +40.7% | +35.3% | **+48.6 / 6.1 / 3.87** | +7.9pt |
-| valid* | +139.1% | +10.3% | **+141.7 / 11.9 / 3.26** | +2.6pt |
-| past_year | +202.2% | +29.8% | **+190.5 / 12.6 / 2.62** | **−11.8pt** |
-| aligned | +190.7% | +25.4% | **+180.6 / 12.6 / 2.44** | **−10.1pt** |
-| long2y | +199.1% | +151.3% | **+267.2 / 16.8 / 1.91** | +68.1pt |
-| holdout_partial (08-08~09-01) | +2.7% | −3.2% | **+0.0 / 7.6 / 0.99** | −2.7pt |
+### 3.0 冻结：机会双子星 v3（2026-09-01 · window-local · strict · `opportunity_twin_star_v3_frozen.json`）
 
-> \* valid 短窗 CAGR 年化失真，看相对差异即可。
-> 机会口径：`opp_ret = core_ret`（`satActive=false`）`+ 0.5×(sat_ret − core_ret)`（`satActive=true`，含 **body 退出日**）；卫星 `skip_t1_limit=True` + universe 排除 ST/BJ/退市。
->
-> **产品结论（v2）**：过去一年 / aligned **输给纯核心** → 实盘默认 **单轨择强**；机会双子星降为可选增强（Settings 可 opt-in）。OOS2/long2y 仍显著超额，保留研究价值。
->
-> **v1→v2 根因**：v1 用 `satPositions>0`，退出日仓已清导致往返成本逃逸（aligned 虚高 205.9→正确 180.6，Δ≈25pt）。
+| 窗口 | 择强单轨 total/sr/dd | S-gap 卫星(可执行 strict) | **机会双子星** | Δtotal | Δsr | Δdd |
+|------|---------------------|---------------------------|----------------|--------|-----|-----|
+| OOS2 | +17.8 / 0.72 / 18.0 | +111.4 / 2.56 / 14.1 | **+62.9 / 1.86 / 15.7** | **+45.1pt** | +1.14 | −2.3 |
+| train | +40.7 / 3.01 / 8.4 | +36.4 / 3.03 / 5.6 | **+49.1 / 3.87 / 7.6** | +8.4pt | +0.87 | −0.8 |
+| valid | +139.1 / 3.37 / 11.9 | +15.4 / 1.62 / 9.2 | **+146.9 / 3.62 / 11.9** | +7.9pt | +0.26 | 0 |
+| past_year | +181.2 / 2.43 / 12.6 | +51.9 / 2.16 / 7.6 | **+191.3 / 2.57 / 12.6** | +10.1pt | +0.14 | 0 |
+| aligned | +190.6 / 2.54 / 12.6 | +34.6 / 1.36 / 12.4 | **+190.4 / 2.57 / 12.6** | −0.2pt | +0.03 | 0 |
+
+> 口径：每窗空仓起步；`opp_ret = core`（`satActive=false`）否则 `core + 0.5×(sat−core)`（含 body 退出日）；卫星 `skip_t1_limit` + **`pool_mode=strict`**。
+> **产品**：最优可执行是机会双子星；**实盘 Settings 默认仍 `single_track`**（opt-in）。Sharpe/回撤相对单轨只是略好，**不是** PS-G50 那种 sr4 / dd 砍半。
+
+### 3.0-legacy：机会双子星 v2 表（exit-day 修正后 · 连续/不同切窗 · 勿当 v3）
+
+`core_satellite_frozen_2026-08-31.json` tag=`…-v2-exitday`。past_year 核心 +202.2、aligned 双子星 −10pt——**窗口定义与连续簿不同**，不是 v3 打脸。v1 +205.9 成本逃逸作废。
 
 **2026-09-01 涨停可成交审计（旧 50/50 被替代的根因，仍成立）**：
 1. 冻结窗 671 笔卫星入场中 **一字板 24.1% + 涨停开盘 8.9% = 33% 实际买不进**
@@ -96,6 +142,57 @@
 
 > 历史快照：v1 机会口径 aligned +205.9（成本逃逸，已作废）；旧 50/50 R12 +164.0（一字板虚高，已作废）。
 
+### 3.0b 独立腿：可执行 S-gap vs CN S-3（公平对比 · 2026-09-01）
+
+> **目的**：把状态分桶当作**并列独立 A 股腿**，与择强 STOCK 腿生成器 **S-3** 同六窗对比。  
+> **口径**：`skip_t1_limit=True` + ST/BJ/退市过滤。**禁止**用 R7/R8 的 past_year +122.8% 当真值（涨停可成交审计前）。  
+> **脚本**：`scripts/compare_sgap_vs_s3.py` → `data/backtest_reports/sgap_vs_s3_YYYY-MM-DD.json`
+
+| 窗口 | S-gap total/dd/sr | S-3 total/dd/sr | Δ(sgap−s3) |
+|------|-------------------|-----------------|------------|
+| OOS2 | **+111.4 / 13.7 / 2.41** | +47.3 / 18.9 / 1.26 | **+64.1pt** |
+| train | **+35.3 / 7.3 / 2.98** | +34.1 / 11.6 / 2.22 | +1.2pt |
+| valid | +10.3 / 12.2 / 1.05 | **+38.7 / 10.7 / 2.40** | −28.4pt |
+| past_year | +29.8 / 11.5 / 1.33 | **+58.3 / 23.0 / 1.79** | −28.4pt |
+| aligned | +25.4 / 11.9 / 1.02 | **+58.3 / 23.0 / 1.74** | −32.8pt |
+| long2y | **+151.3 / 13.7 / 1.90** | +115.8 / 23.0 / 1.44 | **+35.5pt** |
+
+> 冻结：`data/backtest_reports/sgap_vs_s3_2026-09-01.json`（`skip_t1_limit=True`）。S-gap 卫星列与 §3.0 可执行卫星一致。
+
+**结论（2026-09-01）**：可执行 S-gap 在 OOS2 / long2y 显著优于 S-3，但 **past_year / aligned / valid 输给 S-3**（约 −28~−33pt）。→ **保留为研究 / 双子星卫星材料，不升格为第二股票腿**；更勿用旧 +122.8% 叙事。S-gap 的价值仍是：与择强低相关、dd 常更浅、作机会增强而非独立主仓。
+
+### 3.0c 四态 union 合成 vs S-3（历史口径复现 · 2026-09-01）
+
+> **目的**：复现你记得的 R6/R8 实验——**四态 OR 合成一个策略** vs CN S-3，walk-forward **三窗**。  
+> **引擎**：`scout_state_bucket_pickstrong.simulate_state_bucket`（S-limit/S-gap/S-fresh/S-shrink，共享 10 槽 + 态优先级，body 3/3/15/15）。  
+> **口径**：**历史成交模型**（假设涨停开盘能买，**无** `skip_t1_limit`）。  
+> **脚本**：`scripts/compare_union_vs_s3.py` → `data/backtest_reports/union_vs_s3_2026-09-01.json`
+
+| 窗口 | union total/dd/sr | S-3 total/dd/sr | Δ(union−s3) |
+|------|-------------------|-----------------|-------------|
+| OOS2 | **+128.6 / 19.5 / 2.44** | +47.3 / 18.9 / 1.26 | **+81.3pt** |
+| train | **+76.9 / 8.4 / 3.57** | +34.1 / 11.6 / 2.22 | **+42.8pt** |
+| valid | **+46.8 / 3.6 / 4.84** | +38.7 / 10.7 / 2.40 | **+8.1pt** |
+
+> 复跑与冻结 JSON（`state_bucket_pickstrong_latest.json` / `state_union_latest.json`）**逐窗 Δ=0.00pt** → **实验成立**（三窗 union 全赢 S-3，且 dd/sr 多数更优）。
+>
+> **但不可直接当实盘真值**：① R10 已证共享槽 union ≈ S-limit 独裁；② 涨停可成交审计后单独 S-gap 近窗输给 S-3（§3.0b）。下一步若要做诚实对比，应在 union 引擎上加 `skip_t1_limit` 或改跑 slice2（L+G 独立槽）。
+
+### 3.0d 四态 slice vs S-3（可执行 · Phase 1 · 2026-09-01）
+
+> 设计：`docs/designs/state-bucket-slice-stock-leg.md` · 引擎：`service/state_bucket_slice.py` · 报告：`sliced_vs_s3_2026-09-01.json`  
+> 口径：**每态独立槽** + 日收益加权 · `skip_t1_limit=True` · 三窗 OOS2/train/valid
+
+| 变体 | OOS2 Δ vs S-3 | train Δ | valid Δ | 过线(−5pt)/3 |
+|------|---------------|---------|---------|--------------|
+| **G 单态** | **+64pt** | **+4pt** | −23pt | **2/3** |
+| slice2_L30 | +19pt | −8pt | −28pt | 1/3 |
+| slice2_LG | −7pt | −15pt | −31pt | 0/3 |
+| slice3_LGS | +4pt | −20pt | −31pt | 1/3 |
+| L 单态 | −56pt | −32pt | −38pt | 0/3 |
+
+**结论**：可执行口径下 **slice 合成不能替 S-3**（valid 全线输）；「中间点」≈ **S-gap 单态**（OOS2/train 赢、valid 输）。历史 union +122.8% **不可外推**到此口径。Phase 2 替 STOCK 腿 **暂不拍板**。
+
 ### 3.1 三窗 walk-forward（历史 · R10 slice2 / R6 union 已更替）
 | 结构 | OOS2 sr | train sr | valid sr |
 |------|---------|----------|----------|
@@ -103,20 +200,20 @@
 | R10 slice2（L+G 切分） | 2.89 | 3.57 | 5.21 |
 | **R12 双子星 50/50** | **2.88** | **5.48** | **4.74** |
 
-### 3.2 过去一年（同择强冻结窗 2025-08-28~2026-08-28 · aligned · v2）
-| 指标 | 择强单轨 trail8 | S-gap 卫星(可执行) | **机会双子星 v2** |
-|------|----------------|---------------------|---------------------|
-| 总收益 | +190.7% | +25.4% | **+180.6%** |
-| 最大回撤 | 12.6% | 11.9% | **12.6%** |
-| sharpe | 2.54 | — | **2.44** |
+### 3.2 过去一年（aligned 2025-08-28~2026-08-28 · v3 window-local）
+| 指标 | 择强单轨 trail8 | S-gap 卫星(strict 可执行) | **机会双子星 v3** |
+|------|----------------|---------------------------|-------------------|
+| 总收益 | +190.6% | +34.6% | **+190.4%** |
+| 最大回撤 | 12.6% | 12.4% | **12.6%** |
+| sharpe | 2.54 | 1.36 | **2.57** |
 
-> v2（含退出日成本）**输给核心 −10.1pt** → 实盘默认单轨择强。v1 +205.9 因退出日成本逃逸作废。
+> v3 **打平**核心总收益、Sharpe 略高。v2 aligned −10.1pt 是另一套切窗/连续簿，勿回写。v1 +205.9 成本逃逸作废。
 
 ### 3.3 与对照基准对比
-| 策略 | aligned | dd | sr | 资产 | 实盘默认 |
-|------|---------|----|----|------|----------|
-| 择强单轨（定案 mom_compare+trail8） | **+190.7%** | 12.6 | 2.54 | 跨资产 | **是** |
-| **机会双子星 v2（可选）** | **+180.6%** | 12.6 | 2.44 | 跨资产+A 股 | 否（opt-in） |
+| 策略 | aligned | dd | sr | 实盘默认 |
+|------|---------|----|----|----------|
+| 择强单轨（mom_compare+trail8） | **+190.6%** | 12.6 | 2.54 | **是** |
+| **机会双子星 v3（opt-in）** | **+190.4%** | 12.6 | **2.57** | 否 |
 
 
 ---
@@ -292,7 +389,7 @@
 
 - **回测 ≠ 实盘**：所有数字为历史回放，含 0.15% 单边滑点、0.3% 往返成本假设；未含停牌、容量冲击（≤200 万上限即为此）。
 - **待验证**：`holdout 2026-08-08~2027-02-08` 只读；截至 2026-09-01 partial（15 日）机会 vs 核心 −2.7pt，未满窗。
-- **实盘默认**：单轨择强（OPT-060）；机会双子星为 opt-in。
+- **实盘默认**：单轨择强；机会双子星 v3 为 Settings opt-in（最优可执行，见文首口径铁律）。
 - **与择强单轨互补**（core-satellite）：核心 80–90% 择强（跨资产高收益）；卫星 ≤200 万 / 10–20% 状态分桶（纯 A 股低 dd alpha）。二者资产正交 + A 股内机制不同（动量强股 vs 低波尾特殊态），回撤时序错开。相关性需同窗 daily NAV 验证（待跑）。
 - **冻结基线变更**：本算法冻结为 `scout_baseline_state_body.json:1`，**替换**旧 `20-150 amp_q10` 基线（旧基线归档保留，不动）。
 
@@ -310,8 +407,14 @@
 | R4 留/弃 | `scripts/scout_state_tune2.py:1` |
 | R5 body / hold 网格 | `scripts/scout_state_body.py:1` · `scripts/scout_state_hold.py:1` |
 | 冻结基线 | `data/backtest_reports/scout_baseline_state_body.json` |
-| **双子星冻结（R12）** | `data/backtest_reports/core_satellite_frozen_2026-08-31.json` |
+| **机会双子星 v3 冻结** | `data/backtest_reports/opportunity_twin_star_v3_frozen.json` |
+| **v3 对照脚本** | `scripts/compare_ps_g50x_deep.py` |
+| **双子星冻结（R12 / v2 连续簿）** | `data/backtest_reports/core_satellite_frozen_2026-08-31.json` |
+| **独立腿 vs S-3（S-gap 可执行）** | `scripts/compare_sgap_vs_s3.py` |
+| **四态 union vs S-3（历史复现）** | `scripts/compare_union_vs_s3.py` → `union_vs_s3_*.json` |
+| Timeline 独立腿 | `GET /api/backtest/timeline?strategy=state_bucket` |
 | 双子星 API | `GET /api/backtest/timeline?strategy=twin_star` · `GET /api/backtest/twin-star/action` |
+| 服务层 S-gap | `service/state_bucket_track.py`（`build_sgap_timeline` / `build_state_bucket_timeline`） |
 | 14:30 前提醒 | `scheduler/twin_star_reminder_job.py`（工作日 14:20 · webhook `twin_star_reminder` + 通知中心 `twin_star` 类型） |
 
 *创建 2026-08-31 · 状态：R1–R12 跑完、R12 双子星冻结、holdout 待只读确认。*
@@ -355,25 +458,26 @@
 - **trail8**：持有 ETF 期间从入场后峰值回撤 **8%** → 当日切 REPO。
 - 参数：`LOOKBACK=60`、`MA=200`、`mom_compare` 口径，信号用 T-1 收盘。
 
-### 7.5 组合结构（机会口径 · 2026-09-01 v2）
+### 7.5 组合结构（机会口径 · 2026-09-01 v3）
 
-- **闲置**：`satActive=false` → 100% 核心日收益（卫星资金跟核心）。
+- **闲置**：`satActive=false` → 100% 核心日收益（卫星资金跟核心 = 「买不进就买别的资产」）。
 - **占用**：`satActive=true`（隔夜持仓 **或** body 退出日）→ `opp_ret = core_ret + 0.5×(sat_ret − core_ret)`。
-- **禁止**再用固定每日 50/50（可执行口径下稀释核心）。
-- 卫星切片内名义最高 150%（15×10%）→ 总资金最多约 75% 股票名义敞口（仅 satActive 日）。
+- **卫星选股 `pool_mode=strict`**：全体 S-gap 按 amp 升序取前 1/3，**再**剔除 T-1 涨停。禁止先剔除再补仓（replace/fallback 已拒收）。
+- **禁止**固定每日 50/50（可执行口径下空仓吃 0，past_year 塌 70pt+）。
 
-### 7.6 验证窗口与冻结数字（v2 · 见 §3.0 表）
+### 7.6 验证窗口与冻结数字（v3 · 见 §3.0 表）
 
-> 复现：核心 timeline pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True)`（行含 `satActive`）；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `core_satellite_frozen_2026-08-31.json`（tag=`…-v2-exitday`）。
+> 复现：核心 pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict")`；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `opportunity_twin_star_v3_frozen.json`。
 
-### 7.7 实盘执行映射（机会双子星 · 可选）
+### 7.7 实盘执行映射（机会双子星 · opt-in）
 
 - **默认实盘**：单轨择强 100%（Settings 默认 `single_track`）。
 - **opt-in 机会双子星**：
-  - 无卫星持仓且今日不开新仓 → **核心 100%** 配当日 pick。
-  - 开闸可买 **或** 持仓簿非空 → **核心 50% / 卫星 50%**。
-  - 卫星候选 T 日开盘买；买不进放弃；body=3 收盘卖（持仓簿 `exitsDue` 提醒）。
-- **执行顺序**：先按 `coreTargetPct` 调核心腿；再按持仓簿卖到期 / 开闸买候选。
+  - 无卫星持仓且今日不开新仓 → **核心 100%**。
+  - 开闸且 **strict 可成交候选非空** **或** 持仓簿非空 → **核心 50% / 卫星 50%**。
+  - 涨停买不进 → **放弃该票**（不顺位补），空出来的钱留在核心。
+  - body=3 收盘卖（持仓簿 `exitsDue`）。
+  - 执行顺序：先按 `coreTargetPct` 调核心腿；再按持仓簿卖到期 / 开闸买 strict 候选。
 
 ### 7.8 14:30 前操作提醒 + 卫星持仓簿
 

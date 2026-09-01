@@ -15,8 +15,8 @@ export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
 
 export function getStrategyMode(): StrategyMode {
   const v = loadJson<StrategyMode | null>(STORAGE_KEY, null);
-  // 2026-09-01 v2: after exit-day cost fix, past_year/aligned lose to pure core →
-  // default live mode is single_track; twin_star remains opt-in.
+  // 2026-09-01 v3: executable twin-star wins walk-forward vs core, but live
+  // default stays single_track (opt-in) — Sharpe/DD edge is small, not PS-G50.
   return v === 'twin_star' ? v : 'single_track';
 }
 

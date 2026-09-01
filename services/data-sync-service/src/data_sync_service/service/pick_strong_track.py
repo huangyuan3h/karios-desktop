@@ -278,14 +278,13 @@ def build_twin_star_timeline(
 ) -> dict[str, Any]:
     """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 机会双子星 (Opportunity Twin-Star) rows.
 
-    Opportunity mode (default, frozen 2026-09-01, exit-day fix 2026-09-01):
+    Opportunity mode (default, frozen 2026-09-01 v3):
     satellite capital follows the core when idle; on days the satellite occupied
     capital (overnight hold OR exit-at-close — see satActive), its return
     replaces the core return for that sat_weight slice:
         opp_ret = core_ret if not sat_active else core_ret + sat_weight*(sat_ret - core_ret)
-    Exit days must stay active so round-trip costs in satNav enter the blend
-    (pre-fix used satPositions>0 only, which zeroed the exit day and overstated
-    opportunity NAV by ~25pt on the aligned window).
+    Satellite fills: skip_t1_limit + pool_mode=strict (do not refill from worse
+    S-gap ranks). Exit days must stay active so round-trip costs enter the blend.
 
     Fixed 50/50 daily-return blending (opportunity=False) is kept for audit.
     """

@@ -1,0 +1,575 @@
+{
+  "tag": "sliced-vs-s3-2026-09-01",
+  "generated_at": "2026-09-01T04:33:28.872865+00:00",
+  "design": "docs/designs/state-bucket-slice-stock-leg.md",
+  "executable": true,
+  "skip_t1_limit": true,
+  "reject_line_pt": 5.0,
+  "windows": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01"
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01"
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07"
+    }
+  },
+  "s3": {
+    "OOS2": {
+      "total_pct": 47.33,
+      "max_dd": 18.9,
+      "sharpe": 1.26,
+      "closed": 93
+    },
+    "train": {
+      "total_pct": 34.11,
+      "max_dd": 11.6,
+      "sharpe": 2.22,
+      "closed": 51
+    },
+    "valid": {
+      "total_pct": 38.7,
+      "max_dd": 10.7,
+      "sharpe": 2.4,
+      "closed": 16
+    }
+  },
+  "variants": {
+    "L": {
+      "OOS2": {
+        "total_pct": -8.37,
+        "max_dd": 14.9,
+        "sharpe": -1.14,
+        "n_days": 254,
+        "delta_pt": -55.7,
+        "states": [
+          "S-limit"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "train": {
+        "total_pct": 2.19,
+        "max_dd": 0.7,
+        "sharpe": 1.41,
+        "n_days": 128,
+        "delta_pt": -31.92,
+        "states": [
+          "S-limit"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "valid": {
+        "total_pct": 0.36,
+        "max_dd": 0.6,
+        "sharpe": 0.58,
+        "n_days": 112,
+        "delta_pt": -38.34,
+        "states": [
+          "S-limit"
+        ],
+        "weights": [
+          1.0
+        ]
+      }
+    },
+    "G": {
+      "OOS2": {
+        "total_pct": 111.42,
+        "max_dd": 14.1,
+        "sharpe": 2.56,
+        "n_days": 254,
+        "delta_pt": 64.09,
+        "states": [
+          "S-gap"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "train": {
+        "total_pct": 38.23,
+        "max_dd": 5.6,
+        "sharpe": 3.13,
+        "n_days": 128,
+        "delta_pt": 4.12,
+        "states": [
+          "S-gap"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "valid": {
+        "total_pct": 15.43,
+        "max_dd": 9.2,
+        "sharpe": 1.61,
+        "n_days": 112,
+        "delta_pt": -23.27,
+        "states": [
+          "S-gap"
+        ],
+        "weights": [
+          1.0
+        ]
+      }
+    },
+    "S": {
+      "OOS2": {
+        "total_pct": 67.28,
+        "max_dd": 21.9,
+        "sharpe": 1.32,
+        "n_days": 254,
+        "delta_pt": 19.95,
+        "states": [
+          "S-shrink"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "train": {
+        "total_pct": 3.73,
+        "max_dd": 14.5,
+        "sharpe": 0.5,
+        "n_days": 128,
+        "delta_pt": -30.38,
+        "states": [
+          "S-shrink"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "valid": {
+        "total_pct": 5.87,
+        "max_dd": 6.9,
+        "sharpe": 1.47,
+        "n_days": 112,
+        "delta_pt": -32.83,
+        "states": [
+          "S-shrink"
+        ],
+        "weights": [
+          1.0
+        ]
+      }
+    },
+    "F": {
+      "OOS2": {
+        "total_pct": 44.85,
+        "max_dd": 12.1,
+        "sharpe": 1.57,
+        "n_days": 254,
+        "delta_pt": -2.48,
+        "states": [
+          "S-fresh"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "train": {
+        "total_pct": 1.65,
+        "max_dd": 9.7,
+        "sharpe": 0.31,
+        "n_days": 128,
+        "delta_pt": -32.46,
+        "states": [
+          "S-fresh"
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "valid": {
+        "total_pct": 4.78,
+        "max_dd": 6.6,
+        "sharpe": 1.42,
+        "n_days": 112,
+        "delta_pt": -33.92,
+        "states": [
+          "S-fresh"
+        ],
+        "weights": [
+          1.0
+        ]
+      }
+    },
+    "slice2_LG": {
+      "OOS2": {
+        "total_pct": 40.57,
+        "max_dd": 11.2,
+        "sharpe": 2.02,
+        "n_days": 254,
+        "delta_pt": -6.76,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      },
+      "train": {
+        "total_pct": 19.19,
+        "max_dd": 2.6,
+        "sharpe": 3.23,
+        "n_days": 128,
+        "delta_pt": -14.92,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      },
+      "valid": {
+        "total_pct": 7.9,
+        "max_dd": 4.6,
+        "sharpe": 1.64,
+        "n_days": 112,
+        "delta_pt": -30.8,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      }
+    },
+    "slice3_LGS": {
+      "OOS2": {
+        "total_pct": 51.53,
+        "max_dd": 10.2,
+        "sharpe": 1.88,
+        "n_days": 254,
+        "delta_pt": 4.2,
+        "states": [
+          "S-limit",
+          "S-gap",
+          "S-shrink"
+        ],
+        "weights": [
+          0.3333333333333333,
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      },
+      "train": {
+        "total_pct": 14.02,
+        "max_dd": 3.2,
+        "sharpe": 2.54,
+        "n_days": 128,
+        "delta_pt": -20.09,
+        "states": [
+          "S-limit",
+          "S-gap",
+          "S-shrink"
+        ],
+        "weights": [
+          0.3333333333333333,
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      },
+      "valid": {
+        "total_pct": 7.27,
+        "max_dd": 5.4,
+        "sharpe": 1.77,
+        "n_days": 112,
+        "delta_pt": -31.43,
+        "states": [
+          "S-limit",
+          "S-gap",
+          "S-shrink"
+        ],
+        "weights": [
+          0.3333333333333333,
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    "slice2_L70": {
+      "OOS2": {
+        "total_pct": 18.75,
+        "max_dd": 10.0,
+        "sharpe": 1.42,
+        "n_days": 254,
+        "delta_pt": -28.58,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.7,
+          0.3
+        ]
+      },
+      "train": {
+        "total_pct": 12.16,
+        "max_dd": 1.9,
+        "sharpe": 3.28,
+        "n_days": 128,
+        "delta_pt": -21.95,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.7,
+          0.3
+        ]
+      },
+      "valid": {
+        "total_pct": 4.88,
+        "max_dd": 2.8,
+        "sharpe": 1.66,
+        "n_days": 112,
+        "delta_pt": -33.82,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.7,
+          0.3
+        ]
+      }
+    },
+    "slice2_L60": {
+      "OOS2": {
+        "total_pct": 29.25,
+        "max_dd": 10.6,
+        "sharpe": 1.77,
+        "n_days": 254,
+        "delta_pt": -18.08,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.6,
+          0.4
+        ]
+      },
+      "train": {
+        "total_pct": 15.63,
+        "max_dd": 2.3,
+        "sharpe": 3.26,
+        "n_days": 128,
+        "delta_pt": -18.48,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.6,
+          0.4
+        ]
+      },
+      "valid": {
+        "total_pct": 6.39,
+        "max_dd": 3.7,
+        "sharpe": 1.65,
+        "n_days": 112,
+        "delta_pt": -32.31,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.6,
+          0.4
+        ]
+      }
+    },
+    "slice2_L50": {
+      "OOS2": {
+        "total_pct": 40.57,
+        "max_dd": 11.2,
+        "sharpe": 2.02,
+        "n_days": 254,
+        "delta_pt": -6.76,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      },
+      "train": {
+        "total_pct": 19.19,
+        "max_dd": 2.6,
+        "sharpe": 3.23,
+        "n_days": 128,
+        "delta_pt": -14.92,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      },
+      "valid": {
+        "total_pct": 7.9,
+        "max_dd": 4.6,
+        "sharpe": 1.64,
+        "n_days": 112,
+        "delta_pt": -30.8,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.5,
+          0.5
+        ]
+      }
+    },
+    "slice2_L40": {
+      "OOS2": {
+        "total_pct": 52.77,
+        "max_dd": 11.8,
+        "sharpe": 2.19,
+        "n_days": 254,
+        "delta_pt": 5.44,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.4,
+          0.6
+        ]
+      },
+      "train": {
+        "total_pct": 22.84,
+        "max_dd": 3.1,
+        "sharpe": 3.2,
+        "n_days": 128,
+        "delta_pt": -11.27,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.4,
+          0.6
+        ]
+      },
+      "valid": {
+        "total_pct": 9.41,
+        "max_dd": 5.6,
+        "sharpe": 1.63,
+        "n_days": 112,
+        "delta_pt": -29.29,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.4,
+          0.6
+        ]
+      }
+    },
+    "slice2_L30": {
+      "OOS2": {
+        "total_pct": 65.89,
+        "max_dd": 12.4,
+        "sharpe": 2.32,
+        "n_days": 254,
+        "delta_pt": 18.56,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.3,
+          0.7
+        ]
+      },
+      "train": {
+        "total_pct": 26.56,
+        "max_dd": 3.7,
+        "sharpe": 3.18,
+        "n_days": 128,
+        "delta_pt": -7.55,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.3,
+          0.7
+        ]
+      },
+      "valid": {
+        "total_pct": 10.92,
+        "max_dd": 6.5,
+        "sharpe": 1.62,
+        "n_days": 112,
+        "delta_pt": -27.78,
+        "states": [
+          "S-limit",
+          "S-gap"
+        ],
+        "weights": [
+          0.3,
+          0.7
+        ]
+      }
+    }
+  },
+  "best": {
+    "best_variant": "G",
+    "ranking": [
+      {
+        "variant": "G",
+        "pass_windows": 2,
+        "mean_delta_pt": 14.98
+      },
+      {
+        "variant": "slice2_L30",
+        "pass_windows": 1,
+        "mean_delta_pt": -5.59
+      },
+      {
+        "variant": "slice2_L40",
+        "pass_windows": 1,
+        "mean_delta_pt": -11.71
+      },
+      {
+        "variant": "S",
+        "pass_windows": 1,
+        "mean_delta_pt": -14.42
+      },
+      {
+        "variant": "slice3_LGS",
+        "pass_windows": 1,
+        "mean_delta_pt": -15.77
+      }
+    ]
+  },
+  "verdict": "Best slice candidate: 'G' (2/3 windows within −5.0pt of S-3). Executable skip_t1_limit=True. Phase 2 only if user approves after review.",
+  "markdown_table": "| 窗口 | 变体 | total% | dd | sr | S-3 total% | Δ | 过线? |\n|------|------|-------:|---:|---:|-----------:|--:|:-----:|\n| OOS2 | F | +44.9 | 12.1 | 1.57 | +47.3 | -2.5pt | ✓ |\n| OOS2 | G | +111.4 | 14.1 | 2.56 | +47.3 | +64.1pt | ✓ |\n| OOS2 | L | -8.4 | 14.9 | -1.14 | +47.3 | -55.7pt | ✗ |\n| OOS2 | S | +67.3 | 21.9 | 1.32 | +47.3 | +19.9pt | ✓ |\n| OOS2 | slice2_L30 | +65.9 | 12.4 | 2.32 | +47.3 | +18.6pt | ✓ |\n| OOS2 | slice2_L40 | +52.8 | 11.8 | 2.19 | +47.3 | +5.4pt | ✓ |\n| OOS2 | slice2_L50 | +40.6 | 11.2 | 2.02 | +47.3 | -6.8pt | ✗ |\n| OOS2 | slice2_L60 | +29.2 | 10.6 | 1.77 | +47.3 | -18.1pt | ✗ |\n| OOS2 | slice2_L70 | +18.8 | 10.0 | 1.42 | +47.3 | -28.6pt | ✗ |\n| OOS2 | slice2_LG | +40.6 | 11.2 | 2.02 | +47.3 | -6.8pt | ✗ |\n| OOS2 | slice3_LGS | +51.5 | 10.2 | 1.88 | +47.3 | +4.2pt | ✓ |\n| train | F | +1.6 | 9.7 | 0.31 | +34.1 | -32.5pt | ✗ |\n| train | G | +38.2 | 5.6 | 3.13 | +34.1 | +4.1pt | ✓ |\n| train | L | +2.2 | 0.7 | 1.41 | +34.1 | -31.9pt | ✗ |\n| train | S | +3.7 | 14.5 | 0.5 | +34.1 | -30.4pt | ✗ |\n| train | slice2_L30 | +26.6 | 3.7 | 3.18 | +34.1 | -7.5pt | ✗ |\n| train | slice2_L40 | +22.8 | 3.1 | 3.2 | +34.1 | -11.3pt | ✗ |\n| train | slice2_L50 | +19.2 | 2.6 | 3.23 | +34.1 | -14.9pt | ✗ |\n| train | slice2_L60 | +15.6 | 2.3 | 3.26 | +34.1 | -18.5pt | ✗ |\n| train | slice2_L70 | +12.2 | 1.9 | 3.28 | +34.1 | -21.9pt | ✗ |\n| train | slice2_LG | +19.2 | 2.6 | 3.23 | +34.1 | -14.9pt | ✗ |\n| train | slice3_LGS | +14.0 | 3.2 | 2.54 | +34.1 | -20.1pt | ✗ |\n| valid | F | +4.8 | 6.6 | 1.42 | +38.7 | -33.9pt | ✗ |\n| valid | G | +15.4 | 9.2 | 1.61 | +38.7 | -23.3pt | ✗ |\n| valid | L | +0.4 | 0.6 | 0.58 | +38.7 | -38.3pt | ✗ |\n| valid | S | +5.9 | 6.9 | 1.47 | +38.7 | -32.8pt | ✗ |\n| valid | slice2_L30 | +10.9 | 6.5 | 1.62 | +38.7 | -27.8pt | ✗ |\n| valid | slice2_L40 | +9.4 | 5.6 | 1.63 | +38.7 | -29.3pt | ✗ |\n| valid | slice2_L50 | +7.9 | 4.6 | 1.64 | +38.7 | -30.8pt | ✗ |\n| valid | slice2_L60 | +6.4 | 3.7 | 1.65 | +38.7 | -32.3pt | ✗ |\n| valid | slice2_L70 | +4.9 | 2.8 | 1.66 | +38.7 | -33.8pt | ✗ |\n| valid | slice2_LG | +7.9 | 4.6 | 1.64 | +38.7 | -30.8pt | ✗ |\n| valid | slice3_LGS | +7.3 | 5.4 | 1.77 | +38.7 | -31.4pt | ✗ |"
+}

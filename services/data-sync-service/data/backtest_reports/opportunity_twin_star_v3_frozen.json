@@ -1,0 +1,29 @@
+{
+  "tag": "opportunity-twin-star-v3-strict-window-local-2026-09-01",
+  "baseline_id": "opportunity_twin_star",
+  "baseline_name_zh": "机会双子星",
+  "recipe": {
+    "core": "pick_strong trail8 mom_compare",
+    "satellite": "S-gap bucket_q=3 max_pos=15 body=3 R-wide",
+    "fill": "skip_t1_limit=True pool_mode=strict (no rank refill)",
+    "blend": "opportunity: satActive=false → 100% core; satActive=true (overnight OR body-exit) → core + 0.5*(sat-core)",
+    "protocol": "window-local empty book (same as pick-strong walk-forward)"
+  },
+  "not_this": [
+    "PS-G50 static 50/50 (historical fill, Sharpe~4 is not executable)",
+    "PS-G50-X idle-slot proportional (x70) — close but worse than binary opportunity on this protocol",
+    "pool_mode=replace or fallback (next S-gap after limit-up) — worse satellite quality",
+    "v1 satPositions>0 blend (exit-day cost escape)",
+    "R7/R8 union +122.8% (unfillable limit-ups)"
+  ],
+  "windows": {
+    "OOS2": { "start": "2024-08-01", "end": "2025-08-01", "core": { "total_pct": 17.8, "sharpe": 0.72, "max_dd": 18.0 }, "sat": { "total_pct": 111.4, "sharpe": 2.56, "max_dd": 14.1 }, "twin": { "total_pct": 62.9, "sharpe": 1.86, "max_dd": 15.7 }, "delta_total_pt": 45.1 },
+    "train": { "start": "2025-08-01", "end": "2026-02-01", "core": { "total_pct": 40.7, "sharpe": 3.01, "max_dd": 8.4 }, "sat": { "total_pct": 36.4, "sharpe": 3.03, "max_dd": 5.6 }, "twin": { "total_pct": 49.1, "sharpe": 3.87, "max_dd": 7.6 }, "delta_total_pt": 8.4 },
+    "valid": { "start": "2026-03-01", "end": "2026-08-07", "core": { "total_pct": 139.1, "sharpe": 3.37, "max_dd": 11.9 }, "sat": { "total_pct": 15.4, "sharpe": 1.62, "max_dd": 9.2 }, "twin": { "total_pct": 146.9, "sharpe": 3.62, "max_dd": 11.9 }, "delta_total_pt": 7.9 },
+    "past_year": { "start": "2025-08-01", "end": "2026-08-07", "core": { "total_pct": 181.2, "sharpe": 2.43, "max_dd": 12.6 }, "sat": { "total_pct": 51.9, "sharpe": 2.16, "max_dd": 7.6 }, "twin": { "total_pct": 191.3, "sharpe": 2.57, "max_dd": 12.6 }, "delta_total_pt": 10.1 },
+    "aligned": { "start": "2025-08-28", "end": "2026-08-28", "core": { "total_pct": 190.6, "sharpe": 2.54, "max_dd": 12.6 }, "sat": { "total_pct": 34.6, "sharpe": 1.36, "max_dd": 12.4 }, "twin": { "total_pct": 190.4, "sharpe": 2.57, "max_dd": 12.6 }, "delta_total_pt": -0.2 }
+  },
+  "verdict": "Best executable vs pick-strong single: opportunity twin-star (strict S-gap + idle→core). Walk-forward 3/3. Sharpe slightly better, maxDD same on past_year (12.6). Historical PS-G50 sr~4 is not recoverable with honest fills. Live default remains single_track opt-in until product flip.",
+  "source_report": "data/backtest_reports/ps_g50x_deep_2026-09-01.json",
+  "reproduce": "PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report"
+}

@@ -102,6 +102,7 @@ class TestBuildSgapTimeline:
         exit_row = next(row for row in rows if row["date"] == dates[23])
         assert exit_row["satPositions"] == 0
         assert exit_row["satActive"] is True
+        assert exit_row["satSlots"] == 1
         # open book empty after body exit (and window ends with no new fill)
         assert r.get("openPositions") == [] or all(
             p["ts"] != "A.SH" for p in r.get("openPositions") or []
@@ -146,3 +147,82 @@ class TestBuildSgapTimeline:
         assert len(fills) == 2
         assert fills[0][1] == "A.SH" and fills[1][1] == "D.SH"
         assert len([row for row in r["rows"] if row["satPositions"]]) == 2  # held 3 days, visible 2
+
+    def test_limit_fallback_fills_next_rank_when_top_bucket_locked(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        gap_idx = 20
+        # A is lowest amp (top bucket) but limit-locked on T-1; B should fill with fallback.
+        lim_pc = per_ts["A.SH"][gap_idx - 1]["close"]
+        per_ts["A.SH"][gap_idx]["close"] = round(lim_pc * 1.10, 4)
+        per_ts["A.SH"][gap_idx]["high"] = per_ts["A.SH"][gap_idx]["close"]
+        per_ts["A.SH"][gap_idx]["low"] = per_ts["A.SH"][gap_idx]["close"]
+        per_ts["A.SH"][gap_idx]["pre_close"] = lim_pc
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        strict_fills: list[tuple[str, str]] = []
+        r_strict = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            limit_fallback=False,
+            debug_fills=strict_fills,
+        )
+        assert strict_fills == []
+        assert r_strict["summary"]["satPct"] == 0.0
+
+        fb_fills: list[tuple[str, str]] = []
+        r_fb = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            limit_fallback=True,
+            debug_fills=fb_fills,
+        )
+        assert (dates[21], "B.SH") in fb_fills
+        assert r_fb["summary"]["satPct"] != 0.0
+
+    def test_replace_fills_next_best_not_whole_pool(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        gap_idx = 20
+        lim_pc = per_ts["A.SH"][gap_idx - 1]["close"]
+        per_ts["A.SH"][gap_idx]["close"] = round(lim_pc * 1.10, 4)
+        per_ts["A.SH"][gap_idx]["high"] = per_ts["A.SH"][gap_idx]["close"]
+        per_ts["A.SH"][gap_idx]["low"] = per_ts["A.SH"][gap_idx]["close"]
+        per_ts["A.SH"][gap_idx]["pre_close"] = lim_pc
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        fills: list[tuple[str, str]] = []
+        sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            pool_mode="replace",
+            debug_fills=fills,
+        )
+        # 3 gap names, qn=1: replace takes the best fillable only (B), not C.
+        assert fills == [(dates[21], "B.SH")]
+
+
+class TestSelectStrictGapCandidates:
+    def test_drops_locked_top_without_refill(self) -> None:
+        items = [("A", 0.01, 0.05), ("B", 0.04, 0.05), ("C", 0.09, 0.05)]
+        # 3 names, qn=1 → only A; A locked → empty (not B).
+        assert sbt.select_strict_gap_candidates(items, {"A"}) == []
+        assert sbt.select_strict_gap_candidates(items, set())[0][0] == "A"
+
+
+class TestSgapToTimelineRows:
+    def test_adapts_nav_and_summary(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        sat = sbt.build_sgap_timeline(start=dates[0], end=dates[-1], skip_t1_limit=True)
+        out = sbt.sgap_to_timeline_rows(sat)
+        assert out["ok"] is True
+        assert out["mode"] == "state_bucket_sgap"
+        assert out["rows"]
+        assert out["rows"][0]["pick"] == "S-GAP"
+        assert "navSingle" in out["rows"][0]
+        assert out["summary"]["fusedPct"] == sat["summary"]["satPct"]
+        assert out["summary"]["satMaxDdPct"] == sat["summary"]["satMaxDdPct"]
+        built = sbt.build_state_bucket_timeline(start=dates[0], end=dates[-1])
+        assert built["start"] == dates[0]
+        assert built["end"] == dates[-1]
+        assert built["rows"][-1]["navSingleReturnPct"] == sat["rows"][-1]["satNavReturnPct"]

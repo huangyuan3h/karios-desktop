@@ -31,10 +31,11 @@
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
-> **机会双子星 v2（2026-09-01）**：可选增强——卫星资金平时跟核心，开闸可买或持仓中才切 50%；**退出日 `satActive` 计入成本**。修正后 past_year/aligned 输给纯核心 → **实盘默认仍是本单轨**；双子星 Settings opt-in（`backtests/state-bucket-algo-2026-08-31.md` §3.0/§7）。
+> **机会双子星 v3（2026-09-01）**：可选增强——**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`。window-local 可执行三窗全过单轨，past_year +10pt、Sharpe 略高、回撤持平。**实盘默认仍是本单轨**（Settings opt-in）。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
-> **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。
+> **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。  
+> **股票腿候选**：择强 STOCK 腿来自 **S-3**；**状态分桶 S-gap** 是并列的独立 A 股腿（可 Timeline `strategy=state_bucket` 单独回测），**不是**择强替换件（R8 已拒收 argmax 替腿）。「机会双子星」命名动机：涨停可能买得进也可能买不进 → 卫星只在可执行机会时增强，不假设一字板必成交。
 
 ---
 

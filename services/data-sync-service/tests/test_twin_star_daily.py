@@ -68,6 +68,28 @@ class TestSatSignal:
         assert sat["candidates"][0]["ts"] == "A.SH"
         assert sat["note"] is None
 
+    def test_strict_does_not_refill_when_top_bucket_locked(self, monkeypatch) -> None:
+        """Winning recipe: top 1/3 of ALL gaps, then drop locked — no next-name refill."""
+        dates = _mk_dates(25)
+        gap_idx = len(dates) - 2
+        per_ts = {
+            "A.SH": _mk_series(dates, gap_idx, 0.05, 0.01),
+            "B.SH": _mk_series(dates, gap_idx, 0.05, 0.04),
+            "C.SH": _mk_series(dates, gap_idx, 0.05, 0.09),
+        }
+        sig = per_ts["A.SH"][gap_idx]
+        pc = sig["pre_close"]
+        sig["close"] = round(pc * 1.10, 4)
+        sig["high"] = sig["close"]
+        sig["low"] = sig["close"]
+        mv = {ds: {ts: 100.0 for ts in per_ts} for ds in dates}
+        monkeypatch.setattr(tsd, "_load_calendar", lambda w, e: dates)
+        monkeypatch.setattr(tsd, "_load_rows", lambda w, e: per_ts)
+        monkeypatch.setattr(tsd, "_load_mv", lambda w, e: mv)
+        sat = tsd._sat_signal(date.fromisoformat(dates[-1]))
+        assert sat["gapCount"] == 3
+        assert sat["candidates"] == []
+
     def test_mv_lag_fallback_and_note(self, monkeypatch) -> None:
         dates = _mk_dates(25)
         per_ts = {"A.SH": _mk_series(dates, 20, 0.05, 0.01)}

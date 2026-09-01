@@ -74,11 +74,12 @@ def _flat_snapshot(today: str = "2026-08-20") -> dict:
             "pre_close": 10.0,
             "amount": 1e6,
         },
-        # gap but limit-locked: close >= pre_close*(1+0.10-0.004)
+        # gap but limit-locked AND high amplitude so it is NOT in the top 1/3
+        # (strict: rank all gaps first, then drop locked — do not refill).
         "600003.SH": {
             "open": 10.96,
-            "high": 10.96,
-            "low": 10.96,
+            "high": 11.0,
+            "low": 10.0,
             "close": 10.96,
             "pre_close": 10.0,
             "amount": 1e6,
@@ -122,7 +123,7 @@ class TestBuildIntradaySat:
         assert "600003.SH" not in [c["ts"] for c in sat["candidates"]]
         # 600001 gapped 5% and is executable -> included.
         assert "600001.SH" in [c["ts"] for c in sat["candidates"]]
-        assert sat["gapCount"] == 1
+        assert sat["gapCount"] == 2
 
     def test_breadth_and_gate(self) -> None:
         sat = m.build_intraday_sat(self.today)

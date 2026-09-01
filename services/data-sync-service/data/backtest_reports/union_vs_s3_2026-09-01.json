@@ -1,0 +1,114 @@
+{
+  "tag": "union-four-state-vs-s3-2026-09-01",
+  "generated_at": "2026-09-01T03:59:01.997749+00:00",
+  "scheme": "R6 union-body (4 states, shared 10 slots) vs CN S-3",
+  "union": {
+    "states": [
+      "S-limit",
+      "S-gap",
+      "S-fresh",
+      "S-shrink"
+    ],
+    "engine": "scout_state_bucket_pickstrong.simulate_state_bucket",
+    "params": "bucket_q=5, max_pos=10, body 3/3/15/15, R-wide, state priority",
+    "fill_model": "historical (assumes limit-up open fills)"
+  },
+  "s3": {
+    "config": "run_walk_forward.S3_CONFIG"
+  },
+  "windows": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01"
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01"
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07"
+    }
+  },
+  "per_window": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "union": {
+        "total_pct": 128.59,
+        "max_dd": 19.5,
+        "sharpe": 2.44,
+        "n_days": 254
+      },
+      "s3": {
+        "total_pct": 47.33,
+        "max_dd": 18.9,
+        "sharpe": 1.26,
+        "closed": 93,
+        "n_days": 255
+      },
+      "delta_pt": 81.26,
+      "frozen_union": {
+        "total_pct": 128.59,
+        "max_dd": 19.5,
+        "sharpe": 2.44
+      },
+      "rerun_vs_frozen_pt": 0.0
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "union": {
+        "total_pct": 76.87,
+        "max_dd": 8.4,
+        "sharpe": 3.57,
+        "n_days": 128
+      },
+      "s3": {
+        "total_pct": 34.11,
+        "max_dd": 11.6,
+        "sharpe": 2.22,
+        "closed": 51,
+        "n_days": 129
+      },
+      "delta_pt": 42.76,
+      "frozen_union": {
+        "total_pct": 76.87,
+        "max_dd": 8.4,
+        "sharpe": 3.57
+      },
+      "rerun_vs_frozen_pt": 0.0
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "union": {
+        "total_pct": 46.83,
+        "max_dd": 3.6,
+        "sharpe": 4.84,
+        "n_days": 112
+      },
+      "s3": {
+        "total_pct": 38.7,
+        "max_dd": 10.7,
+        "sharpe": 2.4,
+        "closed": 16,
+        "n_days": 113
+      },
+      "delta_pt": 8.13,
+      "frozen_union": {
+        "total_pct": 46.83,
+        "max_dd": 3.6,
+        "sharpe": 4.84
+      },
+      "rerun_vs_frozen_pt": 0.0
+    }
+  },
+  "markdown_table": "| 窗口 | union total% | union dd | union sr | S-3 total% | S-3 dd | S-3 sr | Δ(union−s3) |\n|------|-------------:|---------:|---------:|-----------:|-------:|-------:|------------:|\n| OOS2 | +128.6 | 19.5 | 2.44 | +47.3 | 18.9 | 1.26 | +81.3pt |\n| train | +76.9 | 8.4 | 3.57 | +34.1 | 11.6 | 2.22 | +42.8pt |\n| valid | +46.8 | 3.6 | 4.84 | +38.7 | 10.7 | 2.4 | +8.1pt |",
+  "verdict": "Four-state union beats S-3 on total in 3/3 walk-forward windows. Rerun matches frozen scout JSON: yes. Historical fill model (no skip_t1_limit) — not executable twin-star口径.",
+  "caveats": [
+    "R10: shared-slot union is S-limit-dominated; slice2 (L+G per-type slots) preferred structurally",
+    "2026-09-01 limit-up audit: executable S-gap alone << union past_year +122.8%",
+    "S-fresh deleted in R10; union repro uses original 4-state for historical fidelity"
+  ]
+}
