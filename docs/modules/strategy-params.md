@@ -17,8 +17,8 @@
 | target_pnl_pct（止盈） | 100.0%（=不止盈） | 100.0% | 止盈 10/50 砍利润 | 双窗定案 |
 | score_floor（评分平仓） | 0.0（=永不） | 0.0% | floor 30 误杀趋势 | 双窗定案 |
 | trailing_stop_pct（移动止损） | **-8.0%**（Diverging/Weak）/ Strong=ATR×2.0 | 同步 | 峰值回撤 8% 平仓；OOS2 回撤 35.7→16.1；OPT-105 后 Strong 日用 ATR 线 | 双窗一致最优 + OPT-105 固化 |
-| gates（闸门） | full | full | regime + 资金流 + 主线白名单 | 验证定案 |
-| rs_rank_min（RS 门槛） | 0.50 | 0.50 | 只买全市场前 50%；0.7/0.8 过拟合 | 双窗定案 |
+| gates（闸门） | full | full | regime + 资金流 + 主线白名单 | 验证定案 · **择强内松闸 10 变体 2026-09-01 全拒收**（`gates_none valid -58pt / regime -32pt`）见 `backtests/s3-gate-pickstrong-optimization-2026-09-01.md:1`，**勿再松闸** |
+| rs_rank_min（RS 门槛） | 0.50 | 0.50 | 只买全市场前 50%；0.7/0.8 过拟合 · 择强内 `rs0 train -5.2pt` 拒收（同 doc） | 双窗定案 |
 | diverging_scale（分歧期仓位） | 1.0（满仓） | 1.0 | Diverging 开仓最大贡献；0.5 收益减半 | 双窗定案 |
 | panic_cooldown_days（恐慌冷却） | 2 | **2** | E2：情绪回填后 panic=3 锁死 OOS2；panic=2 三窗+长窗通过 | **2026-08-14 固化** |
 | drawdown_circuit_pct（回撤熔断） | 0（关） | **-25.0** | 近 30 天已实现净盈亏 ≤-25%（≥3 笔）→ 暂停新仓；2026-08-12 长窗（2021-08~2026-08 全市场口径）暴露弱市脆弱性（2022 -166%/2023 -691%）→ 熔断后 2022 转正（+93）、2023 减亏 428pt（-691→-263）、DD 89.3→40.9、夏普 2.11→2.65、总收益 +225→+251；代价=牛市段空仓期（2025 +1614→+956，用户拍板接受「特定时间空仓」）；**仅 CN 线**（HK 未验证不开）；live 同码镜像（paper_s3 S3_CIRCUIT_PCT） | **长窗验证 · 用户拍板（2026-08-12）** |
@@ -107,6 +107,7 @@ valid **+60.7%**/DD27.8/2.10/44笔 — train 极弱，**HK 不作高置信收益
 
 | 日期 | 参数 | 变更 | 依据 | 状态 |
 |------|------|------|------|------|
+| 2026-09-01 | **S-3 gate 择强内松闸全拒收** | `gates full→regime/none、RS 0→0.7、neutral_block关、entry_score、含创业板` 10 变体三窗实测（fused `gates_none valid -58pt / regime -32pt / entry_score OOS2 -6pt`），唯一过线 `no_exclude300 train +2.4` 不纳且 twin 稀释 | `backtests/s3-gate-pickstrong-optimization-2026-09-01.md:1` · `scripts/test_s3_pickstrong_gates.py:1` | ❌ 拒收 · `full` 维持 |
 | 2026-08-29 | **审计 P0 修复** | 套筒/dual 改引擎 NAV；HK 基线重固化 31.3/1.9/60.7；文档+回测页+export 对齐 mp10/panic2/next_open | `audit-verdict-2026-08-29`；sleeve 基线=引擎 47.3；R5CS +3.3/+8.4/+13.5 | ✅ |
 | 2026-08-09 | 全组 | S-3 定案（score65/hold60/target100/floor0/RS0.5/diverging1.0/冷却3/滑点0.05/mp20） | 双窗网格 + 业务截断 | ✅ 在用 |
 | 2026-08-09 | trailing_stop_pct | 0 → **-8**（paper 侧从无到有） | 灵敏度比对：OOS2 回撤 35.7→16.1、收益 52.4→80.5；双窗一致最优 | ✅ 在用 |

@@ -85,6 +85,8 @@
    - Watchlist live pick：`multi_asset_sleeve.build_multi_asset_sleeve` 同 `mom_compare`（含 STOCK 篮）  
 5. **实验记录**：一律写回 `docs/backtests/`；最近加固定案见 `pick-strong-hardening-2026-08-29.md`。
 
+> **提醒（2026-09-01 归档 · 再有此想法时直接读）**：**不要再松 S-3 gate**。`S-3 gate` 在择强内的 `full→regime→none` 松闸已 10 变体三窗实测全拒收（`gates_none valid -58pt / gates_regime valid -32pt / entry_score OOS2 -6pt`），唯一过线的 `no_exclude300` 亦被 `twin` 稀释且与 `strategy-params.md:29` 创业板三窗亏钱结论冲突，**该方向结案**。下次再想“择强里 S-3 太严”时，直接读 [`backtests/s3-gate-pickstrong-optimization-2026-09-01.md`](../backtests/s3-gate-pickstrong-optimization-2026-09-01.md) §1-§3，无需重跑（复现 `scripts/test_s3_pickstrong_gates.py:1`）。真要动 STOCK腿请改**强度代理**而非闸门。
+
 ---
 
 ## 4. 代码入口

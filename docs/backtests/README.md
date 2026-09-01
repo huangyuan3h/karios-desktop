@@ -21,6 +21,8 @@
 | [`experiments-defensive.md`](./experiments-defensive.md) | 防守向攻击 23 项 | ✅ |
 | [`experiments-legacy.md`](./experiments-legacy.md) | 历史实验速查 | ✅ |
 | [`experiments-planned.md`](./experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
+| [`s3-gate-pickstrong-optimization-2026-09-01.md`](./s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
+| [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 
 ---
