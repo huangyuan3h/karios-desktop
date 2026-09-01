@@ -85,8 +85,8 @@ def sync_daily_basic_gap(end_date: str | None = None) -> dict[str, object]:
     """
     from datetime import date, timedelta
 
-    from data_sync_service.db.trade_calendar import is_trading_day
     from data_sync_service.db.sync_job_record import insert_record
+    from data_sync_service.db.trade_calendar import is_trading_day
 
     JOB_TYPE = "stock_daily_basic_sync"
     settings = get_settings()

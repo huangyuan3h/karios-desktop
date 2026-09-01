@@ -1,4 +1,4 @@
-"""双子星 (Twin-Star) 每日操作信号 — 14:30 前提醒用。
+"""机会双子星 (Opportunity Twin-Star) 每日操作信号 — 14:30 前提醒用。
 
 core  = live multi_asset_sleeve (择强单轨 mom_compare + trail8 同源) 当前目标
 sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选 (信号 t-1 → 下一交易日开盘执行)
@@ -54,6 +54,22 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
     date_idx = {ts: {r["date"]: i for i, r in enumerate(series)} for ts, series in per_ts.items()}
     day_all, breadth = _day_features(per_ts, mv_map, cal, signal_day, date_idx)
     gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
+    # Executability: candidates that closed at the price limit on the signal
+    # day (t-1) almost always open one-word / limit-up next session — the
+    # backtest filled them at open and overstated satellite returns 3-5x
+    # (audit 2026-08-31). Filter them so the live signal matches reality.
+    def _limit_locked(ts: str) -> bool:
+        di = date_idx.get(ts, {}).get(signal_day, -1)
+        if di < 0:
+            return False
+        r = per_ts.get(ts, [])[di]
+        pc = r.get("pre_close")
+        if not pc or pc <= 0:
+            return False
+        lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
+        return float(r["close"]) >= pc * (1 + lim - 0.004)
+
+    gap_stocks = [g for g in gap_stocks if not _limit_locked(g[0])]
     gap_stocks.sort(key=lambda x: x[1])
     qn = max(1, len(gap_stocks) // 3)
     candidates = []
@@ -80,7 +96,7 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
 
 
 def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
-    """双子星今日操作信号 (core pick + satellite gate/candidates)."""
+    """机会双子星今日操作信号 (core pick + satellite gate/candidates)."""
     today = today or date.today()
     core: dict[str, Any] = {"pick": None, "label": None, "action": None, "message": None}
     try:
@@ -127,7 +143,7 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
     if sat.get("note"):
         sat_line += f" · {sat['note']}"
     return {
-        "title": "双子星 · 14:30 前操作提醒",
+        "title": "机会双子星 · 14:30 前操作提醒",
         "detail": f"{core_line} · {sat_line}",
         "core": core,
         "sat": sat,

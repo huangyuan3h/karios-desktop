@@ -4,11 +4,13 @@
 BacktestPage Timeline loads <100ms from file cache instead of ~50s full S-3 replay.
 """
 from __future__ import annotations
+
 import logging
 from datetime import date, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
+
 from apscheduler.triggers.cron import CronTrigger
+
 from data_sync_service.db.sync_job_record import insert_record
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ def run() -> dict:
         raise
 
 def build_trigger():
-    from apscheduler.triggers.cron import CronTrigger
     from zoneinfo import ZoneInfo
+
+    from apscheduler.triggers.cron import CronTrigger
     return CronTrigger.from_crontab(CRON_EXPRESSION, timezone=ZoneInfo(TIMEZONE))

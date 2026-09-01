@@ -139,7 +139,6 @@ def sync_sleeve_etfs() -> dict[str, Any]:
     left GOLD/BOND10 stale since 2026-08-21 and distorted mom_compare picks.
     Five per-ts_code calls with a small sleep stay far below the limit.
     """
-    from data_sync_service.db.daily import get_last_trade_date as _gld
 
     JOB_TYPE = "sleeve_etf_daily_sync"
     settings = get_settings()

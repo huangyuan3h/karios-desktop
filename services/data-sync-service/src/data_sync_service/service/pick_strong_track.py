@@ -144,7 +144,7 @@ def build_mom_compare_timeline(
         candidates: dict[str, float] = {}
         if stock_poses:
             candidates["STOCK"] = stock_mom
-        for k, ts in MULTI_TS.items():
+        for k, _ts in MULTI_TS.items():
             mp = etf_close.get(k) or {}
             if prev not in mp:
                 continue
@@ -274,12 +274,21 @@ def build_twin_star_timeline(
     sat_rows: list[dict[str, Any]],
     core_weight: float = 0.5,
     sat_weight: float = 0.5,
+    opportunity: bool = True,
 ) -> dict[str, Any]:
-    """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 双子星 (Twin-Star) rows.
+    """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 机会双子星 (Opportunity Twin-Star) rows.
 
-    blend_ret = core_weight * core_ret + sat_weight * sat_ret (daily, compounded).
+    Opportunity mode (default, frozen 2026-09-01): the satellite capital follows
+    the core 100% of the time (100% capital utilisation); on days the satellite
+    actually holds candidates (R-wide open + executable fills), its return
+    replaces the core return for that slice:
+        opp_ret = core_ret if satPositions == 0 else core_ret + sat_weight*(sat_ret - core_ret)
+    Fixed 50/50 daily-return blending (opportunity=False) is kept for audit —
+    it overstates the satellite (fills assume limit-up buys are executable)
+    and dilutes the core (frozen R12 numbers superseded).
+
     Keeps all core fields; navSingle/navMulti become the blended NAV; adds
-    satNav / satNavReturnPct / satPositions. Frozen R12 (core_satellite_frozen_2026-08-31.json).
+    satNav / satNavReturnPct / satPositions.
     """
     sat_by_day = {r["date"]: r for r in sat_rows}
     nav = 1.0
@@ -302,7 +311,12 @@ def build_twin_star_timeline(
         sat_ret = sat_nav / prev_sat - 1 if prev_sat > 0 else 0.0
         prev_core = core_nav
         prev_sat = sat_nav
-        nav *= 1.0 + core_weight * core_ret + sat_weight * sat_ret
+        if opportunity:
+            has_sat = int(sat_r.get("satPositions") or 0) > 0
+            ret = core_ret + sat_weight * (sat_ret - core_ret) if has_sat else core_ret
+        else:
+            ret = core_weight * core_ret + sat_weight * sat_ret
+        nav *= 1.0 + ret
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
@@ -320,11 +334,12 @@ def build_twin_star_timeline(
         )
     return {
         "ok": True,
-        "mode": "twin_star",
-        "strategy": "双子星 (Twin-Star)",
+        "mode": "opportunity_twin_star",
+        "strategy": "机会双子星 (Opportunity Twin-Star)",
         "coreMode": MODE,
         "coreWeight": core_weight,
         "satWeight": sat_weight,
+        "opportunity": bool(opportunity),
         "rows": blended,
         "summary": {
             "fusedPct": round((nav - 1) * 100, 2),

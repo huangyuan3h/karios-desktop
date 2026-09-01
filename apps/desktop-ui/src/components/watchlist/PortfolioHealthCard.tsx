@@ -854,8 +854,8 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">{twinStar ? '双子星 · 今日决策（Twin-Star）' : '单轨择优 · 今日复刻（mom_compare）'}</span>
-        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '核心腿 50% · S-gap 卫星 50% · R12 冻结' : '100% 硬切 · 与 Timeline 同源'}</span>
+        <span className="text-[12px] font-semibold">{twinStar ? '机会双子星 · 今日决策' : '单轨择优 · 今日复刻（mom_compare）'}</span>
+        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '卫星资金跟核心 · 开闸可买才切候选' : '100% 硬切 · 与 Timeline 同源'}</span>
         {twinStar ? (
           <span
             className={cn(
@@ -878,7 +878,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         <Button
           variant="ghost"
           size="sm"
-          className="ml-auto h-6 px-1.5"
+          className="h-6 px-1.5"
           onClick={() => void q.refetch()}
           disabled={q.isFetching}
           title="刷新"
@@ -921,7 +921,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
             <span className="font-semibold text-emerald-700">今日结论</span>
             <span className="ml-2">
-              {gateBlocksNew ? '🔒 闸门关闭（DEFEND）· 不开新仓 · ' : ''}核心腿：{sleeve.label ?? sleeve.action} {sleeve.pick?.symbol ?? ''}
+              {gateBlocksNew ? '🔒 闸门关闭 · 不开新仓 · ' : ''}核心腿：{sleeve.label ?? sleeve.action} {sleeve.pick?.symbol ?? ''}
             </span>
             {twinStarQ.data?.sat?.asOf != null ? (
               <span className="ml-2">
@@ -933,18 +933,14 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                     : `R-wide 开闸 → 买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`}
               </span>
             ) : null}
-          </div>
-        ) : null}
-        {twinStar && twinStarQ.data?.sat?.asOf != null ? (
-          <div className="rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 text-[11px]">
-            <span className="font-semibold text-sky-700">卫星闸{twinStarQ.data.sat.gateOpen && !gateBlocksNew ? ' · 可买入' : ''}</span>
-            <span className="ml-2 text-[var(--k-muted)]">
-              {twinStarQ.data.sat.gateOpen
-                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
-                : `R-wide 关闸 (breadth ${twinStarQ.data.sat.breadth})`}
-              {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''}
-            </span>
-            <span className="ml-2 text-[10px] text-[var(--k-muted)]">信号日 {twinStarQ.data.sat.asOf} · 14:30 前调整</span>
+            {twinStarQ.data?.sat?.asOf != null ? (
+              <div className="mt-1 text-[10px] tabular-nums text-[var(--k-muted)]">
+                {twinStarQ.data.sat.gateOpen
+                  ? `卫星闸 · R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
+                  : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}`}
+                {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf} · 14:30 前调整
+              </div>
+            ) : null}
           </div>
         ) : null}
         {twinStar && q.data?.tradeDate && twinStarQ.data?.sat?.asOf != null && twinStarQ.data.sat.asOf < q.data.tradeDate ? (

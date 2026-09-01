@@ -584,14 +584,14 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        过去一年 Timeline（{isTwin ? '双子星 · 择强核心+S-gap卫星 50/50' : '择强单轨 · 全资产同权 · 100%'}）
+        过去一年 Timeline（{isTwin ? '机会双子星 · 择强核心 + S-gap 机会增强' : '择强单轨 · 全资产同权 · 100%'}）
         <span className="ml-2 flex overflow-hidden rounded border border-[var(--k-border)] text-[10px]">
           <button
             type="button"
             onClick={() => setStrategy('twin_star')}
             className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
           >
-            双子星
+            机会双子星
           </button>
           <button
             type="button"
@@ -605,7 +605,7 @@ function TimelineCard() {
           {start} ~ {today} · {rows.length} 交易日
           {last
             ? isTwin
-              ? ` · 卫星 ${last.satNavReturnPct ?? '—'}% · 双子星 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
+              ? ` · 卫星 ${last.satNavReturnPct ?? '—'}% · 机会双子星 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
               : ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
             : ''}
         </span>
@@ -669,7 +669,7 @@ function TimelineCard() {
             ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
               {isTwin
-                ? `双子星 · 择强核心(mom_compare_t8) + S-gap卫星 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 卫星 ${last?.satNavReturnPct ?? '—'}% / 核心 ${(q.data as unknown as { summary?: { corePct?: number } } | undefined)?.summary?.corePct != null ? `${(q.data as unknown as { summary?: { corePct?: number } }).summary?.corePct}%` : '—'}`
+                ? `机会双子星 · 择强核心(mom_compare_t8) + S-gap机会 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 卫星 ${last?.satNavReturnPct ?? '—'}% / 核心 ${(q.data as unknown as { summary?: { corePct?: number } } | undefined)?.summary?.corePct != null ? `${(q.data as unknown as { summary?: { corePct?: number } }).summary?.corePct}%` : '—'}`
                 : `择强单轨 · mom_compare · pick_strong_track 同源 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 ${last?.navBaseReturnPct ?? '—'}%`}
             </span>
           </div>
@@ -683,7 +683,7 @@ function TimelineCard() {
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
-                  <th className="py-1 pr-2">{isTwin ? '双子星NAV%' : '择强NAV%'}</th>
+                  <th className="py-1 pr-2">{isTwin ? '机会双子星NAV%' : '择强NAV%'}</th>
                   {isTwin ? <th className="py-1 pr-2">卫星NAV%(仓)</th> : null}
                   <th className="py-1 pr-2">超额</th>
                 </tr>
@@ -748,7 +748,7 @@ function TimelineCard() {
             <p className="text-[10px] text-[var(--k-muted)]">
               {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
               {isTwin
-                ? '双子星 (Twin-Star)：择强核心(50%) + S-gap卫星(50%) · 定案 docs/backtests/state-bucket-algo-2026-08-31.md §7'
+                ? '机会双子星：择强核心为主 + S-gap 卫星机会增强（开闸可买才切）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7'
                 : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
               · 卖出=前日有今日无
             </p>

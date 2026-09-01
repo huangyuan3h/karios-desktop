@@ -1000,6 +1000,41 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | **OPT-056 触发**：用户 §12 #7 启动 — Docker 一键起 + UPS 自动恢复；§13 longevity 真痛点；范围锁定（Dockefile ×3 + 4 compose 服务 + 5 脚本 + 1 文档 + 1 测试）|
 | 2026-08-31 | **OPT-057 完成**：`stock_dailybasic` 停更 08-07 根因（`sync_daily_basic_for_date` 孤儿函数、无调度写入）→ 新增 `stock_daily_basic_sync`（工作日 17:20）+ `/sync/daily-basic` + health 源（估值市值 staleness 48h）+ UI catalog；补齐 08-10~08-31 缺口 88,677 行；双子星卫星信号恢复最新交易日（无滞后 note）|
 | 2026-08-31 | **OPT-058 完成**：双子星 14:30 决策链路审计——① `_pick()` 盘中回退 t-2 信号 bug（`closes[:-1]` 假设含当日 bar，实际盘中 daily 表只有 t-1）→ `_signal_closes` 显式剔除当日 bar；② 5 只核心腿 ETF 日线停更（全市场 `etf_daily_full` 月频 + tushare 限速失败，GOLD/BOND10 停更 7 天）→ 新增 `sleeve_etf_daily_sync`（工作日 17:25，fund_daily 增量）+ `/sync/sleeve-etfs` + catalog，补齐 08-24~08-31 |
+| 2026-09-01 | **OPT-059 完成**：涨停可成交审计 + 机会双子星定案——① 冻结窗 671 笔卫星入场 33% 买不进（一字板 24.1% + 涨停开 8.9%），可执行口径卫星 aligned 126→25%→ 旧 50/50 稀释核心（96.7% < 190.7%）；② universe 修复（ST/BJ/退市 56.8 万行污染）；③ 机会口径（卫星跟核心+开闸切候选）六窗全面 ≥ 核心（aligned +205.9/+15.3pt）；④ 卖出端 0.1% 跌停可忽略；⑤ 正式引擎/决策卡接入 T-1 涨停过滤 |
+
+### OPT-059：涨停可成交审计 + 机会双子星定案（替代旧 50/50）
+
+**状态**：[x] done
+**完成日期**：2026-09-01
+**优先级**：P0（回测执行假设失真 → 实盘收益与回测严重偏离）
+
+#### 审计发现
+
+| # | 问题 | 量级 |
+|---|------|------|
+| 1 | 卫星入场按 T 日开盘价成交，未检查涨停/一字板 | 冻结窗 671 笔中**一字板 24.1% + 涨停开 8.9% = 33% 买不进**；可执行口径（T-1 涨停候选剔除）卫星 aligned 126.31→**25.41%**、OOS2 228.72→111.39%（收益 80%+ 来自买不进的涨停票） |
+| 2 | `_load_rows` 无 universe 过滤 | daily 表 56.8 万行属 ST/BJ/退市（BJ 涨跌幅 30%）混入候选 |
+| 3 | 旧 50/50 混合在可执行口径下稀释核心 | aligned 96.74% < 核心 190.65% |
+| 4 | 卖出端 | body=3 跌停封死仅 0.1%（667 笔 1 笔）→ 可忽略；核心腿 ETF 两年一字板 0~1 次 |
+
+#### 定案：机会双子星（Opportunity Twin-Star）
+
+- **结构**：卫星资金平时 100% 跟核心（资金利用率满），R-wide 开闸 + 候选可执行日才切 50% 切片；`opp_ret = core_ret`（无持仓日）`+ 0.5×(sat_ret − core_ret)`（持仓日）
+- **六窗全部 ≥ 核心单轨**：aligned +205.9（+15.3pt）/ OOS2 +70.1（+52.3pt）/ train +49.6 / valid +163.0 / past_year +199.8 / long2y +285.1
+- **引擎**：`build_sgap_timeline(skip_t1_limit=True)`（T-1 收盘涨停候选剔除）+ universe 过滤（ST/BJ/退市）+ `build_twin_star_timeline(opportunity=True)`；API twin_star 分支默认机会口径
+- **决策卡/提醒**：`twin_star_daily._sat_signal` 候选同步过滤 T-1 涨停；UI 文案全部更名机会双子星
+- **冻结**：`core_satellite_frozen_2026-08-31.json` status=机会双子星（per_window 重固化）
+
+#### 验证
+
+- [x] API 复现：aligned 机会口径 fusedPct 205.92 / dd 12.6 与独立计算一致
+- [x] 测试全绿：`test_twin_star.py` / `test_state_bucket_track.py` / `test_twin_star_daily.py` / `test_multi_asset_signal_freshness.py` 等 76+ 例
+
+#### 反模式
+
+- ❌ 回测按开盘价成交但忽略涨停/一字板（执行假设必须与实盘一致）
+- ❌ 让卫星收益依赖"买不进的票"的虚高（机会口径 + 候选过滤把预期拉回现实）
+- ❌ 固定权重混合拖累主干（机会策略：只在正贡献时参与）
 
 ### OPT-058：双子星 14:30 决策链路审计（t-1 信号时序 + 核心腿 ETF 数据）
 

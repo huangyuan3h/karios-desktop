@@ -426,7 +426,7 @@ export type TimelineStrategy = 'pick_strong' | 'twin_star';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   pick_strong: '单轨择强',
-  twin_star: '双子星 (Twin-Star)',
+  twin_star: '机会双子星',
 };
 
 export function useTimelineQuery(

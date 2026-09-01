@@ -134,8 +134,8 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/双子星 · 今日决策/)).toBeDefined();
     expect(screen.queryByText(/100% 硬切/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
-    expect(screen.findByText(/买入候选 000712\.SZ/)).toBeDefined();
-    expect(screen.findByText(/卫星闸 · 可买入/)).toBeDefined();
+    expect(await screen.findByText(/R-wide 开闸 → 买入候选 000712\.SZ/)).toBeDefined();
+    expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
 
   it('flags satellite data failure with a retry badge', async () => {

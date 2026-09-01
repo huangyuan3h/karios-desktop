@@ -16,8 +16,8 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
-import psycopg
 import numpy as np
+import psycopg
 
 from data_sync_service.config import get_settings
 
@@ -32,25 +32,35 @@ WARMUP_CAL_DAYS = 120
 
 def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
     """Load daily OHLCV rows per ts_code for [start, end] (+ no extra warmup needed:
-    features only need ~20 rows; caller adds warmup by extending `start`)."""
+    features only need ~20 rows; caller adds warmup by extending `start`).
+
+    Universe = full A-share, excluding ST / BJ / delisted (docs/backtests/
+    state-bucket-algo-2026-08-31.md §2). The raw daily table contains ~570k
+    rows outside this universe (BJ 30% limit, ST 5% limit) which used to leak
+    into S-gap candidates and distorted the backtest (fixed 2026-08-31).
+    """
     s = get_settings()
     conn = psycopg.connect(s.database_url)
     cur = conn.cursor()
     cur.execute(
-        "SELECT trade_date, ts_code, open, high, low, close, pre_close, amount "
-        "FROM daily WHERE trade_date >= %s AND trade_date <= %s "
-        "ORDER BY ts_code, trade_date",
+        "SELECT d.trade_date, d.ts_code, d.open, d.high, d.low, d.close, d.pre_close, d.amount "
+        "FROM daily d JOIN stock_basic sb ON sb.ts_code = d.ts_code "
+        "WHERE d.trade_date >= %s AND d.trade_date <= %s "
+        "AND sb.delist_date IS NULL "
+        "AND sb.name NOT LIKE '%%ST%%' "
+        "AND d.ts_code NOT LIKE '%%.BJ' "
+        "ORDER BY d.ts_code, d.trade_date",
         (start, end),
     )
     per_ts: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for d, ts, o, h, l, c, pc, amt in cur.fetchall():
+    for d, ts, o, h, low, c, pc, amt in cur.fetchall():
         ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
         per_ts[str(ts)].append(
             {
                 "date": ds,
                 "open": float(o) if o is not None else None,
                 "high": float(h) if h is not None else None,
-                "low": float(l) if l is not None else None,
+                "low": float(low) if low is not None else None,
                 "close": float(c) if c is not None else None,
                 "pre_close": float(pc) if pc is not None else None,
                 "amount": float(amt) if amt is not None else None,
@@ -142,6 +152,29 @@ def _day_features(
     return day_all, breadth
 
 
+def _t1_limit_locked(
+    per_ts: dict[str, list[dict[str, Any]]],
+    date_idx: dict[str, dict[str, int]],
+    prev_day: str,
+    ts: str,
+) -> bool:
+    """True when ts closed at the price limit on prev_day (likely unfillable at T open).
+
+    T-1 limit-up close usually gaps to one-word / limit-open next session;
+    the backtest filling at T open would overstate returns. Executable at
+    signal time (t-1 close), so it is the practical filter.
+    """
+    di = date_idx.get(ts, {}).get(prev_day, -1)
+    if di < 0:
+        return False
+    r = per_ts.get(ts, [])[di]
+    pc = r.get("pre_close")
+    if not pc or pc <= 0:
+        return False
+    lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
+    return float(r["close"]) >= pc * (1 + lim - 0.004)
+
+
 def build_sgap_timeline(
     *,
     start: str,
@@ -150,11 +183,17 @@ def build_sgap_timeline(
     max_pos: int = MAX_POS,
     body: int = BODY,
     debug_fills: list[tuple[str, str]] | None = None,
+    skip_unfillable: bool = False,
+    skip_t1_limit: bool = False,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
     Returns {rows: [{date, satNav, satNavReturnPct, satPositions}], summary: {...}}.
     debug_fills: optional out-list collecting (entry_day, ts) — for tests/audit.
+    skip_unfillable: when True, entries whose T-day open cannot actually be
+    filled (one-word limit board open==high==low, or open at the price limit)
+    are skipped — an audit of how much the backtest overstates returns when
+    the satellite cannot buy the candidate.
     """
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
     per_ts = _load_rows(w_start, end)
@@ -192,6 +231,12 @@ def build_sgap_timeline(
             prev_day = cal[idx_by_day[day] - 1]
             prev_all, _ = _day_features(per_ts, mv_map, cal, prev_day, date_idx)
             gap_stocks = [ts for ts, d in prev_all.items() if d["is_gap"]]
+            if skip_t1_limit:
+                gap_stocks = [
+                    ts
+                    for ts in gap_stocks
+                    if not _t1_limit_locked(per_ts, date_idx, prev_day, ts)
+                ]
             ranked = sorted(gap_stocks, key=lambda ts: prev_all[ts]["amp"])
             qn = max(1, len(ranked) // bucket_q)
             for ts in ranked[:qn]:
@@ -201,6 +246,15 @@ def build_sgap_timeline(
                 di = date_idx.get(ts, {}).get(day, -1)
                 open_px = series[di]["open"] if di >= 0 else None
                 if open_px and open_px > 0:
+                    if skip_unfillable:
+                        cur = series[di]
+                        pc = cur.get("pre_close")
+                        lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
+                        if pc and pc > 0 and (
+                            cur["high"] == cur["low"] == cur["open"]  # one-word board
+                            or open_px >= pc * (1 + lim - 0.004)
+                        ):
+                            continue
                     positions[ts] = {"entry_date": day, "entry_price": open_px}
                     if debug_fills is not None:
                         debug_fills.append((day, ts))

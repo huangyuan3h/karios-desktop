@@ -272,11 +272,8 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
     - R2 nas mom20<-5% -> gold>oil +4.66% win71.4%
     - R3 oil vol20 low20% -> gold>nas +2.46% win65.1% (most stable vs sleeve)
     """
-    from datetime import date as _date
-    d = day or _date.today().isoformat()
     hints: list[dict[str, Any]] = []
     try:
-        closes_gold=_signal_closes("518880.SH", 260)
         closes_oil=_signal_closes("513350.SH", 260)
         closes_nas=_signal_closes("513100.SH", 260)
         # R4 oil RSI>80

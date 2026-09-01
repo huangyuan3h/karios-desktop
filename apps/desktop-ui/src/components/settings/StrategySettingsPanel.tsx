@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
 const OPTIONS: { value: StrategyMode; title: string; desc: string }[] = [
   {
     value: 'twin_star',
-    title: '双子星 (Twin-Star)',
-    desc: '择强单轨核心 50% + S-gap 卫星 50%（R12 冻结默认）。今日操作卡显示卫星开闸/候选，14:20 推送调整提醒。',
+    title: '机会双子星 (Opportunity Twin-Star)',
+    desc: '择强单轨为主，卫星资金平时跟核心（资金利用率 100%），S-gap 开闸且有可执行候选时才切候选（2026-09-01 定案，替代旧 50/50 双子星）。',
   },
   {
     value: 'single_track',

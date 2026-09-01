@@ -9,7 +9,7 @@ export type StrategyMode = 'twin_star' | 'single_track';
 const STORAGE_KEY = 'karios.strategyMode';
 
 export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
-  twin_star: '双子星 (Twin-Star)',
+  twin_star: '机会双子星',
   single_track: '单轨择强',
 };
 

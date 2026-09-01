@@ -30,7 +30,10 @@ from data_sync_service.db.paper_trading import (  # noqa: E402
     insert_paper_trade,
     list_paper_trades,
 )
-from data_sync_service.service.multi_asset_sleeve import CANDIDATES, build_multi_asset_sleeve  # noqa: E402
+from data_sync_service.service.multi_asset_sleeve import (  # noqa: E402
+    CANDIDATES,
+    build_multi_asset_sleeve,
+)
 from data_sync_service.service.paper_entry_fill import resolve_next_open_fill  # noqa: E402
 from data_sync_service.service.portfolio_health import _health_block  # noqa: E402
 

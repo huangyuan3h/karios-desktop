@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
-
 from data_sync_service.db.sleeve_execution_log import CREATE_SQL
 
 revision: str = "0037_sleeve_execution_log"

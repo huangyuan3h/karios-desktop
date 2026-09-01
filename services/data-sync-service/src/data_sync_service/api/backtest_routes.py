@@ -389,10 +389,10 @@ def _get_or_build_timeline(
             _timeline_cache[cache_key] = file_cached
             return file_cached, None
 
+    import sys
+
     from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
     from data_sync_service.service.pick_strong_track import build_mom_compare_timeline
-
-    import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
     from run_walk_forward import S3_CONFIG  # noqa: E402
@@ -451,23 +451,26 @@ def _get_or_build_timeline(
             from data_sync_service.service.pick_strong_track import build_twin_star_timeline
             from data_sync_service.service.state_bucket_track import build_sgap_timeline
 
-            sat = build_sgap_timeline(start=start, end=end)
+            # 机会双子星: 可执行口径卫星 (T-1 涨停候选剔除 — 回测不假设买不进能成交)
+            sat = build_sgap_timeline(start=start, end=end, skip_t1_limit=True)
             built = build_twin_star_timeline(
                 core_rows=result["rows"],
                 core_summary=result["summary"],
                 sat_rows=sat["rows"],
+                opportunity=True,
             )
             result = {
                 "ok": True,
                 "start": start,
                 "end": end,
-                "mode": built.get("mode") or "twin_star",
-                "strategy": built.get("strategy") or "双子星 (Twin-Star)",
+                "mode": built.get("mode") or "opportunity_twin_star",
+                "strategy": built.get("strategy") or "机会双子星 (Opportunity Twin-Star)",
                 "summary": built.get("summary"),
                 "rows": built.get("rows") or [],
                 "coreMode": built.get("coreMode"),
                 "coreWeight": built.get("coreWeight"),
                 "satWeight": built.get("satWeight"),
+                "opportunity": built.get("opportunity"),
                 "satSummary": sat.get("summary"),
                 "trailPct": built.get("trailPct"),
             }

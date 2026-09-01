@@ -7,7 +7,6 @@ Reuses TRADING_JOB_TYPES from notifications.py as high threshold.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.db import get_connection

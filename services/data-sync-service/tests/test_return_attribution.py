@@ -77,7 +77,7 @@ def test_geometric_total_matches_product():
 
 
 def test_single_leg_full_window():
-    seq = [("2026-03-0%d" % i, "OIL", 0.01) for i in range(1, 6)]
+    seq = [(f"2026-03-0{i}", "OIL", 0.01) for i in range(1, 6)]
     day_rows = [{"date": d, "pick": p, "dayRet": r} for d, p, r in seq]
     out = ra.attribute_by_pick(day_rows)
     assert out["byPick"]["OIL"]["days"] == 5

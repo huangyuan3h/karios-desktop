@@ -1,6 +1,6 @@
 {
-  "tag": "core-satellite-frozen-2026-08-31",
-  "scheme": "双子星 (Twin-Star): 择强核心(trail8) + S-gap(优化)卫星, 50/50",
+  "tag": "opportunity-twin-star-frozen-2026-09-01",
+  "scheme": "机会双子星 (Opportunity Twin-Star): 择强核心(trail8)为主 + S-gap(优化)卫星机会增强(开闸且可买才切候选)",
   "structure": {
     "core": {
       "name": "择强单轨 trail8 (E1 定案)",
@@ -17,151 +17,123 @@
       "body": 3,
       "regime_gate": "R-wide (close>MA20 占比>0.5)",
       "cost": "COSTS_ROUNDTRIP=0.003 (单边15bp), 滑点0.15%单边",
-      "capital": "卫星独享 50% 资金, 每槽 10%/槽 (独立15槽)"
+      "capital": "卫星独享 50% 资金, 每槽 10%/槽 (独立15槽)",
+      "executability": "T-1 收盘涨停候选剔除(回测不再假设一字板能成交) + universe 排除 ST/BJ/退市"
     },
-    "combine": "核心/卫星 50/50 日收益加权 (corr 0.002~0.084)",
+    "combine": "机会口径: 卫星资金平时 100% 跟核心(资金利用率满), 开闸且有可执行候选日 sat 资金切候选 (sat_weight=0.5 增量)",
     "superseded": {
-      "tag": "scout-baseline-state-slice2-2026-08-31",
-      "note": "R10 slice2 (S-limit+S-gap 等权切分) 卫星; R11 发现 S-gap(优化) 单态卫星全窗更优且 S-limit 并入稀释"
+      "tag": "core-satellite-frozen-2026-08-31-v2",
+      "note": "旧双子星 50/50 固定混合: 卫星按开盘价成交假设一字板可买 (33% 入场买不进), 可执行口径下 aligned 仅 +96.7% 反而稀释核心; 机会口径全面更优"
     }
   },
   "per_window": {
     "OOS2": {
       "core": {
         "total_pct": 17.82,
-        "cagr": 17.67,
-        "max_dd": 17.98,
-        "sharpe": 0.72
+        "max_dd": 17.98
       },
-      "sat": {
-        "total_pct": 228.72,
-        "cagr": 225.66,
-        "max_dd": 22.1,
-        "sharpe": 3.14
+      "sat_exec": {
+        "total_pct": 111.39,
+        "max_dd": 13.7
       },
-      "blend50": {
-        "total_pct": 102.26,
-        "cagr": 101.14,
-        "max_dd": 18.22,
-        "sharpe": 2.88
-      },
-      "corr": 0.084
+      "opp": {
+        "total_pct": 70.14,
+        "cagr": 69.79,
+        "max_dd": 17.0,
+        "sharpe": 1.97
+      }
     },
     "train": {
       "core": {
         "total_pct": 40.66,
-        "cagr": 95.76,
-        "max_dd": 8.39,
-        "sharpe": 3.01
+        "max_dd": 8.39
       },
-      "sat": {
-        "total_pct": 100.45,
-        "cagr": 293.15,
-        "max_dd": 7.96,
-        "sharpe": 4.65
+      "sat_exec": {
+        "total_pct": 35.33,
+        "max_dd": 7.3
       },
-      "blend50": {
-        "total_pct": 69.5,
-        "cagr": 182.6,
-        "max_dd": 5.16,
-        "sharpe": 5.48
-      },
-      "corr": 0.014
+      "opp": {
+        "total_pct": 49.64,
+        "cagr": 122.51,
+        "max_dd": 6.1,
+        "sharpe": 3.72
+      }
     },
     "valid": {
       "core": {
         "total_pct": 139.07,
-        "cagr": 610.69,
-        "max_dd": 11.88,
-        "sharpe": 3.37
+        "max_dd": 11.88
       },
-      "sat": {
-        "total_pct": 58.61,
-        "cagr": 182.32,
-        "max_dd": 5.94,
-        "sharpe": 4.69
+      "sat_exec": {
+        "total_pct": 10.33,
+        "max_dd": 12.2
       },
-      "blend50": {
-        "total_pct": 99.39,
-        "cagr": 372.43,
-        "max_dd": 5.99,
-        "sharpe": 4.74
-      },
-      "corr": 0.002
+      "opp": {
+        "total_pct": 162.96,
+        "cagr": 797.94,
+        "max_dd": 11.9,
+        "sharpe": 3.78
+      }
     },
     "past_year": {
       "core": {
         "total_pct": 181.16,
-        "cagr": 175.57,
+        "max_dd": 12.64
+      },
+      "sat_exec": {
+        "total_pct": 44.98,
+        "max_dd": 12.3
+      },
+      "opp": {
+        "total_pct": 199.78,
+        "cagr": 194.68,
         "max_dd": 12.64,
-        "sharpe": 2.43
-      },
-      "sat": {
-        "total_pct": 156.44,
-        "cagr": 151.79,
-        "max_dd": 8.2,
-        "sharpe": 4.0
-      },
-      "blend50": {
-        "total_pct": 177.16,
-        "cagr": 171.71,
-        "max_dd": 6.41,
-        "sharpe": 3.98
-      },
-      "corr": 0.011
+        "sharpe": 2.61
+      }
     },
     "aligned": {
       "core": {
         "total_pct": 190.65,
-        "cagr": 189.42,
+        "max_dd": 12.64
+      },
+      "sat_exec": {
+        "total_pct": 25.41,
+        "max_dd": 11.9
+      },
+      "opp": {
+        "total_pct": 205.92,
+        "cagr": 205.92,
         "max_dd": 12.64,
-        "sharpe": 2.54
-      },
-      "sat": {
-        "total_pct": 126.31,
-        "cagr": 125.64,
-        "max_dd": 13.3,
-        "sharpe": 3.31
-      },
-      "blend50": {
-        "total_pct": 164.88,
-        "cagr": 163.98,
-        "max_dd": 8.14,
-        "sharpe": 3.81
-      },
-      "corr": 0.008
+        "sharpe": 2.66
+      }
     },
     "long2y": {
       "core": {
         "total_pct": 198.12,
-        "cagr": 68.93,
-        "max_dd": 18.16,
-        "sharpe": 1.54
+        "max_dd": 18.16
       },
-      "sat": {
-        "total_pct": 364.37,
-        "cagr": 108.97,
-        "max_dd": 22.1,
-        "sharpe": 2.66
+      "sat_exec": {
+        "total_pct": 152.42,
+        "max_dd": 13.7
       },
-      "blend50": {
-        "total_pct": 293.17,
-        "cagr": 92.93,
-        "max_dd": 18.22,
-        "sharpe": 2.77
-      },
-      "corr": 0.044
+      "opp": {
+        "total_pct": 285.12,
+        "cagr": 91.02,
+        "max_dd": 17.03,
+        "sharpe": 1.9
+      }
     }
   },
-  "verdict": "R11 逐态寻优+逐态×择强组合: S-gap(bucket_q=3,15槽,body3) 单态卫星全窗最优 (corr 最低 0.00~0.08, sr 全窗 3.14~4.65); S-limit 并入稀释。blend50 全窗 sharpe 2.88/5.48/4.74/3.98/3.93 全面超 R10 slice2 卫星版。",
-  "discipline": "选参仅用 OOS2+train; valid/past_year/aligned 样本外验证仍优 → 非过拟合。S-shrink 寻优 valid 崩盘已拒收。",
+  "verdict": "2026-09-01 机会双子星定案: 涨停可成交审计发现旧 50/50 混合的卫星收益 80%+ 来自买不进的一字板 (aligned 卫星可执行 126→25); 机会口径(卫星跟核心+开闸切候选) 六窗全部 ≥ 核心单轨 (aligned +15.3pt / OOS2 +52.3pt / long2y +87pt), 资金利用率 100%, 无卖出受阻 (跌停卖不出 0.1%)",
+  "discipline": "选参仅用 OOS2+train (R11); 机会口径为执行层修正, 不重新选参; valid/past_year/aligned/long2y 样本外验证仍优",
   "caveats": [
-    "sat 单独 dd 偏高 (OOS2 22.1), blend50 后除 OOS2 (18.2) 外全窗 <=8.2",
-    "核心不计交易成本, 卫星计 0.3% 往返",
-    "2026-08-31 v2 重固化: aligned 窗 sat/blend 修正 (sat 132.83→126.31, blend 168.39→164.88, dd 6.41→8.14)——初版 168.39 固化时 stock_dailybasic 停更 08-07, 卫星最后 3 周被'无 mv 剔除'强制空仓 (躲过 08-10~08-28 实亏段 -6.3%); OPT-057 补齐 mv 后同窗重跑为真实值, 其余窗 (OOS2/train/valid, 均止于 08-07 前) 逐位不变",
-    "long2y (2024-08-01~2026-08-31) 为数据完整起点起的全窗扩展验证: blend +293.2%/dd18.2%/sr2.77, corr 0.044, 无过拟合退化"
+    "涨停/一字板不可成交: 回测可执行口径已剔除 T-1 收盘涨停候选 (冻结窗 33% 入场买不进) + 开盘涨停双剔除 (aligned +21→+10)",
+    "universe 已排除 ST/BJ/退市 (旧引擎混入 56.8 万行污染数据, 含 BJ 30% 涨跌幅)",
+    "卫星卖出端: body=3 跌停卖不出仅 0.1%, 可忽略",
+    "卫星无实盘持仓簿: 提醒给开闸+候选, 买/持/卖手动",
+    "核心不计交易成本, 卫星计 0.3% 往返"
   ],
-  "status": "FROZEN 2026-08-31 v2 (数据修复后重固化 · aligned 窗真实值)",
-  "name": "双子星 (Twin-Star)",
-  "name_en": "Twin-Star"
+  "status": "FROZEN 2026-09-01 (机会双子星 · 替代旧双子星)",
+  "name": "机会双子星",
+  "name_en": "Opportunity Twin-Star"
 }

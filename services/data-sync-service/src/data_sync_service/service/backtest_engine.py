@@ -834,7 +834,7 @@ def _load_delist_dates(ts_codes: set[str]) -> dict[str, str]:
         return {}
 
 
-def _last_close_before(data: "BacktestData", ts: str, day: str) -> float | None:
+def _last_close_before(data: BacktestData, ts: str, day: str) -> float | None:
     """Last close strictly before ``day`` for ``ts`` (for delisted force-close)."""
     series = data.closes_by_ts.get(ts)
     if not series:
@@ -850,7 +850,7 @@ def _last_close_before(data: "BacktestData", ts: str, day: str) -> float | None:
 
 def _nav_for_day(
     positions: dict[str, dict[str, Any]],
-    data: "BacktestData",
+    data: BacktestData,
     day: str,
 ) -> float:
     """Mark-to-market of all OPEN sleeves (incl. pyramid adds) at ``day``'s

@@ -1,4 +1,4 @@
-"""双子星 (Twin-Star) 14:30 前操作提醒 — weekdays 14:20 Asia/Shanghai.
+"""机会双子星 (Opportunity Twin-Star) 14:30 前操作提醒 — weekdays 14:20 Asia/Shanghai.
 
 Emits a webhook event `twin_star_reminder` (dedupe per day) with the core
 pick-strong target + S-gap satellite gate/candidates, so the user can act
