@@ -170,7 +170,7 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText(/100% 硬切/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
     expect(await screen.findByText(/机会口径 · 核心 50%/)).toBeDefined();
-    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
+    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
     expect(await screen.findByText(/持仓簿空/)).toBeDefined();
   });
@@ -779,7 +779,7 @@ describe('PortfolioHealthCard', () => {
       isFetching: false,
     });
     renderCard();
-    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
+    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/暂不买入/)).toBeNull();
     expect(screen.queryByText(/闸门关闭/)).toBeNull();
   });
@@ -806,7 +806,7 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/R-wide 开闸 · 候选 14:30 后公布（模拟收盘价买入）/)).toBeDefined();
+    expect((await screen.findAllByText(/14:20 拉当日行情/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/000712\.SZ/)).toBeNull();
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
@@ -851,6 +851,113 @@ describe('PortfolioHealthCard', () => {
     });
     renderCard();
     expect(await screen.findByText(/🔒 S-3 闸门关闭 · 不开新仓 ·/)).toBeDefined();
-    expect(await screen.findByText(/R-wide 开闸 → 14:30 模拟收盘价买入候选 000712\.SZ/)).toBeDefined();
+    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
+  });
+
+  it('does not list gap names as buys when the satellite book is already full', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: {
+        sat: {
+          asOf: '2026-09-01',
+          gateOpen: true,
+          breadth: 0.626,
+          gapCount: 35,
+          candidates: [
+            { ts: '600352.SH', amp: 1, gapPct: 2, close: 10 },
+            { ts: '603339.SH', amp: 1, gapPct: 2, close: 10 },
+            { ts: '601168.SH', amp: 1, gapPct: 2, close: 10 },
+          ],
+          note: '盘中近似（12:30 快照）',
+          coreTargetPct: 50,
+          satTargetPct: 50,
+          book: {
+            asOf: '2026-09-01',
+            holdings: Array.from({ length: 15 }, (_, i) => ({
+              ts: `60020${String(i).padStart(1, '0')}.SH`,
+              daysLeft: 2,
+            })),
+            exitsDue: [],
+            body: 3,
+          },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-01',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      multiAssetHoldings: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect((await screen.findAllByText(/持仓簿满 15\/15 · 今日不买新票/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/600352\.SH/)).toBeNull();
+    expect(await screen.findByText(/今日动作/)).toBeDefined();
+    expect(screen.getByText(/刷新当日行情/)).toBeDefined();
+  });
+
+  it('keeps ETFs and lists buy size as % of NAV when STOCK has no executable names', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: {
+        sat: {
+          asOf: '2026-09-01',
+          gateOpen: true,
+          breadth: 0.626,
+          gapCount: 35,
+          candidates: [{ ts: '600352.SH', amp: 1, gapPct: 2, close: 10 }],
+          coreTargetPct: 50,
+          satTargetPct: 50,
+          book: {
+            asOf: '2026-09-01',
+            holdings: Array.from({ length: 15 }, (_, i) => ({ ts: `60100${i}.SH`, daysLeft: 2 })),
+            exitsDue: [],
+            body: 3,
+          },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '择强→股票',
+        message: '择强 STOCK（mom60 6.88%）> ETF → 卖出 ETF:513350 回股票篮',
+        pick: { key: 'STOCK', mom60: 6.88, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-01',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      s3Candidates: [],
+      holdings: [],
+      multiAssetHoldings: [
+        { symbol: 'ETF:513110', positionPct: 48.6, name: '纳指' },
+        { symbol: 'ETF:513350', positionPct: 42, name: '原油' },
+      ],
+      hkHealth: { regime: 'Weak', s3Candidates: [], holdings: [] },
+    });
+    renderCard();
+    expect((await screen.findAllByText(/不要为 STOCK 清空 ETF/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/今日无买卖/)).toBeDefined();
+    expect(screen.getAllByText('暂留').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/资金调向 STOCK/)).toBeNull();
   });
 });

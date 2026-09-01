@@ -1,18 +1,11 @@
-"""Twin-Star intraday approximate satellite signal (12:30 snapshot → 14:30 buy).
+"""Twin-Star intraday approximate satellite signal.
 
-User execution model: buy at 14:30 at (approximately) the closing price. The
-frozen backtest signal uses t-1 close, so to line the live signal up with the
-14:30 execution we approximate the CURRENT day's close with a 12:30 (lunch
-break) full-market snapshot and re-run the S-gap satellite screen against it.
+12:30: lunch snapshot (preview cache).
+14:20: refresh with the afternoon tape so 14:30 buys use same-day prices.
+Manual POST /api/backtest/twin-star/refresh pulls a new snapshot on demand.
 
-- Snapshot: East Money push2 clist, full A-share list. open/high/low/pre_close
-  are the REAL session values; the 12:30 price stands in for today's close.
-- Signal: same formulas as state_bucket_track._day_features + twin_star_daily
-  (gap = open/pre_close-1, amp = (high-low)/close, R-wide = close>MA20 share,
-  low-vol bottom-1/3 bucket, limit-locked filter applied to the snapshot price).
-- mv: t-1 stock_dailybasic (live mv is unavailable intraday — approximation).
-- Cache: data/twin_star_intraday/{date}.json; the API serves it after 14:30
-  and falls back to the t-1 signal when the snapshot is missing.
+Formulas match the frozen S-gap engine. Live also returns limit-up names in
+the bucket plus fillable alternates so the user can swap.
 """
 
 from __future__ import annotations
@@ -21,8 +14,9 @@ import json
 import logging
 import os
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.state_bucket_track import (
@@ -32,7 +26,7 @@ from data_sync_service.service.state_bucket_track import (
     _load_calendar,
     _load_mv,
     _load_rows,
-    select_strict_gap_candidates,
+    select_live_gap_picks,
 )
 
 logger = logging.getLogger(__name__)
@@ -227,29 +221,38 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
 
     gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
     locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
-    picked = select_strict_gap_candidates(
+    picks = select_live_gap_picks(
         gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
     )
-    candidates = []
-    for ts, amp, gap in picked:
-        series = per_ts.get(ts)
-        idx = date_idx.get(ts, {}).get(today_s, -1)
-        close = series[idx]["close"] if idx >= 0 and series else None
-        candidates.append(
-            {
-                "ts": ts,
-                "amp": round(float(amp) * 100, 2),
-                "gapPct": round(float(gap) * 100, 2),
-                "close": float(close) if close else None,
-            }
-        )
+
+    def _pack(rows: list, *, blocked: bool = False) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for ts, amp, gap in rows:
+            series = per_ts.get(ts)
+            idx = date_idx.get(ts, {}).get(today_s, -1)
+            close = series[idx]["close"] if idx >= 0 and series else None
+            out.append(
+                {
+                    "ts": ts,
+                    "amp": round(float(amp) * 100, 2),
+                    "gapPct": round(float(gap) * 100, 2),
+                    "close": float(close) if close else None,
+                    "limitLocked": blocked,
+                }
+            )
+        return out
+
+    snapshot_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="minutes")
     return {
         "asOf": today_s,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
         "breadth": round(float(breadth), 3),
         "gapCount": len(gap_stocks),
-        "candidates": candidates,
+        "candidates": _pack(picks["primary"]),
+        "blocked": _pack(picks["blocked"], blocked=True),
+        "alternates": _pack(picks["alternates"]),
         "approx": True,
+        "snapshotAt": snapshot_at,
         "note": None,
     }
 

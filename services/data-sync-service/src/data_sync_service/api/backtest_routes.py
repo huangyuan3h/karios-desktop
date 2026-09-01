@@ -36,15 +36,36 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 def twin_star_action() -> dict[str, Any]:
     """双子星 (Twin-Star) 今日操作信号: core pick-strong target + S-gap 卫星闸/候选.
 
-    Signals from the latest completed close (t-1) -> next open execution, same
-    semantics as the frozen strategy (docs/backtests/state-bucket-algo-2026-08-31.md §7).
-    When today's 12:30 intraday snapshot cache exists (simulated close -> buy
-    at 14:30) the satellite leg uses it instead of the t-1 signal.
+    14:20 job (and POST /twin-star/refresh) cache a same-day snapshot so the
+    14:30 live list uses afternoon prices, not the 12:30 lunch tape.
     """
     from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
 
     try:
         return {"ok": True, **build_twin_star_daily_action()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
+
+
+@router.post("/twin-star/refresh")
+def twin_star_refresh() -> dict[str, Any]:
+    """Pull a fresh East Money snapshot and rebuild today's satellite screen."""
+    from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
+    from data_sync_service.service.twin_star_intraday import (
+        build_intraday_sat,
+        cache_intraday_sat,
+    )
+
+    refreshed = False
+    try:
+        sat = build_intraday_sat()
+        if sat is not None:
+            cache_intraday_sat(sat)
+            refreshed = True
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"twin-star refresh failed: {exc}") from exc
+    try:
+        return {"ok": True, "refreshed": refreshed, **build_twin_star_daily_action()}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
 

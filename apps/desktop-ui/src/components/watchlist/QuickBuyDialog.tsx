@@ -17,6 +17,7 @@ export type QuickBuyDialogState = {
 type QuickBuyDialogProps = {
   state: QuickBuyDialogState;
   suggestPct: number;
+  side?: 'BUY' | 'SELL';
   onClose: () => void;
   onConfirm: (values: { price: number; positionPct: number }) => void;
 };
@@ -27,6 +28,7 @@ const PCT_RE = /^\d+(\.\d{0,2})?$/;
 export function QuickBuyDialog({
   state,
   suggestPct,
+  side = 'BUY',
   onClose,
   onConfirm,
 }: QuickBuyDialogProps) {
@@ -79,7 +81,7 @@ export function QuickBuyDialog({
       <div className="w-full max-w-[340px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4 text-xs text-[var(--k-text)] shadow-lg">
         <div className="mb-1 flex items-center justify-between">
           <div className="text-sm font-medium">
-            买入 <span className="font-mono text-[var(--k-muted)]">{state.symbol}</span>
+            {side === 'SELL' ? '卖出' : '买入'} <span className="font-mono text-[var(--k-muted)]">{state.symbol}</span>
           </div>
           <button
             type="button"
@@ -98,7 +100,9 @@ export function QuickBuyDialog({
         </div>
         <div className="space-y-2">
           <div>
-            <div className="mb-1 text-[var(--k-muted)]">买入价格（已按最近行情预填）</div>
+            <div className="mb-1 text-[var(--k-muted)]">
+              {side === 'SELL' ? '卖出价格（已按最近行情预填）' : '买入价格（已按最近行情预填）'}
+            </div>
             <input
               className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 font-mono text-sm outline-none"
               placeholder={priceLoading ? '加载中…' : '0.000'}
@@ -134,7 +138,7 @@ export function QuickBuyDialog({
             disabled={!valid}
             onClick={() => onConfirm({ price: parsedPrice, positionPct: parsedPct })}
           >
-            确认买入
+            确认{side === 'SELL' ? '卖出' : '买入'}
           </Button>
         </div>
       </div>

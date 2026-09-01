@@ -209,6 +209,22 @@ class TestSelectStrictGapCandidates:
         assert sbt.select_strict_gap_candidates(items, set())[0][0] == "A"
 
 
+class TestSelectLiveGapPicks:
+    def test_strict_primary_plus_blocked_and_alternates(self) -> None:
+        items = [("A", 0.01, 0.05), ("B", 0.04, 0.05), ("C", 0.09, 0.05)]
+        out = sbt.select_live_gap_picks(items, {"A"}, top_n=5)
+        assert out["primary"] == []
+        assert out["blocked"][0][0] == "A"
+        assert out["alternates"][0][0] == "B"
+
+    def test_no_locked_keeps_strict_top(self) -> None:
+        items = [("A", 0.01, 0.05), ("B", 0.04, 0.05), ("C", 0.09, 0.05)]
+        out = sbt.select_live_gap_picks(items, set(), top_n=5)
+        assert out["primary"][0][0] == "A"
+        assert out["blocked"] == []
+        assert out["alternates"][0][0] == "B"
+
+
 class TestSgapToTimelineRows:
     def test_adapts_nav_and_summary(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()

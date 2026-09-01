@@ -252,6 +252,31 @@ def select_strict_gap_candidates(
     return pool
 
 
+def select_live_gap_picks(
+    items: list[tuple[str, float, float]],
+    locked: set[str],
+    *,
+    bucket_q: int = BUCKET_Q,
+    top_n: int | None = None,
+) -> dict[str, list[tuple[str, float, float]]]:
+    """Live list: strict primary + limit-up names in the bucket + fillable swaps.
+
+    Backtest stays ``pool_mode=strict`` (no refill). The live card shows the
+    dropped limit-up names and the next fillable ranks so the user can swap.
+    """
+    ranked = sorted(items, key=lambda x: x[1])
+    if not ranked:
+        return {"primary": [], "blocked": [], "alternates": []}
+    qn = max(1, len(ranked) // bucket_q)
+    bucket = ranked[:qn]
+    n = top_n if top_n is not None else qn
+    primary = [g for g in bucket if g[0] not in locked][:n]
+    blocked = [g for g in bucket if g[0] in locked][:n]
+    taken = {g[0] for g in primary}
+    alternates = [g for g in ranked if g[0] not in locked and g[0] not in taken][:n]
+    return {"primary": primary, "blocked": blocked, "alternates": alternates}
+
+
 def replay_sgap_from_context(
     ctx: dict[str, Any],
     *,

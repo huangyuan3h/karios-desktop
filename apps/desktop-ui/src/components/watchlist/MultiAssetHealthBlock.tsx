@@ -29,10 +29,13 @@ export function MultiAssetHealthBlock({
   holdings,
   sleeve,
   onOpen,
+  coreDestinationReady = true,
 }: {
   holdings: MultiHolding[] | undefined | null;
   sleeve: MultiSleeve | undefined | null;
   onOpen?: (symbol: string) => void;
+  /** When pick=STOCK but the basket has 0 executable names, keep ETFs. */
+  coreDestinationReady?: boolean;
 }) {
   const hasHoldings = holdings && holdings.length > 0;
   const pickKey = (sleeve as unknown as { pick?: { key?: string } })?.pick?.key;
@@ -75,7 +78,13 @@ export function MultiAssetHealthBlock({
             const isPick = twinStar && pickKey != null && key === pickKey;
             const adjust =
               twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
-                ? { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
+                ? pickKey === 'STOCK' && !coreDestinationReady
+                  ? {
+                      label: '暂留',
+                      cls: 'bg-amber-500/10 text-amber-700',
+                      tip: '今日 pick=STOCK 但篮内 0 只可买，勿清空 ETF 后空仓',
+                    }
+                  : { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
                 : isPick
                   ? pos != null && pos < coreTargetPct - 1
                     ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）` }
@@ -120,7 +129,9 @@ export function MultiAssetHealthBlock({
         <div className="text-xs text-[var(--k-muted)]">当前无多资产持仓</div>
       )}
 
-      {sleeve?.message ? <div className="text-[11px] text-[var(--k-muted)]">{sleeve.message}</div> : null}
+      {sleeve?.message && !(twinStar && pickKey === 'STOCK' && !coreDestinationReady) ? (
+        <div className="text-[11px] text-[var(--k-muted)]">{sleeve.message}</div>
+      ) : null}
       {sleeve?.action && sleeve.action !== 'NONE' ? (
         <div className="text-[11px] text-[var(--k-muted)]">
           动作：<span className="font-medium text-[var(--k-fg)]">{sleeve.label ?? sleeve.action}</span>

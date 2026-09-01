@@ -89,6 +89,8 @@ class TestSatSignal:
         sat = tsd._sat_signal(date.fromisoformat(dates[-1]))
         assert sat["gapCount"] == 3
         assert sat["candidates"] == []
+        assert sat["blocked"][0]["ts"] == "A.SH"
+        assert sat["alternates"][0]["ts"] == "B.SH"
 
     def test_mv_lag_fallback_and_note(self, monkeypatch) -> None:
         dates = _mk_dates(25)
@@ -162,7 +164,7 @@ class TestReminderPayload:
         assert "A.SH" in payload["detail"]
         assert "R-wide 开闸" in payload["detail"]
         assert "核心50%" in payload["detail"]
-        assert "B.SH" in payload["detail"]
+        assert "今日卖 B.SH" in payload["detail"]
         assert payload["sat"]["coreTargetPct"] == 50
 
 

@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { apiGetJson } from '@/lib/api/client';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 
 export type BacktestSummary = {
   config: {
@@ -450,6 +450,7 @@ export type TwinStarSatCandidate = {
   amp: number | null;
   gapPct: number | null;
   close: number | null;
+  limitLocked?: boolean | null;
 };
 
 export type TwinStarSatHolding = {
@@ -465,6 +466,7 @@ export type TwinStarSatHolding = {
 
 export type TwinStarAction = {
   ok: boolean;
+  refreshed?: boolean;
   core: {
     pick?: string | null;
     symbol?: string | null;
@@ -479,8 +481,11 @@ export type TwinStarAction = {
     breadth?: number | null;
     gapCount?: number | null;
     candidates?: TwinStarSatCandidate[] | null;
+    blocked?: TwinStarSatCandidate[] | null;
+    alternates?: TwinStarSatCandidate[] | null;
     note?: string | null;
     approx?: boolean | null;
+    snapshotAt?: string | null;
     coreTargetPct?: number | null;
     satTargetPct?: number | null;
     book?: {
@@ -501,6 +506,10 @@ export function useTwinStarActionQuery(enabled = true) {
     refetchInterval: 30 * 60_000,
     enabled,
   });
+}
+
+export async function refreshTwinStarAction(): Promise<TwinStarAction> {
+  return apiPostJson<TwinStarAction>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 90_000 });
 }
 
 export type PickAttrStat = {

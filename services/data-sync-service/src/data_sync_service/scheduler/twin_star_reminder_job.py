@@ -1,9 +1,7 @@
-"""机会双子星 (Opportunity Twin-Star) 14:30 前操作提醒 — weekdays 14:20 Asia/Shanghai.
+"""机会双子星 14:20 刷新当日行情并提醒 — weekdays 14:20 Asia/Shanghai.
 
-Emits a webhook event `twin_star_reminder` (dedupe per day) with the core
-pick-strong target + S-gap satellite gate/candidates, so the user can act
-before 14:30 (A-share close-30min). Also visible on-demand via
-GET /api/twin-star/action and the notifications hub.
+Pulls a fresh full-market snapshot (afternoon tape ≈ 14:30 execution price),
+re-runs the S-gap screen, then emits webhook + hub with buys AND sells.
 """
 from __future__ import annotations
 
@@ -15,6 +13,10 @@ from data_sync_service.db.webhook import emit_event
 from data_sync_service.service.twin_star_daily import (
     build_twin_star_reminder_payload,
     now_cn,
+)
+from data_sync_service.service.twin_star_intraday import (
+    build_intraday_sat,
+    cache_intraday_sat,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,19 +31,29 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    # 12:30 intraday snapshot already pushed the simulated-close signal (more
-    # accurate than the t-1 reminder) — skip to avoid a stale duplicate.
-    from data_sync_service.service.twin_star_intraday import load_intraday_sat
-
-    if load_intraday_sat(now_cn().date()) is not None:
-        logger.info("twin_star_reminder skipped: intraday snapshot already emitted today")
-        return
-    payload = build_twin_star_reminder_payload()
+    today = now_cn().date()
+    try:
+        sat = build_intraday_sat(today)
+        if sat is not None:
+            cache_intraday_sat(sat, today)
+            logger.info(
+                "twin_star_reminder snapshot refreshed: gateOpen=%s candidates=%s",
+                sat.get("gateOpen"),
+                [c["ts"] for c in (sat.get("candidates") or [])],
+            )
+        else:
+            logger.warning("twin_star_reminder: afternoon snapshot unavailable, using cache/t-1")
+    except Exception:  # noqa: BLE001
+        logger.exception("twin_star_reminder snapshot refresh failed")
+    payload = build_twin_star_reminder_payload(today)
     if not payload.get("detail"):
         return
-    today = now_cn().date().isoformat()
     try:
-        emit_event("twin_star_reminder", payload, dedupe_key=f"twin_star_reminder:{today}")
+        emit_event(
+            "twin_star_reminder",
+            payload,
+            dedupe_key=f"twin_star_reminder:{today.isoformat()}",
+        )
         logger.info("twin_star_reminder emitted: %s", payload["detail"])
     except Exception:  # noqa: BLE001
         logger.exception("twin_star_reminder emit failed")

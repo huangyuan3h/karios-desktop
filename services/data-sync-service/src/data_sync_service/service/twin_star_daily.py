@@ -21,7 +21,7 @@ from data_sync_service.service.state_bucket_track import (
     _load_mv,
     _load_rows,
     build_sgap_timeline,
-    select_strict_gap_candidates,
+    select_live_gap_picks,
 )
 
 LOOKBACK_DAYS = 90
@@ -61,10 +61,7 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
     date_idx = {ts: {r["date"]: i for i, r in enumerate(series)} for ts, series in per_ts.items()}
     day_all, breadth = _day_features(per_ts, mv_map, cal, signal_day, date_idx)
     gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
-    # Executability: candidates that closed at the price limit on the signal
-    # day (t-1) almost always open one-word / limit-up next session — the
-    # backtest filled them at open and overstated satellite returns 3-5x
-    # (audit 2026-08-31). Filter them so the live signal matches reality.
+
     def _limit_locked(ts: str) -> bool:
         di = date_idx.get(ts, {}).get(signal_day, -1)
         if di < 0:
@@ -76,30 +73,36 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
         return float(r["close"]) >= pc * (1 + lim - 0.004)
 
-    gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
     locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
-    picked = select_strict_gap_candidates(
+    picks = select_live_gap_picks(
         gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
     )
-    candidates = []
-    for ts, amp, gap in picked:
-        series = per_ts.get(ts)
-        idx = date_idx.get(ts, {}).get(signal_day, -1)
-        close = series[idx]["close"] if idx >= 0 and series else None
-        candidates.append(
-            {
-                "ts": ts,
-                "amp": round(float(amp) * 100, 2),
-                "gapPct": round(float(gap) * 100, 2),
-                "close": float(close) if close else None,
-            }
-        )
+
+    def _pack(rows: list, *, blocked: bool = False) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for ts, amp, gap in rows:
+            series = per_ts.get(ts)
+            idx = date_idx.get(ts, {}).get(signal_day, -1)
+            close = series[idx]["close"] if idx >= 0 and series else None
+            out.append(
+                {
+                    "ts": ts,
+                    "amp": round(float(amp) * 100, 2),
+                    "gapPct": round(float(gap) * 100, 2),
+                    "close": float(close) if close else None,
+                    "limitLocked": blocked,
+                }
+            )
+        return out
+
     return {
         "asOf": signal_day,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
         "breadth": round(float(breadth), 3),
         "gapCount": len(gap_stocks),
-        "candidates": candidates,
+        "candidates": _pack(picks["primary"]),
+        "blocked": _pack(picks["blocked"], blocked=True),
+        "alternates": _pack(picks["alternates"]),
         "note": lag_note,
     }
 
@@ -219,25 +222,32 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
         cands = ", ".join(f"{c['ts']}(amp{c['amp']}%)" for c in sat["candidates"][:3]) or "无候选"
         sat_line = (
             f"卫星: R-wide 开闸 (breadth {sat['breadth']}) · {sat['gapCount']} 只缺口票 · "
-            f"低波候选 {cands}"
+            f"买 {cands}"
         )
+        blocked = sat.get("blocked") or []
+        alts = sat.get("alternates") or []
+        if blocked:
+            swap = alts[0]["ts"] if alts else "—"
+            sat_line += f" · 涨停跳过 {blocked[0]['ts']} 换 {swap}"
     if sat.get("approx"):
-        sat_line += " · 12:30 快照近似（模拟收盘价）"
+        snap = sat.get("snapshotAt") or "盘中快照"
+        sat_line += f" · {snap} 当日行情"
     book = sat.get("book") or {}
     holdings = book.get("holdings") or []
     exits = book.get("exitsDue") or []
+    sell_line = ""
+    if exits:
+        sell_line = f"今日卖 {', '.join(e['ts'] for e in exits[:5])} · "
     if holdings:
         hold_bits = ", ".join(
             f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in holdings[:3]
         )
         sat_line += f" · 持仓簿 {len(holdings)}只: {hold_bits}"
-    if exits:
-        sat_line += f" · 今日/到期卖出 {', '.join(e['ts'] for e in exits[:3])}"
     if sat.get("note"):
         sat_line += f" · {sat['note']}"
     return {
-        "title": "机会双子星 · 14:30 前操作提醒",
-        "detail": f"{core_line} · {sat_line}",
+        "title": "机会双子星 · 14:30 操作",
+        "detail": f"{sell_line}{core_line} · {sat_line}",
         "core": core,
         "sat": sat,
     }

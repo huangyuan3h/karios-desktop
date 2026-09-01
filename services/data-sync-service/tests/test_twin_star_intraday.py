@@ -115,6 +115,7 @@ class TestBuildIntradaySat:
         assert sat is not None
         assert sat["asOf"] == "2026-08-20"
         assert sat["approx"] is True
+        assert sat.get("snapshotAt")
 
     def test_limit_locked_filtered_out(self) -> None:
         sat = m.build_intraday_sat(self.today)

@@ -5,6 +5,7 @@ import {
   isEtfWatchlistSymbol,
   isHkWatchlistSymbol,
   toTsCodeFromSymbol,
+  tsCodeToWatchlistSymbol,
 } from '@/lib/symbols';
 
 describe('toTsCodeFromSymbol', () => {
@@ -34,6 +35,14 @@ describe('toTsCodeFromSymbol', () => {
     expect(toTsCodeFromSymbol('ETF:159819')).toBe('159819.SZ');
     expect(toTsCodeFromSymbol('ETF:159099')).toBe('159099.SZ');
     expect(toTsCodeFromSymbol('ETF:513050')).toBe('513050.SH');
+  });
+
+  it('maps ts_code back to watchlist symbols', () => {
+    expect(tsCodeToWatchlistSymbol('600352.SH')).toBe('CN:600352');
+    expect(tsCodeToWatchlistSymbol('000712.SZ')).toBe('CN:000712');
+    expect(tsCodeToWatchlistSymbol('00700.HK')).toBe('HK:00700');
+    expect(tsCodeToWatchlistSymbol('513110.SH')).toBe('ETF:513110');
+    expect(tsCodeToWatchlistSymbol('CN:600111')).toBe('CN:600111');
   });
 
   it('returns null on invalid input', () => {
