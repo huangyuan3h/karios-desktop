@@ -128,14 +128,12 @@ export function TodayActionCard() {
           <span className="font-semibold text-sky-700">机会卫星（S-gap）</span>
           <span className="ml-2 text-[var(--k-muted)]">
             {twinStarQ.data.sat.gateOpen
-              ? (twinStarQ.data.sat.book?.holdings?.length ?? 0) >= 15
-                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · 持仓簿满 ${twinStarQ.data.sat.book!.holdings!.length}/15 · 今日不买新票`
-                : afterSatWindow
-                  ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波买入 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'} · 每只总资产 ${(((twinStarQ.data.sat.satTargetPct ?? 50) * 0.1).toFixed(1))}%`
+              ? afterSatWindow
+                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波买入 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'} · 每只总资产 ${(((twinStarQ.data.sat.satTargetPct ?? 50) * 0.1).toFixed(1))}%`
                 : `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 候选 14:30 后公布（模拟收盘价买入）`
               : `R-wide 关闸 (breadth ${twinStarQ.data.sat.breadth}) — 今日不开仓`}
             {(twinStarQ.data.sat.book?.holdings?.length ?? 0) > 0
-              ? ` · 持仓 ${(twinStarQ.data.sat.book!.holdings ?? []).map((h) => `${h.ts}(剩${h.daysLeft}d)`).slice(0, 3).join(', ')}`
+              ? ` · 策略回放仓 ${(twinStarQ.data.sat.book!.holdings ?? []).map((h) => `${h.ts}(剩${h.daysLeft}d)`).slice(0, 3).join(', ')}`
               : ''}
             {(twinStarQ.data.sat.book?.exitsDue?.length ?? 0) > 0
               ? ` · 到期卖 ${(twinStarQ.data.sat.book!.exitsDue ?? []).map((h) => h.ts).slice(0, 3).join(', ')}`

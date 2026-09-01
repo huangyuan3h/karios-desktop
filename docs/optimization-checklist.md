@@ -3134,7 +3134,7 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 **背景**：实盘执行点是 14:30 模拟收盘价（不是回测的 T 日开盘价）；若用 t-1 信号则"昨天数据"，与 14:30 操作错位。
 
 **改动**：
-- **UI 闸门修正**：`PortfolioHealthCard` 卫星行只认 R-wide 闸——S-3 Execution Gate DEFEND 不再拦截双子星卫星候选（回测无此闸）；「闸门关闭」仅当核心腿 pick=STOCK（S-3 篮）时标注"S-3 闸门关闭"
+- **UI 闸门修正**：机会双子星**没有** S-3 Execution Gate。卫星只认 R-wide（`breadth>0.5`）；核心腿 pick=STOCK 时用 S-3 **选股篮**（Weak/恐慌/熔断 → 0 只可买），不套 ATTACK/DEFEND/`allowNewEntries`。卡片结论条不再写「S-3 闸门关闭 · 不开新仓」（那是单轨择强 overlay）
 - **14:30 时间门控**：卫星候选 14:30（Asia/Shanghai）前不显示（"候选 14:30 后公布（模拟收盘价买入）"），14:30 后显示
 - **`twin_star_intraday` service + job**（工作日 12:30）：东财 push2 clist 全市场快照（~3800 行，open/high/low/pre_close 真实值，快照价 = 当日模拟收盘）→ 复用 `_day_features` 重跑 S-gap 筛（gap/amp/低波 1/3/R-wide/涨停剔除，mv 取 t-1 近似，交易日判断用 `trade_calendar`）→ 缓存 `data/twin_star_intraday/{date}.json`
 - **API**：`GET /api/backtest/twin-star/action` 在 14:30 后优先返回当日 `approx` 信号（`asOf=今日`），失败/缺缓存回退 t-1

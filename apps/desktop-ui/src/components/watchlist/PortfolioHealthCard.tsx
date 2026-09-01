@@ -28,6 +28,7 @@ import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { useStrategyMode } from '@/lib/strategy-settings';
 import { getShanghaiMinutes } from '@/lib/market-hours';
 import { cn } from '@/lib/utils';
+import { isCnWatchlistSymbol } from '@/lib/symbols';
 import { loadWatchlist, saveWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
@@ -820,8 +821,16 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
       etfHoldings: (data?.multiAssetHoldings ?? []).map((h) => ({
         symbol: h.symbol,
         key: etfSleeveKey(h.symbol),
+        name: h.name ?? null,
         positionPct: typeof h.positionPct === 'number' ? h.positionPct : null,
       })),
+      liveStockHoldings: (data?.holdings ?? [])
+        .filter((h) => isCnWatchlistSymbol(h.symbol))
+        .map((h) => ({
+          symbol: h.symbol,
+          name: h.name ?? null,
+          positionPct: typeof h.positionPct === 'number' ? h.positionPct : null,
+        })),
     });
   }, [twinStar, twinStarQ.data, data, afterSatWindow, pickKey, sleeve]);
 
@@ -1046,9 +1055,6 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                   : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}`}
                 {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf}
                 {twinStarQ.data.sat.approx ? ' · 盘中近似（12:30 快照）' : ''}
-                {(twinStarQ.data.sat.book?.holdings?.length ?? 0) > 0
-                  ? ` · 持仓簿 ${twinStarQ.data.sat.book!.holdings!.length} 只`
-                  : ' · 持仓簿空'}
                 {(twinStarQ.data.sat.book?.exitsDue?.length ?? 0) > 0
                   ? ` · 到期卖 ${(twinStarQ.data.sat.book!.exitsDue ?? []).map((h) => h.ts).slice(0, 3).join(', ')}`
                   : ''}

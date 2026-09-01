@@ -172,7 +172,7 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/机会口径 · 核心 50%/)).toBeDefined();
     expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
-    expect(await screen.findByText(/持仓簿空/)).toBeDefined();
+    expect(await screen.findByText(/策略回放仓空/)).toBeDefined();
   });
 
   it('flags satellite data failure with a retry badge', async () => {
@@ -811,7 +811,7 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
 
-  it('labels the S-3 gate only when the core leg picks STOCK', async () => {
+  it('does not paint the S-3 execution gate on twin-star even when pick=STOCK and DEFEND', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
@@ -850,11 +850,12 @@ describe('PortfolioHealthCard', () => {
       isFetching: false,
     });
     renderCard();
-    expect(await screen.findByText(/🔒 S-3 闸门关闭 · 不开新仓 ·/)).toBeDefined();
+    expect(await screen.findByText(/机会双子星 · 今日决策/)).toBeDefined();
+    expect(screen.queryByText(/S-3 闸门关闭/)).toBeNull();
     expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
   });
 
-  it('does not list gap names as buys when the satellite book is already full', async () => {
+  it('lists today\'s gap buys when recipe replay is 15/15 but live satellite is empty', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     useTwinStarActionQueryMock.mockReturnValue({
       data: {
@@ -903,9 +904,10 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect((await screen.findAllByText(/持仓簿满 15\/15 · 今日不买新票/)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/600352\.SH/)).toBeNull();
-    expect(await screen.findByText(/今日动作/)).toBeDefined();
+    expect(await screen.findByText(/今日下单/)).toBeDefined();
+    expect(screen.getByText(/模拟仓，不是券商持仓/)).toBeDefined();
+    expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/持仓簿满 15\/15/)).toBeNull();
     expect(screen.getByText(/刷新当日行情/)).toBeDefined();
   });
 
@@ -956,8 +958,11 @@ describe('PortfolioHealthCard', () => {
     });
     renderCard();
     expect((await screen.findAllByText(/不要为 STOCK 清空 ETF/)).length).toBeGreaterThan(0);
-    expect(await screen.findByText(/今日无买卖/)).toBeDefined();
+    expect(await screen.findByText(/今日下单/)).toBeDefined();
+    expect(screen.queryByText(/今日无买卖/)).toBeNull();
+    expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('暂留').length).toBeGreaterThan(0);
+    expect(screen.getByText(/多出约 40/)).toBeDefined();
     expect(screen.queryByText(/资金调向 STOCK/)).toBeNull();
   });
 });
