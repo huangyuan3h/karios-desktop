@@ -34,7 +34,7 @@
 | E1 | 策略模式默认 `twin_star`（本轮已做） | 空 localStorage / 通知 API 无 `mode` 都走 clip4 | `strategy-settings.ts` · `GET /api/notifications` |
 | E2 [done] 2026-09-02 | 卫星占用真值 = Watchlist 仓，不是引擎 `openPositions` | 引擎回放可到 15 只旧槽；实盘只有 4 槽 | OPT-131 · `twin_star_daily.py` `liveHoldings` |
 | E3 [done] 2026-09-02 | 14:30 名单 / 12:30 快照失败可见 | 默认策略后，东财快照挂了等于当天没卫星 | OPT-133 · `intraday_snapshot_status` · 通知 `lane=system` |
-| E4 | `GET /api/backtest/twin-star/action` 进 `@karios/shared` Zod | 前后端字段再漂一次就会买错 12.5% | OPT-009 流程 |
+| E4 [done] 2026-09-02 | `GET /api/backtest/twin-star/action` 进 `@karios/shared` Zod | 前后端字段再漂一次就会买错 12.5% | OPT-134 · `TwinStarActionResponseSchema` · `clip4` |
 | E5 [done] 2026-09-02 | 卫星 paper 簿（入/出/body 日），不要复用 S-3 paper | C4 对照现在只服务股票篮 | OPT-131 · `paper_trades` source=`twin_star` |
 | E6 [done] 2026-09-02 | 核心腿 ETF 日线 + `stock_dailybasic` 新鲜度当双子星健康项 | OPT-057/058 已修过静默腐烂 | OPT-133 · `/api/health/datasources` |
 
@@ -77,7 +77,8 @@
 第 3 刀   E2+E5  占用真值 + 卫星 paper（能对照）[done] 2026-09-02 OPT-131
 第 4 刀   A2+A4  跳过/成交 blotter（能审计涨停）[done] 2026-09-02 OPT-132
 第 5 刀   E3+E6  快照/日线健康（默认策略不能哑火）[done] 2026-09-02 OPT-133
-下一刀    E4 Zod + 剩余 B2/B3/B5 / A5 C4
+第 6 刀   E4 Zod + clip4 字面量（买错 12.5% 会拒收）[done] 2026-09-02 OPT-134
+下一刀    B2/B3/B5 日流程 + A5 双子星 C4
 并行不抢  OPT-124 tushare 多 token（稳定性，不改策略）
 ```
 

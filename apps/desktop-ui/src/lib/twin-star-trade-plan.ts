@@ -16,15 +16,16 @@
  */
 
 import { isCnWatchlistSymbol, isEtfWatchlistSymbol, toTsCodeFromSymbol, tsCodeToWatchlistSymbol } from '@/lib/symbols';
-import type { TwinStarSatCandidate, TwinStarSatHolding } from '@/lib/queries/backtest';
+import type { TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
+import { TWIN_STAR_CLIP4 } from '@karios/shared';
 import type { PortfolioCandidate } from '@/lib/queries/portfolioHealth';
 
-export const SAT_MAX_POS = 4;
-export const SAT_SLOT_OF_SLEEVE = 0.25;
+export const SAT_MAX_POS = TWIN_STAR_CLIP4.maxPos;
+export const SAT_SLOT_OF_SLEEVE = TWIN_STAR_CLIP4.slotOfSleeve;
 /** Each sat name as % of total NAV when the sleeve is 50/50 (4 × 12.5%). */
-export const SAT_SLOT_NAV_PCT = 50 * SAT_SLOT_OF_SLEEVE;
+export const SAT_SLOT_NAV_PCT = TWIN_STAR_CLIP4.satSlotNavPct;
 /** Broker protective stop from cost. Not part of the S-gap backtest (body=3 only). */
-export const SAT_PROTECT_STOP_PCT = 0.05;
+export const SAT_PROTECT_STOP_PCT = TWIN_STAR_CLIP4.protectStopPct;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** Frozen live mapping of opportunity twin-star v3.1 clip4 — lockstep with state_bucket_track.py. */
 export const TWIN_STAR_LIVE_RECIPE = {
@@ -32,10 +33,10 @@ export const TWIN_STAR_LIVE_RECIPE = {
   sat: 'S-gap',
   gate: 'R-wide breadth>0.5',
   pool: 'strict skip_t1_limit',
-  bucketQ: 3,
+  bucketQ: TWIN_STAR_CLIP4.bucketQ,
   maxPos: SAT_MAX_POS,
   slotOfSleeve: SAT_SLOT_OF_SLEEVE,
-  body: 3,
+  body: TWIN_STAR_CLIP4.body,
 } as const;
 
 export function twinStarRecipeLine(slotNavPct: number): string {

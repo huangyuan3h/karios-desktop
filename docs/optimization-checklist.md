@@ -53,6 +53,7 @@
 | OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [x] |
 | OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [x] |
 | OPT-133 | 12:30 快照失败可见 + 双子星数据健康 | P0 | 0.5–1 天 | [x] |
+| OPT-134 | twin-star/action Zod 合同 + clip4 字面量 | P0 | 0.5 天 | [x] |
 
 ---
 
@@ -3255,6 +3256,20 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - 回测成交仍是 T 开盘，14:30 价不写进引擎
 
 **验证**：`test_twin_star_intraday.py::TestIntradaySnapshotStatus` · `test_notifications.py` snapshot lane · `test_health.py` · `PortfolioHealthCard.test.tsx` · `SystemHealthBanner.test.tsx`
+
+### OPT-134：twin-star/action Zod 合同 + clip4 字面量
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`packages/shared` `TwinStarActionResponseSchema` · action `clip4` · Watchlist query parse · `SAT_*` 从 shared 取  
+**验收**：后端一旦把槽位改成 10%×10，前端 Zod 拒收，不会默默按错误仓位下 QuickBuy
+
+**落地**：
+- `TWIN_STAR_CLIP4`：`maxPos=4` `slotOfSleeve=0.25` `satSlotNavPct=12.5` `body=3` `protectStopPct=0.05`
+- `GET/POST /api/backtest/twin-star/*` 带 `clip4` 字面量；`coreTargetPct ∈ {50,100}`
+- `useTwinStarActionQuery` / `refreshTwinStarAction` `parseTwinStarAction`
+- 前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` / replica-gap 文案从 shared 常量来
+
+**验证**：`packages/shared` `twinStar.test.ts` · `contract.test.ts` · `test_twin_star_daily.py::test_clip4_contract_matches_engine` · `test_twin_star_action_endpoint_emits_clip4`
 
 ---
 

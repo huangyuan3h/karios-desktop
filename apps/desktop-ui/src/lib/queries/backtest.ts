@@ -4,6 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { getShanghaiMinutes, isWeekdayShanghai } from '@/lib/market-hours';
+import {
+  parseTwinStarAction,
+  type TwinStarAction,
+} from '@karios/shared';
 
 export type BacktestSummary = {
   config: {
@@ -494,73 +498,7 @@ export function useTimelineQuery(
   });
 }
 
-export type TwinStarSatCandidate = {
-  ts: string;
-  name?: string | null;
-  amp: number | null;
-  gapPct: number | null;
-  close: number | null;
-  limitLocked?: boolean | null;
-};
-
-export type TwinStarSatHolding = {
-  ts: string;
-  symbol?: string | null;
-  name?: string | null;
-  entryDate?: string | null;
-  entryPrice?: number | null;
-  close?: number | null;
-  heldDays?: number | null;
-  daysLeft?: number | null;
-  exitDue?: string | null;
-  pnlPct?: number | null;
-  due?: boolean | null;
-  positionPct?: number | null;
-};
-
-export type TwinStarAction = {
-  ok: boolean;
-  refreshed?: boolean;
-  core: {
-    pick?: string | null;
-    symbol?: string | null;
-    label?: string | null;
-    action?: string | null;
-    message?: string | null;
-    active?: boolean | null;
-  };
-  sat: {
-    asOf?: string | null;
-    gateOpen?: boolean | null;
-    breadth?: number | null;
-    gapCount?: number | null;
-    candidates?: TwinStarSatCandidate[] | null;
-    blocked?: TwinStarSatCandidate[] | null;
-    alternates?: TwinStarSatCandidate[] | null;
-    note?: string | null;
-    approx?: boolean | null;
-    snapshotAt?: string | null;
-    frozen?: boolean | null;
-    heldOvernight?: boolean | null;
-    snapshotMissing?: boolean | null;
-    snapshotStale?: boolean | null;
-    snapshotAgeSec?: number | null;
-    snapshotReason?: string | null;
-    coreTargetPct?: number | null;
-    satTargetPct?: number | null;
-    book?: {
-      asOf?: string | null;
-      holdings?: TwinStarSatHolding[] | null;
-      exitsDue?: TwinStarSatHolding[] | null;
-      body?: number | null;
-      liveHoldings?: TwinStarSatHolding[] | null;
-      liveExitsDue?: TwinStarSatHolding[] | null;
-      liveHeld?: number | null;
-      liveFreeSlots?: number | null;
-      engineHeld?: number | null;
-    } | null;
-  };
-};
+export type { TwinStarAction, TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
 
 /** 双子星 (Twin-Star) 今日操作信号: 核心择强目标 + S-gap 卫星闸/候选. */
 export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
@@ -574,7 +512,9 @@ export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
 export function useTwinStarActionQuery(enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'twin-star', 'action'],
-    queryFn: () => apiGetJson<TwinStarAction>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
+    queryFn: async () => parseTwinStarAction(
+      await apiGetJson<unknown>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
+    ),
     staleTime: 15_000,
     refetchInterval: () => twinStarRefetchIntervalMs(),
     enabled,
@@ -582,7 +522,9 @@ export function useTwinStarActionQuery(enabled = true) {
 }
 
 export async function refreshTwinStarAction(): Promise<TwinStarAction> {
-  return apiPostJson<TwinStarAction>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 90_000 });
+  return parseTwinStarAction(
+    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 90_000 }),
+  );
 }
 
 export type PickAttrStat = {

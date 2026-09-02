@@ -6,6 +6,8 @@
  *   CN stocks are the satellite book, not a hard-switch deviation.
  */
 
+import { TWIN_STAR_CLIP4 } from '@karios/shared';
+
 export type HoldingSnap = {
   symbol: string;
   positionPct?: number | null;
@@ -43,9 +45,6 @@ const ETF_PICK_PREFIX: Record<string, string[]> = {
   NASDAQ: ['ETF:513100', 'ETF:513110', 'ETF:513500', 'ETF:159941', '513100', '513110'],
   BOND10: ['ETF:511260', '511260'],
 };
-
-/** Clip4 sat slot as % of NAV when the sleeve is 50/50 (4 × 12.5%). */
-const SAT_SLOT_NAV_PCT = 12.5;
 
 export function classifyHoldingSymbol(symbol: string): 'STOCK' | 'ETF' | 'OTHER' {
   const s = (symbol || '').toUpperCase();
@@ -91,7 +90,7 @@ function timingInfos(mode: ReplicaGapMode, corePct: number, satBudget: number): 
     infos.push({
       id: 'clip4_structure',
       severity: 'info',
-      title: `机会双子星 clip4：核心 ${corePct}% · 卫星套筒 ${satBudget}%（最多 4×${SAT_SLOT_NAV_PCT}%）`,
+      title: `机会双子星 clip4：核心 ${corePct}% · 卫星套筒 ${satBudget}%（最多 4×${TWIN_STAR_CLIP4.satSlotNavPct}%）`,
       detail: '开闸或隔夜卫星 = 50/50；关闸无仓 = 核心 100%。卫星股票不是偏离，不要用单轨 100% 硬切对照。',
     });
     infos.push({
@@ -309,7 +308,7 @@ function detectTwinStarGaps(
         id: 'core_over_sat_empty',
         severity: 'warn',
         title: '核心超目标、卫星套筒空着',
-        detail: `核心 ETF 约 ${weights.targetWeightPct.toFixed(0)}%（目标 ${corePct}%）。开闸时卫星套筒 ${satBudget}%（最多 4×${SAT_SLOT_NAV_PCT}%），不要按单轨 100% 硬切把钱全放 ETF。`,
+        detail: `核心 ETF 约 ${weights.targetWeightPct.toFixed(0)}%（目标 ${corePct}%）。开闸时卫星套筒 ${satBudget}%（最多 4×${TWIN_STAR_CLIP4.satSlotNavPct}%），不要按单轨 100% 硬切把钱全放 ETF。`,
       });
     }
     if (corePct >= 95 && weights.stockWeightPct > 15) {
@@ -336,7 +335,7 @@ function detectTwinStarGaps(
       id: 'sat_over_sleeve',
       severity: 'warn',
       title: '卫星仓超套筒',
-      detail: `股票约 ${weights.stockWeightPct.toFixed(0)}%，套筒上限 ${satBudget}%（最多 4×${SAT_SLOT_NAV_PCT}%）。不要金字塔折进卫星。`,
+      detail: `股票约 ${weights.stockWeightPct.toFixed(0)}%，套筒上限 ${satBudget}%（最多 4×${TWIN_STAR_CLIP4.satSlotNavPct}%）。不要金字塔折进卫星。`,
     });
   }
 
@@ -347,7 +346,7 @@ function detectTwinStarGaps(
       title: satBudget > 0 ? '核心已接、卫星套筒空着' : '闲置现金偏多',
       detail:
         satBudget > 0
-          ? `约 ${weights.idlePct.toFixed(0)}% 未部署。开闸时卫星套筒 ${satBudget}%（最多 4×${SAT_SLOT_NAV_PCT}%）。`
+          ? `约 ${weights.idlePct.toFixed(0)}% 未部署。开闸时卫星套筒 ${satBudget}%（最多 4×${TWIN_STAR_CLIP4.satSlotNavPct}%）。`
           : `约 ${weights.idlePct.toFixed(0)}% 未部署。关闸日核心目标 ${corePct}%。`,
     });
   }

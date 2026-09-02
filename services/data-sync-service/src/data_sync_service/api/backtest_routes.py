@@ -36,6 +36,9 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 def twin_star_action() -> dict[str, Any]:
     """双子星 (Twin-Star) 今日操作信号: core pick-strong target + S-gap 卫星闸/候选.
 
+    JSON contract: ``packages/shared`` ``TwinStarActionResponseSchema`` (OPT-134).
+    ``clip4`` literals must stay 4 × 12.5% / body=3; the UI Zod-parses them.
+
     In-session the cache refreshes from a full A-share snapshot at most once a
     minute. After 15:00 the last tape is frozen until 09:00 the next morning.
     """

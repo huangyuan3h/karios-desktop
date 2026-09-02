@@ -20,7 +20,7 @@ Watchlist 模块是 Karios 的**核心操作中心**，用于管理用户关注�
 Watchlist「今日操作」默认 `strategyMode=twin_star`，走冻结引擎，不走 S-3 10%×10。Settings 可切回单轨对照。
 
 - 卫星最多 **4 只**，每只 **总资产 12.5%**（套筒 25%；开闸 50/50 时 4×12.5% = 卫星半仓）
-- 常量锁步：后端 `MAX_POS=4` `POSITION_PCT=0.25`；前端 `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE` / `SAT_SLOT_NAV_PCT`（12.5）
+- 常量锁步：`@karios/shared` `TWIN_STAR_CLIP4`（4 × 12.5%、body=3）；后端 `MAX_POS=4` `POSITION_PCT=0.25`；前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` 从 shared 取。action API 带 `clip4` 字面量，Zod 拒收 10%×10
 - 日对齐横幅按 clip4 对照核心% + 卫星套筒；开闸持有 CN 股票不算「偏离 100% 硬切」。表行买入预填 12.5% NAV
 - 14:30 前不公布当日卫星名单；涨停跳过、不顺位补。回测 Timeline 日表有候选/跳过/成交/空槽回核，blotter 能点开一笔卫星看振幅名次与贡献 pt
 - 交易日 **12:30 后**必须有当日东财全市场快照；失败时 Watchlist 红条「卫星名单不可用」、通知 `lane=system`，**不**用 T-1 名单下单。核心 ETF 日线 / `stock_dailybasic` 陈旧走系统自检「双子星」标签

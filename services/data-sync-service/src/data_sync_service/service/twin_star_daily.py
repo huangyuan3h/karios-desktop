@@ -30,6 +30,22 @@ LOOKBACK_DAYS = 90
 BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = MAX_POS
 SAT_SLOT_NAV_PCT = round(50 * POSITION_PCT, 2)  # clip4: 4 × 12.5% NAV when sleeve is 50/50
+SAT_PROTECT_STOP_PCT = 0.05
+
+# JSON contract: packages/shared TwinStarActionResponseSchema (OPT-134).
+# clip4 literals: maxPos=4 slotOfSleeve=0.25 satSlotNavPct=12.5 body=3 protectStopPct=0.05
+# sat.coreTargetPct ∈ {50, 100}; sat.satTargetPct ∈ {0, 50}
+
+
+def clip4_contract() -> dict[str, Any]:
+    """Frozen clip4 numbers the UI Zod-parses as literals (do not silently drift)."""
+    return {
+        "maxPos": MAX_POS,
+        "slotOfSleeve": POSITION_PCT,
+        "satSlotNavPct": SAT_SLOT_NAV_PCT,
+        "body": BODY,
+        "protectStopPct": SAT_PROTECT_STOP_PCT,
+    }
 
 
 def count_weekdays_inclusive(from_iso: str, to_iso: str) -> int:
@@ -383,7 +399,7 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
         "coreTargetPct": core_pct,
         "satTargetPct": 100 - core_pct,
     }
-    return {"core": core, "sat": sat}
+    return {"core": core, "sat": sat, "clip4": clip4_contract()}
 
 
 def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any]:

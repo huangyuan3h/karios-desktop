@@ -328,6 +328,24 @@ class TestCoreTargetPct:
         assert out["sat"]["coreTargetPct"] == 50
         assert out["sat"]["book"]["liveHeld"] == 2
         assert out["sat"]["book"]["liveFreeSlots"] == 2
+        assert out["clip4"] == {
+            "maxPos": 4,
+            "slotOfSleeve": 0.25,
+            "satSlotNavPct": 12.5,
+            "body": 3,
+            "protectStopPct": 0.05,
+        }
+
+
+def test_clip4_contract_matches_engine() -> None:
+    from data_sync_service.service import state_bucket_track as sbt
+
+    c = tsd.clip4_contract()
+    assert c["maxPos"] == sbt.MAX_POS == 4
+    assert c["slotOfSleeve"] == sbt.POSITION_PCT == 0.25
+    assert c["satSlotNavPct"] == 12.5
+    assert c["body"] == sbt.BODY == 3
+    assert c["maxPos"] * c["satSlotNavPct"] == 50
 
 
 class TestFillCandidateNames:
@@ -340,6 +358,39 @@ class TestFillCandidateNames:
         tsd.fill_candidate_names(rows)
         assert rows[0]["name"] == "锦江投资"
         assert rows[1]["name"] == "浦发银行"
+
+
+def test_twin_star_action_endpoint_emits_clip4(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from data_sync_service.main import app
+
+    monkeypatch.setattr(
+        "data_sync_service.service.twin_star_intraday.maybe_refresh_intraday_sat",
+        lambda **k: None,
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.twin_star_daily.build_twin_star_daily_action",
+        lambda: {
+            "core": {"pick": "OIL", "action": "HOLD"},
+            "sat": {
+                "asOf": "2026-09-02",
+                "gateOpen": True,
+                "coreTargetPct": 50,
+                "satTargetPct": 50,
+                "candidates": [{"ts": "000001.SZ", "amp": 1, "gapPct": 5, "close": 10}],
+                "book": {"liveHeld": 0, "liveFreeSlots": 4, "engineHeld": 0, "body": 3},
+            },
+            "clip4": tsd.clip4_contract(),
+        },
+    )
+    resp = TestClient(app).get("/api/backtest/twin-star/action")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["ok"] is True
+    assert payload["clip4"]["satSlotNavPct"] == 12.5
+    assert payload["clip4"]["maxPos"] == 4
+    assert payload["sat"]["coreTargetPct"] == 50
 
 
 def test_reminder_hides_t1_names_when_snapshot_failed(monkeypatch: pytest.MonkeyPatch) -> None:
