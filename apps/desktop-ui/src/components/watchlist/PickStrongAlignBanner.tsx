@@ -1,18 +1,20 @@
 'use client';
 
 /**
- * Watchlist · 择强单轨日对齐（pick vs 实仓）— credibility checklist.
+ * Watchlist · daily align of live book vs today's recipe (core % + sat 4 slots).
  */
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
+import { useTwinStarActionQuery } from '@/lib/queries/backtest';
 import {
   detectReplicaGaps,
   type GapSeverity,
   type HoldingSnap,
 } from '@/lib/replica-gap';
+import { useStrategyMode } from '@/lib/strategy-settings';
 import { cn } from '@/lib/utils';
 
 const SEV_CLS: Record<GapSeverity, string> = {
@@ -27,22 +29,19 @@ const VERDICT_CLS = {
   diverged: 'text-red-700 dark:text-red-300',
 } as const;
 
-const VERDICT_LABEL = {
-  aligned: '对齐',
-  partial: '部分偏离',
-  diverged: '偏离硬切',
-} as const;
-
 /**
- * Always-visible daily align for 择强单轨 (complement to BehaviorAuditBanner / S-3).
- * Uses the same replica-gap rules as TodayActionCard / Backtest ReplicaGapCard.
+ * Always-visible daily align (complement to BehaviorAuditBanner / S-3).
+ * Twin-star uses clip4 core% + sat sleeve; single-track keeps 100% hard switch.
  */
 export function PickStrongAlignBanner() {
+  const [strategyMode] = useStrategyMode();
+  const twinStar = strategyMode !== 'single_track';
   const healthQ = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
     refetchInterval: 5 * 60_000,
   });
+  const twinStarQ = useTwinStarActionQuery(twinStar);
 
   const report = React.useMemo(() => {
     const data = healthQ.data;
@@ -55,11 +54,24 @@ export function PickStrongAlignBanner() {
       positionPct: h.positionPct,
       name: h.name,
     }));
-    return detectReplicaGaps({ pick, holdings });
-  }, [healthQ.data]);
+    return detectReplicaGaps({
+      pick,
+      holdings,
+      mode: twinStar ? 'twin_star' : 'single_track',
+      coreTargetPct: twinStarQ.data?.sat?.coreTargetPct,
+    });
+  }, [healthQ.data, twinStar, twinStarQ.data?.sat?.coreTargetPct]);
 
   const actionable = report.reasons.filter((r) => r.severity !== 'info');
   const infos = report.reasons.filter((r) => r.severity === 'info');
+  const verdictLabel =
+    report.verdict === 'aligned'
+      ? '对齐'
+      : report.verdict === 'partial'
+        ? '部分偏离'
+        : twinStar
+          ? '偏离目标结构'
+          : '偏离硬切';
 
   return (
     <div
@@ -73,15 +85,20 @@ export function PickStrongAlignBanner() {
       )}
     >
       <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium">
-        <span>择强日对齐</span>
+        <span>{twinStar ? '机会双子星日对齐' : '择强日对齐'}</span>
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 font-mono text-[10px]">
           pick={report.pick}
         </span>
+        {twinStar ? (
+          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 font-mono text-[10px]">
+            核心 {report.coreTargetPct}%
+          </span>
+        ) : null}
         <span className={cn('text-[11px] font-semibold', VERDICT_CLS[report.verdict])}>
-          {VERDICT_LABEL[report.verdict]}
+          {verdictLabel}
         </span>
         <span className="ml-auto font-mono text-[10px] font-normal text-[var(--k-muted)]">
-          目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
+          {twinStar ? '核心腿' : '目标腿'} {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
           {report.etfWeightPct}% · 闲置 {report.idlePct}%
         </span>
       </div>
@@ -90,7 +107,9 @@ export function PickStrongAlignBanner() {
       ) : null}
       {actionable.length === 0 ? (
         <p className="mt-1.5 text-[11px] text-[var(--k-muted)]">
-          相对今日 pick 结构无 block/warn（信息级时点差异仍可能存在）。
+          {twinStar
+            ? '相对今日核心% + 卫星套筒无 block/warn（14:30 / body 残差仍可能存在）。'
+            : '相对今日 pick 结构无 block/warn（信息级时点差异仍可能存在）。'}
         </p>
       ) : (
         <ul className="mt-2 space-y-1.5">

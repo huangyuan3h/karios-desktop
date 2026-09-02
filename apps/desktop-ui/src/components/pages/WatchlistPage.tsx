@@ -352,12 +352,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         {showSingleTrack ? <TodayActionCard /> : null}
-        {showSingleTrack ? (
-          <>
-            <PickStrongAlignBanner />
-            <EtfExecutionLogCard />
-          </>
-        ) : null}
+        <PickStrongAlignBanner />
+        {showSingleTrack ? <EtfExecutionLogCard /> : null}
         {showSingleTrack ? (
         <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
           <summary className="cursor-pointer text-xs text-[var(--k-muted)]">展开旧提醒（行为对账 / 轮动 / Gate 详情）</summary>

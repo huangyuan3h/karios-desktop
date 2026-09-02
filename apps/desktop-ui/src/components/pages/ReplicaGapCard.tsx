@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * 单轨 vs 我的账本 · 归因对照（本质差异）
- * Replaces shallow "today pick vs holdings" nagging with leg-level capture analysis.
+ * Core pick-strong vs live book · attribution contrast.
+ * Twin-star copy talks about the core leg (not 100% hard switch).
  */
 
 import * as React from 'react';
@@ -13,6 +13,7 @@ import { GitCompareArrows } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useReturnAttributionQuery } from '@/lib/queries/backtest';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
+import { useStrategyMode } from '@/lib/strategy-settings';
 import {
   buildAttributionDiff,
   type LegDiffRow,
@@ -58,6 +59,8 @@ export function ReplicaGapCard({
   end: string;
   onRangeChange?: (start: string, end: string) => void;
 }) {
+  const [strategyMode] = useStrategyMode();
+  const twinStar = strategyMode !== 'single_track';
   const healthQ = useQuery({
     queryKey: ['portfolio-health', 'attr-diff'],
     queryFn: () => fetchPortfolioHealth(),
@@ -100,7 +103,7 @@ export function ReplicaGapCard({
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] font-medium">
         <GitCompareArrows className="size-3.5" />
-        单轨 vs 我的账本 · 归因对照
+        {twinStar ? '双子星 vs 我的账本 · 归因对照' : '单轨 vs 我的账本 · 归因对照'}
         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-normal text-emerald-800 dark:text-emerald-200">
           本质差异
         </span>
@@ -122,8 +125,17 @@ export function ReplicaGapCard({
       </div>
 
       <p className="mb-2 text-[10px] text-[var(--k-muted)]">
-        不问「今天 OIL 够不够 100%」，问：<strong>单轨钱从哪条腿来，你的仓位/成交接到了没有</strong>。
-        退出机制可以改善单票结局，补不齐「主发动机腿长期欠配 / 次要腿超配」。
+        {twinStar ? (
+          <>
+            不问「今天 OIL 够不够 100%」，问：<strong>核心腿接到没有、卫星 4 槽接到没有</strong>。
+            开闸时核心只占 50%，欠捕获不要按 100% 硬切解读。
+          </>
+        ) : (
+          <>
+            不问「今天 OIL 够不够 100%」，问：<strong>单轨钱从哪条腿来，你的仓位/成交接到了没有</strong>。
+            退出机制可以改善单票结局，补不齐「主发动机腿长期欠配 / 次要腿超配」。
+          </>
+        )}
       </p>
 
       {attrQ.isError ? (
@@ -131,12 +143,12 @@ export function ReplicaGapCard({
       ) : attrQ.isFetching && !ps ? (
         <p className="text-xs text-[var(--k-muted)]">归因计算中…（与涨跌归因同源）</p>
       ) : !ps ? (
-        <p className="text-xs text-[var(--k-muted)]">暂无单轨归因</p>
+        <p className="text-xs text-[var(--k-muted)]">暂无{twinStar ? '核心腿' : '单轨'}归因</p>
       ) : (
         <div className="flex flex-col gap-3">
           <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2">
-              <div className="text-[10px] text-[var(--k-muted)]">单轨区间几何</div>
+              <div className="text-[10px] text-[var(--k-muted)]">{twinStar ? '核心腿区间几何' : '单轨区间几何'}</div>
               <div className={cn('text-[15px] font-semibold tabular-nums', tone(ps.totalGeoPct))}>
                 {ps.totalGeoPct.toFixed(1)}%
               </div>
@@ -186,8 +198,8 @@ export function ReplicaGapCard({
               <thead className="sticky top-0 bg-[var(--k-surface)] text-[10px] text-[var(--k-muted)]">
                 <tr>
                   <th className="py-1 pl-2 pr-2">腿</th>
-                  <th className="py-1 pr-2">单轨天数</th>
-                  <th className="py-1 pr-2">单轨加法%</th>
+                  <th className="py-1 pr-2">{twinStar ? '核心天数' : '单轨天数'}</th>
+                  <th className="py-1 pr-2">{twinStar ? '核心加法%' : '单轨加法%'}</th>
                   <th className="py-1 pr-2">归因份额%</th>
                   <th className="py-1 pr-2">你现仓%</th>
                   <th className="py-1 pr-2">浮盈点</th>
@@ -225,8 +237,10 @@ export function ReplicaGapCard({
           </div>
 
           <p className="text-[10px] text-[var(--k-muted)]">
-            {method?.detail} 下方「涨跌归因」是单轨单侧拆解；本卡把同一套 byPick 与你的仓位/成交对齐。
-            今日 pick={livePick} 只作脚注——战术换仓看体检卡。
+            {method?.detail}{' '}
+            {twinStar
+              ? '下方「涨跌归因」拆的是核心择强腿；卫星 4×12.5% 不在这张 byPick 里。今日 pick 只作脚注——战术换仓看体检卡。'
+              : '下方「涨跌归因」是单轨单侧拆解；本卡把同一套 byPick 与你的仓位/成交对齐。今日 pick 只作脚注——战术换仓看体检卡。'}
           </p>
         </div>
       )}

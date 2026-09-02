@@ -48,7 +48,7 @@
 | OPT-126 | 东财出口探针 + 熔断可视化 | P1 | 1 天 | [ ] |
 | OPT-127 | 前端轮询 jitter + ETag + 后端限流（储备） | P2 | 1 天 | [ ] |
 | OPT-128 | 实盘默认机会双子星 clip4 | P0 | 0.5 天 | [x] |
-| OPT-129 | Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%） | P0 | 1 天 | [ ] |
+| OPT-129 | Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%） | P0 | 1 天 | [x] |
 | OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [ ] |
 | OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [ ] |
 | OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [ ] |
@@ -3189,9 +3189,16 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 ### OPT-129：Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%）
 
-**状态**：[ ] 待做 · P0  
-**范围**：`ReplicaGapCard` · `PickStrongAlignBanner` · `QuickBuyDialog` 默认仓位 · Health/TodayAction 文案  
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`replica-gap.ts` · `PickStrongAlignBanner` · `ReplicaGapCard` · `WatchlistTable` / QuickBuy 默认仓位 · Health reminder 文案  
 **验收**：默认模式下看不到「单轨 100% 硬切」当今日指令；买入预填 12.5% NAV
+
+**落地**：
+- `detectReplicaGaps({ mode: 'twin_star', coreTargetPct })`：开闸 50/50 时 CN 股票是卫星不是硬切偏离；关闸 100% 才把剩余股票当 leftover
+- Watchlist 默认显示「机会双子星日对齐」；回测对照卡标题「双子星 vs 我的账本」
+- 表行买入预填 `SAT_SLOT_NAV_PCT`（12.5）；Health QuickBuy 仍走 trade plan `navPct`
+
+**验证**：`replica-gap.test.ts` · `twin-star-trade-plan.test.ts` · `PortfolioHealthCard.test.tsx`
 
 ### OPT-130：Timeline 拆核心/卫星/窗口标签
 

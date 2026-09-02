@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SAT_MAX_POS,
+  SAT_SLOT_NAV_PCT,
   SAT_SLOT_OF_SLEEVE,
   TWIN_STAR_LIVE_RECIPE,
   allocateSatFundTrims,
@@ -51,6 +52,7 @@ describe('buildTwinStarTradePlan', () => {
     expect(TWIN_STAR_LIVE_RECIPE.body).toBe(3);
     expect(SAT_MAX_POS).toBe(TWIN_STAR_LIVE_RECIPE.maxPos);
     expect(SAT_SLOT_OF_SLEEVE).toBe(TWIN_STAR_LIVE_RECIPE.slotOfSleeve);
+    expect(SAT_SLOT_NAV_PCT).toBe(12.5);
   });
 
   it('drains the weaker ETF before touching the core park ETF', () => {

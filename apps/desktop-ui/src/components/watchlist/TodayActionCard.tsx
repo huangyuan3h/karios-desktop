@@ -56,6 +56,8 @@ export function TodayActionCard() {
   const gap = detectReplicaGaps({
     pick: multi?.pick?.key ?? null,
     holdings: gapHoldings,
+    mode: twinStar ? 'twin_star' : 'single_track',
+    coreTargetPct: twinStarQ.data?.sat?.coreTargetPct,
   });
   const gapBlocks = gap.reasons.filter((r) => r.severity === 'block').slice(0, 2);
 

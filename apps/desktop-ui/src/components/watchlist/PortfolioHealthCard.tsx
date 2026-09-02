@@ -1487,6 +1487,9 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         <BuyReminderDialog
           state={{ symbol: reminderTarget.symbol, name: reminderTarget.name }}
           suggestPct={reminderTarget.sizePct}
+          suggestLabel={
+            twinStar ? (allowStockBuys ? 'S-3 建议仓位' : '卫星建议仓位') : 'S-3 建议仓位'
+          }
           onClose={() => setReminderTarget(null)}
           onConfirm={(values) => void addToWatchlistAndRemind(values)}
         />

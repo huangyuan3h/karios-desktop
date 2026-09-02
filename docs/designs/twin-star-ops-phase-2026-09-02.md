@@ -46,10 +46,10 @@
 
 | # | 做什么 | 为什么 |
 |---|--------|--------|
-| B1 | 归因对照 / 对齐横幅从「单轨 vs 账本」改成「双子星 vs 账本」（核心% + 卫星 4 槽） | `ReplicaGapCard` / `PickStrongAlignBanner` 还在说单轨 100% |
+| B1 [done] 2026-09-02 | 归因对照 / 对齐横幅从「单轨 vs 账本」改成「双子星 vs 账本」（核心% + 卫星 4 槽） | OPT-129 |
 | B2 | pick≠STOCK：CN 持仓全部卫星；到期卖 / −5% 保护止损 / 复制止损单 | 已有雏形，要当默认路径回归测，而不是 opt-in 特例 |
 | B3 | pick=STOCK：卫星 recipe 与 S-3 篮拆开，禁止金字塔/移动止损贴到卫星名 | 通知 lane 已拆，Health 卡 STOCK 日还要再过一遍 |
-| B4 | QuickBuy 默认 12.5% NAV，不预填 S-3 10% | 12.5% < 15% 单票闸，但按钮文案仍可能写 10% |
+| B4 [done] 2026-09-02 | QuickBuy 默认 12.5% NAV，不预填 S-3 10% | OPT-129 · 表行 `SAT_SLOT_NAV_PCT`；Health 走 trade plan |
 | B5 | 日流程写进 Watchlist：14:20 提醒 → 14:30 出名单 → 先调核心再买卖卫星 | 现在调度有、卡片散 |
 
 **不做**：自动下单 / 券商 API（仍手动 + 复制止损）。
@@ -72,8 +72,8 @@
 
 ```text
 本轮已做  E1 默认 twin_star
-第 1 刀   B1+B4  Watchlist 文案/仓位与 clip4 对齐（当天能用）
-第 2 刀   A1+A3  Timeline 能拆核心/卫星/窗口（能解释）
+第 1 刀   B1+B4  Watchlist 文案/仓位与 clip4 对齐（当天能用）[done] 2026-09-02 OPT-129
+第 2 刀   A1+A3  Timeline 能拆核心/卫星/窗口（能解释）  ← NEXT
 第 3 刀   E2+E5  占用真值 + 卫星 paper（能对照）
 第 4 刀   A2+A4  跳过/成交 blotter（能审计涨停）
 第 5 刀   E3+E6  快照/日线健康（默认策略不能哑火）

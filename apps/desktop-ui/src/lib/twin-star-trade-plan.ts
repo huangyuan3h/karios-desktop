@@ -21,6 +21,8 @@ import type { PortfolioCandidate } from '@/lib/queries/portfolioHealth';
 
 export const SAT_MAX_POS = 4;
 export const SAT_SLOT_OF_SLEEVE = 0.25;
+/** Each sat name as % of total NAV when the sleeve is 50/50 (4 × 12.5%). */
+export const SAT_SLOT_NAV_PCT = 50 * SAT_SLOT_OF_SLEEVE;
 /** Broker protective stop from cost. Not part of the S-gap backtest (body=3 only). */
 export const SAT_PROTECT_STOP_PCT = 0.05;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

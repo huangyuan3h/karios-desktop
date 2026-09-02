@@ -51,6 +51,8 @@ import {
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import { shouldShowInWatchlistTable } from '@/lib/watchlist-table-filter';
+import { useStrategyMode } from '@/lib/strategy-settings';
+import { SAT_SLOT_NAV_PCT } from '@/lib/twin-star-trade-plan';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -235,6 +237,8 @@ export function WatchlistTable({
   catalystBySymbol = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
+  const [strategyMode] = useStrategyMode();
+  const tableBuySuggestPct = strategyMode === 'twin_star' ? SAT_SLOT_NAV_PCT : 5;
 
   const tradingTime = React.useMemo(() => isShanghaiTradingTime(), []);
   const todaySh = React.useMemo(() => getShanghaiTodayIso(), []);
@@ -905,7 +909,7 @@ export function WatchlistTable({
       {tradeDialog ? (
         <TradeActionDialog
           state={tradeDialog}
-          suggestPct={5}
+          suggestPct={tableBuySuggestPct}
           onClose={() => setTradeDialog(null)}
           onConfirm={(values) => void handleTradeConfirm(values)}
         />
