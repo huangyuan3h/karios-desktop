@@ -542,6 +542,10 @@ export type TwinStarAction = {
     snapshotAt?: string | null;
     frozen?: boolean | null;
     heldOvernight?: boolean | null;
+    snapshotMissing?: boolean | null;
+    snapshotStale?: boolean | null;
+    snapshotAgeSec?: number | null;
+    snapshotReason?: string | null;
     coreTargetPct?: number | null;
     satTargetPct?: number | null;
     book?: {

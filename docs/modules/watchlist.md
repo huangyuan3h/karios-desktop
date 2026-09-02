@@ -23,6 +23,7 @@ Watchlist「今日操作」默认 `strategyMode=twin_star`，走冻结引擎，�
 - 常量锁步：后端 `MAX_POS=4` `POSITION_PCT=0.25`；前端 `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE` / `SAT_SLOT_NAV_PCT`（12.5）
 - 日对齐横幅按 clip4 对照核心% + 卫星套筒；开闸持有 CN 股票不算「偏离 100% 硬切」。表行买入预填 12.5% NAV
 - 14:30 前不公布当日卫星名单；涨停跳过、不顺位补。回测 Timeline 日表有候选/跳过/成交/空槽回核，blotter 能点开一笔卫星看振幅名次与贡献 pt
+- 交易日 **12:30 后**必须有当日东财全市场快照；失败时 Watchlist 红条「卫星名单不可用」、通知 `lane=system`，**不**用 T-1 名单下单。核心 ETF 日线 / `stock_dailybasic` 陈旧走系统自检「双子星」标签
 - 单轨 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30%）仍约束 Watchlist 行；双子星交易计划按 12.5% 开 QuickBuy，12.5% < 15% 不撞单票闸
 - **卫星仓 ≠ 股票篮**：核心 pick ≠ `STOCK` 时，Watchlist 里所有 CN A 股持仓都算卫星（S-gap `body=3` 到期退出），**不**走 S-3「股票篮应轮出」。pick=`STOCK` 时，只有落在卫星 recipe/候选集合里的名字算卫星，其余仍是 S-3 股票篮
 - 今日决策卡拆成：核心 ETF 块 → **卫星仓**（持有 / body 到期卖 / 缺口买）→ A 股线（股票篮，pick≠STOCK 时闲置）。占用真值 = Watchlist 最多 4 槽；引擎 `openPositions` 只作对照。独立 paper 簿 `source=twin_star`（17:43，body=3 / −5%），不走 S-3 C4 / 金字塔 / 60 日持有

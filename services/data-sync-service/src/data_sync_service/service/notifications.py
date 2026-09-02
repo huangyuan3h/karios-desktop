@@ -35,6 +35,10 @@ TRADING_JOB_TYPES = {
     "paper_chain_watchdog",
     "cn_industry_post_close_sync",
     "index_basic_sync",
+    # Twin-star live tape + core-leg freshness (knife 5 / OPT-133)
+    "twin_star_intraday",
+    "sleeve_etf_daily_sync",
+    "stock_daily_basic_sync",
 }
 
 
@@ -478,6 +482,42 @@ def _third_asset_notification() -> list[dict[str, Any]]:
     )]
 
 
+def _twin_star_snapshot_alert(mode: str = "single_track") -> list[dict[str, Any]]:
+    """lane=system when today's 12:30 East Money snapshot is missing/stale."""
+    if mode != "twin_star":
+        return []
+    try:
+        from data_sync_service.service.twin_star_intraday import (
+            intraday_snapshot_status,
+            now_cn,
+        )
+
+        now = now_cn()
+        if now.weekday() >= 5:
+            return []
+        status = intraday_snapshot_status(now=now)
+        if status.get("ok"):
+            return []
+        reason = status.get("reason") or "snapshot unavailable"
+        return [_note(
+            nid=f"twin-star-snap:{status.get('session')}",
+            type="twin_star_snapshot",
+            severity="high",
+            title="双子星 · 今日盘中快照失败",
+            detail=(
+                "东财 12:30 全市场快照不可用，卫星名单今日不可交易。"
+                f"不要用 T-1 名单下单（{reason}）。"
+            ),
+            anchor="watchlist",
+            lane="system",
+            book="sat",
+            created_at=now.isoformat(),
+        )]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("notifications twin-star snapshot failed: %s", exc)
+        return []
+
+
 def _twin_star_notification(mode: str = "single_track") -> list[dict[str, Any]]:
     """双子星 14:30 前提醒 — only when the live strategy is twin_star."""
     if mode != "twin_star":
@@ -532,6 +572,7 @@ def build_notifications(mode: str = "twin_star") -> list[dict[str, Any]]:
         + _rolling_oos_warning()
         + _third_asset_notification()
         + _twin_star_notification(live_mode)
+        + _twin_star_snapshot_alert(live_mode)
     )
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda x: order.get(str(x.get("severity")), 2))

@@ -17,6 +17,11 @@ function fmtAge(min: number | null): string {
   return `${Math.round(min / 60 / 24)} 天前`;
 }
 
+function fmtThreshold(min: number): string {
+  if (min < 60) return `${min} 分钟`;
+  return `${Math.round(min / 60)}h`;
+}
+
 function fmtTime(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('zh-CN', {
@@ -114,7 +119,7 @@ export function SystemHealthBanner() {
           )}
           {stale.map((s: DataSourceStatus) => (
             <div key={s.source} className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
-              <span>△ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值 {Math.round(s.thresholdMinutes / 60)}h）</span>
+              <span>△ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值 {fmtThreshold(s.thresholdMinutes)}）</span>
               <span className="text-[10px] text-[var(--k-muted)]">最近同步 {fmtTime(s.lastSyncedAt)}</span>
             </div>
           ))}

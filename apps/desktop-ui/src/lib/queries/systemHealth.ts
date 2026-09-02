@@ -4,6 +4,7 @@ import type { JobFailuresResponse, SyncJobFailure } from '@/lib/queries/syncFail
 export interface DataSourceStatus {
   source: string;
   label: string;
+  group?: string | null;
   lastSyncedAt: string | null;
   ageMinutes: number | null;
   thresholdMinutes: number;

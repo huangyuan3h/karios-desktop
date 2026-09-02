@@ -340,3 +340,27 @@ class TestFillCandidateNames:
         tsd.fill_candidate_names(rows)
         assert rows[0]["name"] == "锦江投资"
         assert rows[1]["name"] == "浦发银行"
+
+
+def test_reminder_hides_t1_names_when_snapshot_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        tsd,
+        "build_twin_star_daily_action",
+        lambda today=None: {
+            "core": {"pick": "GOLD", "label": "黄金", "action": "HOLD"},
+            "sat": {
+                "asOf": "2026-09-02",
+                "gateOpen": True,
+                "breadth": 0.6,
+                "gapCount": 10,
+                "candidates": [{"ts": "000001.SZ", "amp": 1}],
+                "snapshotMissing": True,
+                "snapshotStale": False,
+                "book": {},
+                "coreTargetPct": 50,
+            },
+        },
+    )
+    payload = tsd.build_twin_star_reminder_payload(date(2026, 9, 2))
+    assert "快照失败" in payload["detail"]
+    assert "000001.SZ" not in payload["detail"]

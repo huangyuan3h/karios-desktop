@@ -27,11 +27,35 @@ _SOURCES: tuple[dict[str, Any], ...] = (
     {
         "source": "daily_basic",
         "weekendTolerant": True,
-        "label": "估值（市值）",
+        "group": "twin_star",
+        "label": "双子星 · 市值 dailybasic",
         "jobType": "stock_daily_basic_sync",
         "table": "stock_dailybasic",
         "tableTsColumn": "trade_date",
         "thresholdMinutes": 48 * 60,
+    },
+    {
+        # Keep ts_code list in sync with etf_daily.SLEEVE_ETF_TS_CODES.
+        "source": "twin_star_etf",
+        "weekendTolerant": True,
+        "group": "twin_star",
+        "label": "双子星 · 核心ETF日线",
+        "jobType": "sleeve_etf_daily_sync",
+        "table": "daily",
+        "tableTsColumn": "trade_date",
+        "whereSql": "ts_code IN ('518880.SH','513350.SH','513110.SH','513100.SH','511260.SH')",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "twin_star_intraday",
+        "weekendTolerant": True,
+        "group": "twin_star",
+        "label": "双子星 · 盘中快照",
+        "jobType": "twin_star_intraday",
+        "table": None,
+        "tableTsColumn": None,
+        "resolver": "intraday_snapshot",
+        "thresholdMinutes": 20,
     },
     {
         "source": "news",
@@ -192,6 +216,9 @@ def datasource_freshness() -> list[dict[str, Any]]:
     weekend_extra_hours = 48 if _is_shanghai_weekend(now) else 0
     sources: list[dict[str, Any]] = []
     for spec in _SOURCES:
+        if spec.get("resolver") == "intraday_snapshot":
+            sources.append(_intraday_snapshot_source(spec))
+            continue
         job_at = _job_last_success(spec["jobType"])
         table_at = _last_table_timestamp(
             spec.get("table"),
@@ -217,6 +244,7 @@ def datasource_freshness() -> list[dict[str, Any]]:
             {
                 "source": spec["source"],
                 "label": spec["label"],
+                "group": spec.get("group"),
                 "lastSyncedAt": candidate,
                 "ageMinutes": age_minutes,
                 "thresholdMinutes": threshold,
@@ -224,6 +252,30 @@ def datasource_freshness() -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+def _intraday_snapshot_source(spec: dict[str, Any]) -> dict[str, Any]:
+    """East Money session file: stale only after 12:30 on a trading day."""
+    from data_sync_service.service.twin_star_intraday import intraday_snapshot_status
+
+    try:
+        status = intraday_snapshot_status()
+    except Exception:  # noqa: BLE001
+        status = {
+            "ok": True,
+            "snapshotAt": None,
+            "ageSeconds": None,
+        }
+    age_sec = status.get("ageSeconds")
+    return {
+        "source": spec["source"],
+        "label": spec["label"],
+        "group": spec.get("group"),
+        "lastSyncedAt": status.get("snapshotAt"),
+        "ageMinutes": int(age_sec / 60) if isinstance(age_sec, (int, float)) else None,
+        "thresholdMinutes": spec["thresholdMinutes"],
+        "stale": not bool(status.get("ok", True)),
+    }
 
 
 def _is_shanghai_weekend(now: datetime) -> bool:

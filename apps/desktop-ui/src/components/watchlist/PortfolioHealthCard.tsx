@@ -642,14 +642,16 @@ function SatSleevePanel({
   plan,
   boughtSymbols,
   onAct,
+  hideBuys,
 }: {
   plan: TwinStarTradePlan;
   boughtSymbols: Set<string>;
   onAct: (row: TwinStarTradeRow) => void;
+  hideBuys?: boolean;
 }) {
   const holds = plan.holds.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
   const sells = plan.sells.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
-  const buys = plan.buys.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
+  const buys = hideBuys ? [] : plan.buys.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
   const empty = holds.length === 0 && sells.length === 0 && buys.length === 0;
   const copyAllRows = [...sells, ...holds];
   return (
@@ -931,6 +933,9 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   const twinStarQ = useTwinStarActionQuery(twinStar);
   const [refreshingSat, setRefreshingSat] = React.useState(false);
   const afterSatWindow = satNamesVisible();
+  const satSnapFailed = Boolean(
+    twinStarQ.data?.sat?.snapshotMissing || twinStarQ.data?.sat?.snapshotStale,
+  );
   const sentimentQ = useDashboardSentimentQuery();
   const q = useQuery({
     queryKey: ['portfolio-health'],
@@ -1270,13 +1275,15 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
             {twinStarQ.data?.sat?.asOf != null ? (
               <span className="ml-2">
                 · 卫星：
-                {tradePlan
-                  ? satConclusionLine(tradePlan, Boolean(twinStarQ.data.sat.gateOpen))
-                  : !twinStarQ.data.sat.gateOpen
-                    ? 'R-wide 关闸（不开仓）'
-                    : afterSatWindow
-                      ? `R-wide 开闸 → 14:30 模拟收盘价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
-                      : 'R-wide 开闸 · 候选 14:30 后公布（当日近似）'}
+                {satSnapFailed
+                  ? '今日盘中快照失败，卫星名单不可用'
+                  : tradePlan
+                    ? satConclusionLine(tradePlan, Boolean(twinStarQ.data.sat.gateOpen))
+                    : !twinStarQ.data.sat.gateOpen
+                      ? 'R-wide 关闸（不开仓）'
+                      : afterSatWindow
+                        ? `R-wide 开闸 → 14:30 模拟收盘价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                        : 'R-wide 开闸 · 候选 14:30 后公布（当日近似）'}
               </span>
             ) : null}
             {twinStarQ.data?.sat?.asOf != null ? (
@@ -1305,6 +1312,11 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
             ) : null}
           </div>
         ) : null}
+        {twinStar && satSnapFailed ? (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-200">
+            ⚠ 今日盘中快照失败 → 卫星名单不可用（东财 clist）。14:30 不要按 T-1 名单下单。
+          </div>
+        ) : null}
         {twinStar && q.data?.tradeDate && twinStarQ.data?.sat?.asOf != null && twinStarQ.data.sat.asOf < q.data.tradeDate ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
             ⚠ 卫星信号滞后：信号日 {twinStarQ.data.sat.asOf} &lt; 体检数据 {q.data.tradeDate}——卫星判断可能不是最新，请检查数据同步。
@@ -1317,6 +1329,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
               plan={tradePlan}
               snapshotAt={twinStarQ.data?.sat?.snapshotAt}
               frozen={Boolean(twinStarQ.data?.sat?.frozen || twinStarQ.data?.sat?.heldOvernight)}
+              snapshotFailed={satSnapFailed}
               onRefresh={() => void handleRefreshSat()}
               refreshing={refreshingSat}
             />
@@ -1341,7 +1354,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 })
               }
             />
-            <SatSleevePanel plan={tradePlan} boughtSymbols={boughtSymbols} onAct={handlePlanAct} />
+            <SatSleevePanel plan={tradePlan} boughtSymbols={boughtSymbols} onAct={handlePlanAct} hideBuys={satSnapFailed} />
             <HealthPanel
               title="A股线（股票篮生成器）"
               tag="CN"

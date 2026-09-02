@@ -57,6 +57,10 @@ _CACHE_DIR = os.path.join(
 CN_TZ = ZoneInfo("Asia/Shanghai")
 LIVE_TAPE_START_MIN = 9 * 60 + 30
 LIVE_TAPE_END_MIN = 15 * 60
+# 12:30 is the first snapshot the 14:30 fill must have; missing after this is a
+# hard failure (East Money hang = no satellite that day).
+SNAPSHOT_EXPECT_MIN = 12 * 60 + 30
+SNAPSHOT_LIVE_STALE_SEC = 20 * 60
 REFRESH_MAX_AGE_SEC = 60
 _REFRESH_LOCK = threading.Lock()
 
@@ -203,6 +207,62 @@ def in_live_tape_window(now: datetime | None = None) -> bool:
         return False
     mins = now.hour * 60 + now.minute
     return LIVE_TAPE_START_MIN <= mins <= LIVE_TAPE_END_MIN
+
+
+def _is_cn_session_day(day: date) -> bool:
+    """True when ``day`` is on the A-share calendar (fail-open on load error)."""
+    try:
+        cal = _load_calendar(day.isoformat(), day.isoformat())
+        return bool(cal)
+    except Exception:  # noqa: BLE001
+        return day.weekday() < 5
+
+
+def intraday_snapshot_status(*, now: datetime | None = None) -> dict[str, Any]:
+    """Whether today's East Money tape is usable for the 14:30 satellite fill.
+
+    Required after 12:30 on a weekday session. Overnight / weekend / holidays
+    do not cry stale. A lookback file from yesterday is *not* today's snapshot.
+    """
+    now = now or now_cn()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=CN_TZ)
+    else:
+        now = now.astimezone(CN_TZ)
+    session = session_date(now)
+    mins = now.hour * 60 + now.minute
+    weekend = now.weekday() >= 5
+    after_expect = mins >= SNAPSHOT_EXPECT_MIN
+    session_day = False if weekend else _is_cn_session_day(session)
+    required = session_day and after_expect
+    cached = _read_cache(session)
+    snapshot_at = cached.get("snapshotAt") if isinstance(cached, dict) else None
+    age = snapshot_age_seconds(cached, now) if cached else None
+    missing = required and cached is None
+    stale = False
+    reason: str | None = None
+    if missing:
+        stale = True
+        reason = "no_session_snapshot"
+    elif (
+        required
+        and in_live_tape_window(now)
+        and age is not None
+        and age > SNAPSHOT_LIVE_STALE_SEC
+    ):
+        stale = True
+        reason = "snapshot_stale"
+    return {
+        "ok": not missing and not stale,
+        "session": session.isoformat(),
+        "missing": missing,
+        "stale": stale,
+        "snapshotAt": snapshot_at if isinstance(snapshot_at, str) else None,
+        "ageSeconds": age,
+        "reason": reason,
+        "required": required,
+        "sessionDay": session_day,
+    }
 
 
 def snapshot_age_seconds(sat: dict[str, Any] | None, now: datetime | None = None) -> float | None:

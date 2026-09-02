@@ -870,6 +870,45 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
 
+  it('hides satellite buys and warns when the 12:30 snapshot failed', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    useTwinStarActionQueryMock.mockReturnValue({
+      ...SAT_OPEN,
+      data: {
+        sat: {
+          ...SAT_OPEN.data.sat,
+          snapshotMissing: true,
+          snapshotStale: false,
+          snapshotReason: 'no_session_snapshot',
+        },
+      },
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-08-28',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/今日盘中快照失败 → 卫星名单不可用/)).toBeDefined();
+    expect((await screen.findAllByText(/持有原油 ETF/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/今日盘中快照失败，卫星名单不可用/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/卫星缺口买入/)).toBeNull();
+    expect(screen.queryByText(/买入 锦江投资/)).toBeNull();
+  });
+
   it('does not paint the S-3 execution gate on twin-star even when pick=STOCK and DEFEND', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     fetchPortfolioHealth.mockResolvedValue({

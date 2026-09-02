@@ -103,6 +103,51 @@ def test_cron_failures_filters_trading_jobs(monkeypatch) -> None:
     assert "paper_trading_update" in out[0]["title"]
 
 
+def test_trading_job_types_cover_twin_star_health() -> None:
+    assert {"twin_star_intraday", "sleeve_etf_daily_sync", "stock_daily_basic_sync"} <= nf.TRADING_JOB_TYPES
+
+
+def test_cron_failures_includes_twin_star_snapshot(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.db.sync_job_record.list_recent_failures",
+        lambda hours=24: [
+            {"job_type": "twin_star_intraday", "sync_at": "2026-09-02T04:35:00Z",
+             "error_message": "no_session_snapshot"},
+        ],
+    )
+    out = nf._cron_failures()
+    assert len(out) == 1
+    assert out[0]["lane"] == "system"
+    assert "twin_star_intraday" in out[0]["title"]
+
+
+def test_twin_star_snapshot_alert_system_lane(monkeypatch) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(
+        "data_sync_service.service.twin_star_intraday.now_cn",
+        lambda: datetime(2026, 9, 2, 13, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.twin_star_intraday.intraday_snapshot_status",
+        lambda now=None: {
+            "ok": False,
+            "missing": True,
+            "stale": True,
+            "session": "2026-09-02",
+            "reason": "no_session_snapshot",
+        },
+    )
+    out = nf._twin_star_snapshot_alert("twin_star")
+    assert len(out) == 1
+    assert out[0]["type"] == "twin_star_snapshot"
+    assert out[0]["lane"] == "system"
+    assert out[0]["severity"] == "high"
+    assert "不要用 T-1" in out[0]["detail"]
+    assert nf._twin_star_snapshot_alert("single_track") == []
+
+
 def test_rolling_oos_warning_reads_file(monkeypatch, tmp_path) -> None:
     import json
 
@@ -161,6 +206,7 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda mode="single_track", ctx=None: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
     monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
+    monkeypatch.setattr(nf, "_twin_star_snapshot_alert", lambda mode="single_track": [])
     monkeypatch.setattr(nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None})
     out = nf.build_notifications()
     assert [x["severity"] for x in out] == ["high", "medium"]
@@ -286,5 +332,6 @@ def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
     monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
+    monkeypatch.setattr(nf, "_twin_star_snapshot_alert", lambda mode="single_track": [])
     assert nf.build_notifications("twin_star") == []
     assert len(nf.build_notifications("single_track")) == 1

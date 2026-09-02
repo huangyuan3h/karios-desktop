@@ -52,6 +52,7 @@
 | OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [x] |
 | OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [x] |
 | OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [x] |
+| OPT-133 | 12:30 快照失败可见 + 双子星数据健康 | P0 | 0.5–1 天 | [x] |
 
 ---
 
@@ -3239,6 +3240,21 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - Timeline 表加 候选/跳过/成交/空槽回核；下方 blotter 可筛类型
 
 **验证**：`test_state_bucket_track.py::test_skip_t1_counts_and_does_not_refill` · `BacktestPage.test.tsx`
+
+### OPT-133：12:30 快照失败可见 + 双子星数据健康
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`twin_star_intraday` 健康状态 · 通知 `lane=system` · Watchlist 红条 · `/api/health/datasources` 核心 ETF / dailybasic  
+**验收**：东财 12:30 挂了当天能看见「卫星名单不可用」；GOLD 日线或市值表陈旧会标成双子星依赖，不是泛行情
+
+**落地**：
+- `intraday_snapshot_status`：交易日 12:30 后必须有当日 session 文件；盘中超过 20 分钟算 stale。昨日 lookback 不算成功。节假日/周末不报警
+- `twin_star_intraday` job 失败写入 `sync_job_record`（每天最多一条）；`TRADING_JOB_TYPES` 含盘中快照 / `sleeve_etf_daily_sync` / `stock_daily_basic_sync`
+- 通知 `type=twin_star_snapshot` `lane=system`；14:20 提醒文案不列出 T-1 候选
+- Watchlist：红条 + 隐藏卫星缺口买入；Health `daily_basic` / `twin_star_etf` / `twin_star_intraday` 标签带「双子星」
+- 回测成交仍是 T 开盘，14:30 价不写进引擎
+
+**验证**：`test_twin_star_intraday.py::TestIntradaySnapshotStatus` · `test_notifications.py` snapshot lane · `test_health.py` · `PortfolioHealthCard.test.tsx` · `SystemHealthBanner.test.tsx`
 
 ---
 

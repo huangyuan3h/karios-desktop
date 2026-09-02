@@ -207,3 +207,93 @@ class TestSessionWindow:
         assert out is not None
         assert out["asOf"] == "2026-09-01"
         assert called["n"] == 0
+
+
+class TestIntradaySnapshotStatus:
+    """12:30 is the first snapshot the 14:30 fill must have (E3)."""
+
+    def test_before_1230_missing_is_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        monkeypatch.setattr(m, "_read_cache", lambda day: None)
+        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [s])
+        now = datetime(2026, 9, 2, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        st = m.intraday_snapshot_status(now=now)
+        assert st["ok"] is True
+        assert st["missing"] is False
+        assert st["required"] is False
+
+    def test_after_1230_missing_is_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        monkeypatch.setattr(m, "_read_cache", lambda day: None)
+        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [s])
+        now = datetime(2026, 9, 2, 12, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
+        st = m.intraday_snapshot_status(now=now)
+        assert st["missing"] is True
+        assert st["ok"] is False
+        assert st["reason"] == "no_session_snapshot"
+
+    def test_after_close_today_file_ok_even_if_old(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        sat = {"snapshotAt": "2026-09-02T14:59:00+08:00", "approx": True}
+        monkeypatch.setattr(m, "_read_cache", lambda day: sat)
+        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [s])
+        now = datetime(2026, 9, 2, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        st = m.intraday_snapshot_status(now=now)
+        assert st["ok"] is True
+        assert st["stale"] is False
+
+    def test_live_stale_when_age_over_20min(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        sat = {"snapshotAt": "2026-09-02T12:31:00+08:00"}
+        monkeypatch.setattr(m, "_read_cache", lambda day: sat)
+        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [s])
+        now = datetime(2026, 9, 2, 13, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        st = m.intraday_snapshot_status(now=now)
+        assert st["stale"] is True
+        assert st["reason"] == "snapshot_stale"
+
+    def test_holiday_weekday_not_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        monkeypatch.setattr(m, "_read_cache", lambda day: None)
+        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [])
+        now = datetime(2026, 9, 2, 13, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        st = m.intraday_snapshot_status(now=now)
+        assert st["required"] is False
+        assert st["ok"] is True
+
+
+def test_intraday_job_records_failure_after_1230(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from data_sync_service.scheduler import twin_star_intraday_job as job
+
+    recorded: list[dict] = []
+    monkeypatch.setattr(job, "in_live_tape_window", lambda now=None: True)
+    monkeypatch.setattr(
+        job, "now_cn", lambda: datetime(2026, 9, 2, 12, 40, tzinfo=ZoneInfo("Asia/Shanghai"))
+    )
+    monkeypatch.setattr(job, "maybe_refresh_intraday_sat", lambda now=None: {"heldOvernight": True})
+    monkeypatch.setattr(
+        job,
+        "intraday_snapshot_status",
+        lambda now=None: {
+            "ok": False,
+            "required": True,
+            "missing": True,
+            "reason": "no_session_snapshot",
+        },
+    )
+    monkeypatch.setattr(job, "_record_once", lambda **kw: recorded.append(kw))
+    job.run()
+    assert recorded == [{"success": False, "error": "no_session_snapshot"}]

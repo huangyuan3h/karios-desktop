@@ -47,6 +47,9 @@ HIGH_JOB_TYPES = {
     "paper_chain_watchdog",
     "cn_industry_post_close_sync",
     "index_basic_sync",
+    "twin_star_intraday",
+    "sleeve_etf_daily_sync",
+    "stock_daily_basic_sync",
 }
 
 

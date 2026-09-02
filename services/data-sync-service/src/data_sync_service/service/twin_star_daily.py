@@ -320,8 +320,17 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
         "gapCount": 0,
         "candidates": [],
     }
+    snap = {
+        "snapshotMissing": False,
+        "snapshotStale": False,
+        "snapshotAgeSec": None,
+        "snapshotReason": None,
+    }
     try:
-        from data_sync_service.service.twin_star_intraday import load_intraday_sat
+        from data_sync_service.service.twin_star_intraday import (
+            intraday_snapshot_status,
+            load_intraday_sat,
+        )
 
         intraday = load_intraday_sat(today)
         if intraday is not None:
@@ -331,6 +340,16 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
                 list(sat.get("blocked") or []),
                 list(sat.get("alternates") or []),
             )
+        # Snapshot failure is a live-tape concern; historical `today` in tests
+        # must not inherit today's East Money hang.
+        if today == session_date():
+            status = intraday_snapshot_status()
+            snap = {
+                "snapshotMissing": bool(status.get("missing")),
+                "snapshotStale": bool(status.get("stale")),
+                "snapshotAgeSec": status.get("ageSeconds"),
+                "snapshotReason": status.get("reason"),
+            }
     except Exception:
         pass
     book = _sat_book(today)
@@ -359,6 +378,7 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
     )
     sat = {
         **sat,
+        **snap,
         "book": book,
         "coreTargetPct": core_pct,
         "satTargetPct": 100 - core_pct,
@@ -378,8 +398,13 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
         if core.get("pick") or core.get("action")
         else f"核心{core_pct}%: 信号不可用"
     )
+    snap_failed = bool(sat.get("snapshotMissing") or sat.get("snapshotStale"))
     if sat.get("asOf") is None:
         sat_line = "卫星: 数据不可用"
+    elif snap_failed:
+        sat_line = (
+            "卫星: 今日盘中快照失败（东财），名单不可用 — 不要用 T-1 名单下单"
+        )
     elif not sat["gateOpen"]:
         sat_line = f"卫星: R-wide 关闸 (breadth {sat['breadth']}) — 今日不开仓"
     else:

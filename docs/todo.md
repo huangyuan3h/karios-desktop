@@ -16,7 +16,7 @@
 |----|------|
 | §19 S-3 | ✅ 封闭（STOCK 腿生成器；pick=STOCK 才进篮） |
 | §22 / 机会双子星 | 🟢 **P0 主线** 实盘默认 = [机会双子星 v3.1 clip4](./backtests/state-bucket-algo-2026-08-31.md)（4×12.5%）；核心腿 [择强单轨](./modules/pick-strong-track.md) past_year **+190.6%** · clip4 **+194.9%** / DD12.6 |
-| §8 回测 | 🟡 下一刀 = 12:30 快照失败可见 + ETF/dailybasic 新鲜度（OPT 第 5 刀）；skip_t1 日表 + blotter 已上 Timeline |
+| §8 回测 | 🟡 下一刀 = action Zod（OPT-009）+ 剩余 B2/B3/B5 / A5 C4；快照失败 + ETF/dailybasic 健康已上 |
 | §4/5/6 | 按需 OPT（124–127 稳定性），不改策略 |
 
 ## 当前方向（默认 clip4 之后）
@@ -40,7 +40,7 @@
 | 2 [done] 2026-09-02 | 可分析 | Timeline 叠 twin/核心/卫星 + 窗口标签（三窗 / 产品过去一年 / trailing） |
 | 3 [done] 2026-09-02 | 工程 | 占用真值=Watchlist 4 槽；卫星 paper 簿 `source=twin_star` |
 | 4 [done] 2026-09-02 | 可分析 | 每日跳过数 + 卫星 blotter |
-| 5 | 工程 | 12:30 快照失败可见；核心 ETF / dailybasic 新鲜度当双子星健康 |
+| 5 [done] 2026-09-02 | 工程 | 12:30 快照失败可见；核心 ETF / dailybasic 新鲜度当双子星健康 |
 
 **不做**：涨停顺位补、金字塔折进卫星、14:30 价当回测开盘、自动下单。
 

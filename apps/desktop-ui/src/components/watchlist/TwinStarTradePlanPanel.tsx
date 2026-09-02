@@ -9,23 +9,28 @@ export function TwinStarTradePlanPanel({
   plan,
   snapshotAt,
   frozen,
+  snapshotFailed,
   onRefresh,
   refreshing,
 }: {
   plan: TwinStarTradePlan;
   snapshotAt?: string | null;
   frozen?: boolean;
+  snapshotFailed?: boolean;
   onRefresh?: () => void;
   refreshing?: boolean;
 }) {
-  const snapLabel = snapshotAt
-    ? snapshotAt.includes('T')
-      ? snapshotAt.slice(11, 16)
-      : snapshotAt
-    : null;
-  const stockBuys = plan.buys.filter((r) => r.kind === 'stock').length;
-  const summary =
-    stockBuys > 0
+  const snapLabel = snapshotFailed
+    ? '快照失败'
+    : snapshotAt
+      ? snapshotAt.includes('T')
+        ? snapshotAt.slice(11, 16)
+        : snapshotAt
+      : null;
+  const stockBuys = snapshotFailed ? 0 : plan.buys.filter((r) => r.kind === 'stock').length;
+  const summary = snapshotFailed
+    ? '今日盘中快照失败，卫星名单不可用'
+    : stockBuys > 0
       ? `买股票 ${stockBuys} 只 × 总资产 ${plan.satSlotNavPct}%（共 ${plan.stockBuyNavPct}%）${
           plan.etfTrimPct > 0 ? ` · 先砍弱 ETF 腾 ${plan.etfTrimPct}%` : ''
         }`
@@ -35,7 +40,7 @@ export function TwinStarTradePlanPanel({
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-1.5 text-[11px]">
       <span className="font-semibold">今日</span>
       <span className="font-mono text-[10px] text-[var(--k-muted)]">
-        {snapLabel ? `${snapLabel} 行情` : '等待快照'}
+        {snapshotFailed ? '快照失败' : snapLabel ? `${snapLabel} 行情` : '等待快照'}
         {frozen ? ' · 收盘冻结至次日 09:00' : ''}
       </span>
       <span className="min-w-0 truncate text-[var(--k-fg)]">{summary}</span>
