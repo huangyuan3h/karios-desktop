@@ -76,3 +76,18 @@ export function isAutomationPollWindow(now: Date = new Date()): boolean {
   const minutes = getShanghaiMinutes(now);
   return minutes >= 17 * 60 + 30 && minutes <= 20 * 60;
 }
+
+/** Twin-star satellite names execute at ~14:30 (same-day approx close). */
+export const SAT_REVEAL_MINUTES = 14 * 60 + 30;
+
+/**
+ * Show satellite buy names only at/after 14:30 Asia/Shanghai on a session,
+ * or overnight (before 09:00) / weekend when reviewing the last freeze.
+ * A 12:30 snapshot must not leak names during the morning session.
+ */
+export function satNamesVisible(now: Date = new Date()): boolean {
+  if (!isWeekdayShanghai(now)) return true;
+  const minutes = getShanghaiMinutes(now);
+  if (minutes < 9 * 60) return true;
+  return minutes >= SAT_REVEAL_MINUTES;
+}

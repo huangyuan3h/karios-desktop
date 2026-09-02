@@ -11,6 +11,7 @@ import {
   normalizeWatchlistItems,
   persistWatchlist,
   resetWatchlistHydrationForTests,
+  upsertWatchlistOpenTrade,
   type WatchlistItem,
 } from './watchlist-storage';
 
@@ -239,5 +240,51 @@ describe('applyZeroPositionCleanup', () => {
     });
     expect(out.costPrice).toBe(12.5);
     expect(out.entryDate).toBe('2026-07-01');
+  });
+});
+
+describe('upsertWatchlistOpenTrade', () => {
+  it('inserts a new buy at the front with cost, size and entryDate', () => {
+    const out = upsertWatchlistOpenTrade([], {
+      symbol: 'CN:300413',
+      name: '中石能',
+      side: 'BUY',
+      price: 21.3,
+      positionPct: 12.5,
+      entryDate: '2026-09-02',
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.symbol).toBe('CN:300413');
+    expect(out[0]?.name).toBe('中石能');
+    expect(out[0]?.positionPct).toBe(12.5);
+    expect(out[0]?.costPrice).toBe(21.3);
+    expect(out[0]?.entryDate).toBe('2026-09-02');
+    expect(out[0]?.source).toBe('research');
+  });
+
+  it('clears cost on a full sell', () => {
+    const out = upsertWatchlistOpenTrade(
+      [
+        {
+          symbol: 'CN:300413',
+          addedAt: '2026-09-01T00:00:00Z',
+          positionPct: 12.5,
+          costPrice: 21.3,
+          maxPrice: 21.3,
+          entryDate: '2026-09-01',
+          source: 'research',
+        },
+      ],
+      {
+        symbol: 'CN:300413',
+        side: 'SELL',
+        price: 22,
+        positionPct: 12.5,
+        entryDate: '2026-09-02',
+      },
+    );
+    expect(out[0]?.positionPct).toBe(0);
+    expect(out[0]?.costPrice).toBeNull();
+    expect(out[0]?.entryDate).toBeNull();
   });
 });

@@ -29,6 +29,14 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 logger = logging.getLogger(__name__)
 
+
+def is_open_position_pct(raw: Any) -> bool:
+    """True when the registry row is an actual broker holding, not a watch tick."""
+    try:
+        return float(raw) > 0
+    except (TypeError, ValueError):
+        return False
+
 # 2026-08-10 (no-choice UX): the manual trade size that matches the
 # backtested edge. Backtest = 10%/sleeve × 20 = 200% nominal (no-leverage
 # impossible), paper = 5% × 20 = 100%. For a manual book (<=10 positions)
@@ -841,7 +849,7 @@ def build_portfolio_health(
     multi_holdings = []
     for h in raw_holdings:
         sym = str(h.get("symbol") or "").upper()
-        if _is_multi(sym):
+        if _is_multi(sym) and is_open_position_pct(h.get("positionPct")):
             # enrich with market data
             ts = h.get("ts_code") or sym.replace("ETF:", "") + (".SH" if sym.startswith("ETF:5") else ".SZ")
             md = {}

@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PortfolioHealthCard } from './PortfolioHealthCard';
+import * as watchlistStorage from '@/lib/watchlist-storage';
+import * as userTrades from '@/lib/queries/userTrades';
 
 const { fetchPortfolioHealth } = vi.hoisted(() => ({
   fetchPortfolioHealth: vi.fn(),
@@ -16,10 +18,15 @@ vi.mock('@/lib/queries/portfolioHealth', async () => {
 
 const marketHoursMock = vi.hoisted(() => ({
   getShanghaiMinutes: vi.fn(() => 15 * 60),
+  satNamesVisible: vi.fn(() => true),
 }));
 vi.mock('@/lib/market-hours', async () => {
   const actual = await vi.importActual<typeof import('@/lib/market-hours')>('@/lib/market-hours');
-  return { ...actual, getShanghaiMinutes: marketHoursMock.getShanghaiMinutes };
+  return {
+    ...actual,
+    getShanghaiMinutes: marketHoursMock.getShanghaiMinutes,
+    satNamesVisible: marketHoursMock.satNamesVisible,
+  };
 });
 
 const SAT_OPEN = {
@@ -29,7 +36,7 @@ const SAT_OPEN = {
       gateOpen: true,
       breadth: 0.588,
       gapCount: 111,
-      candidates: [{ ts: '000712.SZ', amp: 1, gapPct: 5, close: 10 }],
+      candidates: [{ ts: '000712.SZ', name: '锦江投资', amp: 1, gapPct: 5, close: 10 }],
       note: null,
       coreTargetPct: 50,
       satTargetPct: 50,
@@ -53,6 +60,15 @@ vi.mock('@/lib/queries/backtest', async () => {
   );
   return { ...actual, useTwinStarActionQuery: twinStarMock.useTwinStarActionQuery };
 });
+
+vi.mock('@/lib/watchlist-market', () => ({
+  fetchWatchlistMarketSnapshot: vi.fn(async (symbols: string[]) => ({
+    trend: {},
+    quotes: Object.fromEntries(
+      symbols.map((s) => [s.toUpperCase(), { tsCode: s, price: 10.5, tradeTime: null, amount: null, volume: null, preClose: null, pctChg: null }]),
+    ),
+  })),
+}));
 
 const sentimentMock = vi.hoisted(() => ({
   useDashboardSentimentQuery: vi.fn(() => ({
@@ -104,6 +120,7 @@ function setStrategyMode(mode: 'twin_star' | 'single_track') {
 beforeEach(() => {
   fetchPortfolioHealth.mockReset();
   marketHoursMock.getShanghaiMinutes.mockReturnValue(15 * 60);
+  marketHoursMock.satNamesVisible.mockReturnValue(true);
   useTwinStarActionQueryMock.mockReturnValue(SAT_OPEN);
   useDashboardSentimentQueryMock.mockReturnValue({
     data: undefined,
@@ -170,9 +187,11 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText(/100% 硬切/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
     expect(await screen.findByText(/机会口径 · 核心 50%/)).toBeDefined();
-    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/买入 锦江投资/)).length).toBeGreaterThan(0);
+    expect(screen.getByText('锦江投资')).toBeDefined();
+    expect(screen.getAllByText('000712.SZ').length).toBeGreaterThan(0);
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
-    expect(await screen.findByText(/策略回放仓空/)).toBeDefined();
+    expect(await screen.findByText(/引擎模拟仓空/)).toBeDefined();
   });
 
   it('flags satellite data failure with a retry badge', async () => {
@@ -504,7 +523,7 @@ describe('PortfolioHealthCard', () => {
     expect(JSON.parse(localStorage.getItem('karios_buy_reminders') ?? '[]')).toHaveLength(0);
   });
 
-  it('quick-buy button opens the modal and records a paper trade without touching watchlist', async () => {
+  it('quick-buy button opens the modal, writes watchlist, and records a paper trade', async () => {
     localStorage.clear();
     const fetchMock = vi.fn();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
@@ -538,7 +557,7 @@ describe('PortfolioHealthCard', () => {
     expect(buyButtons.length).toBe(2);
     fireEvent.click(buyButtons[0]);
 
-    expect(await screen.findByText(/记入模拟盘（paper trade）/)).toBeDefined();
+    expect(await screen.findByText(/写入 Watchlist 自选并记入模拟盘/)).toBeDefined();
     expect(screen.getByText(/仓位 %/)).toBeDefined();
 
     const priceInput = await screen.findByPlaceholderText('0.000');
@@ -567,7 +586,7 @@ describe('PortfolioHealthCard', () => {
     const registryCalls = fetchMock.mock.calls.filter((c: unknown[]) =>
       String(c[0]).includes('/watchlist/registry'),
     );
-    expect(registryCalls).toHaveLength(0);
+    expect(registryCalls.length).toBeGreaterThan(0);
     expect(localStorage.getItem('karios_buy_reminders')).toBeNull();
     vi.unstubAllGlobals();
   });
@@ -779,14 +798,25 @@ describe('PortfolioHealthCard', () => {
       isFetching: false,
     });
     renderCard();
-    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/买入 锦江投资/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/暂不买入/)).toBeNull();
     expect(screen.queryByText(/闸门关闭/)).toBeNull();
   });
 
-  it('shows satellite candidates once a snapshot exists, even before 14:30', async () => {
+  it('hides satellite buy names before 14:30 even when a same-day snapshot exists', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     marketHoursMock.getShanghaiMinutes.mockReturnValue(10 * 60);
+    marketHoursMock.satNamesVisible.mockReturnValue(false);
+    useTwinStarActionQueryMock.mockReturnValue({
+      ...SAT_OPEN,
+      data: {
+        sat: {
+          ...SAT_OPEN.data.sat,
+          approx: true,
+          snapshotAt: '2026-09-02T11:17:41+08:00',
+        },
+      },
+    });
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,
@@ -806,8 +836,9 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect((await screen.findAllByText(/000712\.SZ/)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/14:20 拉当日行情/)).toBeNull();
+    expect((await screen.findAllByText(/候选 14:30 后公布/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/卫星缺口买入/)).toBeNull();
+    expect(screen.queryByText(/000712\.SZ/)).toBeNull();
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
   });
 
@@ -852,10 +883,10 @@ describe('PortfolioHealthCard', () => {
     renderCard();
     expect(await screen.findByText(/机会双子星 · 今日决策/)).toBeDefined();
     expect(screen.queryByText(/S-3 闸门关闭/)).toBeNull();
-    expect((await screen.findAllByText(/买入 000712\.SZ/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/买入 锦江投资/)).length).toBeGreaterThan(0);
   });
 
-  it('lists today\'s gap buys when recipe replay is 15/15 but live satellite is empty', async () => {
+  it('lists today\'s gap buys when recipe replay is 4/4 but live satellite is empty', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     useTwinStarActionQueryMock.mockReturnValue({
       data: {
@@ -874,7 +905,7 @@ describe('PortfolioHealthCard', () => {
           satTargetPct: 50,
           book: {
             asOf: '2026-09-01',
-            holdings: Array.from({ length: 15 }, (_, i) => ({
+            holdings: Array.from({ length: 4 }, (_, i) => ({
               ts: `60020${String(i).padStart(1, '0')}.SH`,
               daysLeft: 2,
             })),
@@ -905,10 +936,11 @@ describe('PortfolioHealthCard', () => {
     });
     renderCard();
     expect(await screen.findByText(/^今日$/)).toBeDefined();
-    expect(screen.getByText(/模拟仓，不是券商持仓/)).toBeDefined();
+    expect(screen.getByText(/对照，不是券商仓/)).toBeDefined();
     expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/持仓簿满 15\/15/)).toBeNull();
+    expect(screen.queryByText(/持仓簿满 4\/4/)).toBeNull();
     expect(screen.getByText(/刷新行情/)).toBeDefined();
+    expect(screen.getByText(/引擎模拟 4 只/)).toBeDefined();
   });
 
   it('keeps ETFs and lists buy size as % of NAV when STOCK has no executable names', async () => {
@@ -925,7 +957,7 @@ describe('PortfolioHealthCard', () => {
           satTargetPct: 50,
           book: {
             asOf: '2026-09-01',
-            holdings: Array.from({ length: 15 }, (_, i) => ({ ts: `60100${i}.SH`, daysLeft: 2 })),
+            holdings: Array.from({ length: 4 }, (_, i) => ({ ts: `60100${i}.SH`, daysLeft: 2 })),
             exitsDue: [],
             body: 3,
           },
@@ -968,8 +1000,146 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText(/今日无买卖/)).toBeNull();
     expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('持有').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/减仓 5/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/减仓 12\.5/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/减仓 2/)).toBeNull();
     expect(screen.queryByText(/资金调向 STOCK/)).toBeNull();
+  });
+
+  it('does not prompt 卖出 on a 0% leftover NASDAQ ETF after the user sold it', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 7.89, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-02',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      s3Candidates: [],
+      holdings: [],
+      multiAssetHoldings: [
+        { symbol: 'ETF:513110', positionPct: 0, name: '纳指' },
+        { symbol: 'ETF:513350', positionPct: 51.5, name: '原油' },
+      ],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText('ETF:513350')).toBeDefined();
+    expect(screen.queryByText('ETF:513110')).toBeNull();
+    expect(screen.queryByText('卖出')).toBeNull();
+    expect(screen.getAllByText('持有').length).toBeGreaterThan(0);
+  });
+
+  it('writes a satellite gap buy onto the watchlist with cost and size', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    const save = vi.spyOn(watchlistStorage, 'saveWatchlist').mockResolvedValue({ ok: true, synced: true });
+    vi.spyOn(watchlistStorage, 'loadWatchlist').mockReturnValue([]);
+    vi.spyOn(userTrades, 'recordUserTrade').mockResolvedValue({ id: 't1' } as never);
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-02',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      s3Candidates: [],
+      holdings: [],
+      multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 50, name: '原油' }],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText('卫星缺口买入')).toBeDefined();
+    fireEvent.click(screen.getAllByRole('button', { name: '买入' })[0]!);
+    expect(await screen.findByText(/写入 Watchlist 自选并记入模拟盘/)).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('0.000')).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '确认买入' }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const written = save.mock.calls[0]?.[0] as Array<{ symbol: string; positionPct?: number; costPrice?: number; name?: string | null }>;
+    expect(written[0]?.symbol).toBe('CN:000712');
+    expect(written[0]?.positionPct).toBe(12.5);
+    expect(written[0]?.costPrice).toBe(10.5);
+    expect(written[0]?.name).toBe('锦江投资');
+    expect(userTrades.recordUserTrade).toHaveBeenCalledWith(
+      expect.objectContaining({ symbol: 'CN:000712', side: 'BUY', positionPct: 12.5 }),
+    );
+    save.mockRestore();
+  });
+
+  it('puts live CN holdings in 卫星仓 instead of 股票篮应轮出 when pick=OIL', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: {
+        sat: {
+          asOf: '2026-09-02',
+          gateOpen: true,
+          breadth: 0.526,
+          gapCount: 32,
+          candidates: [{ ts: '603221.SH', name: '爱玛科技', amp: 1, gapPct: 2, close: 10 }],
+          note: '盘中近似（15:00 快照）',
+          coreTargetPct: 50,
+          satTargetPct: 50,
+          frozen: true,
+          book: { asOf: '2026-09-02', holdings: [], exitsDue: [], body: 3 },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 7.89, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-02',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 4, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [
+        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:603318', name: '水发燃气', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:600540', name: '新赛股份', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:301012', name: '扬电科技', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+      ],
+      multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText('卫星仓')).toBeDefined();
+    expect(screen.getByText(/你卫星仓 4\/4/)).toBeDefined();
+    expect(screen.getByText('芒果超媒')).toBeDefined();
+    expect(screen.getByText('水发燃气')).toBeDefined();
+    expect(screen.getByText('新赛股份')).toBeDefined();
+    expect(screen.getByText('扬电科技')).toBeDefined();
+    expect(screen.getByText(/股票篮未启用 · 核心是 OIL · 卫星见上方/)).toBeDefined();
+    expect(screen.queryByText(/股票篮应轮出/)).toBeNull();
+    expect(screen.queryByText(/核心腿非 STOCK · 应轮出/)).toBeNull();
+    expect(screen.queryByText('卫星缺口买入')).toBeNull();
+    expect(screen.queryByText('603221.SH')).toBeNull();
+    expect(screen.queryByText('🔴 卖出')).toBeNull();
+    expect(screen.getByText('复制止损单')).toBeDefined();
+    expect(screen.getAllByText(/已持 1\/3/).length).toBe(4);
+    expect(screen.getAllByText(/到期 2026-09-04/).length).toBe(4);
+    expect(screen.getAllByText(/止损 19/).length).toBe(4);
+    expect(screen.queryByText(/补录入场日/)).toBeNull();
   });
 });

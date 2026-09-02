@@ -41,7 +41,10 @@ export function MultiAssetHealthBlock({
   etfTrims?: Array<{ symbol: string; navPct: number; reason: string }>;
   onTrim?: (symbol: string, name: string | null, navPct: number) => void;
 }) {
-  const hasHoldings = holdings && holdings.length > 0;
+  const openHoldings = (holdings ?? []).filter(
+    (h) => typeof h.positionPct === 'number' && h.positionPct > 0,
+  );
+  const hasHoldings = openHoldings.length > 0;
   const pickKey = (sleeve as unknown as { pick?: { key?: string } })?.pick?.key;
   const actionable = sleeve?.action && sleeve.action !== 'NONE' && sleeve.action !== 'DONT_BUY';
   const [strategyMode] = useStrategyMode();
@@ -72,7 +75,7 @@ export function MultiAssetHealthBlock({
 
       {hasHoldings ? (
         <div className="flex flex-col gap-1.5">
-          {holdings!.map((h) => {
+          {openHoldings.map((h) => {
             const key = holdingKey(h.symbol);
             const meta = KEY_META[key] ?? { label: key, icon: '📦', color: 'border-[var(--k-border)] bg-[var(--k-surface)]' };
             const md = (h as unknown as { marketData?: { close?: number; ma200?: number; above?: boolean } }).marketData;
@@ -90,7 +93,7 @@ export function MultiAssetHealthBlock({
             const adjust =
               trim != null
                 ? null
-                : twinStar && pickKey != null && key !== pickKey && key !== 'OTHER'
+                : twinStar && pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
                   ? pickKey === 'STOCK' && !coreDestinationReady
                     ? null
                     : { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }

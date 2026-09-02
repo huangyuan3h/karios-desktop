@@ -43,6 +43,10 @@
 | OPT-041 | Watchlist 港股 (HK) 闸门打通 | P1 | 0.5–1 天 | [x] |
 | OPT-042 | Watchlist ETF 通用化（fund_basic + 全量 ETF） | P1 | 1–2 天 | [x] |
 | OPT-043 | HK 日线 cron 改每日 + yfinance 增量 | P1 | 0.5 天 | [x] |
+| OPT-124 | Tushare 多 token 轮换 + 配额看门狗 | P0 | 0.5–1 天 | [ ] |
+| OPT-125 | DB 连接池 + DB 重试 + 慢查询护栏 | P1 | 1–2 天 | [ ] |
+| OPT-126 | 东财出口探针 + 熔断可视化 | P1 | 1 天 | [ ] |
+| OPT-127 | 前端轮询 jitter + ETag + 后端限流（储备） | P2 | 1 天 | [ ] |
 
 ---
 
@@ -1003,6 +1007,9 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-09-01 | **OPT-059 完成**：涨停可成交审计 + 机会双子星定案（v1）——一字板审计 / universe / 机会口径 |
 | 2026-09-01 | **OPT-060 完成**：机会双子星 v2——① 退出日 `satActive` 记账修正（成本入 NAV，aligned 205.9→180.6，虚高 ~25pt）；② 六窗重冻 + holdout partial（−2.7pt vs 核心）；③ past_year/aligned 输核心 → **实盘默认改单轨择强**；④ UI 机会口径（关闸 100% 核心）；⑤ 卫星持仓簿（`openPositions`/`exitsDue`/`coreTargetPct`）|
 | 2026-09-01 | **OPT-123**：机会双子星 v3 固化——strict S-gap + 无仓回核；window-local 三窗全过；实盘信号与回测对齐（禁止 replace 扩池）；口径铁律写入 `state-bucket-algo` 文首 |
+| 2026-09-02 | **机会双子星 v3.1 clip4**：卫星冻结 4 槽 × 套筒 25% = 总资产 12.5%；相对 v3 15×5% 三窗全正（OOS2 +1.8 / train +2.3 / valid +10.3）；引擎 + Watchlist 同口径；`opportunity_twin_star_v3_clip4_frozen.json` |
+| 2026-09-02 | **过去一年三方冻结**：产品窗 2025-08-28~2026-08-28 单轨 +190.6 / 旧双子星 15×5% +190.4（−0.2） / clip4 **+194.9（+4.3）**；滚到今日 clip4 +204.0 vs 单轨 +197.6；DD 均 12.6。`past_year_twin_vs_core_2026-09-02.json`；写入 `pick-strong-track.md` §2.1 |
+| 2026-09-01 | **第八轮审查 — 稳定性**：数据 + 架构 + API 储备调研完成（15 条失败样本归因 + 8 类数据源分级 + 3 SPOF + 储备决策"不扩爬、做深度"）→ `docs/designs/stability-audit-2026-09-01.md` + OPT-124/125/126/127 立项 |
 
 ### OPT-060：机会双子星 v2（退出日成本修正 + 默认改单轨）
 
@@ -3135,7 +3142,7 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 **改动**：
 - **UI 闸门修正**：机会双子星**没有** S-3 Execution Gate。卫星只认 R-wide（`breadth>0.5`）；核心腿 pick=STOCK 时用 S-3 **选股篮**（Weak/恐慌/熔断 → 0 只可买），不套 ATTACK/DEFEND/`allowNewEntries`。卡片结论条不再写「S-3 闸门关闭 · 不开新仓」（那是单轨择强 overlay）
-- **14:30 时间门控**：卫星候选 14:30（Asia/Shanghai）前不显示（"候选 14:30 后公布（模拟收盘价买入）"），14:30 后显示
+- **14:30 时间门控**：卫星候选 14:30（Asia/Shanghai）前不显示（"候选 14:30 后公布（当日近似）"），14:30 后显示当日 `approx`；**2026-09-02 回归**：盘中快照一旦存在就提前揭名单（11:12 漏出 10 只，含 alternates 扩池）→ 改回时刻门控，strict 只买 primary
 - **`twin_star_intraday` service + job**（工作日 12:30）：东财 push2 clist 全市场快照（~3800 行，open/high/low/pre_close 真实值，快照价 = 当日模拟收盘）→ 复用 `_day_features` 重跑 S-gap 筛（gap/amp/低波 1/3/R-wide/涨停剔除，mv 取 t-1 近似，交易日判断用 `trade_calendar`）→ 缓存 `data/twin_star_intraday/{date}.json`
 - **API**：`GET /api/backtest/twin-star/action` 在 14:30 后优先返回当日 `approx` 信号（`asOf=今日`），失败/缺缓存回退 t-1
 - shared `SCHEDULER_JOB_CATALOG` 注册 `twin_star_intraday`（watchlistAutomation 组）
@@ -3151,9 +3158,183 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 **定案**：
 - 配方：`skip_t1_limit` + `pool_mode=strict` + `opportunity` 合成（`satActive` 含退出日）
-- 冻结：`opportunity_twin_star_v3_frozen.json`（window-local 五窗）
-- 真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「纠结的点与口径铁律」
+- 冻结：`opportunity_twin_star_v3_frozen.json`（window-local 五窗 · 15×10% 对照）
+- **v3.1 clip4（2026-09-02）**：`max_pos=4` `POSITION_PCT=0.25` → 每只总资产 12.5%；Watchlist `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE` 锁步；冻结 `opportunity_twin_star_v3_clip4_frozen.json`
+- 真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「纠结的点与口径铁律」+ §3.0
 - 实盘默认仍 `single_track`（opt-in）
 - 实盘/盘中信号与回测同一套 `select_strict_gap_candidates`（涨停不补仓）
 
-**验证**：`test_state_bucket_track` / `test_twin_star*` / `test_ps_g50_blend` / `test_twin_star_daily`（strict 不 refill）
+**验证**：`test_state_bucket_track` / `test_twin_star*` / `test_ps_g50_blend` / `test_twin_star_daily`（strict 不 refill） / `twin-star-trade-plan.test.ts`（4×12.5%）
+
+---
+
+## 第八轮审查 — 稳定性（2026-09-01 · 调研完成待排期）
+
+> **真值稿**：[`docs/designs/stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md)（本节为执行栈提炼）。  
+> **样本**：08/29-09/01 15 条失败（14 low / 1 high）均已修复，整体收敛。  
+> **决策**：不扩全量爬取；做深度加固（回落链做实 + 异构付费兜底 + 可观测）。
+
+### OPT-124：Tushare 多 token 轮换 + 配额看门狗（P0）
+
+**状态**：[ ] 待排期  
+**优先级**：P0（单 key 是 EOD 链唯一付费 SPOF；周五 200/min 已实证）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §4/§6
+
+#### 背景
+
+- 单 `TU_SHARE_API_KEY` 单点限流：`fund_daily 200/min` / `index_global 100/day` / `hk_daily 1/min` 共享同一配额，`service/close_sync.py:88` 无多 key 池，周五双 job 即 `频率超限`。
+- `close_sync` 与 `adj_factor_full` 曾同 17:00 触发必撞，现错峰到 18:30 但仍无熔断。
+
+#### 目标
+
+- `config.py` 支持 `TUSHARE_TOKEN` 逗号分隔多 key（向后兼容单 key `TU_SHARE_API_KEY`）
+- `clients/tushare_client.py`（或 `service/tushare_pool.py`）封装 `round_robin + 配额看门狗`：`200/min` 滑动窗口计数，超限自动切 key + `sleep 35s` 退避；`100/day` 达限即降级 Tencent/ak
+- `service/close_sync.py` / `etf_daily.py` / `macro_daily.py` / `hk_daily.py` 改走池化 client，不直调 `ts.pro_api(token)`
+- `GET /api/health/datasources` 暴露 `tushare_quota`（剩余/重置时间）供前端健康横幅
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Config | `services/data-sync-service/src/data_sync_service/config.py` |
+| Client | `services/data-sync-service/src/data_sync_service/clients/tushare_pool.py`（**新**） |
+| Service | `service/close_sync.py` `service/etf_daily.py` `service/macro_daily.py` `service/hk_daily.py` `service/adj_factor.py` |
+| API | `api/health_routes.py` |
+| Tests | `tests/test_tushare_pool.py`（**新**：轮换 / 限流切 key / 100/day 降级） |
+
+#### 验证
+
+- [ ] 单 key `频率超限` 时自动切备 key 重试成功（mock）
+- [ ] `200/min` 滑动窗口内第 201 次触发退避而非裸失败
+- [ ] 未配多 key 时行为与现单 key 完全一致（向后兼容）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把多 key 逻辑散到每个 service 各自 `ts.pro_api(token)`（必须收敛到单一 pool）
+- ❌ 用 `time.sleep 固定 60s` 硬等（用滑动窗口 + 指数退避）
+- ❌ 把 `TUSHARE_TOKEN` 明文打到日志/health 响应
+
+---
+
+### OPT-125：DB 连接池 + DB 重试 + 慢查询护栏（P1）
+
+**状态**：[ ] 待排期  
+**优先级**：P1（`psycopg 无池` + `DB 层无重试` + 仅 `statement_timeout 120s`；前端 herd 易 `too many clients`）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §3
+
+#### 背景
+
+`db/__init__.py:8` 每次 `psycopg.connect(connect_timeout=5, statement_timeout=120s)` 新建 TCP，无 `psycopg_pool` / `pgbouncer`，无 `lock_timeout` / `idle_in_transaction` 回收。前端 `refetchOnWindowFocus` + 多 job 并发易打满 `max_connections=100`；DB 瞬断无重试。
+
+#### 目标
+
+- 引入 `psycopg_pool.ConnectionPool(min 2 / max 20, timeout 10s)` 或 `pgbouncer` sidecar（二选一，倾向 `psycopg_pool` 零运维）
+- `get_connection()` 改为 `pool.getconn() / putconn()`；`check_db()` 走池
+- `statement_timeout 120s` 保留，新增 `lock_timeout 10s` + `idle_in_transaction_session_timeout 60s`（`options` 追加）
+- DB 层 transient（`OperationalError / TimeoutError`）`retry 1×`（指数 0.5s），避免与网络层 `_with_retry` 叠加雪崩
+- Alembic `env.py` 仍 `NullPool`（迁移不占池），`docker-compose.yml` healthcheck 改走 pool
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/__init__.py` |
+| DB | `services/data-sync-service/alembic/env.py` |
+| Compose | `docker-compose.yml` |
+| Service | `services/data-sync-service/src/data_sync_service/service/dashboard.py`（`wait(..., timeout 0.3s)` 处 DB 超时语义） |
+| Tests | `tests/test_db_pool.py`（**新**：池获取/归还/超时；mock 下 transient 重试） |
+
+#### 验证
+
+- [ ] 并发 30 请求不 `too many clients`（mock pool `max 20` 排队而非新建）
+- [ ] `lock_timeout` 超限触发重试 1 次后成功
+- [ ] `alembic upgrade head` 仍 `NullPool` 不走业务池
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把 pool size 设 `100` 对齐 PG max（应 `≤20` 留余量给 pgadmin/migrate）
+- ❌ 在 Alembic 里复用业务池（迁移长事务会占池）
+- ❌ DB 重试与网络 `_with_retry 3×` 无差别叠加（DB 仅 1 次，避免放大）
+
+---
+
+### OPT-126：东财出口探针 + 熔断可视化（P1）
+
+**状态**：[ ] 待排期  
+**优先级**：P1（5 个 job 共用同一出口 IP，ban 时静默 `skipped` 难定位）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §2.2/§3
+
+#### 背景
+
+`industry_fund_flow` / `top_inst` / `option_iv` / `twin_star` / `minute_capture` / `realtime_quote fallback` 均走 `push2.eastmoney.com / data.eastmoney.com`，已用 `ProxyHandler({})` 直连 + `_EM_BLOCKED 15min latch` + `_PROXY_DEGRADED`（`service/em_push2_http.py` `industry_fund_flow.py:163`），但无探针、无可视化，`cn_industry_post_close_sync` 18:15 前失败仅写 `ok=False` 横幅不预警。
+
+#### 目标
+
+- 新增 `service/em_probe.py`：每 10min 黑盒探测 `push2 / dataapi bkzj / push2his` 各 1 次轻量 GET（`timeout 10s`，`ProxyHandler({})` 直连），`failed streak≥3` 即 `system_events insert (severity=high, dedupe=em_probe:{host})` + `webhook emit em_probe_failed`
+- `health_routes._SOURCES` 新增 `eastmoney_probe` 源（`threshold 20min`），前端 `SystemHealth` 横幅可报警（复用 `health/datasources` 12 类后第 13 类）
+- `em_push2_http.py` 的 `_EM_BLOCKED` 熔断状态暴露到 `GET /api/health/datasources`（`eastmoney_ip_ban_latched` + `cooldown_remaining_s`）
+- `cn_industry_post_close_job` 失败明细进 `sync_job_record.error_message` 已有，前端 `SchedulerHealth` 对 `cn_industry_post_close_sync` 单独标红（`HIGH_JOB_TYPES` 已含）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/em_probe.py`（**新**） |
+| Service | `services/data-sync-service/src/data_sync_service/service/em_push2_http.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/industry_fund_flow.py` |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/em_probe_job.py`（**新**，`Interval 10min`） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/__init__.py` |
+| API | `services/data-sync-service/src/data_sync_service/api/health_routes.py` |
+| Tests | `tests/test_em_probe.py`（**新**：探针失败→high event；熔断可视化） |
+
+#### 验证
+
+- [ ] 本地断网/代理出口封时 10min 内 `system_events high` 出现
+- [ ] `GET /api/health/datasources` 返回 `eastmoney_probe stale:true` + `ban_latched:true`
+- [ ] 探针失败不影响业务 job（隔离线程/超时 10s）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 让探针走代理（必须 `ProxyHandler({})` 直连，与业务同路径）
+- ❌ 探针高频 1min 打东财（10min 已够，避免自触发 ban）
+- ❌ 把探针失败直接标 `success=False` 到业务 `sync_job_record`（探针独立 `em_probe` job_type）
+
+---
+
+### OPT-127：前端轮询 jitter + ETag + 后端限流（P2 储备）
+
+**状态**：[ ] 储备（P2，不占当前 P0/P1；OPT-125 后再做）  
+**优先级**：P2  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §3
+
+#### 背景
+
+`apps/desktop-ui/src/lib/query-client.ts` `refetchOnWindowFocus:true` + `retry:1`，多标签切回触发 `dashboard/watchlist/notifications` 同时 `Promise.all` 击后端，单 `uvicorn` worker 尾延迟放大；无 `Cache-Control` / `ETag`，无后端 `rate limit`。
+
+#### 目标
+
+- 前端 `refetchInterval` 加 `jitter 0.8-1.2`；`staleTime` 引入 5s 随机；`retryDelay: attempt => 300*2^attempt`
+- 后端 `GET /dashboard/summary` / `GET /market/stocks/trendok` 加 `ETag + 304`（`If-None-Match`）与 `Cache-Control: private, max-age=10`
+- 后端全局 `slowapi` 或 `rate limit 60/min/IP`（对 `trendok` 批量计算 CPU 密集路径）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| FE | `apps/desktop-ui/src/lib/query-client.ts` `lib/queries/intervals.ts` `lib/queries/dashboard.ts` |
+| BE | `services/data-sync-service/src/data_sync_service/api/query_routes.py` `api/market_routes.py` |
+| Tests | `apps/desktop-ui/src/lib/query-client.test.ts`（**新**） |
+
+#### 验证
+
+- [ ] 多标签切回不再同时 N 个 query 同 ms 触发（jitter 证据）
+- [ ] `If-None-Match` 命中返回 304
+- [ ] 限流超限返回 429
+
+#### 反模式
+
+- ❌ 给所有 GET 加 `no-store`（应 `max-age=10` 让 ETag 生效）
+- ❌ 前端 `refetchOnWindowFocus:false` 一刀切（保留但加 jitter）

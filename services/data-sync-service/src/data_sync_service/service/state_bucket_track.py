@@ -6,7 +6,7 @@ S-gap 单态卫星 (frozen R12 / core_satellite_frozen_2026-08-31.json):
   gate    = R-wide (close>MA20 占比>0.5, 当日截面)
   entry   = T 日 open (信号取 T-1 状态), 滑点 0.15% 单边并入 COSTS_ROUNDTRIP
   hold    = 3 交易日, close 出, 0.3% 往返
-  slots   = 15 x POSITION_PCT 0.10 (切片内名义最高 150%)
+  slots   = 4 x POSITION_PCT 0.25 (sat sleeve ~100%; 12.5% of NAV at 50/50)
 
 Truth doc: docs/backtests/state-bucket-algo-2026-08-31.md §7
 """
@@ -21,10 +21,10 @@ import psycopg
 
 from data_sync_service.config import get_settings
 
-POSITION_PCT = 0.10
+POSITION_PCT = 0.25
 COSTS_ROUNDTRIP = 0.003
 BUCKET_Q = 3
-MAX_POS = 15
+MAX_POS = 4
 BODY = 3
 R_WIDE_THRESHOLD = 0.5
 WARMUP_CAL_DAYS = 120
@@ -290,10 +290,14 @@ def replay_sgap_from_context(
     skip_t1_limit: bool = False,
     limit_fallback: bool = False,
     pool_mode: str | None = None,
+    position_pct: float = POSITION_PCT,
 ) -> dict[str, Any]:
     """Replay S-gap on a preloaded context. Positions start empty at ``start``."""
     if pool_mode is None:
         pool_mode = "fallback" if limit_fallback else "strict"
+    clip = float(position_pct)
+    if clip <= 0:
+        raise ValueError("position_pct must be > 0")
     per_ts = ctx["per_ts"]
     cal = ctx["cal"]
     date_idx = ctx["date_idx"]
@@ -319,7 +323,7 @@ def replay_sgap_from_context(
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
             if cc and p["entry_price"]:
-                realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * POSITION_PCT
+                realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * clip
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
             prev_day = cal[idx_by_day[day] - 1]
             prev_all, _ = _cached_day_features(ctx, prev_day)
@@ -358,8 +362,8 @@ def replay_sgap_from_context(
         mtm = 0.0
         for ts, p in positions.items():
             cc = close_by_ts.get(ts, {}).get(day)
-            mtm += POSITION_PCT * (cc / p["entry_price"]) if cc and p["entry_price"] else POSITION_PCT
-        nav = 1.0 + realized + (mtm - len(positions) * POSITION_PCT)
+            mtm += clip * (cc / p["entry_price"]) if cc and p["entry_price"] else clip
+        nav = 1.0 + realized + (mtm - len(positions) * clip)
         sat_active = len(positions) > 0 or len(closed_today) > 0
         sat_slots = len(positions) + len(closed_today)
         rows.append(
@@ -402,7 +406,7 @@ def replay_sgap_from_context(
     for ts, p in list(positions.items()):
         cc = close_by_ts.get(ts, {}).get(last_day)
         if cc and p["entry_price"]:
-            realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * POSITION_PCT
+            realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * clip
     final_nav = 1.0 + realized
     if rows:
         rows[-1]["satNav"] = round(final_nav, 6)
@@ -422,6 +426,8 @@ def replay_sgap_from_context(
             "satMaxDdPct": round(max_dd * 100, 1),
         },
         "pool_mode": pool_mode,
+        "position_pct": clip,
+        "max_pos": max_pos,
     }
 
 
@@ -437,6 +443,7 @@ def build_sgap_timeline(
     skip_t1_limit: bool = False,
     limit_fallback: bool = False,
     pool_mode: str | None = None,
+    position_pct: float = POSITION_PCT,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -458,6 +465,7 @@ def build_sgap_timeline(
         skip_t1_limit=skip_t1_limit,
         limit_fallback=limit_fallback,
         pool_mode=pool_mode,
+        position_pct=position_pct,
     )
 
 
@@ -504,7 +512,7 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
         "openPositions": sat.get("openPositions") or [],
         "opportunity": False,
         "note": (
-            "Standalone S-gap leg (bucket_q=3, 15 slots, body=3, R-wide). "
+            "Standalone S-gap leg (bucket_q=3, 4 slots x 25%, body=3, R-wide). "
             "Executable口径: skip_t1_limit=True "
             "(涨停可能买不进 → 不假设开盘能成交; 机会双子星同口径)."
         ),

@@ -17,11 +17,11 @@ class TestSatIdleFrac:
     def test_empty_is_fully_idle(self) -> None:
         assert sat_idle_frac(0) == 1.0
 
-    def test_five_slots_half_idle(self) -> None:
-        assert sat_idle_frac(5) == pytest.approx(0.5)
+    def test_two_slots_half_idle(self) -> None:
+        assert sat_idle_frac(2) == pytest.approx(0.5)
 
-    def test_ten_or_more_zero_idle(self) -> None:
-        assert sat_idle_frac(10) == 0.0
+    def test_four_or_more_zero_idle(self) -> None:
+        assert sat_idle_frac(4) == 0.0
         assert sat_idle_frac(15) == 0.0
 
 
@@ -53,13 +53,14 @@ class TestBlendNav:
         assert idle[-1] == pytest.approx(static[-1])
 
     def test_opportunity_binary_overweights_sparse_sat(self) -> None:
-        # 1 slot: idle-to-core keeps ~90% core; opportunity still 50/50.
+        # 1 slot at 25% clip: idle-to-core keeps 75% of the sat sleeve on core;
+        # opportunity still 50/50.
         core = [1.0, 1.10]
         sat = [1.0, 1.0]  # sat flat (mostly cash) while "active"
         idle = blend_nav_idle_to_core(core, sat, [0, 1])
         opp = blend_nav_opportunity(core, sat, [False, True])
         assert idle[-1] > opp[-1]
-        # idle: 0.5*0.1 + 0.5*(0 + 0.9*0.1) = 0.095 → 1.095
-        assert idle[-1] == pytest.approx(1.095)
+        # idle: 0.5*0.1 + 0.5*(0 + 0.75*0.1) = 0.0875 → 1.0875
+        assert idle[-1] == pytest.approx(1.0875)
         # opp: 0.1 + 0.5*(0-0.1) = 0.05 → 1.05
         assert opp[-1] == pytest.approx(1.05)

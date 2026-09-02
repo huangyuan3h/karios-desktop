@@ -15,6 +15,7 @@ from typing import Any
 from data_sync_service.service.state_bucket_track import (
     BODY,
     BUCKET_Q,
+    MAX_POS,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
@@ -26,7 +27,30 @@ from data_sync_service.service.state_bucket_track import (
 
 LOOKBACK_DAYS = 90
 BOOK_LOOKBACK_CAL_DAYS = 45
-TOP_N = 5
+TOP_N = MAX_POS
+
+
+def fill_candidate_names(*groups: list[dict[str, Any]]) -> None:
+    """Attach stock_basic.display names onto packed candidate dicts (in place)."""
+    codes = [str(r.get("ts") or "") for g in groups for r in g if r.get("ts")]
+    codes = [c for c in codes if c]
+    if not codes:
+        return
+    try:
+        from data_sync_service.db.stock_basic import fetch_names
+
+        names = fetch_names(codes)
+    except Exception:
+        return
+    if not names:
+        return
+    for g in groups:
+        for r in g:
+            if r.get("name"):
+                continue
+            n = names.get(str(r.get("ts") or ""))
+            if n:
+                r["name"] = n
 
 
 def _sat_signal(today: date) -> dict[str, Any] | None:
@@ -95,14 +119,18 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
             )
         return out
 
+    candidates = _pack(picks["primary"])
+    blocked = _pack(picks["blocked"], blocked=True)
+    alternates = _pack(picks["alternates"])
+    fill_candidate_names(candidates, blocked, alternates)
     return {
         "asOf": signal_day,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
         "breadth": round(float(breadth), 3),
         "gapCount": len(gap_stocks),
-        "candidates": _pack(picks["primary"]),
-        "blocked": _pack(picks["blocked"], blocked=True),
-        "alternates": _pack(picks["alternates"]),
+        "candidates": candidates,
+        "blocked": blocked,
+        "alternates": alternates,
         "note": lag_note,
     }
 
@@ -186,6 +214,11 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
         intraday = load_intraday_sat(today)
         if intraday is not None:
             sat = intraday
+            fill_candidate_names(
+                list(sat.get("candidates") or []),
+                list(sat.get("blocked") or []),
+                list(sat.get("alternates") or []),
+            )
     except Exception:
         pass
     book = _sat_book(today)

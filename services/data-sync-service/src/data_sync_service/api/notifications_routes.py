@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from data_sync_service.service.notifications import build_notifications
 
@@ -17,8 +17,9 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
 @router.get("")
-def notifications_list() -> dict[str, Any]:
-    """Actionable notifications (high first). Each item: id/type/severity/
-    title/detail/anchor/createdAt — anchor names a watchlist-page block
-    (holdings | recon | scheduler | backtest) the UI scrolls to."""
-    return {"ok": True, "items": build_notifications()}
+def notifications_list(mode: str = Query("single_track")) -> dict[str, Any]:
+    """Actionable notifications (high first). Pass ``mode=twin_star`` when
+    Settings is 机会双子星 so S-3 pyramid/recon do not leak onto satellite names.
+    Each item: id/type/severity/title/detail/anchor/lane/book/createdAt."""
+    live = "twin_star" if mode == "twin_star" else "single_track"
+    return {"ok": True, "items": build_notifications(live)}

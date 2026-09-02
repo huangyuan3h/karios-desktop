@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.state_bucket_track import (
     BUCKET_Q,
+    MAX_POS,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
@@ -30,10 +31,11 @@ from data_sync_service.service.state_bucket_track import (
     _load_rows,
     select_live_gap_picks,
 )
+from data_sync_service.service.twin_star_daily import fill_candidate_names
 
 logger = logging.getLogger(__name__)
 
-TOP_N = 5
+TOP_N = MAX_POS
 WARMUP_DAYS = 120
 SNAPSHOT_PAGE_SIZE = 200
 SNAPSHOT_MAX_PAGES = 40
@@ -45,7 +47,7 @@ _EM_SPOT_URL = _EM_SPOT_URLS[1]
 _EM_REFERER = "https://quote.eastmoney.com/center/gridlist.html"
 # A-share markets: 深主板 m:0+t:6 · 创业板 m:0+t:80 · 沪主板 m:1+t:2 · 科创板 m:1+t:23
 _EM_A_SHARE_FS = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
-_EM_FIELDS = ",".join(["f12", "f13", "f2", "f15", "f16", "f17", "f18", "f6"])
+_EM_FIELDS = ",".join(["f12", "f13", "f14", "f2", "f15", "f16", "f17", "f18", "f6"])
 
 _CACHE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
@@ -91,8 +93,8 @@ def _em_snapshot_request(params: dict[str, str]) -> dict[str, Any]:
     raise RuntimeError("; ".join(errors))
 
 
-def fetch_market_snapshot() -> dict[str, dict[str, float | None]]:
-    """Full A-share quote snapshot: {ts_code: {open, high, low, close, pre_close, amount}}.
+def fetch_market_snapshot() -> dict[str, dict[str, Any]]:
+    """Full A-share quote snapshot: {ts_code: {open, high, low, close, pre_close, amount, name?}}.
 
     ``close`` = the price at snapshot time (12:30 lunch break → simulated close).
     """
@@ -117,7 +119,9 @@ def fetch_market_snapshot() -> dict[str, dict[str, float | None]]:
             pre_close = _f(row.get("f18"))
             if close is None or close <= 0 or pre_close is None or pre_close <= 0:
                 continue
-            out[ts] = {
+            name_raw = row.get("f14")
+            name = str(name_raw).strip() if name_raw not in (None, "", "-") else ""
+            packed: dict[str, Any] = {
                 "open": _f(row.get("f17")),
                 "high": _f(row.get("f15")),
                 "low": _f(row.get("f16")),
@@ -125,6 +129,9 @@ def fetch_market_snapshot() -> dict[str, dict[str, float | None]]:
                 "pre_close": pre_close,
                 "amount": _f(row.get("f6")),
             }
+            if name:
+                packed["name"] = name
+            out[ts] = packed
         if total and len(out) >= total:
             break
     logger.info("twin_star_intraday: snapshot %s rows", len(out))
@@ -286,26 +293,32 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
             series = per_ts.get(ts)
             idx = date_idx.get(ts, {}).get(today_s, -1)
             close = series[idx]["close"] if idx >= 0 and series else None
-            out.append(
-                {
-                    "ts": ts,
-                    "amp": round(float(amp) * 100, 2),
-                    "gapPct": round(float(gap) * 100, 2),
-                    "close": float(close) if close else None,
-                    "limitLocked": blocked,
-                }
-            )
+            snap_name = snapshot.get(ts, {}).get("name")
+            item: dict[str, Any] = {
+                "ts": ts,
+                "amp": round(float(amp) * 100, 2),
+                "gapPct": round(float(gap) * 100, 2),
+                "close": float(close) if close else None,
+                "limitLocked": blocked,
+            }
+            if isinstance(snap_name, str) and snap_name.strip():
+                item["name"] = snap_name.strip()
+            out.append(item)
         return out
 
     snapshot_at = datetime.now(CN_TZ).isoformat(timespec="seconds")
+    candidates = _pack(picks["primary"])
+    blocked = _pack(picks["blocked"], blocked=True)
+    alternates = _pack(picks["alternates"])
+    fill_candidate_names(candidates, blocked, alternates)
     return {
         "asOf": today_s,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
         "breadth": round(float(breadth), 3),
         "gapCount": len(gap_stocks),
-        "candidates": _pack(picks["primary"]),
-        "blocked": _pack(picks["blocked"], blocked=True),
-        "alternates": _pack(picks["alternates"]),
+        "candidates": candidates,
+        "blocked": blocked,
+        "alternates": alternates,
         "approx": True,
         "snapshotAt": snapshot_at,
         "note": None,

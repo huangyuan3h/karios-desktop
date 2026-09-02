@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from data_sync_service.service import twin_star_daily as tsd
 
 
@@ -45,6 +47,10 @@ def _mk_series(dates: list[str], gap_idx: int, gap_pct: float, amp: float) -> li
 
 
 class TestSatSignal:
+    @pytest.fixture(autouse=True)
+    def _no_db_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tsd, "fill_candidate_names", lambda *a, **k: None)
+
     def test_gate_open_candidates_and_asof(self, monkeypatch) -> None:
         dates = _mk_dates(25)
         gap_idx = len(dates) - 2  # signal day (t-1 for today=last date)
@@ -180,3 +186,15 @@ class TestCoreTargetPct:
         assert tsd._core_target_pct(
             gate_open=False, candidates=[], holdings=[{"ts": "A"}]
         ) == 50
+
+
+class TestFillCandidateNames:
+    def test_attaches_missing_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.db.stock_basic.fetch_names",
+            lambda codes: {"000712.SZ": "锦江投资"},
+        )
+        rows = [{"ts": "000712.SZ"}, {"ts": "600000.SH", "name": "浦发银行"}]
+        tsd.fill_candidate_names(rows)
+        assert rows[0]["name"] == "锦江投资"
+        assert rows[1]["name"] == "浦发银行"

@@ -22,18 +22,22 @@ const ITEMS = [
     type: 'near_line',
     severity: 'high',
     title: '接近止损线 · 华夏恒生科技ETF(QDII)',
-    detail: 'ETF:513180 距止损线 1.07pt（现 -0.49% / 线 0.582）',
+    detail: 'ETF:513180 距止损 1.07%（现价 1.05 / 线 1.03）',
     anchor: 'holdings',
     createdAt: '2026-08-12T08:00:00Z',
+    lane: 'trade',
+    book: 's3',
   },
   {
     id: 'recon:2026-08-07:HK',
     type: 'recon_missing',
-    severity: 'medium',
+    severity: 'low',
     title: '回测口径 · 港股缺 19 只持仓',
     detail: '回测应持 19 · 实持 0',
     anchor: 'recon',
     createdAt: '2026-08-12T08:00:00Z',
+    lane: 'research',
+    book: 'research',
   },
 ];
 
@@ -63,6 +67,8 @@ describe('NotificationHub', () => {
     expect(await screen.findByText(/回测口径 · 港股缺 19 只持仓/)).toBeDefined();
     expect(screen.getByText(/点击跳 watchlist/)).toBeDefined();
     expect(screen.getByText(/→ watchlist · 回测缺票/)).toBeDefined();
+    expect(screen.getByText(/今日交易/)).toBeDefined();
+    expect(screen.getByText(/策略体检/)).toBeDefined();
 
     fireEvent.click(screen.getByTitle(/提醒/));
     await waitFor(() => expect(screen.queryByText('2')).toBeNull());

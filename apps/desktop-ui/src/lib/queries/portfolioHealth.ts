@@ -6,6 +6,7 @@ export interface PortfolioHolding {
   name?: string;
   positionPct?: number;
   costPrice?: number;
+  entryDate?: string;
   lastClose?: number;
   lastDate?: string;
   peakPrice?: number;

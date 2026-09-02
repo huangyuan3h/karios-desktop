@@ -1,7 +1,8 @@
-# 状态分桶（State-Bucket）算法真值【2026-09-01 v3 · 机会双子星 strict + 无仓回核】
+# 状态分桶（State-Bucket）算法真值【2026-09-02 v3.1 · 4槽×12.5% NAV】
 
-> **一句话**：**择强单轨（trail8）为主干，S-gap 卫星作"机会增强"**——无仓时 100% 跟核心；R-wide 开闸且候选**可执行**时切 50%；**退出日仍算卫星占用**（`satActive`）。卫星 **`skip_t1_limit` + `pool_mode=strict`**（涨停跳过，**不**顺位补更差的缺口票）。
-> **2026-09-01 v3**：window-local 可执行对照结案——机会双子星 **三窗 walk-forward 全过**单轨；past_year +10pt / Sharpe 略高 / 回撤持平。历史 PS-G50 sr≈4 **不是**可执行真值。
+> **一句话**：**择强单轨（trail8）为主干，S-gap 卫星作"机会增强"**——无仓时 100% 跟核心；R-wide 开闸且候选**可执行**时切 50%；**退出日仍算卫星占用**（`satActive`）。卫星 **`skip_t1_limit` + `pool_mode=strict`**（涨停跳过，**不**顺位补更差的缺口票）。**仓位：4 槽 × 套筒 25% = 总资产 12.5%。**
+> **2026-09-02 v3.1 clip**：15×5% NAV 太散；只砍槽不加大单票三窗全拒。`4×12.5%` 相对 v3 15×10% 三窗全正（OOS2 +1.8 / train +2.3 / valid +10.3）。冻结 `opportunity_twin_star_v3_clip4_frozen.json`。
+> **2026-09-01 v3**：window-local 可执行对照结案——机会双子星 **三窗 walk-forward 全过**单轨。历史 15 槽×10% 表见 §3.0-legacy-clip。
 > **2026-09-01 v2 记账修正仍成立**：v1 `satPositions>0` 退出日成本逃逸（aligned 虚高 ~25pt）。v2 表里 past_year/aligned「输核心」是**另一套窗口切法 + 连续簿**，不要和 v3 window-local 混读。
 > **2026-09-01 涨停审计仍成立**：旧静态 50/50 假设一字板可成交已弃。
 > **命名动机**：涨停可能买得进也可能买不进——卫星是**机会**，不是刚性半仓。
@@ -9,8 +10,9 @@
 > **角色（勿混）**：
 > | 角色 | 含义 | 入口 | 地位 |
 > |------|------|------|------|
-> | **机会双子星 v3** | 择强 + strict S-gap + 无仓回核 | Timeline `strategy=twin_star` · `opportunity_twin_star_v3_frozen.json` | **最优可执行**；Settings **opt-in**（实盘默认仍单轨） |
-> | **择强单轨** | 无卫星 | Timeline `pick_strong` | 实盘默认；aligned 与双子星打平 |
+> | **机会双子星 v3.1** | 择强 + strict S-gap + 无仓回核 + **4×12.5%** | Timeline `strategy=twin_star` · `opportunity_twin_star_v3_clip4_frozen.json` | **最优可执行**；Settings **opt-in**（实盘默认仍单轨） |
+> | **机会双子星 v3 15×5%** | 同上、旧仓位 | `opportunity_twin_star_v3_frozen.json` | 对照；已被 clip4 替代 |
+> | **择强单轨** | 无卫星 | Timeline `pick_strong` | 实盘默认 |
 > | **PS-G50** | 静态 50/50 · **历史成交** | `pick_strong_g50_baseline_frozen.json` | 研究上限（Sharpe≈4），**不可实盘** |
 > | **独立腿 / slice** | 单态或分态，替 S-3 | `compare_sliced_vs_s3.py` | 可执行 slice **未过**三窗 |
 > | **作废虚高** | R7/R8 union +122.8%、v1 +205.9 | — | 禁止再引用为真值 |
@@ -42,15 +44,21 @@
 | 静态 50/50 可执行 | past_year −70~−88pt | 空卫星在吃 0 |
 | 空槽按比例回核 x70 | 塌方修好，Sharpe 贴回单轨 | 接近但不如二元机会切 |
 | **strict + 机会双子星** | 三窗全过；past_year +10pt；dd 持平 | **定案可执行** |
+| 只砍槽到 10、单票仍 5% | 三窗全负 vs 15×5% | 欠配不是集中 |
+| **4 槽 × 12.5% NAV** | 相对 15×5% 三窗全正 | **v3.1 冻结仓位** |
 | 历史 PS-G50 sr≈4 / dd≈6 | 涨停虚成交 | **买不回来**，停止追 |
 
 ### 复现脚本
 
 ```bash
 cd services/data-sync-service
+PYTHONPATH=src:scripts python3 scripts/compare_sat_clip.py --save-report
+PYTHONPATH=src:scripts python3 scripts/compare_past_year_twin.py --save-report
+# 冻结仓位：data/backtest_reports/opportunity_twin_star_v3_clip4_frozen.json
+# 过去一年三方：data/backtest_reports/past_year_twin_vs_core_2026-09-02.json
 PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 # → data/backtest_reports/ps_g50x_deep_YYYY-MM-DD.json
-# 冻结摘要：data/backtest_reports/opportunity_twin_star_v3_frozen.json
+# v3 15×10% 对照：data/backtest_reports/opportunity_twin_star_v3_frozen.json
 ```
 
 ---
@@ -102,13 +110,13 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 | 项 | 值 |
 |----|----|
 | 宇宙 | 全 A 非 ST/BJ（`stock_basic` delist_date IS NULL） |
-| 卫星状态 | **`S-gap`（缺口 >3%，bucket_q=3、15 槽、body3）** · 可选 `S-limit`/`S-shrink` |
+| 卫星状态 | **`S-gap`（缺口 >3%，bucket_q=3、4 槽、body3）** · 可选 `S-limit`/`S-shrink` |
 | 弃用状态 | `S-fresh` / `S-stress` / `S-breakout` |
 | 选股因子 | 桶内 `amplitude` 低波 33%（低波尾） |
 | regime 闸 | `R-wide`：`close>MA20 占比>0.5` 才开仓 |
 | body hold | `S-gap=3` · 可选 `S-limit=3` / `S-shrink=15` |
-| 入场 | next_open、滑点 0.15% 单边、15 槽×10% |
-| 结构 | **机会双子星 v3**：择强 trail8 + strict S-gap + 无仓回核；实盘默认仍单轨（opt-in） |
+| 入场 | next_open、滑点 0.15% 单边、**4 槽×套筒 25%（总资产 12.5%）** |
+| 结构 | **机会双子星 v3.1**：择强 trail8 + strict S-gap + 无仓回核 + clip4；实盘默认仍单轨（opt-in） |
 | 成本 | `COSTS_ROUNDTRIP=0.003`（单边 15bp，仅卫星计） |
 | 容量硬上限 | ≤200 万（低波尾宽度有限，天然卫星） |
 
@@ -116,18 +124,34 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 
 ## 3. 表现（回测，非实盘）
 
-### 3.0 冻结：机会双子星 v3（2026-09-01 · window-local · strict · `opportunity_twin_star_v3_frozen.json`）
+### 3.0 冻结：机会双子星 v3.1 clip4（2026-09-02 · 4×12.5% NAV · `opportunity_twin_star_v3_clip4_frozen.json`）
 
-| 窗口 | 择强单轨 total/sr/dd | S-gap 卫星(可执行 strict) | **机会双子星** | Δtotal | Δsr | Δdd |
-|------|---------------------|---------------------------|----------------|--------|-----|-----|
+相对 v3 15×5% 的 Δ 在末列。回测网格：`docs/backtests/sat-clip-concentration-2026-09-02.md`。
+
+| 窗口 | 择强单轨 total/sr/dd | S-gap 卫星 (4×25%) | **机会双子星 clip4** | Δ vs 核心 | Δ vs v3 15×5% |
+|------|---------------------|--------------------|----------------------|-----------|----------------|
+| OOS2 | +17.8 / 0.72 / 18.0 | +118.3 / 3.92 / 7.2 | **+64.7 / 2.13 / 16.1** | +46.9pt | **+1.8pt** |
+| train | +40.7 / 3.01 / 8.4 | +38.0 / 3.28 / 4.3 | **+51.4 / 4.05 / 7.8** | +10.7pt | **+2.3pt** |
+| valid | +139.1 / 3.37 / 11.9 | +14.5 / 1.69 / 6.2 | **+157.2 / 3.71 / 11.9** | +18.1pt | **+10.3pt** |
+| past_year | +181.2 / 2.43 / 12.6 | +51.7 / 2.42 / 4.7 | **+195.9 / 2.62 / 12.6** | +14.7pt | +4.6pt |
+| aligned（产品过去一年） | +190.6 / 2.54 / 12.6 | +34.5 / 1.60 / 8.7 | **+194.9 / 2.64 / 12.6** | +4.3pt | +4.5pt |
+| trailing `2025-09-02~2026-09-02` | +197.6 / 2.58 / 12.6 | +34.7 / 1.61 / 8.7 | **+204.0 / 2.69 / 12.6** | +6.4pt | +2.3pt |
+
+> 口径同 v3（每窗空仓、strict、opp_50），只改 `max_pos=4`、`POSITION_PCT=0.25`。开闸日均约 3.6 只。Watchlist 每只总资产 **12.5%**。
+> **产品**：实盘 Settings 默认仍 `single_track`；opt-in 机会双子星跟本表。
+> **过去一年三方**（2026-09-02 实跑）：产品窗 `2025-08-28~2026-08-28` 上旧 15×5% 双子星 **−0.2pt 输单轨**，clip4 **+4.3pt**；滚到今日仍 +6.4pt vs 单轨、回撤钉 12.6。报告 `past_year_twin_vs_core_2026-09-02.json`；产品真值 `modules/pick-strong-track.md` §2.1。
+
+### 3.0-legacy-clip：机会双子星 v3 15×5%（2026-09-01 · `opportunity_twin_star_v3_frozen.json`）
+
+| 窗口 | 择强单轨 total/sr/dd | S-gap 卫星(可执行 strict) | **机会双子星 15×5%** | Δtotal | Δsr | Δdd |
+|------|---------------------|---------------------------|----------------------|--------|-----|-----|
 | OOS2 | +17.8 / 0.72 / 18.0 | +111.4 / 2.56 / 14.1 | **+62.9 / 1.86 / 15.7** | **+45.1pt** | +1.14 | −2.3 |
 | train | +40.7 / 3.01 / 8.4 | +36.4 / 3.03 / 5.6 | **+49.1 / 3.87 / 7.6** | +8.4pt | +0.87 | −0.8 |
 | valid | +139.1 / 3.37 / 11.9 | +15.4 / 1.62 / 9.2 | **+146.9 / 3.62 / 11.9** | +7.9pt | +0.26 | 0 |
 | past_year | +181.2 / 2.43 / 12.6 | +51.9 / 2.16 / 7.6 | **+191.3 / 2.57 / 12.6** | +10.1pt | +0.14 | 0 |
 | aligned | +190.6 / 2.54 / 12.6 | +34.6 / 1.36 / 12.4 | **+190.4 / 2.57 / 12.6** | −0.2pt | +0.03 | 0 |
 
-> 口径：每窗空仓起步；`opp_ret = core`（`satActive=false`）否则 `core + 0.5×(sat−core)`（含 body 退出日）；卫星 `skip_t1_limit` + **`pool_mode=strict`**。
-> **产品**：最优可执行是机会双子星；**实盘 Settings 默认仍 `single_track`**（opt-in）。Sharpe/回撤相对单轨只是略好，**不是** PS-G50 那种 sr4 / dd 砍半。
+> 口径：每窗空仓起步；`opp_ret = core`（`satActive=false`）否则 `core + 0.5×(sat−core)`（含 body 退出日）；卫星 `skip_t1_limit` + **`pool_mode=strict`**。已被 §3.0 clip4 替代，勿再当实盘仓位。
 
 ### 3.0-legacy：机会双子星 v2 表（exit-day 修正后 · 连续/不同切窗 · 勿当 v3）
 
@@ -447,8 +471,8 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 - **候选**：当日 `S-gap` 桶内按 `amp` **升序**取前 **1/3**（`bucket_q=3`，最低波 33%）。
 - **闸**：仅 `R-wide` 日开仓（用 T 日 breadth；候选信号用 **T-1 日** 状态）。
 - **入场**：T 日 **open** 价；**单边滑点 0.15%** 含在 `COSTS_ROUNDTRIP=0.003`（0.3% 往返）内，出场时一次性计提。
-- **持仓**：`body=3` 交易日（第 3 日 close 出）；`max_pos=15`、每槽 `POSITION_PCT=0.10` → **切片内名义敞口最高 150%**（15×10%，回测 NAV 口径）。
-- **NAV**：`NAV = 1 + Σ已实现 + (Σ槽位市值 − 槽位数×10%)`；信号取 T-1 收盘 → T 开盘执行，无前视。
+- **持仓**：`body=3` 交易日（第 3 日 close 出）；`max_pos=4`、每槽 `POSITION_PCT=0.25` → **卫星套筒满仓 100%**（4×25%；合成后每只总资产 12.5%）。v3 的 15×10%（名义 150%）已由 v3.1 替代。
+- **NAV**：`NAV = 1 + Σ已实现 + (Σ槽位市值 − 槽位数×clip)`；信号取 T-1 收盘 → T 开盘执行，无前视。
 - 宇宙 = 全 A 非 ST/BJ/退市（`stock_basic` JOIN：`delist_date IS NULL`、`name NOT LIKE '%ST%'`、排除 `.BJ`）。
 
 ### 7.4 择强核心引擎（冻结，见 `pick-strong-track.md`）
@@ -465,9 +489,9 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 - **卫星选股 `pool_mode=strict`**：全体 S-gap 按 amp 升序取前 1/3，**再**剔除 T-1 涨停。禁止先剔除再补仓（replace/fallback 已拒收）。
 - **禁止**固定每日 50/50（可执行口径下空仓吃 0，past_year 塌 70pt+）。
 
-### 7.6 验证窗口与冻结数字（v3 · 见 §3.0 表）
+### 7.6 验证窗口与冻结数字（v3.1 clip4 · 见 §3.0 表）
 
-> 复现：核心 pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict")`；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `opportunity_twin_star_v3_frozen.json`。
+> 复现：核心 pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict")`（默认 4×25%）；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `opportunity_twin_star_v3_clip4_frozen.json`。
 
 ### 7.7 实盘执行映射（机会双子星 · opt-in）
 
@@ -475,6 +499,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 - **opt-in 机会双子星**：
   - 无卫星持仓且今日不开新仓 → **核心 100%**。
   - 开闸且 **strict 可成交候选非空** **或** 持仓簿非空 → **核心 50% / 卫星 50%**。
+  - 卫星每只 **总资产 12.5%**（套筒 25%），最多 **4 只**。
   - 涨停买不进 → **放弃该票**（不顺位补），空出来的钱留在核心。
   - body=3 收盘卖（持仓簿 `exitsDue`）。
   - 执行顺序：先按 `coreTargetPct` 调核心腿；再按持仓簿卖到期 / 开闸买 strict 候选。

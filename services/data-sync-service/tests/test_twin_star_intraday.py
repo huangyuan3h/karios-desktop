@@ -109,6 +109,7 @@ class TestBuildIntradaySat:
                 }
             },
         )
+        monkeypatch.setattr(m, "fill_candidate_names", lambda *a, **k: None)
 
     def test_signal_shape_and_approx_flag(self) -> None:
         sat = m.build_intraday_sat(self.today)
@@ -125,6 +126,18 @@ class TestBuildIntradaySat:
         # 600001 gapped 5% and is executable -> included.
         assert "600001.SH" in [c["ts"] for c in sat["candidates"]]
         assert sat["gapCount"] == 2
+
+    def test_snapshot_name_on_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def snap() -> dict:
+            s = _flat_snapshot("2026-08-20")
+            s["600001.SH"]["name"] = "测试股"
+            return s
+
+        monkeypatch.setattr(m, "fetch_market_snapshot", snap)
+        sat = m.build_intraday_sat(self.today)
+        assert sat is not None
+        hit = next(c for c in sat["candidates"] if c["ts"] == "600001.SH")
+        assert hit["name"] == "测试股"
 
     def test_breadth_and_gate(self) -> None:
         sat = m.build_intraday_sat(self.today)

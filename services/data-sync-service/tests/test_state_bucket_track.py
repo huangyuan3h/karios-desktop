@@ -112,9 +112,22 @@ class TestBuildSgapTimeline:
         # final NAV: entry next_open, exit at 3rd-day close, 0.3% round trip cost
         exp_entry = per_ts["A.SH"][21]["open"]
         exp_exit = per_ts["A.SH"][23]["close"]
-        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * 0.10
+        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * sbt.POSITION_PCT
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         assert r["summary"]["satPct"] == round((exp_nav - 1) * 100, 2)
+
+    def test_frozen_clip_is_four_slots_at_25pct(self) -> None:
+        assert sbt.MAX_POS == 4
+        assert sbt.POSITION_PCT == 0.25
+
+    def test_position_pct_scales_sat_nav(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        thin = sbt.build_sgap_timeline(start=dates[0], end=dates[-1], position_pct=0.10)
+        fat = sbt.build_sgap_timeline(start=dates[0], end=dates[-1], position_pct=0.20)
+        assert fat["position_pct"] == 0.20
+        assert thin["summary"]["satPct"] != 0.0
+        assert abs(fat["summary"]["satPct"] - 2 * thin["summary"]["satPct"]) < 0.05
 
     def test_no_entry_without_r_wide(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()

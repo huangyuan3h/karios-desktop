@@ -1,0 +1,200 @@
+{
+  "tag": "past-year-twin-vs-core-2026-09-02",
+  "protocol": "window-local strict S-gap + opp_50; same engine as compare_sat_clip.py",
+  "compare": [
+    "pick_strong trail8",
+    "twin v3 15×5%",
+    "twin v3.1 clip4 4×12.5%"
+  ],
+  "windows": {
+    "protocol": {
+      "start": "2025-08-01",
+      "end": "2026-08-07",
+      "core": {
+        "n_days": 257,
+        "total_pct": 181.2,
+        "max_dd": 12.6,
+        "sharpe": 2.43
+      },
+      "variants": {
+        "v3_15x5": {
+          "label": "twin v3 15×5% NAV",
+          "max_pos": 15,
+          "clip": 0.1,
+          "nav_pct": 5.0,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 51.9,
+            "max_dd": 7.6,
+            "sharpe": 2.16
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 191.3,
+            "max_dd": 12.6,
+            "sharpe": 2.57
+          },
+          "delta_core_pt": 10.1,
+          "avg_pos": 5.47,
+          "avg_pos_active": 12.13,
+          "pct_active": 45.1,
+          "avg_sat_invested": 38.9,
+          "delta_v3_pt": 0.0
+        },
+        "clip4": {
+          "label": "twin v3.1 4×12.5% NAV",
+          "max_pos": 4,
+          "clip": 0.25,
+          "nav_pct": 12.5,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 51.7,
+            "max_dd": 4.7,
+            "sharpe": 2.42
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 195.9,
+            "max_dd": 12.6,
+            "sharpe": 2.62
+          },
+          "delta_core_pt": 14.7,
+          "avg_pos": 1.58,
+          "avg_pos_active": 3.63,
+          "pct_active": 43.6,
+          "avg_sat_invested": 39.6,
+          "delta_v3_pt": 4.6
+        }
+      }
+    },
+    "product": {
+      "start": "2025-08-28",
+      "end": "2026-08-28",
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "variants": {
+        "v3_15x5": {
+          "label": "twin v3 15×5% NAV",
+          "max_pos": 15,
+          "clip": 0.1,
+          "nav_pct": 5.0,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 34.6,
+            "max_dd": 12.4,
+            "sharpe": 1.36
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 190.4,
+            "max_dd": 12.6,
+            "sharpe": 2.57
+          },
+          "delta_core_pt": -0.2,
+          "avg_pos": 5.27,
+          "avg_pos_active": 12.02,
+          "pct_active": 43.9,
+          "avg_sat_invested": 37.6,
+          "delta_v3_pt": 0.0
+        },
+        "clip4": {
+          "label": "twin v3.1 4×12.5% NAV",
+          "max_pos": 4,
+          "clip": 0.25,
+          "nav_pct": 12.5,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 34.5,
+            "max_dd": 8.7,
+            "sharpe": 1.6
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 194.9,
+            "max_dd": 12.6,
+            "sharpe": 2.64
+          },
+          "delta_core_pt": 4.3,
+          "avg_pos": 1.52,
+          "avg_pos_active": 3.59,
+          "pct_active": 42.3,
+          "avg_sat_invested": 37.9,
+          "delta_v3_pt": 4.5
+        }
+      }
+    },
+    "trailing": {
+      "start": "2025-09-02",
+      "end": "2026-09-02",
+      "core": {
+        "n_days": 253,
+        "total_pct": 197.6,
+        "max_dd": 12.6,
+        "sharpe": 2.58
+      },
+      "variants": {
+        "v3_15x5": {
+          "label": "twin v3 15×5% NAV",
+          "max_pos": 15,
+          "clip": 0.1,
+          "nav_pct": 5.0,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 37.1,
+            "max_dd": 12.1,
+            "sharpe": 1.53
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 201.7,
+            "max_dd": 12.6,
+            "sharpe": 2.65
+          },
+          "delta_core_pt": 4.1,
+          "avg_pos": 5.29,
+          "avg_pos_active": 12.05,
+          "pct_active": 43.9,
+          "avg_sat_invested": 37.7,
+          "delta_v3_pt": 0.0
+        },
+        "clip4": {
+          "label": "twin v3.1 4×12.5% NAV",
+          "max_pos": 4,
+          "clip": 0.25,
+          "nav_pct": 12.5,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 34.7,
+            "max_dd": 8.7,
+            "sharpe": 1.61
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 204.0,
+            "max_dd": 12.6,
+            "sharpe": 2.69
+          },
+          "delta_core_pt": 6.4,
+          "avg_pos": 1.53,
+          "avg_pos_active": 3.63,
+          "pct_active": 42.3,
+          "avg_sat_invested": 38.3,
+          "delta_v3_pt": 2.3
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "protocol": "PASS+",
+    "product": "PASS+",
+    "trailing": "PASS+"
+  },
+  "freeze": true,
+  "freeze_note": "FREEZE: clip4 beats 单轨 and v3 15×5% on product + trailing past_year; DD tied to core.",
+  "as_of": "2026-09-02T10:17:13+00:00",
+  "reproduce": "PYTHONPATH=src:scripts python3 scripts/compare_past_year_twin.py --save-report"
+}

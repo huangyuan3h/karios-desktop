@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
+import { useStrategyMode } from '@/lib/strategy-settings';
 
 export type NotificationItem = {
   id: string;
@@ -12,14 +13,17 @@ export type NotificationItem = {
   detail: string;
   anchor: string;
   createdAt: string;
+  lane?: 'trade' | 'system' | 'research';
+  book?: string;
 };
 
 export type NotificationsResponse = { ok: boolean; items: NotificationItem[] };
 
 export function useNotificationsQuery(enabled = true) {
+  const [mode] = useStrategyMode();
   return useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => apiGetJson<NotificationsResponse>('/api/notifications'),
+    queryKey: ['notifications', mode],
+    queryFn: () => apiGetJson<NotificationsResponse>(`/api/notifications?mode=${mode}`),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: true,

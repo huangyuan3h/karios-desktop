@@ -12,9 +12,10 @@
 |----|------|
 | 定义 | 股票篮(S-3 CN+HK) + 金/油/纳/债 + REPO，t-1 `mom60` 且站上 `MA200` 的池内 argmax，100% 硬切 |
 | 真值文档 | [`modules/pick-strong-track.md`](../modules/pick-strong-track.md) |
-| 过去一年（定案 `mom_compare`） | **+93.6% / DD28.3%**（2025-08-28~2026-08-28） |
-| 三窗绝对 NAV（加固基线 A0） | OOS2 **+17.8** / train **+35.7** / valid **+56.5**（dd 18/12/28） |
-| 报告 | `pick_strong_track_past_year.json` · `pick_strong_grid_20260828.json` |
+| 过去一年（定案 `mom_compare`+trail8） | **+190.7% / DD12.6%**（2025-08-28~2026-08-28）；无 trail 对照 +93.6/DD28.3 |
+| 机会双子星 clip4（opt-in） | 同窗 **+194.9 / sr2.64 / DD12.6**（Δ单轨 +4.3pt）；旧 15×5% 该窗 −0.2pt。滚到 2026-09-02 clip4 +204.0 vs 单轨 +197.6 |
+| 三窗绝对 NAV（trail8） | OOS2 **+17.8** / train **+40.7** / valid **+139.1**（dd 18.0/8.4/11.9） |
+| 报告 | `pick_strong_trail8_20260829.json` · `past_year_twin_vs_core_2026-09-02.json` · `opportunity_twin_star_v3_clip4_frozen.json` |
 | 参数定案 | LB60·MA200·hold1·100% mom（[加固实验](pick-strong-hardening-2026-08-29.md) **维持 A0**；hold5/短 LB/risk-adj/Top2 拒收） |
 | 优化范围 | 择强打分已扫一轮；**S-3 冻结**；下一刀优先 Timeline 对齐 |
 

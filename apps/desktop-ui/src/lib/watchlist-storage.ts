@@ -135,6 +135,43 @@ export function applyZeroPositionCleanup(item: WatchlistItem): WatchlistItem {
   };
 }
 
+/** Open or close a position from the health-card QuickBuy (may insert a new row). */
+export function upsertWatchlistOpenTrade(
+  items: WatchlistItem[],
+  input: {
+    symbol: string;
+    name?: string | null;
+    side: 'BUY' | 'SELL';
+    price: number;
+    positionPct: number;
+    entryDate: string;
+  },
+): WatchlistItem[] {
+  const i = items.findIndex((x) => x.symbol === input.symbol);
+  if (input.side === 'SELL') {
+    if (i < 0) return items;
+    const it = items[i]!;
+    const remaining = Math.max(0, (Number(it.positionPct) || 0) - input.positionPct);
+    const next = applyZeroPositionCleanup({ ...it, positionPct: remaining });
+    return items.map((x, idx) => (idx === i ? next : x));
+  }
+  const existing = i >= 0 ? items[i]! : null;
+  const prettyName = input.name?.trim() && input.name !== input.symbol ? input.name.trim() : null;
+  const opened: WatchlistItem = {
+    symbol: input.symbol,
+    name: prettyName ?? existing?.name ?? null,
+    addedAt: existing?.addedAt ?? new Date().toISOString(),
+    color: existing?.color ?? '#ffffff',
+    source: existing?.source ?? 'research',
+    costPrice: input.price,
+    maxPrice: input.price,
+    positionPct: input.positionPct,
+    entryDate: existing?.entryDate || input.entryDate,
+  };
+  if (i < 0) return [opened, ...items];
+  return items.map((x, idx) => (idx === i ? { ...x, ...opened } : x));
+}
+
 export function loadWatchlist(): WatchlistItem[] {
   return normalizeWatchlistItems(loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []));
 }

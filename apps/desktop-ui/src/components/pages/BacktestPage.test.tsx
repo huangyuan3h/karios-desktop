@@ -152,9 +152,9 @@ beforeEach(() => {
 });
 
 describe('BacktestPage', () => {
-  it('shows opportunity twin-star v3 timeline on compare tab', async () => {
+  it('shows opportunity twin-star v3.1 timeline on compare tab', async () => {
     renderPage();
-    expect(await screen.findByText(/机会双子星 v3 · 与 Watchlist 同源/)).toBeDefined();
+    expect(await screen.findByText(/机会双子星 v3.1 · 与 Watchlist 同源/)).toBeDefined();
     expect(await screen.findByText(/核心目标%/)).toBeDefined();
     expect(screen.getByText(/择强单轨累计/)).toBeDefined();
   });

@@ -16,7 +16,9 @@ def test_stop_trail_alerts_extracts_exit_and_near_line(monkeypatch) -> None:
                      "reason": "stop_loss", "pnlPct": -6.0, "stopLossLine": None,
                      "trailingLine": None},
                     {"symbol": "CN:600519", "name": "贵州茅台", "action": "HOLD",
-                     "pnlPct": -4.7, "stopLossLine": -5.0, "trailingLine": -3.0},
+                     "pnlPct": 2.0, "lastClose": 100, "stopLossLine": 98.5,
+                     "trailingLine": 92, "nearStop": True, "nearStopLabel": "止损",
+                     "nearStopDistancePct": 1.5},
                 ]
             }
         },
@@ -146,7 +148,7 @@ def test_pyramid_trigger_alert_fires_when_close_crosses_line(monkeypatch) -> Non
 
 
 def test_build_notifications_sorts_high_first(monkeypatch) -> None:
-    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda: [
+    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda mode="single_track", ctx=None: [
         {"id": "a", "type": "near_line", "severity": "medium", "title": "m", "detail": "d",
          "anchor": "holdings", "createdAt": "x"},
     ])
@@ -156,31 +158,38 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     ])
     monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
-    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda: [])
+    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda mode="single_track", ctx=None: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
+    monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
+    monkeypatch.setattr(nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None})
     out = nf.build_notifications()
     assert [x["severity"] for x in out] == ["high", "medium"]
 
 
 def test_third_asset_notification_active(monkeypatch) -> None:
-    """T6 (2026-08-19): an active sleeve hint becomes a notification item."""
+    """Pick-strong sleeve hint becomes a core-book notification."""
     monkeypatch.setattr(
-        nf, "_anchor_blocks",
-        lambda: {"CN": {"thirdAssetSleeve": {
-            "active": True, "action": "BUY_513100", "label": "建议买入 513100",
-            "message": "闲置资金 90% → 建议买入", "asOfDate": "2026-08-18",
-        }}},
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        lambda **k: {
+            "multiAssetSleeve": {
+                "active": True,
+                "action": "BUY",
+                "label": "建议买入 513100",
+                "message": "闲置资金 90% → 建议买入",
+                "pick": {"key": "NASDAQ"},
+            }
+        },
     )
     out = nf._third_asset_notification()
     assert len(out) == 1
-    assert out[0]["type"] == "third_asset"
-    assert out[0]["severity"] == "medium"
+    assert out[0]["type"] == "pick_strong"
+    assert out[0]["book"] == "core"
+    assert out[0]["lane"] == "trade"
     assert "建议买入 513100" in out[0]["title"]
-    assert "闲置资金 90% → 建议买入" in out[0]["detail"]
 
     monkeypatch.setattr(
-        nf, "_anchor_blocks",
-        lambda: {"CN": {"thirdAssetSleeve": {"active": False, "action": "NONE"}}},
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        lambda **k: {"multiAssetSleeve": {"active": False, "action": "NONE"}},
     )
     assert nf._third_asset_notification() == []
 
@@ -192,9 +201,83 @@ def test_route_ok(monkeypatch) -> None:
     import data_sync_service.api.notifications_routes as nr
     from data_sync_service.api.notifications_routes import router
 
-    monkeypatch.setattr(nr, "build_notifications", lambda: [{"id": "x", "severity": "high"}])
+    monkeypatch.setattr(nr, "build_notifications", lambda mode="single_track": [{"id": "x", "severity": "high"}])
     app = FastAPI()
     app.include_router(router)
     r = TestClient(app).get("/api/notifications")
     assert r.status_code == 200
     assert r.json()["items"][0]["severity"] == "high"
+
+
+def test_twin_star_does_not_emit_s3_pyramid_or_false_near_line(monkeypatch) -> None:
+    ctx = {
+        "pick": "OIL",
+        "tradeDate": "2026-09-02",
+        "blocks": {
+            "CN": {
+                "holdings": [
+                    {
+                        "symbol": "CN:600540",
+                        "name": "新赛股份",
+                        "action": "HOLD",
+                        "pyramidAdded": False,
+                        "pyramidTriggerLine": 6.57,
+                        "lastClose": 6.73,
+                        "costPrice": 6.41,
+                        "entryDate": "2026-09-02",
+                        "pnlPct": 4.99,
+                        "stopLossLine": 6.09,
+                        "trailingLine": 6.192,
+                    }
+                ]
+            }
+        },
+    }
+    assert nf._pyramid_trigger_alerts("twin_star", ctx) == []
+    out = nf._stop_trail_alerts("twin_star", ctx)
+    titles = [x["title"] for x in out]
+    assert not any("金字塔" in t for t in titles)
+    assert not any("接近止损" in t for t in titles)
+    assert not any("接近移动" in t for t in titles)
+    assert all(x.get("book") == "sat" for x in out)
+
+
+def test_twin_star_sat_exit_and_protect_stop(monkeypatch) -> None:
+    ctx = {
+        "pick": "OIL",
+        "tradeDate": "2026-09-02",
+        "blocks": {
+            "CN": {
+                "holdings": [
+                    {
+                        "symbol": "CN:300413",
+                        "name": "芒果超媒",
+                        "costPrice": 20,
+                        "entryDate": "2026-08-31",
+                        "lastClose": 18.9,
+                    }
+                ]
+            }
+        },
+    }
+    out = nf._stop_trail_alerts("twin_star", ctx)
+    types = {x["type"] for x in out}
+    assert "sat_exit" in types
+    assert "sat_stop" in types
+
+
+def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:
+    monkeypatch.setattr(nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "OIL", "tradeDate": "2026-09-02"})
+    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda *a, **k: [])
+    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda *a, **k: [])
+    monkeypatch.setattr(nf, "_cron_failures", lambda: [])
+    monkeypatch.setattr(
+        nf,
+        "_recon_alerts",
+        lambda: [{"id": "recon:x", "type": "recon_missing", "severity": "low", "title": "t", "detail": "d", "anchor": "recon"}],
+    )
+    monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
+    monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
+    monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
+    assert nf.build_notifications("twin_star") == []
+    assert len(nf.build_notifications("single_track")) == 1

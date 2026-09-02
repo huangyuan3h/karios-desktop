@@ -592,7 +592,7 @@ function TimelineCard() {
         <BarChart3 className="size-3.5" />
         过去一年 Timeline（
         {isTwin
-          ? '机会双子星 v3 · 与 Watchlist 同源'
+          ? '机会双子星 v3.1 · 与 Watchlist 同源'
           : isSgap
             ? '状态分桶 S-gap · 可执行独立腿（涨停可能买不进）'
             : '择强单轨 · 全资产同权 · 100%'}
@@ -835,9 +835,9 @@ function TimelineCard() {
             <p className="text-[10px] text-[var(--k-muted)]">
               {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
               {isTwin
-                ? '机会双子星 v3：择强 mom_compare+trail8 为核心；卫星 S-gap strict/skip_t1 · R-wide · body3 · bq3 · 15槽×套筒10%；satActive 日 50/50，闲置日核心100%（非 PS-G50 静态对半）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3/§7 · 实盘 Settings 默认仍是单轨，opt-in 后与本表同口径'
+                ? '机会双子星 v3.1：择强 mom_compare+trail8 为核心；卫星 S-gap strict/skip_t1 · R-wide · body3 · bq3 · 4槽×套筒25%（总资产12.5%）；satActive 日 50/50，闲置日核心100%（非 PS-G50 静态对半）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3.0/§7 · 实盘 Settings 默认仍是单轨，opt-in 后与本表同口径'
                 : isSgap
-                  ? '状态分桶 S-gap 独立腿（bq3/15槽/body3/R-wide · skip_t1_limit）· 与双子星卫星同源引擎 · 非择强替换件 · docs/backtests/state-bucket-algo-2026-08-31.md'
+                  ? '状态分桶 S-gap 独立腿（bq3/4槽×25%/body3/R-wide · skip_t1_limit）· 与双子星卫星同源引擎 · 非择强替换件 · docs/backtests/state-bucket-algo-2026-08-31.md'
                   : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
               · 卖出=前日有今日无
             </p>

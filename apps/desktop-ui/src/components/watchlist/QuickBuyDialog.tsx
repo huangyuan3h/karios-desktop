@@ -81,7 +81,9 @@ export function QuickBuyDialog({
       <div className="w-full max-w-[340px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4 text-xs text-[var(--k-text)] shadow-lg">
         <div className="mb-1 flex items-center justify-between">
           <div className="text-sm font-medium">
-            {side === 'SELL' ? '卖出' : '买入'} <span className="font-mono text-[var(--k-muted)]">{state.symbol}</span>
+            {side === 'SELL' ? '卖出' : '买入'}{' '}
+            {state.name ? <span>{state.name}</span> : null}{' '}
+            <span className="font-mono text-[var(--k-muted)]">{state.symbol}</span>
           </div>
           <button
             type="button"
@@ -93,10 +95,9 @@ export function QuickBuyDialog({
           </button>
         </div>
         <div className="mb-3 text-[11px] text-[var(--k-muted)]">
-          {state.name || '—'}
-          {state.score != null && <span> · score={state.score}</span>}
-          {state.rs != null && <span> · RS 前{Math.round(state.rs * 100)}%</span>}
-          <span> · 记入模拟盘（paper trade）</span>
+          {state.score != null && <span>score={state.score} · </span>}
+          {state.rs != null && <span>RS 前{Math.round(state.rs * 100)}% · </span>}
+          <span>写入 Watchlist 自选并记入模拟盘</span>
         </div>
         <div className="space-y-2">
           <div>
@@ -116,7 +117,7 @@ export function QuickBuyDialog({
             />
           </div>
           <div>
-            <div className="mb-1 text-[var(--k-muted)]">仓位 %（建议 {suggestPct}% · 回测口径 10%×≤10 笔 = 满仓）</div>
+            <div className="mb-1 text-[var(--k-muted)]">仓位 %（建议 {suggestPct}% · 总资产）</div>
             <input
               className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 font-mono text-sm outline-none"
               placeholder="0"

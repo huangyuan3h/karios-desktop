@@ -22,7 +22,8 @@
 | [`experiments-legacy.md`](./experiments-legacy.md) | 历史实验速查 | ✅ |
 | [`experiments-planned.md`](./experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
 | [`s3-gate-pickstrong-optimization-2026-09-01.md`](./s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
-| [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3（可执行最优） | ✅ |
+| [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
+| [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 
 ---
@@ -57,6 +58,7 @@
 | 文件 | 内容 |
 |------|------|
 | `pick_strong_track_past_year.json` | **择强单轨**过去一年（定案 mom_compare） |
+| `past_year_twin_vs_core_2026-09-02.json` | 过去一年三方：单轨 vs 双子星 v3 15×5% vs clip4 |
 | `walk_forward_baseline.json` | S-3 股票腿 CN 基线（NAV） |
 | `walk_forward_latest.json` | 最近一次三窗结果 |
 | `walk_forward_hk_baseline.json` | HK 并行线基线 |
@@ -72,7 +74,8 @@
 
 | 窗口 | 收益 | 回撤 | 夏普 | 胜率 | 笔数 | 可信度 |
 |------|------|------|------|------|------|--------|
-| 择强单轨 past_year | **+93.6%** | **28.3%** | — | — | — | ✅ **产品口径** |
+| 择强单轨 past_year trail8 | **+190.7%** | **12.6%** | — | — | — | ✅ **产品口径**（2025-08-28~2026-08-28） |
+| 机会双子星 clip4 同窗 | **+194.9%** | **12.6%** | 2.64 | — | — | opt-in；Δ单轨 +4.3pt；旧 15×5% 该窗 −0.2pt |
 | CN OOS2 | +47.3% | 18.9% | 1.26 | 47.3% | 93 | 股票腿 |
 | CN train | +34.1% | 11.6% | 2.22 | 45.1% | 51 | ✅ 可引用 |
 | CN valid | +38.7% | 10.7% | 2.40 | 75.0% | 16 | ⚠️ underpowered |

@@ -465,6 +465,7 @@ export function useTimelineQuery(
 
 export type TwinStarSatCandidate = {
   ts: string;
+  name?: string | null;
   amp: number | null;
   gapPct: number | null;
   close: number | null;

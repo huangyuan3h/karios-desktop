@@ -14,7 +14,7 @@ to the core. Slot occupancy includes the body-exit day (same as satActive).
     port     = core_w * core_ret + sat_w * sleeve
 
 Empty book (idle=1, sat_ret=0) → 100% core.
-Full book (idle=0, ≥10 slots) → classic PS-G50 50/50.
+Full book (idle=0, ≥4 slots at 25%) → classic PS-G50 50/50.
 """
 from __future__ import annotations
 

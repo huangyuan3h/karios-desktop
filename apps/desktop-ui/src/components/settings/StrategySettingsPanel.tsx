@@ -18,7 +18,7 @@ const OPTIONS: { value: StrategyMode; title: string; desc: string }[] = [
   {
     value: 'twin_star',
     title: '机会双子星 (Opportunity Twin-Star)',
-    desc: '择强为主；无卫星仓且不开新仓时核心 100%，开闸可买或持仓中才切 50% 卫星。可选增强，非默认。',
+    desc: '择强为主；无卫星仓且不开新仓时核心 100%，开闸可买或持仓中才切 50% 卫星。卫星最多 4 只、每只总资产 12.5%。可选增强，非默认。',
   },
 ];
 

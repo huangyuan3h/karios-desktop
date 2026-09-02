@@ -6,6 +6,8 @@ import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/be
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery, useTwinStarActionQuery } from '@/lib/queries/backtest';
 import { useStrategyMode } from '@/lib/strategy-settings';
+import { satNamesVisible } from '@/lib/market-hours';
+import { TWIN_STAR_LIVE_RECIPE } from '@/lib/twin-star-trade-plan';
 import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 
 export function TodayActionCard() {
@@ -25,11 +27,7 @@ export function TodayActionCard() {
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
   const twinStarQ = useTwinStarActionQuery(true);
-  const afterSatWindow = Boolean(
-    twinStarQ.data?.sat?.snapshotAt ||
-      twinStarQ.data?.sat?.approx ||
-      (twinStarQ.data?.sat?.candidates?.length ?? 0) > 0,
-  );
+  const afterSatWindow = satNamesVisible();
   const refresh = useRefreshBehaviorAudit();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -132,11 +130,11 @@ export function TodayActionCard() {
           <span className="ml-2 text-[var(--k-muted)]">
             {twinStarQ.data.sat.gateOpen
               ? afterSatWindow
-                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波买入 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'} · 每只总资产 ${(((twinStarQ.data.sat.satTargetPct ?? 50) * 0.1).toFixed(1))}%`
-                : `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 候选 14:30 后公布（模拟收盘价买入）`
+                ? `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 低波买入 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'} · 每只总资产 ${(((twinStarQ.data.sat.satTargetPct ?? 50) * TWIN_STAR_LIVE_RECIPE.slotOfSleeve).toFixed(1))}%`
+                : `R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口 · 候选 14:30 后公布（当日近似）`
               : `R-wide 关闸 (breadth ${twinStarQ.data.sat.breadth}) — 今日不开仓`}
             {(twinStarQ.data.sat.book?.holdings?.length ?? 0) > 0
-              ? ` · 策略回放仓 ${(twinStarQ.data.sat.book!.holdings ?? []).map((h) => `${h.ts}(剩${h.daysLeft}d)`).slice(0, 3).join(', ')}`
+              ? ` · 引擎模拟 ${(twinStarQ.data.sat.book!.holdings ?? []).length} 只（对照，不是券商仓）`
               : ''}
             {(twinStarQ.data.sat.book?.exitsDue?.length ?? 0) > 0
               ? ` · 到期卖 ${(twinStarQ.data.sat.book!.exitsDue ?? []).map((h) => h.ts).slice(0, 3).join(', ')}`
@@ -145,7 +143,13 @@ export function TodayActionCard() {
           </span>
           <span className="ml-2 text-[10px] text-[var(--k-muted)]">
             信号日 {twinStarQ.data.sat.asOf} · 核心目标 {twinStarQ.data.sat.coreTargetPct ?? 100}%
-            {twinStarQ.data.sat.approx ? ' · 盘中近似（12:30 快照）' : ''}
+            {twinStarQ.data.sat.approx
+              ? ` · 盘中近似${
+                  twinStarQ.data.sat.snapshotAt?.includes('T')
+                    ? `（${twinStarQ.data.sat.snapshotAt.slice(11, 16)} 快照）`
+                    : ''
+                }`
+              : ''}
           </span>
         </div>
       )}

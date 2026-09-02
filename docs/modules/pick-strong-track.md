@@ -31,7 +31,7 @@
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
-> **机会双子星 v3（2026-09-01）**：可选增强——**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`。window-local 可执行三窗全过单轨，past_year +10pt、Sharpe 略高、回撤持平。**实盘默认仍是本单轨**（Settings opt-in）。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。
+> **机会双子星 v3.1（2026-09-02）**：可选增强——**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`；卫星 **4 槽 × 总资产 12.5%**。window-local 可执行三窗全过单轨，且相对 v3 15×5% 三窗全正。**过去一年**（本文件 §2 同窗）clip4 **+194.9 / sr2.64 / dd12.6** vs 本单轨 **+190.6 / 2.54 / 12.6**（+4.3pt）；旧 15×5% 双子星该窗 **−0.2pt** 输单轨。滚到 2026-09-02 仍赢。**实盘默认仍是本单轨**（Settings opt-in）。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。Watchlist：核心 pick ≠ STOCK 时 CN 持仓全部进卫星仓，不按 S-3 股票篮轮出。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。  
@@ -71,6 +71,24 @@
 
 **结论**：定案吸收 trail8 后 past_year / valid / long 同向大幅改善，OOS2 持平。STOCK 入池加闸（n≥2 / mom>0 / MA / CN-only）已拒收 —— 见同日 STOCK 池报告。
 
+### 2.1 过去一年三方：单轨 vs 旧双子星 vs clip4（2026-09-02 实跑）
+
+同引擎、window-local 空簿、strict S-gap、`opp_50`。数字：`data/backtest_reports/past_year_twin_vs_core_2026-09-02.json`。复现：`PYTHONPATH=src:scripts python3 scripts/compare_past_year_twin.py --save-report`。
+
+表内为 total% / Sharpe / maxDD。past_year **不**当三窗拒收闸，只展示。
+
+| 窗口 | 单轨择强 | 双子星 v3 15×5% | **clip4 4×12.5%** | Δ vs 单轨 | Δ vs v3 |
+|------|----------|-----------------|-------------------|-----------|---------|
+| 产品过去一年 `2025-08-28~2026-08-28` | +190.6 / 2.54 / 12.6 | +190.4 / 2.57 / 12.6（−0.2） | **+194.9 / 2.64 / 12.6** | **+4.3pt** | **+4.5pt** |
+| 滚到今日 `2025-09-02~2026-09-02` | +197.6 / 2.58 / 12.6 | +201.7 / 2.65 / 12.6（+4.1） | **+204.0 / 2.69 / 12.6** | **+6.4pt** | **+2.3pt** |
+| 协议 past_year `2025-08-01~2026-08-07` | +181.2 / 2.43 / 12.6 | +191.3 / 2.57 / 12.6（+10.1） | **+195.9 / 2.62 / 12.6** | +14.7pt | +4.6pt |
+
+要点：
+
+- 产品窗上 **旧 15×5% 双子星略输单轨**（−0.2pt）；clip4 把增量翻正，Sharpe +0.10，回撤仍钉在核心 12.6。
+- 滚到 2026-09-02 仍全正，卫星开闸日均约 **3.6 只**。
+- **实盘默认仍单轨**；Settings opt-in 机会双子星跟 clip4。三窗 walk-forward 真值见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md) §3.0。
+
 ---
 
 ## 3. 优化纪律（只动择强单轨）
@@ -97,7 +115,8 @@
 | 多资产 `_pick`（纳指优先变体，袖用） | `service/multi_asset_sleeve.py` |
 | Timeline API（待与定案对齐） | `api/backtest_routes.py` `GET /api/backtest/timeline` |
 | 过去一年报告 | `data/backtest_reports/pick_strong_track_past_year.json` |
+| 过去一年三方（单轨 / v3 / clip4） | `data/backtest_reports/past_year_twin_vs_core_2026-09-02.json` |
 
 ---
 
-*创建 2026-08-29 · 状态：定案命名 + 过去一年已验证 · Timeline UI 对齐 `mom_compare` 为后续工程。*
+*创建 2026-08-29 · 状态：定案命名 + 过去一年已验证 · 2026-09-02 补 clip4 过去一年三方对照。*
