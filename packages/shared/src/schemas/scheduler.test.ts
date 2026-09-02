@@ -36,8 +36,20 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'news_enrich_job',
         'morning_brief_am',
         'morning_brief_pm',
+        'paper_twin_star',
+        'twin_star_reminder',
+        'twin_star_intraday',
       ]),
     );
+  });
+
+  it('lists paper_twin_star in watchlist automation after the live jobs', () => {
+    const job = SCHEDULER_JOB_CATALOG.find((m) => m.jobType === 'paper_twin_star');
+    expect(job).toMatchObject({
+      group: 'watchlistAutomation',
+      sortOrder: 27,
+      tracked: true,
+    });
   });
 
   it('has unique job types', () => {

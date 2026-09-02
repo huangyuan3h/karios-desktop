@@ -49,9 +49,9 @@
 | OPT-127 | 前端轮询 jitter + ETag + 后端限流（储备） | P2 | 1 天 | [ ] |
 | OPT-128 | 实盘默认机会双子星 clip4 | P0 | 0.5 天 | [x] |
 | OPT-129 | Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%） | P0 | 1 天 | [x] |
-| OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [ ] |
-| OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [ ] |
-| OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [ ] |
+| OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [x] |
+| OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [x] |
+| OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [x] |
 
 ---
 
@@ -3202,21 +3202,43 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 ### OPT-130：Timeline 拆核心/卫星/窗口标签
 
-**状态**：[ ] 待做 · P0  
-**范围**：`BacktestPage.tsx` · `queries/backtest.ts` · timeline API 如需加字段  
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`pick_strong_track.py` `coreNav` · `timeline-windows.ts` · `TwinStarNavOverlay` · `BacktestPage` TimelineCard  
 **验收**：能同时看见 twin / 核心 / 卫星 NAV，并标三窗 vs 产品过去一年 vs trailing
+
+**落地**：
+- 混合后 `navSingle` 仍是融合 NAV；新增 `coreNav` / `coreNavReturnPct` 给叠加图
+- 天蓝底 = `satActive`； occupancy 行保留
+- 窗口芯片：滚动过去一年（展示）/ 产品过去一年 frozen（展示）/ OOS2·train·valid（拒收闸）/ holdout（只读）
+
+**验证**：`test_twin_star.py::test_core_nav_survives_opportunity_blend` · `timeline-windows.test.ts` · `twin-star-nav-series.test.ts` · `BacktestPage.test.tsx`
 
 ### OPT-131：卫星占用真值 + twin_star paper 簿
 
-**状态**：[ ] 待做 · P0  
-**范围**：`twin-star-trade-plan.ts` · `twin_star_daily.py` · paper_trades `source=twin_star`  
-**验收**：4 槽占用跟 Watchlist 走，引擎 `openPositions` 只对照；卫星入出有独立 paper
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`twin_star_daily.py` `liveHoldings` · `paper_twin_star.py` · `paper_trading.run_update` skip · `paper_twin_star` cron 17:43 · Watchlist 占用文案  
+**验收**：4 槽占用跟 Watchlist 走，引擎 `openPositions` 只对照；卫星入出有独立 `paper_trades source=twin_star`
+
+**落地**：
+- `_core_target_pct` / 提醒「今日卖」用 Watchlist CN 卫星仓，不用引擎回放（引擎可到 15 只旧槽）
+- pick≠STOCK（含 pick 空）→ 全部 CN 持仓算卫星；pick=STOCK → 仅 recipe/候选集合
+- paper 簿独立：最多 4 槽 × 12.5% NAV，body=3 工作日退出，保护止损 −5%；无金字塔 / 移动止损 / 60 日持有
+- S-3 `run_update` 跳过 `source=twin_star`；工作日 17:43 自管入出
+
+**验证**：`test_twin_star_daily.py`（引擎 15 只不翻核心%、OIL 2 只 live=50%）· `test_paper_twin_star.py`（cap 4 / body_exit / stop_hit / S-3 skip）
 
 ### OPT-132：卫星 blotter + skip_t1 日表
 
-**状态**：[ ] 待做 · P1  
-**范围**：Timeline 日表 / 导出  
+**状态**：[x] 2026-09-02 · P1  
+**范围**：`state_bucket_track.py` 日审计字段 + blotter · Timeline 日表 · `SatBlotterCard`  
 **验收**：每日能看到候选数、涨停跳过数、成交槽、空槽回核
+
+**落地**：
+- 引擎日行：`gapCount` / `strictCount` / `skipT1Count` / `filledToday` / `idleSlots`（回核 = 4 − 占用槽）
+- blotter：`fill`（body 出、贡献 pt）/ `skip_t1`（桶内涨停不补）/ `open`（窗末未平）
+- Timeline 表加 候选/跳过/成交/空槽回核；下方 blotter 可筛类型
+
+**验证**：`test_state_bucket_track.py::test_skip_t1_counts_and_does_not_refill` · `BacktestPage.test.tsx`
 
 ---
 

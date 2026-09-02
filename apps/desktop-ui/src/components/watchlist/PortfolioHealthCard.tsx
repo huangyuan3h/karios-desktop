@@ -1399,7 +1399,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
               {tradePlan && tradePlan.recipeNames.length > 0 ? (
                 <details className="text-[10px] text-[var(--k-muted)]">
                   <summary className="cursor-pointer">
-                    引擎模拟 {tradePlan.recipeSatHeld} 只（对照，最多 {SAT_MAX_POS}）
+                    引擎模拟 {tradePlan.recipeSatHeld} 只（对照）· 你卫星仓 {tradePlan.satHeld}/{SAT_MAX_POS}
                   </summary>
                   <div className="mt-1 font-mono leading-relaxed">
                     {tradePlan.recipeNames.map((h) => `${h.ts}${h.daysLeft != null ? `(剩${h.daysLeft}d)` : ''}`).join(' · ')}

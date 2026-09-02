@@ -381,7 +381,10 @@ def backtest_timeline(
         ),
     ),
 ) -> dict[str, Any]:
-    """Past-year timeline.
+    """Past-year / walk-forward timeline.
+
+    Query ``start``/``end`` select the window. UI labels trailing vs product
+    past-year vs OOS2/train/valid (gate) vs holdout (read-only).
 
     - strategy=pick_strong: 择强单轨 ``mom_compare`` (equal-asset pool).
     - strategy=twin_star: 机会双子星 — 择强核心 + S-gap 机会增强
@@ -505,6 +508,7 @@ def _get_or_build_timeline(
                 core_rows=result["rows"],
                 core_summary=result["summary"],
                 sat_rows=sat["rows"],
+                sat_blotter=sat.get("blotter"),
                 opportunity=True,
             )
             result = {
@@ -515,6 +519,7 @@ def _get_or_build_timeline(
                 "strategy": built.get("strategy") or "机会双子星 (Opportunity Twin-Star)",
                 "summary": built.get("summary"),
                 "rows": built.get("rows") or [],
+                "blotter": built.get("blotter") or [],
                 "coreMode": built.get("coreMode"),
                 "coreWeight": built.get("coreWeight"),
                 "satWeight": built.get("satWeight"),

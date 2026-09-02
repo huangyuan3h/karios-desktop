@@ -7,8 +7,15 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
+import { TwinStarNavOverlay } from '@/components/pages/TwinStarNavOverlay';
+import { SatBlotterCard } from '@/components/pages/SatBlotterCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import {
+  resolveTimelineWindows,
+  roleBadge,
+  type TimelineWindowId,
+} from '@/lib/timeline-windows';
 
 import {
   GATE_LEVELS,
@@ -534,16 +541,17 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
 
 function TimelineCard() {
   const today = new Date().toISOString().slice(0, 10);
-  const start = (() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().slice(0, 10);
-  })();
+  const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
+  const [windowId, setWindowId] = React.useState<TimelineWindowId>('trailing');
+  const selected = windows.find((w) => w.id === windowId) ?? windows[0];
+  const start = selected.start;
+  const end = selected.end;
   const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong' | 'state_bucket'>('twin_star');
   const isTwin = strategy === 'twin_star';
   const isSgap = strategy === 'state_bucket';
-  const q = useTimelineQuery(start, today, strategy, true);
+  const q = useTimelineQuery(start, end, strategy, true);
   const rows = q.data?.rows ?? [];
+  const blotter = q.data?.blotter ?? [];
   const summary = q.data?.summary;
   const satActiveDays = rows.filter((r) => r.satActive).length;
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
@@ -590,7 +598,7 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        过去一年 Timeline（
+        Timeline（
         {isTwin
           ? '机会双子星 v3.1 · 与 Watchlist 同源'
           : isSgap
@@ -625,7 +633,7 @@ function TimelineCard() {
           </button>
         </span>
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
-          {start} ~ {today} · {rows.length} 交易日
+          {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last
             ? isTwin
               ? ` · 卫星 ${last.satNavReturnPct ?? '—'}% · 机会双子星 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
@@ -634,6 +642,26 @@ function TimelineCard() {
                 : ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
             : ''}
         </span>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-1">
+        {windows.map((w) => (
+          <button
+            key={w.id}
+            type="button"
+            title={`${w.start} ~ ${w.end} · ${w.note}`}
+            onClick={() => setWindowId(w.id)}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px]',
+              windowId === w.id
+                ? 'border-sky-500/50 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+                : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {w.label}
+            <span className="ml-1 opacity-70">{roleBadge(w.role)}</span>
+          </button>
+        ))}
+        <span className="ml-1 text-[10px] text-[var(--k-muted)]">{selected.note}</span>
       </div>
       {q.isError ? (
         <div className="text-xs">
@@ -678,6 +706,7 @@ function TimelineCard() {
                 ))}
               </div>
             ) : null}
+            {isTwin ? <TwinStarNavOverlay rows={rows} /> : null}
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
               <span>
                 {isTwin
@@ -735,8 +764,13 @@ function TimelineCard() {
                   <th className="py-1 pr-2">
                     {isTwin ? '机会双子星NAV%' : isSgap ? 'S-gap NAV%' : '择强NAV%'}
                   </th>
+                  {isTwin ? <th className="py-1 pr-2">核心NAV%</th> : null}
                   {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
                   {isTwin || isSgap ? <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(槽)'}</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">候选</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">跳过</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">成交</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">空槽回核</th> : null}
                   {!isSgap ? <th className="py-1 pr-2">超额</th> : null}
                 </tr>
               </thead>
@@ -789,6 +823,11 @@ function TimelineCard() {
                       ) : null}
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
                       {isTwin ? (
+                        <td className={cn('py-1 pr-2', tone(r.coreNavReturnPct ?? null))}>
+                          {r.coreNavReturnPct != null ? `${r.coreNavReturnPct.toFixed(2)}%` : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin ? (
                         <td className="py-1 pr-2">
                           <span
                             className={cn(
@@ -820,6 +859,29 @@ function TimelineCard() {
                           )}
                         </td>
                       ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="strict 桶（最低波 1/3）">
+                          {r.gateOpen ? r.strictCount ?? 0 : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td
+                          className={cn('py-1 pr-2', (r.skipT1Count ?? 0) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--k-muted)]')}
+                          title="桶内 T-1 涨停、strict 不补"
+                        >
+                          {r.gateOpen ? r.skipT1Count ?? 0 : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="当日新开槽">
+                          {r.gateOpen ? r.filledToday ?? 0 : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="未占用槽回核心腿">
+                          {r.idleSlots ?? '—'}
+                        </td>
+                      ) : null}
                       {!isSgap ? (
                         <td className={cn('py-1 pr-2', tone(single - (r.navBaseReturnPct ?? 0)))}>
                           {(single - (r.navBaseReturnPct ?? 0)).toFixed(2)}%
@@ -845,6 +907,7 @@ function TimelineCard() {
               {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}
             </button>
           </div>
+          {isTwin || isSgap ? <SatBlotterCard rows={blotter} /> : null}
         </div>
       )}
     </div>

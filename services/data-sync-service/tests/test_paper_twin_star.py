@@ -1,0 +1,154 @@
+"""clip4 satellite paper book — no DB."""
+
+from __future__ import annotations
+
+from data_sync_service.db.paper_trading import (
+    CLOSE_REASON_BODY_EXIT,
+    CLOSE_REASON_STOP_HIT,
+    SOURCE_TWIN_STAR,
+)
+from data_sync_service.service import paper_trading as pt_svc
+from data_sync_service.service import paper_twin_star as pts
+
+
+def test_intake_caps_at_four_slots(monkeypatch) -> None:
+    inserted: list[str] = []
+
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {
+            "sat": {
+                "gateOpen": True,
+                "candidates": [
+                    {"ts": f"00000{i}.SZ", "amp": i, "gapPct": 5, "close": 10 + i}
+                    for i in range(1, 7)
+                ],
+            }
+        },
+    )
+    monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
+    monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
+
+    def fake_insert(**kwargs):
+        inserted.append(kwargs["symbol"])
+        assert kwargs["source"] == SOURCE_TWIN_STAR
+        assert kwargs["sleeve_pct"] == pts.SLEEVE_PCT
+        return {"id": kwargs["symbol"]}
+
+    monkeypatch.setattr(pts, "insert_paper_trade", fake_insert)
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 4
+    assert inserted == ["CN:000001", "CN:000002", "CN:000003", "CN:000004"]
+    assert out["skippedReasons"]["slots_full"] >= 1
+
+
+def test_intake_skips_when_slots_full(monkeypatch) -> None:
+    opens = [{"symbol": f"CN:60000{i}", "source": SOURCE_TWIN_STAR} for i in range(4)]
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {"sat": {"gateOpen": True, "candidates": [{"ts": "000001.SZ", "close": 10}]}},
+    )
+    monkeypatch.setattr(pts, "_open_twin_star", lambda: opens)
+    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 0
+    assert out["skippedReasons"]["slots_full"] == 1
+
+
+def test_update_closes_body3_and_stop(monkeypatch) -> None:
+    closed: list[str] = []
+
+    monkeypatch.setattr(
+        pts,
+        "_open_twin_star",
+        lambda: [
+            {
+                "id": "a",
+                "symbol": "CN:000001",
+                "source": SOURCE_TWIN_STAR,
+                "entryDate": "2026-08-31",  # Mon; as_of Sep 2 Wed = 3 weekdays
+                "entryPrice": 10.0,
+            },
+            {
+                "id": "b",
+                "symbol": "CN:600000",
+                "source": SOURCE_TWIN_STAR,
+                "entryDate": "2026-09-02",
+                "entryPrice": 10.0,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        pts,
+        "fetch_last_ohlcv_batch",
+        lambda ts, days=8: {
+            "000001.SZ": [["2026-09-02", 0, 0, 0, 10.2]],
+            "600000.SH": [["2026-09-02", 0, 0, 0, 9.0]],
+        },
+    )
+
+    def fake_close(**kwargs):
+        closed.append(kwargs["close_reason"])
+        return {"id": kwargs["trade_id"]}
+
+    monkeypatch.setattr(pts, "close_paper_trade", fake_close)
+    monkeypatch.setattr(pts, "round_trip_cost_pct", lambda m: 0.0)
+    out = pts.run_update_twin_star(today_iso_s="2026-09-02")
+    assert out["closed"] == 2
+    assert CLOSE_REASON_BODY_EXIT in closed
+    assert CLOSE_REASON_STOP_HIT in closed
+
+
+def test_intake_skips_already_open_and_gate_closed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {"sat": {"gateOpen": True, "candidates": [{"ts": "000001.SZ", "close": 10}]}},
+    )
+    monkeypatch.setattr(
+        pts,
+        "_open_twin_star",
+        lambda: [{"symbol": "CN:000001", "source": SOURCE_TWIN_STAR}],
+    )
+    monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
+    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 0
+    assert out["skippedReasons"]["already_open"] == 1
+
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {"sat": {"gateOpen": False, "candidates": [{"ts": "000002.SZ", "close": 10}]}},
+    )
+    closed = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert closed["inserted"] == 0
+    assert closed["skippedReasons"]["gate_closed"] == 1
+
+
+def test_s3_update_skips_twin_star_rows(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pt_svc.pt_db,
+        "get_open_paper_trades",
+        lambda: [
+            {
+                "id": "x",
+                "symbol": "CN:000001",
+                "source": SOURCE_TWIN_STAR,
+                "entryDate": "2026-01-01",
+                "entryPrice": 10.0,
+            }
+        ],
+    )
+    monkeypatch.setattr(pt_svc.pt_db, "today_iso", lambda: "2026-09-02")
+    monkeypatch.setattr(pt_svc, "fetch_last_ohlcv_batch", lambda *a, **k: {})
+    monkeypatch.setattr(pt_svc.wa_db, "list_registry", lambda: [])
+    out = pt_svc.run_update(today_iso="2026-09-02")
+    assert out["scanned"] == 1
+    assert out["closed"] == 0
+
+
+def test_sleeve_is_twelve_point_five() -> None:
+    assert pts.SLEEVE_PCT == 0.125

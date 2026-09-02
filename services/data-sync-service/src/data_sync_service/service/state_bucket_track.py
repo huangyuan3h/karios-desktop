@@ -229,6 +229,40 @@ def _entry_pool(
     return ranked[:qn]
 
 
+def _audit_blotter_row(
+    *,
+    kind: str,
+    date: str,
+    ts: str,
+    amp: float | None = None,
+    amp_rank: int | None = None,
+    skip_t1: bool = False,
+    entry_date: str | None = None,
+    exit_date: str | None = None,
+    exit_due: str | None = None,
+    pnl_pct: float | None = None,
+    contrib_pct: float | None = None,
+    close_reason: str | None = None,
+    held_days: int | None = None,
+) -> dict[str, Any]:
+    """One sat blotter line: a fill/open, or a T-1 limit-up skip in the strict bucket."""
+    return {
+        "kind": kind,
+        "date": date,
+        "ts": ts,
+        "amp": None if amp is None else round(float(amp) * 100, 2),
+        "ampRank": amp_rank,
+        "skipT1": bool(skip_t1),
+        "entryDate": entry_date,
+        "exitDate": exit_date,
+        "exitDue": exit_due,
+        "pnlPct": None if pnl_pct is None else round(float(pnl_pct), 2),
+        "contribPct": None if contrib_pct is None else round(float(contrib_pct), 2),
+        "closeReason": close_reason,
+        "heldDays": held_days,
+    }
+
+
 def select_strict_gap_candidates(
     items: list[tuple[str, float, float]],
     locked: set[str],
@@ -306,6 +340,7 @@ def replay_sgap_from_context(
     positions: dict[str, dict[str, Any]] = {}
     realized = 0.0
     rows: list[dict[str, Any]] = []
+    blotter: list[dict[str, Any]] = []
     for day in cal:
         if day < start or day > end:
             continue
@@ -322,21 +357,76 @@ def replay_sgap_from_context(
         for ts in to_close:
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
+            trade_ret = (cc / p["entry_price"] - 1) if cc and p["entry_price"] else 0.0
             if cc and p["entry_price"]:
-                realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * clip
+                realized += (trade_ret - COSTS_ROUNDTRIP) * clip
+            ei = idx_by_day.get(p["entry_date"], -1)
+            ci = idx_by_day.get(day, -1)
+            held = ci - ei + 1 if ei >= 0 and ci >= 0 else body
+            blotter.append(
+                _audit_blotter_row(
+                    kind="fill",
+                    date=day,
+                    ts=ts,
+                    amp=p.get("amp"),
+                    amp_rank=p.get("amp_rank"),
+                    skip_t1=False,
+                    entry_date=p["entry_date"],
+                    exit_date=day,
+                    exit_due=p.get("exit_due"),
+                    pnl_pct=trade_ret * 100 if cc and p["entry_price"] else None,
+                    contrib_pct=(trade_ret - COSTS_ROUNDTRIP) * clip * 100
+                    if cc and p["entry_price"]
+                    else 0.0,
+                    close_reason="body_exit",
+                    held_days=held,
+                )
+            )
+        gap_count = 0
+        strict_count = 0
+        skip_t1_count = 0
+        filled_today = 0
+        gate_open = False
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
             prev_day = cal[idx_by_day[day] - 1]
             prev_all, _ = _cached_day_features(ctx, prev_day)
             gap_stocks = [ts for ts, d in prev_all.items() if d["is_gap"]]
             ranked = sorted(gap_stocks, key=lambda ts: prev_all[ts]["amp"])
-            qn = max(1, len(ranked) // bucket_q)
+            qn = max(1, len(ranked) // bucket_q) if ranked else 0
             locked = {
                 ts
                 for ts in ranked
                 if skip_t1_limit and _t1_limit_locked(per_ts, date_idx, prev_day, ts)
             }
+            gate_open = True
+            gap_count = len(ranked)
+            strict_count = qn
+            bucket = ranked[:qn]
+            skip_t1_count = sum(1 for ts in bucket if ts in locked)
+            for ts in bucket:
+                if ts not in locked:
+                    continue
+                feat = prev_all.get(ts) or {}
+                blotter.append(
+                    _audit_blotter_row(
+                        kind="skip_t1",
+                        date=day,
+                        ts=ts,
+                        amp=feat.get("amp"),
+                        amp_rank=ranked.index(ts) + 1,
+                        skip_t1=True,
+                        close_reason="skip_t1_limit",
+                        contrib_pct=0.0,
+                    )
+                )
             pool = _entry_pool(
                 ranked, qn, skip_t1_limit=skip_t1_limit, pool_mode=pool_mode, locked=locked
+            )
+            ei_today = idx_by_day.get(day, -1)
+            exit_due = (
+                cal[ei_today + body - 1]
+                if ei_today >= 0 and ei_today + body - 1 < len(cal)
+                else end
             )
             for ts in pool:
                 if ts in positions or len(positions) >= max_pos:
@@ -356,7 +446,15 @@ def replay_sgap_from_context(
                             or open_px >= pc * (1 + lim - 0.004)
                         ):
                             continue
-                    positions[ts] = {"entry_date": day, "entry_price": open_px}
+                    feat = prev_all.get(ts) or {}
+                    positions[ts] = {
+                        "entry_date": day,
+                        "entry_price": open_px,
+                        "amp": feat.get("amp"),
+                        "amp_rank": ranked.index(ts) + 1,
+                        "exit_due": exit_due,
+                    }
+                    filled_today += 1
                     if debug_fills is not None:
                         debug_fills.append((day, ts))
         mtm = 0.0
@@ -366,6 +464,7 @@ def replay_sgap_from_context(
         nav = 1.0 + realized + (mtm - len(positions) * clip)
         sat_active = len(positions) > 0 or len(closed_today) > 0
         sat_slots = len(positions) + len(closed_today)
+        idle_slots = max(0, max_pos - sat_slots)
         rows.append(
             {
                 "date": day,
@@ -374,6 +473,12 @@ def replay_sgap_from_context(
                 "satPositions": len(positions),
                 "satSlots": sat_slots,
                 "satActive": sat_active,
+                "gapCount": gap_count,
+                "strictCount": strict_count,
+                "skipT1Count": skip_t1_count,
+                "filledToday": filled_today,
+                "idleSlots": idle_slots,
+                "gateOpen": gate_open,
             }
         )
     last_day = end
@@ -407,6 +512,26 @@ def replay_sgap_from_context(
         cc = close_by_ts.get(ts, {}).get(last_day)
         if cc and p["entry_price"]:
             realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * clip
+        ei = idx_by_day.get(p["entry_date"], -1)
+        ci = idx_by_day.get(last_day, -1)
+        held = ci - ei + 1 if ei >= 0 and ci >= 0 else 0
+        trade_ret = (cc / p["entry_price"] - 1) if cc and p["entry_price"] else None
+        blotter.append(
+            _audit_blotter_row(
+                kind="open",
+                date=last_day,
+                ts=ts,
+                amp=p.get("amp"),
+                amp_rank=p.get("amp_rank"),
+                skip_t1=False,
+                entry_date=p["entry_date"],
+                exit_due=p.get("exit_due"),
+                pnl_pct=None if trade_ret is None else trade_ret * 100,
+                contrib_pct=None if trade_ret is None else trade_ret * clip * 100,
+                close_reason="open",
+                held_days=held,
+            )
+        )
     final_nav = 1.0 + realized
     if rows:
         rows[-1]["satNav"] = round(final_nav, 6)
@@ -418,12 +543,17 @@ def replay_sgap_from_context(
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
+    skip_n = sum(1 for b in blotter if b.get("kind") == "skip_t1")
+    fill_n = sum(1 for b in blotter if b.get("kind") == "fill")
     return {
         "rows": rows,
         "openPositions": open_positions,
+        "blotter": blotter,
         "summary": {
             "satPct": round((final_nav - 1) * 100, 2),
             "satMaxDdPct": round(max_dd * 100, 1),
+            "skipT1Count": skip_n,
+            "fillCount": fill_n,
         },
         "pool_mode": pool_mode,
         "position_pct": clip,
@@ -491,6 +621,12 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
                 "satPositions": int(r.get("satPositions") or 0),
                 "satSlots": int(r.get("satSlots") or r.get("satPositions") or 0),
                 "satActive": bool(r.get("satActive")) if "satActive" in r else None,
+                "gapCount": r.get("gapCount"),
+                "strictCount": r.get("strictCount"),
+                "skipT1Count": r.get("skipT1Count"),
+                "filledToday": r.get("filledToday"),
+                "idleSlots": r.get("idleSlots"),
+                "gateOpen": r.get("gateOpen"),
             }
         )
     summary = sat.get("summary") or {}
@@ -510,6 +646,7 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
             "satMaxDdPct": round(sat_dd, 1),
         },
         "openPositions": sat.get("openPositions") or [],
+        "blotter": sat.get("blotter") or [],
         "opportunity": False,
         "note": (
             "Standalone S-gap leg (bucket_q=3, 4 slots x 25%, body=3, R-wide). "

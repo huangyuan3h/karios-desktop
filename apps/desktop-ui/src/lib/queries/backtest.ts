@@ -408,6 +408,9 @@ export type TimelineRow = {
   navBaseReturnPct: number;
   navSingleReturnPct: number;
   navMultiReturnPct: number;
+  /** Core pick-strong NAV (twin_star blend keeps this; navSingle is fused). */
+  coreNav?: number | null;
+  coreNavReturnPct?: number | null;
   /** twin_star / state_bucket satellite leg */
   satNav?: number | null;
   satNavReturnPct?: number | null;
@@ -417,6 +420,30 @@ export type TimelineRow = {
   /** Slots used that day including exits (may exceed satPositions). */
   satSlots?: number | null;
   exits?: string[];
+  gapCount?: number | null;
+  strictCount?: number | null;
+  skipT1Count?: number | null;
+  filledToday?: number | null;
+  idleSlots?: number | null;
+  gateOpen?: boolean | null;
+};
+
+export type SatBlotterKind = 'fill' | 'skip_t1' | 'open';
+
+export type SatBlotterRow = {
+  kind: SatBlotterKind | string;
+  date: string;
+  ts: string;
+  amp?: number | null;
+  ampRank?: number | null;
+  skipT1?: boolean | null;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  exitDue?: string | null;
+  pnlPct?: number | null;
+  contribPct?: number | null;
+  closeReason?: string | null;
+  heldDays?: number | null;
 };
 
 export type TimelineSummary = {
@@ -424,6 +451,9 @@ export type TimelineSummary = {
   corePct?: number;
   basePct?: number;
   maxDdFusedPct?: number;
+  satActiveDays?: number;
+  skipT1Count?: number;
+  fillCount?: number;
 };
 
 export type TimelineResponse = {
@@ -438,6 +468,7 @@ export type TimelineResponse = {
   satWeight?: number;
   summary?: TimelineSummary;
   rows: TimelineRow[];
+  blotter?: SatBlotterRow[];
 };
 
 export type TimelineStrategy = 'pick_strong' | 'twin_star' | 'state_bucket';
@@ -474,6 +505,8 @@ export type TwinStarSatCandidate = {
 
 export type TwinStarSatHolding = {
   ts: string;
+  symbol?: string | null;
+  name?: string | null;
   entryDate?: string | null;
   entryPrice?: number | null;
   close?: number | null;
@@ -481,6 +514,8 @@ export type TwinStarSatHolding = {
   daysLeft?: number | null;
   exitDue?: string | null;
   pnlPct?: number | null;
+  due?: boolean | null;
+  positionPct?: number | null;
 };
 
 export type TwinStarAction = {
@@ -514,6 +549,11 @@ export type TwinStarAction = {
       holdings?: TwinStarSatHolding[] | null;
       exitsDue?: TwinStarSatHolding[] | null;
       body?: number | null;
+      liveHoldings?: TwinStarSatHolding[] | null;
+      liveExitsDue?: TwinStarSatHolding[] | null;
+      liveHeld?: number | null;
+      liveFreeSlots?: number | null;
+      engineHeld?: number | null;
     } | null;
   };
 };

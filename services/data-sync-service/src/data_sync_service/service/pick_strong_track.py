@@ -275,6 +275,7 @@ def build_twin_star_timeline(
     core_weight: float = 0.5,
     sat_weight: float = 0.5,
     opportunity: bool = True,
+    sat_blotter: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 机会双子星 (Opportunity Twin-Star) rows.
 
@@ -301,14 +302,23 @@ def build_twin_star_timeline(
         sat_r = sat_by_day.get(day) or last_sat_row
         last_sat_row = sat_r or last_sat_row
         if sat_r is None:
+            core_nav = float(r.get("navSingle") or 1.0)
             blended.append(
                 {
                     **r,
+                    "coreNav": round(core_nav, 6),
+                    "coreNavReturnPct": round((core_nav - 1) * 100, 2),
                     "satNav": None,
                     "satNavReturnPct": None,
                     "satPositions": None,
                     "satSlots": None,
                     "satActive": None,
+                    "gapCount": None,
+                    "strictCount": None,
+                    "skipT1Count": None,
+                    "filledToday": None,
+                    "idleSlots": None,
+                    "gateOpen": None,
                 }
             )
             continue
@@ -318,6 +328,7 @@ def build_twin_star_timeline(
         sat_ret = sat_nav / prev_sat - 1 if prev_sat > 0 else 0.0
         prev_core = core_nav
         prev_sat = sat_nav
+        core_nav_pct = round((core_nav - 1) * 100, 2)
         if "satActive" in sat_r and sat_r["satActive"] is not None:
             has_sat = bool(sat_r["satActive"])
         else:
@@ -340,13 +351,22 @@ def build_twin_star_timeline(
                 "navMulti": round(nav, 6),
                 "navSingleReturnPct": round((nav - 1) * 100, 2),
                 "navMultiReturnPct": round((nav - 1) * 100, 2),
+                "coreNav": round(core_nav, 6),
+                "coreNavReturnPct": core_nav_pct,
                 "satNav": round(sat_nav, 6),
                 "satNavReturnPct": round((sat_nav - 1) * 100, 2),
                 "satPositions": sat_pos,
                 "satSlots": sat_slots,
                 "satActive": has_sat,
+                "gapCount": sat_r.get("gapCount"),
+                "strictCount": sat_r.get("strictCount"),
+                "skipT1Count": sat_r.get("skipT1Count"),
+                "filledToday": sat_r.get("filledToday"),
+                "idleSlots": sat_r.get("idleSlots"),
+                "gateOpen": sat_r.get("gateOpen"),
             }
         )
+    sat_active_days = sum(1 for row in blended if row.get("satActive"))
     return {
         "ok": True,
         "mode": "opportunity_twin_star",
@@ -356,10 +376,12 @@ def build_twin_star_timeline(
         "satWeight": sat_weight,
         "opportunity": bool(opportunity),
         "rows": blended,
+        "blotter": list(sat_blotter or []),
         "summary": {
             "fusedPct": round((nav - 1) * 100, 2),
             "corePct": round((core_summary.get("fusedPct") or 0.0), 2),
             "basePct": round(core_summary.get("basePct") or 0.0, 2),
             "maxDdFusedPct": round(max_dd * 100, 1),
+            "satActiveDays": sat_active_days,
         },
     }

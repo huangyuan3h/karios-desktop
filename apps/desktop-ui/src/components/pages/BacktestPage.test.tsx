@@ -131,10 +131,45 @@ beforeEach(() => {
             navMultiReturnPct: 5,
             satNav: 1.02,
             satNavReturnPct: 2,
+            coreNav: 1.08,
+            coreNavReturnPct: 8,
             satPositions: 1,
             satSlots: 1,
             satActive: true,
+            gapCount: 3,
+            strictCount: 1,
+            skipT1Count: 1,
+            filledToday: 1,
+            idleSlots: 3,
+            gateOpen: true,
             exits: [],
+          },
+        ],
+        blotter: [
+          {
+            kind: 'skip_t1',
+            date: '2026-08-01',
+            ts: '000001.SZ',
+            amp: 1.2,
+            ampRank: 1,
+            skipT1: true,
+            contribPct: 0,
+            closeReason: 'skip_t1_limit',
+          },
+          {
+            kind: 'fill',
+            date: '2026-08-04',
+            ts: '000002.SZ',
+            amp: 0.8,
+            ampRank: 2,
+            skipT1: false,
+            entryDate: '2026-08-01',
+            exitDate: '2026-08-04',
+            exitDue: '2026-08-04',
+            pnlPct: -1.5,
+            contribPct: -0.38,
+            closeReason: 'body_exit',
+            heldDays: 3,
           },
         ],
       };
@@ -190,6 +225,26 @@ describe('BacktestPage', () => {
     expect(await screen.findByText(/机会双子星 v3.1 · 与 Watchlist 同源/)).toBeDefined();
     expect(await screen.findByText(/核心目标%/)).toBeDefined();
     expect(screen.getByText(/择强单轨累计/)).toBeDefined();
+    expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/产品过去一年/)).toBeDefined();
+    expect(screen.getByText(/三窗 · OOS2/)).toBeDefined();
+    expect(screen.getByText(/NAV 叠加/)).toBeDefined();
+    expect(screen.getByText(/开闸占用/)).toBeDefined();
+    expect(screen.getByText('核心NAV%')).toBeDefined();
+    expect(screen.getByText('空槽回核')).toBeDefined();
+    expect(screen.getByText('卫星 blotter')).toBeDefined();
+    expect(screen.getAllByText(/涨停跳过/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('000001.SZ')).toBeDefined();
+    expect(screen.getByText('000002.SZ')).toBeDefined();
+  });
+
+  it('switches timeline query to the OOS2 gate window', async () => {
+    renderPage();
+    expect(await screen.findByText(/机会双子星 v3.1 · 与 Watchlist 同源/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /三窗 · OOS2/ }));
+    expect(
+      apiGetJson.mock.calls.some((c: unknown[]) => String(c[0]).includes('start=2024-08-01')),
+    ).toBe(true);
   });
   it('shows the S-3 conclusion board with baselines, long window and params', async () => {
     renderPage();

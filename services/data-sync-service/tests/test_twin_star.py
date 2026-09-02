@@ -151,6 +151,19 @@ class TestOpportunityBlend:
         # day2 forward-filled satNav with pos=1 -> sat keeps last holding state
         assert out["rows"][-1]["satNav"] == 1.01
 
+    def test_core_nav_survives_opportunity_blend(self) -> None:
+        """Fused navSingle overwrites the core leg — keep coreNav for overlay."""
+        core = _core_rows([0.10, 0.10])
+        sat = _sat_rows([0.0, 0.0], [1, 1], active=[True, True])
+        out = build_twin_star_timeline(
+            core_rows=core, core_summary={"fusedPct": 21.0, "basePct": 0.0}, sat_rows=sat
+        )
+        last = out["rows"][-1]
+        assert last["coreNav"] == core[-1]["navSingle"]
+        assert last["coreNavReturnPct"] == core[-1]["navSingleReturnPct"]
+        assert last["navSingle"] < last["coreNav"]
+        assert out["summary"]["satActiveDays"] == 2
+
 
 class TestSgapUniverseFilter:
     def test_limit_lock_detection(self) -> None:

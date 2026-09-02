@@ -2,8 +2,8 @@
 
 core  = live multi_asset_sleeve (择强单轨 mom_compare + trail8 同源) 当前目标
 sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选
-        + 引擎回放持仓簿 (openPositions / exitsDue)
-资金  = 机会口径: 无卫星仓且今日不开新仓 → 核心 100%; 否则核心 50% / 卫星 50%
+        + Watchlist 4 槽占用 (liveHoldings)；引擎 openPositions 只作对照
+资金  = 机会口径: 无直播卫星仓且今日不开新仓 → 核心 100%; 否则核心 50% / 卫星 50%
 
 Truth: docs/backtests/state-bucket-algo-2026-08-31.md §7
 """
@@ -16,6 +16,7 @@ from data_sync_service.service.state_bucket_track import (
     BODY,
     BUCKET_Q,
     MAX_POS,
+    POSITION_PCT,
     R_WIDE_THRESHOLD,
     _day_features,
     _load_calendar,
@@ -28,6 +29,115 @@ from data_sync_service.service.state_bucket_track import (
 LOOKBACK_DAYS = 90
 BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = MAX_POS
+SAT_SLOT_NAV_PCT = round(50 * POSITION_PCT, 2)  # clip4: 4 × 12.5% NAV when sleeve is 50/50
+
+
+def count_weekdays_inclusive(from_iso: str, to_iso: str) -> int:
+    """Mon–Fri count, inclusive. Live proxy for CN sessions (holidays may be ±1)."""
+    try:
+        start = date.fromisoformat(from_iso)
+        end = date.fromisoformat(to_iso)
+    except (TypeError, ValueError):
+        return 0
+    if end < start:
+        return 0
+    n = 0
+    cur = start
+    while cur <= end:
+        if cur.weekday() < 5:
+            n += 1
+        cur += timedelta(days=1)
+    return n
+
+
+def sat_body_progress(
+    entry_date: str | None, as_of: str | None, *, body: int = BODY
+) -> dict[str, Any]:
+    if not entry_date or not as_of:
+        return {"heldDays": None, "daysLeft": None, "due": False, "missingEntry": True}
+    held = count_weekdays_inclusive(str(entry_date), str(as_of))
+    return {
+        "heldDays": held,
+        "daysLeft": max(0, body - held),
+        "due": held >= body,
+        "missingEntry": False,
+    }
+
+
+def ts_from_cn_symbol(symbol: str) -> str | None:
+    s = str(symbol or "").upper().strip()
+    if not s.startswith("CN:"):
+        return None
+    ticker = s[3:].split(".")[0]
+    if len(ticker) != 6 or not ticker.isdigit():
+        return None
+    suffix = "SH" if ticker.startswith("6") else "SZ"
+    return f"{ticker}.{suffix}"
+
+
+def cn_symbol_from_ts(ts: str) -> str:
+    code = str(ts or "").split(".")[0]
+    return f"CN:{code}"
+
+
+def sat_name_ts(sat: dict[str, Any], book: dict[str, Any]) -> set[str]:
+    names: set[str] = set()
+    for key in ("candidates", "blocked", "alternates"):
+        for row in sat.get(key) or []:
+            ts = str(row.get("ts") or "")
+            if ts:
+                names.add(ts)
+    for row in book.get("holdings") or []:
+        ts = str(row.get("ts") or "")
+        if ts:
+            names.add(ts)
+    return names
+
+
+def live_sat_holdings(
+    *,
+    health: dict[str, Any] | None,
+    pick_key: str | None,
+    sat_ts: set[str],
+) -> list[dict[str, Any]]:
+    """Watchlist CN stocks that count as satellite occupancy (clip4 truth)."""
+    out: list[dict[str, Any]] = []
+    for h in (health or {}).get("holdings") or []:
+        sym = str(h.get("symbol") or "")
+        ts = ts_from_cn_symbol(sym)
+        if not ts:
+            continue
+        try:
+            pct = float(h.get("positionPct") or 0)
+        except (TypeError, ValueError):
+            pct = 0.0
+        if pct <= 0:
+            continue
+        if pick_key == "STOCK" and ts not in sat_ts:
+            continue
+        out.append(
+            {
+                "ts": ts,
+                "symbol": sym,
+                "name": h.get("name"),
+                "positionPct": pct,
+                "entryDate": h.get("entryDate"),
+                "costPrice": h.get("costPrice"),
+                "lastClose": h.get("lastClose"),
+                "heldDays": None,
+                "daysLeft": None,
+                "due": False,
+            }
+        )
+    return out
+
+
+def annotate_live_body(rows: list[dict[str, Any]], as_of: str) -> list[dict[str, Any]]:
+    annotated: list[dict[str, Any]] = []
+    for row in rows:
+        body = sat_body_progress(row.get("entryDate"), as_of)
+        annotated.append({**row, **body})
+    return annotated
 
 
 def fill_candidate_names(*groups: list[dict[str, Any]]) -> None:
@@ -170,8 +280,9 @@ def _sat_book(today: date) -> dict[str, Any]:
 def _core_target_pct(*, gate_open: bool, candidates: list, holdings: list) -> int:
     """Opportunity capital split for live guidance.
 
-    100% core when satellite is idle (no open book and not opening new today).
-    50% core / 50% sat when holding or opening.
+    100% core when the Watchlist satellite book is idle and today is not opening.
+    50% core / 50% sat when holding live sat names or opening new clip4 slots.
+    Engine ``openPositions`` must not flip this split.
     """
     opening = bool(gate_open) and bool(candidates)
     if holdings or opening:
@@ -184,12 +295,13 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
     from data_sync_service.service.twin_star_intraday import session_date
 
     today = today or session_date()
+    health: dict[str, Any] | None = None
     core: dict[str, Any] = {"pick": None, "label": None, "action": None, "message": None}
     try:
         from data_sync_service.service.portfolio_health import build_portfolio_health
 
-        h = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
-        sleeve = (h or {}).get("multiAssetSleeve") or {}
+        health = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
+        sleeve = (health or {}).get("multiAssetSleeve") or {}
         pick = sleeve.get("pick") or {}
         core = {
             "pick": (pick or {}).get("key") if isinstance(pick, dict) else None,
@@ -222,7 +334,24 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
     except Exception:
         pass
     book = _sat_book(today)
-    holdings = book.get("holdings") or []
+    live = annotate_live_body(
+        live_sat_holdings(
+            health=health,
+            pick_key=core.get("pick"),
+            sat_ts=sat_name_ts(sat, book),
+        ),
+        today.isoformat(),
+    )
+    live_exits = [h for h in live if h.get("due")]
+    book = {
+        **book,
+        "liveHoldings": live,
+        "liveExitsDue": live_exits,
+        "liveHeld": len(live),
+        "liveFreeSlots": max(0, MAX_POS - len(live)),
+        "engineHeld": len(book.get("holdings") or []),
+    }
+    holdings = live
     core_pct = _core_target_pct(
         gate_open=bool(sat.get("gateOpen")),
         candidates=list(sat.get("candidates") or []),
@@ -268,16 +397,19 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
         snap = sat.get("snapshotAt") or "盘中快照"
         sat_line += f" · {snap} 当日行情"
     book = sat.get("book") or {}
-    holdings = book.get("holdings") or []
-    exits = book.get("exitsDue") or []
+    live = book.get("liveHoldings") or []
+    exits = book.get("liveExitsDue") or []
     sell_line = ""
     if exits:
         sell_line = f"今日卖 {', '.join(e['ts'] for e in exits[:5])} · "
-    if holdings:
+    if live:
         hold_bits = ", ".join(
-            f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in holdings[:3]
+            f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in live[:3]
         )
-        sat_line += f" · 持仓簿 {len(holdings)}只: {hold_bits}"
+        sat_line += f" · 你卫星仓 {len(live)}/{MAX_POS}: {hold_bits}"
+    engine_n = int(book.get("engineHeld") or len(book.get("holdings") or []) or 0)
+    if engine_n:
+        sat_line += f" · 引擎模拟 {engine_n} 只（对照）"
     if sat.get("note"):
         sat_line += f" · {sat['note']}"
     return {

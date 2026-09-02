@@ -115,6 +115,43 @@ class TestBuildSgapTimeline:
         exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * sbt.POSITION_PCT
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         assert r["summary"]["satPct"] == round((exp_nav - 1) * 100, 2)
+        fill_row = next(row for row in rows if row.get("filledToday"))
+        assert fill_row["strictCount"] == 1
+        assert fill_row["skipT1Count"] == 0
+        assert fill_row["idleSlots"] == sbt.MAX_POS - 1
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot and fill_blot[0]["ts"] == "A.SH"
+        assert fill_blot[0]["ampRank"] == 1
+        assert fill_blot[0]["skipT1"] is False
+        assert fill_blot[0]["exitDate"] == dates[23]
+        assert fill_blot[0]["closeReason"] == "body_exit"
+        assert fill_blot[0]["contribPct"] is not None
+
+    def test_skip_t1_counts_and_does_not_refill(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        gap_idx = 20
+        sig = per_ts["A.SH"][gap_idx]
+        pc = float(sig["pre_close"])
+        sig["close"] = round(pc * 1.10, 4)
+        sig["high"] = sig["close"]
+        sig["low"] = sig["close"]
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0], end=dates[-1], skip_t1_limit=True, pool_mode="strict", debug_fills=fills
+        )
+        assert fills == []
+        fill_day = dates[21]
+        row = next(x for x in r["rows"] if x["date"] == fill_day)
+        assert row["gapCount"] == 3
+        assert row["strictCount"] == 1
+        assert row["skipT1Count"] == 1
+        assert row["filledToday"] == 0
+        assert row["idleSlots"] == sbt.MAX_POS
+        skips = [b for b in r["blotter"] if b["kind"] == "skip_t1"]
+        assert skips and skips[0]["ts"] == "A.SH" and skips[0]["skipT1"] is True
+        assert r["summary"]["skipT1Count"] >= 1
+        assert r["summary"]["fillCount"] == 0
 
     def test_frozen_clip_is_four_slots_at_25pct(self) -> None:
         assert sbt.MAX_POS == 4
@@ -255,3 +292,5 @@ class TestSgapToTimelineRows:
         assert built["start"] == dates[0]
         assert built["end"] == dates[-1]
         assert built["rows"][-1]["navSingleReturnPct"] == sat["rows"][-1]["satNavReturnPct"]
+        assert "blotter" in built
+        assert any(r.get("strictCount") is not None for r in built["rows"])

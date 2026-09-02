@@ -32,10 +32,10 @@
 | # | 做什么 | 为什么 | 入口 |
 |---|--------|--------|------|
 | E1 | 策略模式默认 `twin_star`（本轮已做） | 空 localStorage / 通知 API 无 `mode` 都走 clip4 | `strategy-settings.ts` · `GET /api/notifications` |
-| E2 | 卫星占用真值 = Watchlist 仓，不是引擎 `openPositions` | 引擎回放可到 15 只旧槽；实盘只有 4 槽 | `twin-star-trade-plan.ts` · `twin_star_daily.py` |
+| E2 [done] 2026-09-02 | 卫星占用真值 = Watchlist 仓，不是引擎 `openPositions` | 引擎回放可到 15 只旧槽；实盘只有 4 槽 | OPT-131 · `twin_star_daily.py` `liveHoldings` |
 | E3 | 14:30 名单 / 12:30 快照失败可见 | 默认策略后，东财快照挂了等于当天没卫星 | `twin_star_intraday` · 通知 `lane=system` |
 | E4 | `GET /api/backtest/twin-star/action` 进 `@karios/shared` Zod | 前后端字段再漂一次就会买错 12.5% | OPT-009 流程 |
-| E5 | 卫星 paper 簿（入/出/body 日），不要复用 S-3 paper | C4 对照现在只服务股票篮 | `paper_trades` source=`twin_star` |
+| E5 [done] 2026-09-02 | 卫星 paper 簿（入/出/body 日），不要复用 S-3 paper | C4 对照现在只服务股票篮 | OPT-131 · `paper_trades` source=`twin_star` |
 | E6 | 核心腿 ETF 日线 + `stock_dailybasic` 新鲜度当双子星健康项 | OPT-057/058 已修过静默腐烂 | `/api/health/datasources` |
 
 **不做**：把 14:30 成交价写进回测当开盘价；服务端再存一份 strategyMode（单用户桌面，localStorage 够）。
@@ -60,10 +60,10 @@
 
 | # | 做什么 | 为什么 |
 |---|--------|--------|
-| A1 | Timeline 叠加：twin / 核心 / 卫星 NAV + `satActive` 阴影 + 开闸占用只数 | 现在只有合成曲线，看不出卫星有没有干活 |
-| A2 | 每日表增加：strict 候选数、涨停跳过数、实际成交槽、空槽回核 | 实盘「买不到」要能对上跳过列 |
-| A3 | 窗口标签：三窗 / 产品过去一年 / trailing / holdout 只读 | 继续混 past_year 和 aligned 会再吵一轮 |
-| A4 | 卫星成交 blotter：symbol、振幅名次、是否 skip_t1、body 出日、贡献 pt | 优化前先能点开一笔亏钱的卫星 |
+| A1 [done] 2026-09-02 | Timeline 叠加：twin / 核心 / 卫星 NAV + `satActive` 阴影 + 开闸占用只数 | OPT-130 |
+| A2 [done] 2026-09-02 | 每日表增加：strict 候选数、涨停跳过数、实际成交槽、空槽回核 | OPT-132 |
+| A3 [done] 2026-09-02 | 窗口标签：三窗 / 产品过去一年 / trailing / holdout 只读 | OPT-130 · 展示窗不当拒收闸 |
+| A4 [done] 2026-09-02 | 卫星成交 blotter：symbol、振幅名次、是否 skip_t1、body 出日、贡献 pt | OPT-132 |
 | A5 | C4 双子星版：paper/实仓 vs 回测（核心腿 + 卫星槽），停用 S-3 缺 19 只当交易提醒 | 旧 recon 已证明会污染铃铛 |
 
 **不做**：在 Timeline 里再挂 5 档 clip 网格；holdout 未满窗不调参。
@@ -73,10 +73,10 @@
 ```text
 本轮已做  E1 默认 twin_star
 第 1 刀   B1+B4  Watchlist 文案/仓位与 clip4 对齐（当天能用）[done] 2026-09-02 OPT-129
-第 2 刀   A1+A3  Timeline 能拆核心/卫星/窗口（能解释）  ← NEXT
-第 3 刀   E2+E5  占用真值 + 卫星 paper（能对照）
-第 4 刀   A2+A4  跳过/成交 blotter（能审计涨停）
-第 5 刀   E3+E6  快照/日线健康（默认策略不能哑火）
+第 2 刀   A1+A3  Timeline 能拆核心/卫星/窗口（能解释）[done] 2026-09-02 OPT-130
+第 3 刀   E2+E5  占用真值 + 卫星 paper（能对照）[done] 2026-09-02 OPT-131
+第 4 刀   A2+A4  跳过/成交 blotter（能审计涨停）[done] 2026-09-02 OPT-132
+第 5 刀   E3+E6  快照/日线健康（默认策略不能哑火）  ← NEXT
 并行不抢  OPT-124 tushare 多 token（稳定性，不改策略）
 ```
 

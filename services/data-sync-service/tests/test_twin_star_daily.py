@@ -116,8 +116,50 @@ class TestSatSignal:
         assert tsd._sat_signal(date(2026, 2, 1)) is None
 
 
+class TestLiveSatHoldings:
+    def test_weekdays_inclusive(self) -> None:
+        assert tsd.count_weekdays_inclusive("2026-01-19", "2026-01-21") == 3
+        assert tsd.count_weekdays_inclusive("2026-01-17", "2026-01-19") == 1
+
+    def test_etf_pick_counts_all_cn(self) -> None:
+        health = {
+            "holdings": [
+                {"symbol": "CN:000001", "name": "平安银行", "positionPct": 12.5, "entryDate": "2026-01-19"},
+                {"symbol": "ETF:518880", "positionPct": 50, "entryDate": "2026-01-01"},
+                {"symbol": "CN:600000", "positionPct": 0, "entryDate": "2026-01-19"},
+            ]
+        }
+        live = tsd.live_sat_holdings(health=health, pick_key="OIL", sat_ts=set())
+        assert [h["ts"] for h in live] == ["000001.SZ"]
+
+    def test_stock_pick_only_recipe_names(self) -> None:
+        health = {
+            "holdings": [
+                {"symbol": "CN:000001", "positionPct": 12.5, "entryDate": "2026-01-19"},
+                {"symbol": "CN:600000", "positionPct": 12.5, "entryDate": "2026-01-19"},
+            ]
+        }
+        live = tsd.live_sat_holdings(
+            health=health, pick_key="STOCK", sat_ts={"600000.SH"}
+        )
+        assert [h["ts"] for h in live] == ["600000.SH"]
+
+    def test_none_pick_counts_all_cn(self) -> None:
+        health = {
+            "holdings": [
+                {"symbol": "CN:000001", "positionPct": 12.5, "entryDate": "2026-01-19"},
+            ]
+        }
+        live = tsd.live_sat_holdings(health=health, pick_key=None, sat_ts=set())
+        assert [h["ts"] for h in live] == ["000001.SZ"]
+
+
 class TestReminderPayload:
     def test_payload_mentions_core_and_sat(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.service.twin_star_intraday.load_intraday_sat",
+            lambda today: None,
+        )
         monkeypatch.setattr(tsd, "_sat_signal", lambda today: {
             "asOf": "2026-01-20",
             "gateOpen": True,
@@ -161,7 +203,15 @@ class TestReminderPayload:
                     "label": "买入",
                     "pick": {"key": "GOLD", "symbol": "ETF:518880"},
                     "message": "择强买入",
-                }
+                },
+                "holdings": [
+                    {
+                        "symbol": "CN:000001",
+                        "name": "平安银行",
+                        "positionPct": 12.5,
+                        "entryDate": "2026-01-19",
+                    }
+                ],
             },
         )
         payload = tsd.build_twin_star_reminder_payload(date(2026, 1, 21))
@@ -170,8 +220,13 @@ class TestReminderPayload:
         assert "A.SH" in payload["detail"]
         assert "R-wide 开闸" in payload["detail"]
         assert "核心50%" in payload["detail"]
-        assert "今日卖 B.SH" in payload["detail"]
+        assert "今日卖 000001.SZ" in payload["detail"]
+        assert "你卫星仓 1/4" in payload["detail"]
+        assert "引擎模拟" in payload["detail"]
+        assert "持仓簿" not in payload["detail"]
         assert payload["sat"]["coreTargetPct"] == 50
+        assert payload["sat"]["book"]["liveHeld"] == 1
+        assert payload["sat"]["book"]["engineHeld"] == 1
 
 
 class TestCoreTargetPct:
@@ -186,6 +241,93 @@ class TestCoreTargetPct:
         assert tsd._core_target_pct(
             gate_open=False, candidates=[], holdings=[{"ts": "A"}]
         ) == 50
+
+    def test_engine_replay_does_not_count_as_live_occupancy(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.service.twin_star_intraday.load_intraday_sat",
+            lambda today: None,
+        )
+        monkeypatch.setattr(
+            tsd,
+            "_sat_signal",
+            lambda today: {
+                "asOf": "2026-01-20",
+                "gateOpen": False,
+                "breadth": 0.4,
+                "gapCount": 0,
+                "candidates": [],
+                "note": None,
+            },
+        )
+        monkeypatch.setattr(
+            tsd,
+            "_sat_book",
+            lambda today: {
+                "asOf": "2026-01-20",
+                "holdings": [{"ts": f"6000{i:02d}.SH"} for i in range(15)],
+                "exitsDue": [],
+                "body": 3,
+            },
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.portfolio_health.build_portfolio_health",
+            lambda **kw: {
+                "multiAssetSleeve": {
+                    "active": True,
+                    "action": "HOLD",
+                    "label": "持有",
+                    "pick": {"key": "OIL", "symbol": "ETF:513350"},
+                },
+                "holdings": [],
+            },
+        )
+        out = tsd.build_twin_star_daily_action(date(2026, 1, 21))
+        assert out["sat"]["coreTargetPct"] == 100
+        assert out["sat"]["book"]["liveHeld"] == 0
+        assert out["sat"]["book"]["engineHeld"] == 15
+        assert out["sat"]["book"]["liveFreeSlots"] == 4
+
+    def test_oil_two_live_cn_is_half_core(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.service.twin_star_intraday.load_intraday_sat",
+            lambda today: None,
+        )
+        monkeypatch.setattr(
+            tsd,
+            "_sat_signal",
+            lambda today: {
+                "asOf": "2026-01-20",
+                "gateOpen": False,
+                "breadth": 0.4,
+                "gapCount": 0,
+                "candidates": [],
+                "note": None,
+            },
+        )
+        monkeypatch.setattr(
+            tsd,
+            "_sat_book",
+            lambda today: {"asOf": "2026-01-20", "holdings": [], "exitsDue": [], "body": 3},
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.portfolio_health.build_portfolio_health",
+            lambda **kw: {
+                "multiAssetSleeve": {
+                    "active": True,
+                    "action": "HOLD",
+                    "label": "持有",
+                    "pick": {"key": "OIL", "symbol": "ETF:513350"},
+                },
+                "holdings": [
+                    {"symbol": "CN:000001", "positionPct": 12.5, "entryDate": "2026-01-19"},
+                    {"symbol": "CN:000002", "positionPct": 12.5, "entryDate": "2026-01-20"},
+                ],
+            },
+        )
+        out = tsd.build_twin_star_daily_action(date(2026, 1, 21))
+        assert out["sat"]["coreTargetPct"] == 50
+        assert out["sat"]["book"]["liveHeld"] == 2
+        assert out["sat"]["book"]["liveFreeSlots"] == 2
 
 
 class TestFillCandidateNames:

@@ -43,6 +43,7 @@ from data_sync_service.scheduler import (
     paper_backtest_mirror_job,
     paper_chain_watchdog_job,
     paper_s3_intake_job,
+    paper_twin_star_job,
     paper_trading_intake_job,
     paper_trading_update_job,
     research_report_job,
@@ -315,8 +316,14 @@ def create_scheduler() -> BackgroundScheduler:
         paper_s3_intake_job.run,
         paper_s3_intake_job.build_trigger(),
         id=paper_s3_intake_job.JOB_ID,
-         replace_existing=True,
-     )
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        paper_twin_star_job.run,
+        paper_twin_star_job.build_trigger(),
+        id=paper_twin_star_job.JOB_ID,
+        replace_existing=True,
+    )
     # Backtest mirror (2026-08-14): replay the engine trajectory into the
     # paper book daily — the backtest is the source of truth (runs after
     # hk_daily_full_sync so today's HK bars are settled).

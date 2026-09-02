@@ -352,6 +352,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "candidate_diff",
     "behavior_audit",
     "cn_extra_sync",
+    "paper_twin_star",
 )
 
 

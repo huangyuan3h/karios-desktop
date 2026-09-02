@@ -359,6 +359,9 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         logger.warning("paper_trade update list_registry failed: %s", exc)
 
     for t in open_trades:
+        if str(t.get("source") or "") == pt_db.SOURCE_TWIN_STAR:
+            # clip4 satellite book is managed by paper_twin_star (body=3 / −5%).
+            continue
         sym = str(t.get("symbol") or "")
         resolved = _resolve_ts_code(sym)
         if resolved is None or resolved[1] not in closes_by_ts:
