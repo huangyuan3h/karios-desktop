@@ -1,6 +1,6 @@
 # 择强单轨（Pick-Strong Track）
 
-> **产品策略真值**（2026-08-29 起）。此后回测优化、文档结论、回测页 Timeline **只服务本策略**。  
+> **核心腿真值**（2026-08-29 起）。2026-09-02 起 **实盘默认 = 机会双子星 v3.1 clip4**（本文规则作核心；卫星见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md)）。单轨仍可 Settings 切回作对照。  
 > S-3 / 套筒 / R5c 等是**子组件或历史分层**，不是并列的「主策略」。
 
 ---
@@ -31,7 +31,7 @@
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
-> **机会双子星 v3.1（2026-09-02）**：可选增强——**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`；卫星 **4 槽 × 总资产 12.5%**。window-local 可执行三窗全过单轨，且相对 v3 15×5% 三窗全正。**过去一年**（本文件 §2 同窗）clip4 **+194.9 / sr2.64 / dd12.6** vs 本单轨 **+190.6 / 2.54 / 12.6**（+4.3pt）；旧 15×5% 双子星该窗 **−0.2pt** 输单轨。滚到 2026-09-02 仍赢。**实盘默认仍是本单轨**（Settings opt-in）。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。Watchlist：核心 pick ≠ STOCK 时 CN 持仓全部进卫星仓，不按 S-3 股票篮轮出。
+> **机会双子星 v3.1（2026-09-02 · 实盘默认）**：**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`；卫星 **4 槽 × 总资产 12.5%**。window-local 可执行三窗全过单轨，且相对 v3 15×5% 三窗全正。**过去一年**（本文件 §2 同窗）clip4 **+194.9 / sr2.64 / dd12.6** vs 本单轨 **+190.6 / 2.54 / 12.6**（+4.3pt）；旧 15×5% 双子星该窗 **−0.2pt** 输单轨。滚到 2026-09-02 仍赢。Settings 可切回本单轨作对照。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。Watchlist：核心 pick ≠ STOCK 时 CN 持仓全部进卫星仓，不按 S-3 股票篮轮出。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。  
@@ -87,7 +87,7 @@
 
 - 产品窗上 **旧 15×5% 双子星略输单轨**（−0.2pt）；clip4 把增量翻正，Sharpe +0.10，回撤仍钉在核心 12.6。
 - 滚到 2026-09-02 仍全正，卫星开闸日均约 **3.6 只**。
-- **实盘默认仍单轨**；Settings opt-in 机会双子星跟 clip4。三窗 walk-forward 真值见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md) §3.0。
+- **实盘默认 clip4**；Settings 可切回本单轨。三窗 walk-forward 真值见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md) §3.0。
 
 ---
 

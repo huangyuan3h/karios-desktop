@@ -11,14 +11,14 @@ import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: StrategyMode; title: string; desc: string }[] = [
   {
-    value: 'single_track',
-    title: '单轨择强（默认）',
-    desc: 'mom60+MA200+trail8 满仓切换。2026-09-01 退出日成本修正后，过去一年机会双子星输给纯核心 → 实盘默认本模式。',
+    value: 'twin_star',
+    title: '机会双子星（默认）',
+    desc: '择强 trail8 核心 + strict S-gap 卫星。无仓 100% 核心；开闸可买或持仓中切 50%。卫星最多 4 只、每只总资产 12.5%。过去一年 +194.9 vs 单轨 +190.6（回撤同 12.6）。',
   },
   {
-    value: 'twin_star',
-    title: '机会双子星 (Opportunity Twin-Star)',
-    desc: '择强为主；无卫星仓且不开新仓时核心 100%，开闸可买或持仓中才切 50% 卫星。卫星最多 4 只、每只总资产 12.5%。可选增强，非默认。',
+    value: 'single_track',
+    title: '单轨择强',
+    desc: 'mom60+MA200+trail8 满仓切换，无卫星。对照 / 回退模式，不是实盘默认。',
   },
 ];
 
@@ -36,6 +36,7 @@ export function StrategySettingsPanel() {
       <div className="space-y-2">
         {OPTIONS.map((opt) => {
           const active = mode === opt.value;
+          const isDefault = opt.value === 'twin_star';
           return (
             <button
               key={opt.value}
@@ -56,13 +57,13 @@ export function StrategySettingsPanel() {
                   )}
                 />
                 <span className="text-[13px] font-medium">{opt.title}</span>
-                {opt.value === 'single_track' ? (
+                {isDefault ? (
                   <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
                     默认
                   </span>
                 ) : (
                   <span className="rounded bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)]">
-                    可选
+                    对照
                   </span>
                 )}
               </div>

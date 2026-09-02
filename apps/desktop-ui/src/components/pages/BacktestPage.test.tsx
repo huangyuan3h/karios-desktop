@@ -145,6 +145,39 @@ beforeEach(() => {
     if (String(path).includes('/api/backtest/twin-star')) {
       return { ok: true, core: {}, sat: {} };
     }
+    if (String(path).includes('/api/backtest/exit-attribution')) {
+      return {
+        ok: true,
+        days: 5,
+        closedCount: 0,
+        withForwardCount: 0,
+        excluded: 0,
+        insufficient: true,
+        hint: null,
+        overall: {
+          count: 0,
+          avgFwdPct: null,
+          earlyCount: 0,
+          wellCount: 0,
+          neutralCount: 0,
+          earlyRate: null,
+          wellRate: null,
+        },
+        byReason: {},
+        exposure: { maxSimultaneous: 0, singleStockWeightFloorPct: null, note: '' },
+      };
+    }
+    if (String(path).includes('/api/backtest/correlation-status')) {
+      return {
+        ok: true,
+        capPct: 30,
+        clusters: {},
+        overLimit: [],
+        blockedSymbols: [],
+        topPairs: [],
+        empiricalNote: null,
+      };
+    }
     // Keep other compare-tab endpoints from throwing and unmounting the page.
     if (String(path).includes('/api/backtest/')) return { ok: true };
     return { ok: true };
@@ -176,12 +209,12 @@ describe('BacktestPage', () => {
 
   it('shows rolling OOS warning and recon strip', async () => {
     renderPage();
+    expect(await screen.findByText(/回测 vs Paper 对账/)).toBeDefined();
+    expect(screen.getByText('缺 19 · 多 0')).toBeDefined();
     fireEvent.click(screen.getByText('回测基线'));
     expect(await screen.findByText(/滚动 OOS（最近 90 天/)).toBeDefined();
     expect(screen.getByText(/HK: -8.5% dd=19.5% sharpe=-3.2 trades=55/)).toBeDefined();
     expect(screen.getAllByText('港股').length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByText(/回测 vs Paper 对账/)).toBeDefined();
-    expect(screen.getByText('缺 19 · 多 0')).toBeDefined();
   });
 
   it('shows the C4 paper-vs-backtest comparison with verdict banner', async () => {
@@ -198,6 +231,7 @@ describe('BacktestPage', () => {
 
   it('collapses the advanced parameter tools behind a toggle', async () => {
     renderPage();
+    fireEvent.click(screen.getByText('回测基线'));
     expect(await screen.findByText(/高级：参数敏感度工具/)).toBeDefined();
     expect(screen.queryByText('运行回测')).toBeNull();
     fireEvent.click(screen.getByText(/高级：参数敏感度工具/));

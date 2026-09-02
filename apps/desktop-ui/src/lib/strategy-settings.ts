@@ -8,6 +8,9 @@ export type StrategyMode = 'twin_star' | 'single_track';
 
 const STORAGE_KEY = 'karios.strategyMode';
 
+/** Live product default: opportunity twin-star v3.1 clip4 (4 × 12.5% NAV). */
+export const DEFAULT_STRATEGY_MODE: StrategyMode = 'twin_star';
+
 export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
   twin_star: '机会双子星',
   single_track: '单轨择强',
@@ -15,9 +18,8 @@ export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
 
 export function getStrategyMode(): StrategyMode {
   const v = loadJson<StrategyMode | null>(STORAGE_KEY, null);
-  // 2026-09-01 v3: executable twin-star wins walk-forward vs core, but live
-  // default stays single_track (opt-in) — Sharpe/DD edge is small, not PS-G50.
-  return v === 'twin_star' ? v : 'single_track';
+  if (v === 'single_track' || v === 'twin_star') return v;
+  return DEFAULT_STRATEGY_MODE;
 }
 
 export function setStrategyMode(mode: StrategyMode): void {

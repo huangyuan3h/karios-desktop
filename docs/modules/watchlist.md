@@ -15,14 +15,14 @@ Watchlist 模块是 Karios 的**核心操作中心**，用于管理用户关注�
 - **技术分析**：提供 TrendOK 检查和 Score 评分
 - **交易建议**：给出买入/等待/回避建议和止损价位
 
-### 机会双子星（Settings opt-in）
+### 机会双子星（实盘默认 · v3.1 clip4）
 
-Watchlist「今日操作」在 `strategyMode=twin_star` 时走冻结引擎，不走 S-3 10%×10：
+Watchlist「今日操作」默认 `strategyMode=twin_star`，走冻结引擎，不走 S-3 10%×10。Settings 可切回单轨对照。
 
 - 卫星最多 **4 只**，每只 **总资产 12.5%**（套筒 25%；开闸 50/50 时 4×12.5% = 卫星半仓）
 - 常量锁步：后端 `MAX_POS=4` `POSITION_PCT=0.25`；前端 `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE`
 - 14:30 前不公布当日卫星名单；涨停跳过、不顺位补
-- 默认单轨的 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30%）仍约束 Watchlist 行；双子星交易计划按 12.5% 开 QuickBuy，12.5% < 15% 不撞单票闸
+- 单轨 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30%）仍约束 Watchlist 行；双子星交易计划按 12.5% 开 QuickBuy，12.5% < 15% 不撞单票闸
 - **卫星仓 ≠ 股票篮**：核心 pick ≠ `STOCK` 时，Watchlist 里所有 CN A 股持仓都算卫星（S-gap `body=3` 到期退出），**不**走 S-3「股票篮应轮出」。pick=`STOCK` 时，只有落在卫星 recipe/候选集合里的名字算卫星，其余仍是 S-3 股票篮
 - 今日决策卡拆成：核心 ETF 块 → **卫星仓**（持有 / body 到期卖 / 缺口买）→ A 股线（股票篮，pick≠STOCK 时闲置）。引擎 `openPositions` 只作对照，不占用你的 4 槽
 - **卫星何时卖**：按 Watchlist `entryDate` 数交易日，第 3 日收盘卖（`body=3`）。到期日与「已持 n/3」写在每只旁边；到日或现价跌破保护止损会改成卖出

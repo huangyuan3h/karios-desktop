@@ -47,6 +47,11 @@
 | OPT-125 | DB 连接池 + DB 重试 + 慢查询护栏 | P1 | 1–2 天 | [ ] |
 | OPT-126 | 东财出口探针 + 熔断可视化 | P1 | 1 天 | [ ] |
 | OPT-127 | 前端轮询 jitter + ETag + 后端限流（储备） | P2 | 1 天 | [ ] |
+| OPT-128 | 实盘默认机会双子星 clip4 | P0 | 0.5 天 | [x] |
+| OPT-129 | Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%） | P0 | 1 天 | [ ] |
+| OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [ ] |
+| OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [ ] |
+| OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [ ] |
 
 ---
 
@@ -1009,6 +1014,7 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-09-01 | **OPT-123**：机会双子星 v3 固化——strict S-gap + 无仓回核；window-local 三窗全过；实盘信号与回测对齐（禁止 replace 扩池）；口径铁律写入 `state-bucket-algo` 文首 |
 | 2026-09-02 | **机会双子星 v3.1 clip4**：卫星冻结 4 槽 × 套筒 25% = 总资产 12.5%；相对 v3 15×5% 三窗全正（OOS2 +1.8 / train +2.3 / valid +10.3）；引擎 + Watchlist 同口径；`opportunity_twin_star_v3_clip4_frozen.json` |
 | 2026-09-02 | **过去一年三方冻结**：产品窗 2025-08-28~2026-08-28 单轨 +190.6 / 旧双子星 15×5% +190.4（−0.2） / clip4 **+194.9（+4.3）**；滚到今日 clip4 +204.0 vs 单轨 +197.6；DD 均 12.6。`past_year_twin_vs_core_2026-09-02.json`；写入 `pick-strong-track.md` §2.1 |
+| 2026-09-02 | **OPT-128**：实盘默认切 `twin_star` clip4（Settings / 通知 API / 文档）；单轨改为对照。下一阶段计划 `docs/designs/twin-star-ops-phase-2026-09-02.md` |
 | 2026-09-01 | **第八轮审查 — 稳定性**：数据 + 架构 + API 储备调研完成（15 条失败样本归因 + 8 类数据源分级 + 3 SPOF + 储备决策"不扩爬、做深度"）→ `docs/designs/stability-audit-2026-09-01.md` + OPT-124/125/126/127 立项 |
 
 ### OPT-060：机会双子星 v2（退出日成本修正 + 默认改单轨）
@@ -3161,10 +3167,49 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - 冻结：`opportunity_twin_star_v3_frozen.json`（window-local 五窗 · 15×10% 对照）
 - **v3.1 clip4（2026-09-02）**：`max_pos=4` `POSITION_PCT=0.25` → 每只总资产 12.5%；Watchlist `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE` 锁步；冻结 `opportunity_twin_star_v3_clip4_frozen.json`
 - 真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「纠结的点与口径铁律」+ §3.0
-- 实盘默认仍 `single_track`（opt-in）
+- 当时实盘默认 `single_track`（opt-in）；**2026-09-02 OPT-128 已翻转**为 `twin_star` clip4
 - 实盘/盘中信号与回测同一套 `select_strict_gap_candidates`（涨停不补仓）
 
 **验证**：`test_state_bucket_track` / `test_twin_star*` / `test_ps_g50_blend` / `test_twin_star_daily`（strict 不 refill） / `twin-star-trade-plan.test.ts`（4×12.5%）
+
+### OPT-128：实盘默认机会双子星 clip4（2026-09-02）
+
+**状态**：[x] done · 2026-09-02  
+**背景**：过去一年三方 clip4 赢单轨与旧 15×5%；用户拍板默认跟最好的那套。
+
+**改动**：
+- `getStrategyMode()` 空/损坏 → `twin_star`；显式 `single_track` 仍可对照
+- Settings 默认徽章改到机会双子星
+- `GET /api/notifications` Query 默认 `twin_star`
+- 文档：`pick-strong-track` / `watchlist` / `state-bucket-algo` / `todo.md`
+
+**验证**：`strategy-settings.test.ts` · `PortfolioHealthCard` 空存储 → 机会双子星文案 · `NotificationHub` 请求 `mode=twin_star` · `test_notifications.test_route_ok`
+
+**下一阶段**（不扫参）：[`docs/designs/twin-star-ops-phase-2026-09-02.md`](../designs/twin-star-ops-phase-2026-09-02.md)
+
+### OPT-129：Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%）
+
+**状态**：[ ] 待做 · P0  
+**范围**：`ReplicaGapCard` · `PickStrongAlignBanner` · `QuickBuyDialog` 默认仓位 · Health/TodayAction 文案  
+**验收**：默认模式下看不到「单轨 100% 硬切」当今日指令；买入预填 12.5% NAV
+
+### OPT-130：Timeline 拆核心/卫星/窗口标签
+
+**状态**：[ ] 待做 · P0  
+**范围**：`BacktestPage.tsx` · `queries/backtest.ts` · timeline API 如需加字段  
+**验收**：能同时看见 twin / 核心 / 卫星 NAV，并标三窗 vs 产品过去一年 vs trailing
+
+### OPT-131：卫星占用真值 + twin_star paper 簿
+
+**状态**：[ ] 待做 · P0  
+**范围**：`twin-star-trade-plan.ts` · `twin_star_daily.py` · paper_trades `source=twin_star`  
+**验收**：4 槽占用跟 Watchlist 走，引擎 `openPositions` 只对照；卫星入出有独立 paper
+
+### OPT-132：卫星 blotter + skip_t1 日表
+
+**状态**：[ ] 待做 · P1  
+**范围**：Timeline 日表 / 导出  
+**验收**：每日能看到候选数、涨停跳过数、成交槽、空槽回核
 
 ---
 

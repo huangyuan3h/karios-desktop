@@ -32,7 +32,7 @@
     "report": "data/backtest_reports/past_year_twin_vs_core_2026-09-02.json",
     "note": "On product past_year (2025-08-28~2026-08-28) v3 15×5% loses to core by 0.2pt; clip4 wins +4.3pt. Trailing to 2026-09-02 clip4 +6.4pt vs core. DD tied 12.6. Display-only; reject gate remains OOS2/train/valid."
   },
-  "verdict": "Frozen live clip: 4 slots × 25% sat sleeve (12.5% NAV). Walk-forward 3/3 vs v3 15×10% (all positive). Past-year three-way PASS+ vs core and v3. Source: sat_clip_concentration_2026-09-02.json n4_c25.",
+  "verdict": "Frozen live clip: 4 slots × 25% sat sleeve (12.5% NAV). Walk-forward 3/3 vs v3 15×10% (all positive). Past-year three-way PASS+ vs core and v3. Live default = twin_star (2026-09-02). Source: sat_clip_concentration_2026-09-02.json n4_c25.",
   "source_report": "data/backtest_reports/sat_clip_concentration_2026-09-02.json",
   "reproduce": "PYTHONPATH=src:scripts python3 scripts/compare_sat_clip.py --save-report; PYTHONPATH=src:scripts python3 scripts/compare_past_year_twin.py --save-report"
 }

@@ -27,4 +27,5 @@
 | `cloud-deployment-options.md` | §5 / §4 部署走向决策 | 待拍板 |
 | [`miniqmt-xtquant-live-trading.md`](./miniqmt-xtquant-live-trading.md) | §16 L4-P1 券商研究 | 未落地 / 待拍板（需券商文字确认费率与权限） |
 | [`state-bucket-slice-stock-leg.md`](./state-bucket-slice-stock-leg.md) | 择强 STOCK 腿 · slice / PS-G50 实验 | **结论已迁** `docs/backtests/state-bucket-algo-2026-08-31.md` 文首口径铁律 + v3 冻结 |
+| [`twin-star-ops-phase-2026-09-02.md`](./twin-star-ops-phase-2026-09-02.md) | 机会双子星下一阶段（工程 / 业务对齐 / 回测可分析） | **方向已拍板 2026-09-02**；实盘默认 clip4；按 OPT-128+ 落地 |
 | [`third-asset-sleeve.md`](./third-asset-sleeve.md) | §8 回测（T6 第三资产套筒） | **提示已落地 2026-08-19**；自动配置/paper 层待拍板（最优=纳指ETF+200dMA） |

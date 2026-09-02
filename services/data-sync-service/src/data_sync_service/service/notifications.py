@@ -514,12 +514,13 @@ def _twin_star_notification(mode: str = "single_track") -> list[dict[str, Any]]:
         return []
 
 
-def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
+def build_notifications(mode: str = "twin_star") -> list[dict[str, Any]]:
     """All actionable notifications, most severe first.
 
     ``mode`` is the live Settings strategy (``twin_star`` | ``single_track``).
-    Twin-star CN holdings use S-gap body3 + protect stop; S-3 pyramid/trail
-    and paper-vs-backtest recon stay on the single-track book.
+    Default is twin-star (clip4). Twin-star CN holdings use S-gap body3 +
+    protect stop; S-3 pyramid/trail and paper-vs-backtest recon stay on the
+    single-track book.
     """
     live_mode = "twin_star" if mode == "twin_star" else "single_track"
     ctx = _load_health_ctx()

@@ -201,12 +201,19 @@ def test_route_ok(monkeypatch) -> None:
     import data_sync_service.api.notifications_routes as nr
     from data_sync_service.api.notifications_routes import router
 
-    monkeypatch.setattr(nr, "build_notifications", lambda mode="single_track": [{"id": "x", "severity": "high"}])
+    seen: list[str] = []
+
+    def _capture(mode: str = "twin_star") -> list[dict]:
+        seen.append(mode)
+        return [{"id": "x", "severity": "high"}]
+
+    monkeypatch.setattr(nr, "build_notifications", _capture)
     app = FastAPI()
     app.include_router(router)
     r = TestClient(app).get("/api/notifications")
     assert r.status_code == 200
     assert r.json()["items"][0]["severity"] == "high"
+    assert seen == ["twin_star"]
 
 
 def test_twin_star_does_not_emit_s3_pyramid_or_false_near_line(monkeypatch) -> None:

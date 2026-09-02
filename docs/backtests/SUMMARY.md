@@ -1,19 +1,19 @@
 # 回测总结（指向 **择强单轨** · 2026-08-29）
 
-> **何时看**：任何人想「再回测 / 再优化」之前——先读本页 + [`modules/pick-strong-track.md`](../modules/pick-strong-track.md)。
-> **一句话**：**产品策略 = 择强单轨**（全市场全资产同权，条件内谁强持谁）。  
+> **何时看**：任何人想「再回测 / 再优化」之前——先读本页 + [`modules/pick-strong-track.md`](../modules/pick-strong-track.md)（核心腿）+ [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)（实盘默认机会双子星）。
+> **一句话**：**实盘默认 = 机会双子星 v3.1 clip4**（择强核心 + strict S-gap 卫星 4×12.5%）。单轨是核心腿 / Settings 对照。  
 > S-3 / 套筒 / 信号池实验是子组件与拒收档案，**不再作为并列终局结论**。
 
 ---
 
-## 0. 现行终局：择强单轨
+## 0. 现行终局：机会双子星（核心 = 择强单轨）
 
 | 项 | 内容 |
 |----|------|
-| 定义 | 股票篮(S-3 CN+HK) + 金/油/纳/债 + REPO，t-1 `mom60` 且站上 `MA200` 的池内 argmax，100% 硬切 |
-| 真值文档 | [`modules/pick-strong-track.md`](../modules/pick-strong-track.md) |
+| 定义 | 择强核心（股票篮 + 金/油/纳/债 + REPO）+ strict S-gap 卫星 4×12.5%；无仓 100% 核心，开闸 50/50 |
+| 真值文档 | [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) · 核心腿 [`modules/pick-strong-track.md`](../modules/pick-strong-track.md) |
 | 过去一年（定案 `mom_compare`+trail8） | **+190.7% / DD12.6%**（2025-08-28~2026-08-28）；无 trail 对照 +93.6/DD28.3 |
-| 机会双子星 clip4（opt-in） | 同窗 **+194.9 / sr2.64 / DD12.6**（Δ单轨 +4.3pt）；旧 15×5% 该窗 −0.2pt。滚到 2026-09-02 clip4 +204.0 vs 单轨 +197.6 |
+| 机会双子星 clip4（**实盘默认**） | 同窗 **+194.9 / sr2.64 / DD12.6**（Δ单轨 +4.3pt）；旧 15×5% 该窗 −0.2pt。滚到 2026-09-02 clip4 +204.0 vs 单轨 +197.6 |
 | 三窗绝对 NAV（trail8） | OOS2 **+17.8** / train **+40.7** / valid **+139.1**（dd 18.0/8.4/11.9） |
 | 报告 | `pick_strong_trail8_20260829.json` · `past_year_twin_vs_core_2026-09-02.json` · `opportunity_twin_star_v3_clip4_frozen.json` |
 | 参数定案 | LB60·MA200·hold1·100% mom（[加固实验](pick-strong-hardening-2026-08-29.md) **维持 A0**；hold5/短 LB/risk-adj/Top2 拒收） |

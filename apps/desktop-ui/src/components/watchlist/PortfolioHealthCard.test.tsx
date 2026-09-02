@@ -129,9 +129,34 @@ beforeEach(() => {
     isFetching: false,
   });
   window.localStorage.removeItem('karios.strategyMode');
+  setStrategyMode('single_track');
 });
 
 describe('PortfolioHealthCard', () => {
+  it('defaults to twin-star copy when strategyMode is unset', async () => {
+    window.localStorage.removeItem('karios.strategyMode');
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-08-28',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      multiAssetHoldings: [],
+      holdings: [],
+      hkHealth: null,
+      markets: { CN: { regime: 'Diverging' }, HK: { regime: 'Weak' } },
+    });
+    renderCard();
+    expect(await screen.findByText(/机会双子星 · 今日决策/)).toBeDefined();
+    expect(screen.queryByText(/单轨择优 · 今日复刻/)).toBeNull();
+  });
+
   it('renders market state + holdings from the health endpoint', async () => {
     setStrategyMode('single_track');
     fetchPortfolioHealth.mockResolvedValue({
@@ -163,7 +188,7 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
   });
 
-  it('shows twin-star copy when opt-in (core-leg wording, no 100% hard-switch)', async () => {
+  it('shows twin-star copy (core-leg wording, no 100% hard-switch)', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
@@ -430,6 +455,7 @@ describe('PortfolioHealthCard', () => {
 
   it('remind-buy button opens the dialog and adds the stock to watchlist + local reminder', async () => {
     localStorage.clear();
+    setStrategyMode('single_track');
     const fetchMock = vi.fn();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -525,6 +551,7 @@ describe('PortfolioHealthCard', () => {
 
   it('quick-buy button opens the modal, writes watchlist, and records a paper trade', async () => {
     localStorage.clear();
+    setStrategyMode('single_track');
     const fetchMock = vi.fn();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -593,6 +620,7 @@ describe('PortfolioHealthCard', () => {
 
   it('renders backtest recon inside the market panel with expandable missing list', async () => {
     localStorage.clear();
+    setStrategyMode('single_track');
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes('/api/backtest/recon/latest')) {
         return new Response(
