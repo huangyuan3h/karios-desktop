@@ -26,9 +26,13 @@ import {
 import { useBacktestReconQuery, useTwinStarActionQuery, refreshTwinStarAction, type ReconItem } from '@/lib/queries/backtest';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { useStrategyMode } from '@/lib/strategy-settings';
-import { getShanghaiMinutes, getShanghaiTodayIso, satNamesVisible } from '@/lib/market-hours';
+import { getShanghaiMinutes, getShanghaiTodayIso, isShanghaiTradingTime, satNamesVisible } from '@/lib/market-hours';
 import { cn } from '@/lib/utils';
 import { isCnWatchlistSymbol, toTsCodeFromSymbol } from '@/lib/symbols';
+import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
+import { buildWatchlistRowMetrics, formatIntradayChgPct } from '@/lib/watchlist-metrics';
+import { fmtPrice } from '@/lib/watchlist-table-cells';
 import {
   loadWatchlist,
   saveWatchlist,
@@ -85,6 +89,7 @@ type Sleeve = NonNullable<PortfolioHealthResponse['multiAssetSleeve']>;
 function PickStrongOpsPanel({
   sleeve,
   stockHoldingsCount,
+  satHoldingNames,
   onBuyEtf,
   twinStar,
   coreTargetPct = 100,
@@ -92,6 +97,7 @@ function PickStrongOpsPanel({
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
+  satHoldingNames?: string[];
   onBuyEtf?: (symbol: string, name: string | null) => void;
   twinStar: boolean;
   /** Opportunity: 100 when sat idle, 50 when opening/holding. */
@@ -108,6 +114,9 @@ function PickStrongOpsPanel({
   const isRepo = pickKey === 'REPO';
   const isEtf = !isStock && !isRepo;
   const corePct = twinStar ? coreTargetPct : 100;
+  const satNames = (satHoldingNames ?? []).filter(Boolean);
+  const satCount = satNames.length > 0 ? satNames.length : stockHoldingsCount;
+  const satNamesHint = satNames.length > 0 ? `：${satNames.join('、')}` : '';
 
   const steps: string[] = [];
   if (isStock) {
@@ -125,12 +134,12 @@ function PickStrongOpsPanel({
         ? `核心腿 ${corePct}% → ${meta.label}（${etfSym ?? pickKey}）`
         : `今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）`,
     );
-    if (stockHoldingsCount > 0) {
+    if (stockHoldingsCount > 0 || satNames.length > 0) {
       steps.push(
         twinStar
           ? corePct >= 100
-            ? `现有 ${stockHoldingsCount} 只 CN 卫星仓（见上方 · 不要按股票篮轮出）· 今日无新占用 → 核心 100% 配 ETF`
-            : `现有 ${stockHoldingsCount} 只 CN 卫星仓（见上方 · 核心 ${corePct}% 配 ETF）`
+            ? `现有 ${satCount} 只 CN 卫星仓${satNamesHint}（不要按股票篮轮出）· 今日无新占用 → 核心 100% 配 ETF`
+            : `现有 ${satCount} 只 CN 卫星仓${satNamesHint}（核心 ${corePct}% 配 ETF）`
           : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`,
       );
     }
@@ -143,10 +152,10 @@ function PickStrongOpsPanel({
         ? `今日无人过线 → 核心腿 ${corePct}% 转逆回购 / 观望`
         : '今日无人过线 → 100% 逆回购 / 空仓观望',
     );
-    if (stockHoldingsCount > 0) {
+    if (stockHoldingsCount > 0 || satNames.length > 0) {
       steps.push(
         twinStar
-          ? 'CN 股票属卫星仓（见上方），不是股票篮应轮出'
+          ? `CN 股票属卫星仓${satNamesHint}，不是股票篮应轮出`
           : '股票仓也应清到空（单轨不持）',
       );
     }
@@ -612,22 +621,51 @@ function copyText(text: string): void {
   void navigator.clipboard.writeText(text);
 }
 
+function satLiveMetrics(
+  symbol: string,
+  quotes: Record<string, WatchlistQuote>,
+  trend: Record<string, TrendOkResult>,
+) {
+  const key = symbol.toUpperCase();
+  const q = quotes[symbol] ?? quotes[key];
+  const t = trend[symbol] ?? trend[key];
+  return buildWatchlistRowMetrics({
+    symbol,
+    trend: t,
+    quote: q,
+    tradingTime: isShanghaiTradingTime(),
+    todaySh: getShanghaiTodayIso(),
+  });
+}
+
 function SatStockRow({
   r,
   index,
   bought,
   onAct,
+  quotes,
+  trend,
 }: {
   r: TwinStarTradeRow;
   index?: number;
   bought: boolean;
   onAct: (row: TwinStarTradeRow) => void;
+  quotes: Record<string, WatchlistQuote>;
+  trend: Record<string, TrendOkResult>;
 }) {
   const { code, pretty } = satRowPretty(r);
   const isSell = r.side === 'SELL';
   const dueLabel = r.exitDue ?? '—';
   const heldLabel =
     r.heldDays != null ? `${r.heldDays}/3` : r.missingEntry ? '缺入场日' : '—';
+  const live = satLiveMetrics(r.symbol, quotes, trend);
+  const key = r.symbol.toUpperCase();
+  const q = quotes[r.symbol] ?? quotes[key];
+  const price = live.current ?? q?.price ?? r.lastClose ?? null;
+  const chgPct =
+    live.intradayChgPct ??
+    (typeof q?.pctChg === 'number' && Number.isFinite(q.pctChg) ? q.pctChg : null);
+  const showCostPnl = chgPct == null && live.current == null && q?.price == null;
   return (
     <div className="flex flex-col gap-0.5 border-b border-sky-500/10 py-1.5 last:border-b-0">
       <div className="flex flex-wrap items-center gap-x-2 text-[12px]">
@@ -663,8 +701,12 @@ function SatStockRow({
           到期 {dueLabel}
           {isSell ? ' 收盘卖' : ''}
         </span>
-        {r.lastClose != null ? <span>现价 {r.lastClose}</span> : null}
-        {r.pnlPct != null ? (
+        {price != null ? <span>现价 {fmtPrice(price)}</span> : null}
+        {chgPct != null ? (
+          <span className={chgPct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}>
+            {formatIntradayChgPct(chgPct)}
+          </span>
+        ) : showCostPnl && r.pnlPct != null ? (
           <span className={r.pnlPct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}>
             {fmtPct(r.pnlPct)}
           </span>
@@ -688,17 +730,23 @@ function SatSleevePanel({
   boughtSymbols,
   onAct,
   hideBuys,
+  quotes,
+  trend,
 }: {
   plan: TwinStarTradePlan;
   boughtSymbols: Set<string>;
   onAct: (row: TwinStarTradeRow) => void;
   hideBuys?: boolean;
+  quotes: Record<string, WatchlistQuote>;
+  trend: Record<string, TrendOkResult>;
 }) {
   const holds = plan.holds.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
   const sells = plan.sells.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
   const buys = hideBuys ? [] : plan.buys.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
   const empty = holds.length === 0 && sells.length === 0 && buys.length === 0;
   const copyAllRows = [...sells, ...holds];
+  const slotPct =
+    plan.satSlotNavPct > 0 ? plan.satSlotNavPct : holds.find((r) => r.navPct > 0)?.navPct ?? null;
   return (
     <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
       <div className="mb-1 flex flex-wrap items-center gap-x-2 text-[11px] font-medium text-sky-800 dark:text-sky-200">
@@ -717,7 +765,7 @@ function SatSleevePanel({
           </button>
         ) : null}
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          每只总资产 {plan.satSlotNavPct}% · 第3日收盘卖
+          {slotPct != null ? `每只总资产 ${slotPct}%` : '每只总资产 按已录入仓位'} · 第3日收盘卖
         </span>
       </div>
       <div className="mb-1.5 text-[10px] leading-snug text-[var(--k-muted)]">
@@ -729,14 +777,22 @@ function SatSleevePanel({
       {sells.length > 0 ? (
         <div className="mb-1">
           {sells.map((r, i) => (
-            <SatStockRow key={`sell-${r.symbol}`} r={r} index={i + 1} bought={boughtSymbols.has(r.symbol)} onAct={onAct} />
+            <SatStockRow
+              key={`sell-${r.symbol}`}
+              r={r}
+              index={i + 1}
+              bought={boughtSymbols.has(r.symbol)}
+              onAct={onAct}
+              quotes={quotes}
+              trend={trend}
+            />
           ))}
         </div>
       ) : null}
       {holds.length > 0 ? (
         <div className="mb-1">
           {holds.map((r) => (
-            <SatStockRow key={`hold-${r.symbol}`} r={r} bought={false} onAct={onAct} />
+            <SatStockRow key={`hold-${r.symbol}`} r={r} bought={false} onAct={onAct} quotes={quotes} trend={trend} />
           ))}
         </div>
       ) : null}
@@ -973,7 +1029,15 @@ function HealthPanel({
   );
 }
 
-export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+export function PortfolioHealthCard({
+  onOpenStock,
+  quotes: quotesProp,
+  trend: trendProp,
+}: {
+  onOpenStock?: (symbol: string) => void;
+  quotes?: Record<string, WatchlistQuote>;
+  trend?: Record<string, TrendOkResult>;
+} = {}) {
   const [strategyMode] = useStrategyMode();
   const twinStar = strategyMode !== 'single_track';
   const queryClient = useQueryClient();
@@ -1036,24 +1100,32 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   const rotateOutHk = pickKey != null && pickKey !== 'STOCK';
   const stockHoldingsCount =
     (data?.holdings?.length ?? 0) + (data?.hkHealth?.holdings?.length ?? 0);
+  const satQuoteSymbols = React.useMemo(
+    () => (data?.holdings ?? []).filter((h) => isCnWatchlistSymbol(h.symbol)).map((h) => h.symbol),
+    [data],
+  );
+  const ownMarketQ = useWatchlistMarketQuery(quotesProp == null ? satQuoteSymbols : []);
+  const quoteMap = quotesProp ?? ownMarketQ.data?.quotes ?? {};
+  const trendMap = trendProp ?? ownMarketQ.data?.trend ?? {};
+  const satLoaded = twinStarQ.data?.sat != null;
   const coreTargetPct = twinStarQ.data?.sat?.coreTargetPct ?? 100;
   const tradePlan = React.useMemo(() => {
-    if (!twinStar || twinStarQ.data?.sat == null || sleeve == null) return null;
-    const sat = twinStarQ.data.sat;
+    if (!twinStar || sleeve == null) return null;
+    const sat = twinStarQ.data?.sat;
     const cn = data;
     const hk = data?.hkHealth;
     const cnSize = Number((cn?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct);
     const hkSize = Number((hk?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct);
     return buildTwinStarTradePlan({
-      coreTargetPct: sat.coreTargetPct ?? 100,
-      satTargetPct: sat.satTargetPct ?? Math.max(0, 100 - (sat.coreTargetPct ?? 100)),
-      gateOpen: Boolean(sat.gateOpen),
+      coreTargetPct: sat?.coreTargetPct ?? 100,
+      satTargetPct: sat?.satTargetPct ?? Math.max(0, 100 - (sat?.coreTargetPct ?? 100)),
+      gateOpen: Boolean(sat?.gateOpen),
       afterSatWindow,
-      satHoldings: sat.book?.holdings ?? [],
-      satExitsDue: sat.book?.exitsDue ?? [],
-      satCandidates: sat.candidates ?? [],
-      satBlocked: sat.blocked ?? [],
-      satAlternates: sat.alternates ?? [],
+      satHoldings: sat?.book?.holdings ?? [],
+      satExitsDue: sat?.book?.exitsDue ?? [],
+      satCandidates: sat?.candidates ?? [],
+      satBlocked: sat?.blocked ?? [],
+      satAlternates: sat?.alternates ?? [],
       pickKey,
       pickSymbol: sleeve?.pick?.symbol ?? null,
       pickName: sleeve?.pick?.name ?? (pickKey != null ? PICK_META[pickKey]?.label : null) ?? null,
@@ -1104,6 +1176,14 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
       .map((h) => h.symbol);
     return new Set([...fromPlan, ...fromLive]);
   }, [twinStar, tradePlan, data, pickKey, satNameTs]);
+  const liveCnSatHoldings = React.useMemo(
+    () =>
+      (data?.holdings ?? []).filter((h) =>
+        isLiveSatelliteStock(h.symbol, { pickKey, satNameTs }),
+      ),
+    [data, pickKey, satNameTs],
+  );
+  const satHoldingNames = liveCnSatHoldings.map((h) => (h.name ?? '').trim() || h.symbol);
 
   const cnBasketBlock = React.useMemo(() => {
     if (!twinStar || !data) return data;
@@ -1339,6 +1419,11 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
               核心 {twinStarQ.data?.sat?.coreTargetPct ?? 100}%：{sleeve.label ?? sleeve.action}{' '}
               {sleeve.pick?.symbol ?? ''}
             </span>
+            {liveCnSatHoldings.length > 0 ? (
+              <div className="mt-1">
+                卫星仓 {liveCnSatHoldings.length}/{SAT_MAX_POS}：{satHoldingNames.join('、')}
+              </div>
+            ) : null}
             {twinStarQ.data?.sat?.asOf != null ? (
               <span className="ml-2">
                 · 卫星：
@@ -1392,20 +1477,32 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
 
         {twinStar && tradePlan ? (
           <>
-            <TwinStarDayPlaybook
+            <SatSleevePanel
               plan={tradePlan}
-              afterSatWindow={afterSatWindow}
-              snapshotFailed={satSnapFailed}
-              gateOpen={Boolean(twinStarQ.data?.sat?.gateOpen)}
+              boughtSymbols={boughtSymbols}
+              onAct={handlePlanAct}
+              hideBuys={!satLoaded || satSnapFailed}
+              quotes={quoteMap}
+              trend={trendMap}
             />
-            <TwinStarTradePlanPanel
-              plan={tradePlan}
-              snapshotAt={twinStarQ.data?.sat?.snapshotAt}
-              frozen={Boolean(twinStarQ.data?.sat?.frozen || twinStarQ.data?.sat?.heldOvernight)}
-              snapshotFailed={satSnapFailed}
-              onRefresh={() => void handleRefreshSat()}
-              refreshing={refreshingSat}
-            />
+            {satLoaded ? (
+              <>
+                <TwinStarDayPlaybook
+                  plan={tradePlan}
+                  afterSatWindow={afterSatWindow}
+                  snapshotFailed={satSnapFailed}
+                  gateOpen={Boolean(twinStarQ.data?.sat?.gateOpen)}
+                />
+                <TwinStarTradePlanPanel
+                  plan={tradePlan}
+                  snapshotAt={twinStarQ.data?.sat?.snapshotAt}
+                  frozen={Boolean(twinStarQ.data?.sat?.frozen || twinStarQ.data?.sat?.heldOvernight)}
+                  snapshotFailed={satSnapFailed}
+                  onRefresh={() => void handleRefreshSat()}
+                  refreshing={refreshingSat}
+                />
+              </>
+            ) : null}
             <MultiAssetHealthBlock
               holdings={data?.multiAssetHoldings}
               sleeve={sleeve}
@@ -1427,7 +1524,6 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 })
               }
             />
-            <SatSleevePanel plan={tradePlan} boughtSymbols={boughtSymbols} onAct={handlePlanAct} hideBuys={satSnapFailed} />
             <HealthPanel
               title="A股线（股票篮生成器）"
               tag="CN"
@@ -1462,6 +1558,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 <PickStrongOpsPanel
                   sleeve={sleeve}
                   stockHoldingsCount={stockHoldingsCount}
+                  satHoldingNames={satHoldingNames}
                   onBuyEtf={handleBuyEtf}
                   twinStar={twinStar}
                   coreTargetPct={coreTargetPct}

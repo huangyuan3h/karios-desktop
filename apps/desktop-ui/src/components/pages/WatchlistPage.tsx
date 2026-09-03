@@ -423,7 +423,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <PortfolioHealthCard onOpenStock={onOpenStock} />
+        <PortfolioHealthCard onOpenStock={onOpenStock} quotes={quotes} trend={trend} />
 
         {showSingleTrack ? <TradingBriefCard /> : null}
 

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ComponentProps } from 'react';
 
 import { PortfolioHealthCard } from './PortfolioHealthCard';
 import * as watchlistStorage from '@/lib/watchlist-storage';
@@ -61,14 +62,23 @@ vi.mock('@/lib/queries/backtest', async () => {
   return { ...actual, useTwinStarActionQuery: twinStarMock.useTwinStarActionQuery };
 });
 
-vi.mock('@/lib/watchlist-market', () => ({
+const watchlistMarketMock = vi.hoisted(() => ({
   fetchWatchlistMarketSnapshot: vi.fn(async (symbols: string[]) => ({
     trend: {},
     quotes: Object.fromEntries(
-      symbols.map((s) => [s.toUpperCase(), { tsCode: s, price: 10.5, tradeTime: null, amount: null, volume: null, preClose: null, pctChg: null }]),
+      symbols.map((s) => [
+        s.toUpperCase(),
+        { tsCode: s, price: 10.5, tradeTime: null, amount: null, volume: null, preClose: null, pctChg: null },
+      ]),
     ),
   })),
 }));
+vi.mock('@/lib/watchlist-market', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/watchlist-market')>(
+    '@/lib/watchlist-market',
+  );
+  return { ...actual, fetchWatchlistMarketSnapshot: watchlistMarketMock.fetchWatchlistMarketSnapshot };
+});
 
 const sentimentMock = vi.hoisted(() => ({
   useDashboardSentimentQuery: vi.fn(() => ({
@@ -102,13 +112,13 @@ const HOLDING = {
   action: 'HOLD',
 };
 
-function renderCard() {
+function renderCard(props: ComponentProps<typeof PortfolioHealthCard> = {}) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={qc}>
-      <PortfolioHealthCard />
+      <PortfolioHealthCard {...props} />
     </QueryClientProvider>,
   );
 }
@@ -119,6 +129,7 @@ function setStrategyMode(mode: 'twin_star' | 'single_track') {
 
 beforeEach(() => {
   fetchPortfolioHealth.mockReset();
+  watchlistMarketMock.fetchWatchlistMarketSnapshot.mockClear();
   marketHoursMock.getShanghaiMinutes.mockReturnValue(15 * 60);
   marketHoursMock.satNamesVisible.mockReturnValue(true);
   useTwinStarActionQueryMock.mockReturnValue(SAT_OPEN);
@@ -1193,6 +1204,7 @@ describe('PortfolioHealthCard', () => {
     renderCard();
     expect(await screen.findByText('卫星仓')).toBeDefined();
     expect(screen.getByText(/你卫星仓 4\/4/)).toBeDefined();
+    expect(screen.getByText(/卫星仓 4\/4：芒果超媒、水发燃气、新赛股份、扬电科技/)).toBeDefined();
     expect(screen.getByText('芒果超媒')).toBeDefined();
     expect(screen.getByText('水发燃气')).toBeDefined();
     expect(screen.getByText('新赛股份')).toBeDefined();
@@ -1214,6 +1226,91 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getByText('再卖卫星')).toBeDefined();
     expect(screen.getByText('最后缺口买')).toBeDefined();
     expect(screen.getByText(/C4 占用对照/)).toBeDefined();
+  });
+
+  it('still lists live CN satellite names when twin-star action has not loaded', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: undefined,
+      isError: false,
+      dataUpdatedAt: 0,
+      isFetching: true,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 15.43, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-03',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 4, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [
+        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:603318', name: '水发燃气', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:600540', name: '新赛股份', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        { ...HOLDING, symbol: 'CN:301012', name: '扬电科技', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+      ],
+      multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/卫星仓 4\/4：芒果超媒、水发燃气、新赛股份、扬电科技/)).toBeDefined();
+    expect(screen.getByText('卫星仓')).toBeDefined();
+    expect(screen.getByText('芒果超媒')).toBeDefined();
+    expect(screen.getByText('水发燃气')).toBeDefined();
+    expect(screen.getByText(/现有 4 只 CN 卫星仓：芒果超媒/)).toBeDefined();
+    expect(screen.queryByText(/今日顺序/)).toBeNull();
+    expect(screen.queryByText('卫星缺口买入')).toBeNull();
+  });
+
+  it('uses watchlist live quotes for satellite 现价 and 涨幅', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有原油 ETF',
+        message: '择强 OIL',
+        pick: { key: 'OIL', mom60: 15.43, symbol: 'ETF:513350' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-03',
+      regime: 'Diverging',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 1, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [
+        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+      ],
+      multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
+      hkHealth: null,
+    });
+    renderCard({
+      quotes: {
+        'CN:300413': {
+          tsCode: '300413.SZ',
+          price: 20.88,
+          tradeTime: '2026-09-03 10:50:00',
+          amount: null,
+          volume: null,
+          preClose: 21.25,
+          pctChg: -1.74,
+        },
+      },
+    });
+    expect(await screen.findByText('芒果超媒')).toBeDefined();
+    expect(screen.getByText('现价 20.88')).toBeDefined();
+    expect(screen.getByText('-1.7%')).toBeDefined();
+    expect(screen.queryByText('现价 21.00')).toBeNull();
+    expect(screen.queryByText('+5.00%')).toBeNull();
   });
 
   it('splits STOCK-day sat recipe from leftover S-3 basket and hides recon as a trade bell', async () => {

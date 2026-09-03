@@ -477,12 +477,12 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
   const exitTs = new Set<string>();
   for (const h of liveSat) {
     const ts = liveTsCode(h.symbol);
-    if (!ts) continue;
-    const recipeRow = recipe.find((r) => r.ts === ts);
+    const id = ts ?? h.symbol;
+    const recipeRow = ts ? recipe.find((r) => r.ts === ts) : undefined;
     const body = satBodyProgress(h.entryDate ?? recipeRow?.entryDate, asOf);
     const protectStop = satProtectStop(h.costPrice ?? recipeRow?.entryPrice);
     const lastClose = h.lastClose ?? recipeRow?.close ?? null;
-    satMeta.set(ts, {
+    satMeta.set(id, {
       holding: h,
       body,
       protectStop,
@@ -491,7 +491,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
       stopBreached: false,
       recipe: recipeRow,
     });
-    if (body.due || recipeExitTs.has(ts)) exitTs.add(ts);
+    if (body.due || (ts != null && recipeExitTs.has(ts))) exitTs.add(id);
   }
 
   const satHeld = liveSat.length;
@@ -556,14 +556,14 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
 
   for (const h of liveSat) {
     const ts = liveTsCode(h.symbol);
-    if (!ts) continue;
-    const meta = satMeta.get(ts);
+    const id = ts ?? h.symbol;
+    const meta = satMeta.get(id);
     const body = meta?.body ?? satBodyProgress(h.entryDate, asOf);
     const protectStop = meta?.protectStop ?? satProtectStop(h.costPrice);
     const overlay = {
       costPrice: h.costPrice ?? meta?.recipe?.entryPrice ?? null,
       lastClose: meta?.lastClose ?? null,
-      pnlPct: meta?.pnlPct ?? null,
+      pnlPct: h.pnlPct ?? meta?.recipe?.pnlPct ?? null,
       heldDays: body.heldDays,
       daysLeft: body.daysLeft,
       exitDue: body.exitDue ?? meta?.recipe?.exitDue ?? null,
@@ -572,12 +572,13 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
       missingEntry: body.missingEntry,
       missingCost: false,
     };
-    if (exitTs.has(ts)) {
+    const label = h.name ?? ts ?? h.symbol;
+    if (exitTs.has(id)) {
       pushRow(sells, {
         side: 'SELL',
         sleeve: 'sat',
         symbol: h.symbol,
-        name: h.name ?? ts,
+        name: label,
         navPct: h.positionPct ?? satSlotNavPct,
         reason: `卫星到期 · ${overlay.exitDue ?? '今日'} 收盘卖（第${TWIN_STAR_LIVE_RECIPE.body}个交易日）`,
         purpose: 'sat-exit',
@@ -597,7 +598,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
       side: 'HOLD',
       sleeve: 'sat',
       symbol: h.symbol,
-      name: h.name ?? ts,
+      name: label,
       navPct: h.positionPct ?? satSlotNavPct,
       reason,
       purpose: 'hold',

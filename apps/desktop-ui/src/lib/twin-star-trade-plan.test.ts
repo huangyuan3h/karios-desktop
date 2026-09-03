@@ -298,6 +298,17 @@ describe('buildTwinStarTradePlan', () => {
     expect(satConclusionLine(plan, true)).not.toMatch(/603221/);
   });
 
+  it('still lists a live CN holding when the ticker cannot map to ts_code', () => {
+    const plan = buildTwinStarTradePlan(
+      base({
+        satCandidates: [],
+        liveStockHoldings: [{ symbol: 'CN:BADTICK', name: '怪票', positionPct: 12.5 }],
+      }),
+    );
+    expect(plan.satHeld).toBe(1);
+    expect(plan.holds.some((r) => r.symbol === 'CN:BADTICK' && r.name === '怪票')).toBe(true);
+  });
+
   it('keeps unmatched CN names in the S-3 basket only when pick=STOCK', () => {
     const plan = buildTwinStarTradePlan(
       base({
