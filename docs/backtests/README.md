@@ -25,7 +25,10 @@
 | [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
 | [`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
 | [`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
+| [`sat-hold-path-day2-2026-09-03.md`](./sat-hold-path-day2-2026-09-03.md) | 卫星第 1/2/3 日收盘路径（第 2 天亏了回不回） | ✅ 观察；不改 Live |
+| [`sat-fill-same-close-2026-09-03.md`](./sat-fill-same-close-2026-09-03.md) | 卫星成交：冻结 T 开盘 vs 当日收盘（Live 14:30 代理） | ❌ 拒收当成交改写（valid −17.7） |
 | [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
+| [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | 研究中，未进 Live |
 | [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 

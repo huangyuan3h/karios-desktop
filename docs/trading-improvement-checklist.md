@@ -987,11 +987,9 @@ Week 4+: TIP-008 展示 → TIP-007 动量放开（有数据再开）→ TIP-009
 - 仅 CN 线（HK 无 sentiment 数据，不受影响）
 - 待办：momentum/dip 风格切换仍需更多电风扇样本（见 Phase 3 数据待办）
 
-**Phase 3 — 真实验证**：东财 5 分钟线（已验证可得，330 根/5 天，历史深拉被风控需慢速分页）
-接入后，用真实尾盘价校验 Phase 1 结论；板块特点画像（用户提出）作为延伸维度。
+**Phase 3 — 真实验证**：尾盘 5 分钟线（2026-09-03 接通）。表 `bar_5min` 只存 14:30–15:00；历史一年走 baostock；tushare `stk_mins` 有 10 年但频次 1 次/分钟不适合全市场回补；东财/akshare 约 6 周；腾讯仅当日。接入后用来看 14:30 vs 15:00 名单漂移，不改 clip4 Live。
 
-**数据源备注**：东财 push2his kline 5m 接口可用但会触发风控（Remote end closed /
-502），需限速 + 分页；yfinance 被限流；腾讯/新浪不可用。
+**数据源备注**（2026-09-03 实测）：baostock `frequency=5` 一年一次查询可用；tushare `stk_mins` 权限已开、单次 8000 行、限频严；东财 push2his / akshare 分钟线近窗可用、一年深度不够。
 
 ---
 

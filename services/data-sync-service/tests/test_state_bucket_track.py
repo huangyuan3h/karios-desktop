@@ -211,6 +211,68 @@ class TestBuildSgapTimeline:
         assert fill_blot[0]["exitDate"] == dates[23]
         assert fill_blot[0]["closeReason"] == "body_exit"
         assert fill_blot[0]["contribPct"] is not None
+        assert r["fill_mode"] == sbt.FILL_NEXT_OPEN
+
+    def test_same_close_fills_gap_day_at_close(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_CLOSE,
+            debug_fills=fills,
+        )
+        rows = r["rows"]
+        assert fills == [(dates[20], "A.SH")]
+        assert r["fill_mode"] == sbt.FILL_SAME_CLOSE
+        held_days = [i for i, row in enumerate(rows) if row["satPositions"] == 1]
+        assert len(held_days) == 2
+        assert rows[held_days[0]]["date"] == dates[20]
+        exit_row = next(row for row in rows if row["date"] == dates[22])
+        assert exit_row["satPositions"] == 0
+        assert exit_row["satActive"] is True
+        exp_entry = per_ts["A.SH"][20]["close"]
+        exp_exit = per_ts["A.SH"][22]["close"]
+        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * sbt.POSITION_PCT
+        assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["entryDate"] == dates[20]
+        assert fill_blot[0]["exitDate"] == dates[22]
+        assert fill_blot[0]["closeReason"] == "body_exit"
+
+    def test_same_close_skip_t1_on_signal_day(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        sig = per_ts["A.SH"][20]
+        pc = float(sig["pre_close"])
+        sig["close"] = round(pc * 1.10, 4)
+        sig["high"] = sig["close"]
+        sig["low"] = sig["close"]
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            pool_mode="strict",
+            fill_mode=sbt.FILL_SAME_CLOSE,
+            debug_fills=fills,
+        )
+        assert fills == []
+        row = next(x for x in r["rows"] if x["date"] == dates[20])
+        assert row["skipT1Count"] == 1
+        assert row["filledToday"] == 0
+        assert r["summary"]["fillCount"] == 0
+
+    def test_unknown_fill_mode_raises(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        try:
+            sbt.build_sgap_timeline(start=dates[0], end=dates[-1], fill_mode="same_1430")
+        except ValueError as exc:
+            assert "fill_mode" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
 
     def test_skip_t1_counts_and_does_not_refill(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()

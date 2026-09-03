@@ -666,6 +666,17 @@ meta(
     true,
     27,
   ),
+  meta(
+    'bar_5min_close',
+    'cnBasic',
+    'A 股尾盘 5 分钟线',
+    '工作日 18:40 用 baostock 拉取当日 14:30–15:00 的 5 分钟 K（缺口票 + 开仓 CN），供卫星名单漂移研究。一年历史走 backfill_bar_5min.py。',
+    '工作日 18:40',
+    '40 18 * * 1-5',
+    'cron',
+    true,
+    20,
+  ),
 ];
 
 /** Group display order in the UI. */

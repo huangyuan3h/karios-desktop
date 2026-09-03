@@ -15,6 +15,7 @@ from data_sync_service.scheduler import (
     alpha_radar_ingest_job,
     alpha_radar_process_job,
     backtest_recon_job,
+    bar_5min_job,
     behavior_audit_job,
     candidate_diff_job,
     close_catchup_job,
@@ -225,6 +226,12 @@ def create_scheduler() -> BackgroundScheduler:
         minute_capture_job.run,
         minute_capture_job.build_trigger(),
         id=minute_capture_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        bar_5min_job.run,
+        bar_5min_job.build_trigger(),
+        id=bar_5min_job.JOB_ID,
         replace_existing=True,
     )
     # OPT-049: paper-trading intake + update (after cn_industry_post_close).

@@ -36,6 +36,7 @@
 | **固化进多资产腿** | mom60+MA200 / MIN_HOLD5 | multi_asset_sleeve | 择强 ETF 侧规则 |
 | 核心 S-3 篮 10→5/4/3 | 4 变体 | **4 全部拒收**（OOS2 −20~−39） | 操作负担不能靠砍核心篮；见 [core-stock-clip](core-stock-clip-2026-09-03.md) |
 | 卫星 body 后续 trail / −5% 入引擎 | 3 变体 | **3 全部拒收** | Live 已去掉 −5% overlay，只 body=3 收盘；见 [sat-exit-trail](sat-exit-trail-2026-09-03.md) |
+| 卫星当日收盘成交（Live 14:30 代理） | 1 变体 | **拒收当成交改写** | valid twin −17.7pt；不改冻结 T 开盘；见 [sat-fill-same-close](sat-fill-same-close-2026-09-03.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
@@ -44,8 +45,9 @@
 4. 单窗好看 = 过拟合
 5. 砍核心 S-3 篮宽度（10→5/4/3）→ OOS2 弱市年崩
 6. 卫星 −5% 当常规退出、或 body 后续 trail → 截断 3 日脉冲 / 占满 4 槽
+7. 把 Live 14:30 / 收盘成交写进冻结 T 开盘 → 日历错位；valid 上卫星边几乎消失
 
-调参查找：用户说篮子太多 → [core-stock-clip](core-stock-clip-2026-09-03.md)；说止损/拿长一点/第几天卖 → [sat-exit-trail](sat-exit-trail-2026-09-03.md) + [讨论记录](clip4-ops-decisions-2026-09-03.md)。Agent 规则：仓库根 `AGENTS.md` → **Strategy / parameter changes**。
+调参查找：用户说篮子太多 → [core-stock-clip](core-stock-clip-2026-09-03.md)；说止损/拿长一点/第几天卖 → [sat-exit-trail](sat-exit-trail-2026-09-03.md) + [讨论记录](clip4-ops-decisions-2026-09-03.md)；说对齐 14:30 习惯回测 → [sat-fill-same-close](sat-fill-same-close-2026-09-03.md)。Agent 规则：仓库根 `AGENTS.md` → **Strategy / parameter changes**。
 
 ## 2. A 股 S-3（STOCK 腿 · 非终局产品）
 

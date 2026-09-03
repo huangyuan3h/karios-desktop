@@ -121,6 +121,7 @@ class TestCreateScheduler:
             "webhook_delivery",
             "behavior_audit",
             "minute_capture",
+            "bar_5min_close",
             "sleeve_paper_auto",
         }
         assert ids == expected

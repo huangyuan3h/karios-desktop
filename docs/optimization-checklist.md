@@ -56,6 +56,7 @@
 | OPT-134 | twin-star/action Zod 合同 + clip4 字面量 | P0 | 0.5 天 | [x] |
 | OPT-135 | Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃 | P0 | 1 天 | [x] |
 | OPT-136 | 卫星 Live 对齐冻结 body=3（去掉 −5% overlay） | P0 | 0.5 天 | [x] |
+| OPT-137 | 尾盘 5 分钟线落库（14:30–15:00，baostock 一年回补） | P1 | 0.5 天 | [x] |
 
 ---
 
@@ -3303,6 +3304,21 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - Health 去掉「复制止损」；通知去掉 `sat_stop` / `sat_near_stop`
 
 **验证**：`test_paper_twin_star.py::test_update_closes_body3_not_protect_stop` · `twin-star-trade-plan.test.ts` · `test_notifications.py::test_twin_star_sat_exit_ignores_protect_stop`
+
+---
+
+### OPT-137：尾盘 5 分钟线落库（14:30–15:00）
+
+**状态**：[x] 2026-09-03 · P1  
+**范围**：`bar_5min` 表 + baostock 一年回补 + 工作日 18:40 增量  
+**验收**：只存 14:30–15:00 七根 5 分钟 K；不改 clip4 Live 参数
+
+**数据源实测**：baostock 一年 5min 一次拉齐；tushare `stk_mins` 有权限但 1 次/分钟（突发后 1 次/小时）；东财/akshare 约 6 周；腾讯仅当日 1 分钟。
+
+**落地**：
+- 新表 `bar_5min`（与 `bar_minute` 1 分钟带分开，避免 14:30 冲突）
+- `scripts/backfill_bar_5min.py` 全 A 一年、可续跑
+- job `bar_5min_close` 18:40 只拉当日缺口票 + 开仓 CN
 
 ---
 

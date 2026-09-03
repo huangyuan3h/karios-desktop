@@ -39,6 +39,7 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'paper_twin_star',
         'twin_star_reminder',
         'twin_star_intraday',
+        'bar_5min_close',
       ]),
     );
   });

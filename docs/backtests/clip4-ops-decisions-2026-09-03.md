@@ -67,6 +67,8 @@ Watchlist「已持 n/3 / 到期日收盘卖」按这个数。paper 17:43 用当�
 
 不要把 14:30 成交价写进回测当开盘价（`docs/designs/twin-star-ops-phase-2026-09-02.md` E 线不做）。
 
+**2026-09-03 已测当日收盘代理**：[sat-fill-same-close-2026-09-03.md](./sat-fill-same-close-2026-09-03.md)。相对冻结 T 开盘 valid twin **−17.7pt**，REJECT 当成交改写。OOS2 +26.8 是单窗。习惯日历在 valid 上几乎收不到卫星边（Δcore +0.4 vs 冻结 +18.1）。14:30 价齐了再观察，不改 Live。
+
 ---
 
 ## 6. Agent 以后怎么做

@@ -5,6 +5,8 @@ S-gap 单态卫星 (frozen R12 / core_satellite_frozen_2026-08-31.json):
   factor  = amplitude 升序取前 1/3 (bucket_q=3, 最低波33%)
   gate    = R-wide (close>MA20 占比>0.5, 当日截面)
   entry   = T 日 open (信号取 T-1 状态), 滑点 0.15% 单边并入 COSTS_ROUNDTRIP
+            fill_mode=next_open is frozen. same_close is experiment-only
+            (today's S-gap, fill at today's close; Live ~14:30 proxy).
   hold    = 3 交易日, close 出, 0.3% 往返
   slots   = 4 x POSITION_PCT 0.25 (sat sleeve ~100%; 12.5% of NAV at 50/50)
 
@@ -28,6 +30,9 @@ MAX_POS = 4
 BODY = 3
 R_WIDE_THRESHOLD = 0.5
 WARMUP_CAL_DAYS = 120
+FILL_NEXT_OPEN = "next_open"
+FILL_SAME_CLOSE = "same_close"
+VALID_FILL_MODES = (FILL_NEXT_OPEN, FILL_SAME_CLOSE)
 
 
 def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
@@ -357,8 +362,17 @@ def replay_sgap_from_context(
     position_pct: float = POSITION_PCT,
     protect_stop_pct: float | None = None,
     trail_after_body_pct: float | None = None,
+    fill_mode: str = FILL_NEXT_OPEN,
 ) -> dict[str, Any]:
-    """Replay S-gap on a preloaded context. Positions start empty at ``start``."""
+    """Replay S-gap on a preloaded context. Positions start empty at ``start``.
+
+    fill_mode:
+      next_open (frozen): yesterday S-gap → today open.
+      same_close (experiment): today's S-gap → today's close. Proxies Live
+      ~14:30 until bar_5min coverage is complete. Do not pass from Live/UI.
+    """
+    if fill_mode not in VALID_FILL_MODES:
+        raise ValueError(f"fill_mode must be one of {VALID_FILL_MODES}, got {fill_mode!r}")
     if pool_mode is None:
         pool_mode = "fallback" if limit_fallback else "strict"
     clip = float(position_pct)
@@ -435,15 +449,20 @@ def replay_sgap_from_context(
         filled_today = 0
         gate_open = False
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
-            prev_day = cal[idx_by_day[day] - 1]
-            prev_all, _ = _cached_day_features(ctx, prev_day)
-            gap_stocks = [ts for ts, d in prev_all.items() if d["is_gap"]]
-            ranked = sorted(gap_stocks, key=lambda ts: prev_all[ts]["amp"])
+            if fill_mode == FILL_SAME_CLOSE:
+                feat_all = _day_all
+                lock_day = day
+            else:
+                prev_day = cal[idx_by_day[day] - 1]
+                feat_all, _ = _cached_day_features(ctx, prev_day)
+                lock_day = prev_day
+            gap_stocks = [ts for ts, d in feat_all.items() if d["is_gap"]]
+            ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts]["amp"])
             qn = max(1, len(ranked) // bucket_q) if ranked else 0
             locked = {
                 ts
                 for ts in ranked
-                if skip_t1_limit and _t1_limit_locked(per_ts, date_idx, prev_day, ts)
+                if skip_t1_limit and _t1_limit_locked(per_ts, date_idx, lock_day, ts)
             }
             gate_open = True
             gap_count = len(ranked)
@@ -453,7 +472,7 @@ def replay_sgap_from_context(
             for ts in bucket:
                 if ts not in locked:
                     continue
-                feat = prev_all.get(ts) or {}
+                feat = feat_all.get(ts) or {}
                 blotter.append(
                     _audit_blotter_row(
                         kind="skip_t1",
@@ -482,22 +501,28 @@ def replay_sgap_from_context(
                     continue
                 series = per_ts.get(ts)
                 di = date_idx.get(ts, {}).get(day, -1)
-                open_px = series[di]["open"] if di >= 0 else None
-                if open_px and open_px > 0:
+                if di < 0 or not series:
+                    continue
+                bar = series[di]
+                px = bar.get("close") if fill_mode == FILL_SAME_CLOSE else bar.get("open")
+                if px and px > 0:
                     if skip_unfillable:
-                        cur = series[di]
-                        pc = cur.get("pre_close")
+                        pc = bar.get("pre_close")
                         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
+                        one_word = (
+                            bar["high"] == bar["low"] == bar["close"]
+                            if fill_mode == FILL_SAME_CLOSE
+                            else bar["high"] == bar["low"] == bar["open"]
+                        )
                         if pc and pc > 0 and (
-                            cur["high"] == cur["low"] == cur["open"]
-                            or open_px >= pc * (1 + lim - 0.004)
+                            one_word or px >= pc * (1 + lim - 0.004)
                         ):
                             continue
-                    feat = prev_all.get(ts) or {}
+                    feat = feat_all.get(ts) or {}
                     positions[ts] = {
                         "entry_date": day,
-                        "entry_price": open_px,
-                        "peak": open_px,
+                        "entry_price": px,
+                        "peak": px,
                         "amp": feat.get("amp"),
                         "amp_rank": ranked.index(ts) + 1,
                         "exit_due": exit_due,
@@ -618,6 +643,7 @@ def replay_sgap_from_context(
         "pool_mode": pool_mode,
         "position_pct": clip,
         "max_pos": max_pos,
+        "fill_mode": fill_mode,
     }
 
 
@@ -636,6 +662,7 @@ def build_sgap_timeline(
     position_pct: float = POSITION_PCT,
     protect_stop_pct: float | None = None,
     trail_after_body_pct: float | None = None,
+    fill_mode: str = FILL_NEXT_OPEN,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -643,7 +670,8 @@ def build_sgap_timeline(
              openPositions: [...], summary: {...}}.
     skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
     pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
-    protect_stop_pct / trail_after_body_pct: experiment-only; live UI must leave None.
+    protect_stop_pct / trail_after_body_pct / fill_mode: experiment-only;
+    live UI must leave fill_mode at next_open and the stops at None.
     """
     ctx = load_sgap_context(start, end)
     return replay_sgap_from_context(
@@ -661,6 +689,7 @@ def build_sgap_timeline(
         position_pct=position_pct,
         protect_stop_pct=protect_stop_pct,
         trail_after_body_pct=trail_after_body_pct,
+        fill_mode=fill_mode,
     )
 
 
