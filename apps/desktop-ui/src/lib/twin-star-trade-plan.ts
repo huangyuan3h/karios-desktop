@@ -133,6 +133,123 @@ export function isLiveSatelliteStock(
   return Boolean(ts && ctx.satNameTs.has(ts));
 }
 
+/** Recipe + candidate ts codes from GET /api/backtest/twin-star/action. */
+export function satNameTsFromAction(sat: {
+  candidates?: Array<{ ts?: string | null }>;
+  blocked?: Array<{ ts?: string | null }>;
+  alternates?: Array<{ ts?: string | null }>;
+  book?: { holdings?: Array<{ ts?: string | null }> | null } | null;
+} | null | undefined): Set<string> {
+  const names = new Set<string>();
+  if (!sat) return names;
+  for (const row of [
+    ...(sat.candidates ?? []),
+    ...(sat.blocked ?? []),
+    ...(sat.alternates ?? []),
+    ...(sat.book?.holdings ?? []),
+  ]) {
+    const ts = row?.ts;
+    if (ts) names.add(ts);
+  }
+  return names;
+}
+
+export type TwinStarDayStepStatus = 'wait' | 'ready' | 'blocked' | 'idle';
+
+export type TwinStarDayStep = {
+  id: 'remind' | 'names' | 'core' | 'sat-sell' | 'sat-buy';
+  clock: string;
+  title: string;
+  detail: string;
+  status: TwinStarDayStepStatus;
+};
+
+/** Ordered Watchlist day script: reminder → names → core ETF → sat sells → sat buys. */
+export function twinStarDayFlow(input: {
+  plan: TwinStarTradePlan;
+  afterSatWindow: boolean;
+  snapshotFailed: boolean;
+  gateOpen: boolean;
+}): TwinStarDayStep[] {
+  const satSells = input.plan.sells.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
+  const satBuys = input.plan.buys.filter((r) => r.sleeve === 'sat' && r.kind === 'stock');
+  const namesStatus: TwinStarDayStepStatus = input.snapshotFailed
+    ? 'blocked'
+    : input.afterSatWindow
+      ? 'ready'
+      : 'wait';
+  const namesDetail = input.snapshotFailed
+    ? '今日盘中快照失败，不要用 T-1 名单'
+    : input.afterSatWindow
+      ? '名单已出'
+      : '候选未公布';
+  const buyStatus: TwinStarDayStepStatus = input.snapshotFailed
+    ? 'blocked'
+    : !input.gateOpen
+      ? 'idle'
+      : !input.afterSatWindow
+        ? 'wait'
+        : satBuys.length > 0
+          ? 'ready'
+          : 'idle';
+  const buyDetail = input.snapshotFailed
+    ? '名单不可用'
+    : !input.gateOpen
+      ? 'R-wide 关闸，今日不开仓'
+      : !input.afterSatWindow
+        ? '等 14:30 出名单'
+        : satBuys.length > 0
+          ? satBuys
+              .slice(0, 3)
+              .map((r) => r.name ?? r.symbol)
+              .join('、')
+          : '无填槽候选';
+  const sellDetail =
+    satSells.length === 0
+      ? '无到期/止损'
+      : satSells
+          .slice(0, 3)
+          .map((r) => r.name ?? r.symbol)
+          .join('、');
+  return [
+    {
+      id: 'remind',
+      clock: '14:20',
+      title: '提醒',
+      detail: '系统已推铃铛（先看核心再看卫星）',
+      status: 'ready',
+    },
+    {
+      id: 'names',
+      clock: '14:30',
+      title: '出名单',
+      detail: namesDetail,
+      status: namesStatus,
+    },
+    {
+      id: 'core',
+      clock: '①',
+      title: '先调核心',
+      detail: input.plan.coreHeadline,
+      status: 'ready',
+    },
+    {
+      id: 'sat-sell',
+      clock: '②',
+      title: '再卖卫星',
+      detail: sellDetail,
+      status: satSells.length > 0 ? 'ready' : 'idle',
+    },
+    {
+      id: 'sat-buy',
+      clock: '③',
+      title: '最后缺口买',
+      detail: buyDetail,
+      status: buyStatus,
+    },
+  ];
+}
+
 export type TwinStarTradeSide = 'BUY' | 'HOLD' | 'SELL';
 export type TwinStarTradeSleeve = 'core' | 'sat';
 export type TwinStarAssetKind = 'stock' | 'etf';

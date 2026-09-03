@@ -7,10 +7,13 @@ import {
   TWIN_STAR_LIVE_RECIPE,
   allocateSatFundTrims,
   buildTwinStarTradePlan,
+  isLiveSatelliteStock,
   satBodyProgress,
   satConclusionLine,
   satConditionalLine,
+  satNameTsFromAction,
   satProtectStop,
+  twinStarDayFlow,
   type TwinStarTradePlanInput,
 } from './twin-star-trade-plan';
 
@@ -419,5 +422,61 @@ describe('buildTwinStarTradePlan', () => {
     expect(buy?.symbol).toBe('ETF:513350');
     expect(buy?.navPct).toBe(50);
     expect(buy?.kind).toBe('etf');
+  });
+});
+
+describe('isLiveSatelliteStock / day flow', () => {
+  it('treats every CN name as satellite when pick is not STOCK', () => {
+    expect(isLiveSatelliteStock('CN:300413', { pickKey: 'OIL', satNameTs: new Set() })).toBe(true);
+    expect(isLiveSatelliteStock('HK:00700', { pickKey: 'OIL', satNameTs: new Set() })).toBe(false);
+  });
+
+  it('on STOCK days only recipe/candidate ts codes are satellite', () => {
+    const satNameTs = satNameTsFromAction({
+      candidates: [{ ts: '000712.SZ' }],
+      book: { holdings: [{ ts: '300413.SZ' }] },
+    });
+    expect(satNameTs.has('000712.SZ')).toBe(true);
+    expect(satNameTs.has('300413.SZ')).toBe(true);
+    expect(isLiveSatelliteStock('CN:000712', { pickKey: 'STOCK', satNameTs })).toBe(true);
+    expect(isLiveSatelliteStock('CN:300413', { pickKey: 'STOCK', satNameTs })).toBe(true);
+    expect(isLiveSatelliteStock('CN:600111', { pickKey: 'STOCK', satNameTs })).toBe(false);
+  });
+
+  it('orders the Watchlist day script core-then-sat and hides names before 14:30', () => {
+    const plan = buildTwinStarTradePlan(
+      base({
+        afterSatWindow: false,
+        liveStockHoldings: [
+          {
+            symbol: 'CN:300413',
+            name: '芒果超媒',
+            positionPct: 12.5,
+            costPrice: 20,
+            entryDate: '2026-08-31',
+            lastClose: 21,
+          },
+        ],
+      }),
+    );
+    const waiting = twinStarDayFlow({
+      plan,
+      afterSatWindow: false,
+      snapshotFailed: false,
+      gateOpen: true,
+    });
+    expect(waiting.map((s) => s.id)).toEqual(['remind', 'names', 'core', 'sat-sell', 'sat-buy']);
+    expect(waiting.find((s) => s.id === 'names')?.detail).toMatch(/候选未公布/);
+    expect(waiting.find((s) => s.id === 'sat-buy')?.status).toBe('wait');
+    expect(waiting.find((s) => s.id === 'core')?.title).toBe('先调核心');
+
+    const blocked = twinStarDayFlow({
+      plan,
+      afterSatWindow: true,
+      snapshotFailed: true,
+      gateOpen: true,
+    });
+    expect(blocked.find((s) => s.id === 'names')?.status).toBe('blocked');
+    expect(blocked.find((s) => s.id === 'sat-buy')?.detail).toMatch(/名单不可用/);
   });
 });

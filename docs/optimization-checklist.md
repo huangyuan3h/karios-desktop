@@ -54,6 +54,7 @@
 | OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [x] |
 | OPT-133 | 12:30 快照失败可见 + 双子星数据健康 | P0 | 0.5–1 天 | [x] |
 | OPT-134 | twin-star/action Zod 合同 + clip4 字面量 | P0 | 0.5 天 | [x] |
+| OPT-135 | Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃 | P0 | 1 天 | [x] |
 
 ---
 
@@ -3270,6 +3271,22 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - 前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` / replica-gap 文案从 shared 常量来
 
 **验证**：`packages/shared` `twinStar.test.ts` · `contract.test.ts` · `test_twin_star_daily.py::test_clip4_contract_matches_engine` · `test_twin_star_action_endpoint_emits_clip4`
+
+### OPT-135：Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：B2/B3/B5 + A5（占用对照，不重写 S-3 C4 统计脚本）  
+**验收**：pick≠STOCK 时 CN 全部进卫星仓；pick=STOCK 时卫星名不贴金字塔/移动线；Watchlist 看见 14:20→14:30→先核心再卫星；S-3「缺 19 只」不出现在双子星交易面
+
+**落地**：
+- twin_star CN 永不走股票篮应轮出；pick≠STOCK 时 A 股线持仓清空
+- pick=STOCK：recipe/候选集合 = 卫星；剩余 CN = S-3 篮（Health 移动/金字塔只贴剩余）
+- 通知 `_holding_book` 按标的拆账；STOCK 日 leftover 才发金字塔
+- Watchlist「今日顺序」条：14:20 提醒 → 14:30 名单 → ①核心 ②卖卫星 ③缺口买
+- Health / 铃铛不渲染 S-3 recon；占用对照写「C4 占用对照（不是交易铃）」；回测页 C4/recon 标明单轨对照
+- 不做：把 `paper_vs_backtest_report.py` 改成双子星统计 C4（样本仍小；P0-3 等 20 笔仍是 S-3 簿）
+
+**验证**：`PortfolioHealthCard.test.tsx` STOCK-day split · `twin-star-trade-plan.test.ts` day flow · `test_notifications.py::test_twin_star_stock_day_splits_sat_from_s3_leftover`
 
 ---
 

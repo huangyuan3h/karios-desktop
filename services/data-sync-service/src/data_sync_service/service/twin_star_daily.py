@@ -110,6 +110,37 @@ def sat_name_ts(sat: dict[str, Any], book: dict[str, Any]) -> set[str]:
     return names
 
 
+def live_sat_ts_codes(today: date | None = None) -> set[str]:
+    """Candidate + paper-open ts codes. Does not replay the S-gap engine.
+
+    Used by notifications to split STOCK-day satellite names from leftover
+    S-3 basket names without a second health/engine pass.
+    """
+    names: set[str] = set()
+    try:
+        from data_sync_service.service.twin_star_intraday import (
+            load_intraday_sat,
+            session_date,
+        )
+
+        sat = load_intraday_sat(today or session_date()) or {}
+        names |= sat_name_ts(sat, {"holdings": []})
+    except Exception:
+        pass
+    try:
+        from data_sync_service.db.paper_trading import SOURCE_TWIN_STAR, list_paper_trades
+
+        for row in list_paper_trades(status="open", market="CN", limit=20):
+            if str(row.get("source") or "") != SOURCE_TWIN_STAR:
+                continue
+            ts = ts_from_cn_symbol(str(row.get("symbol") or ""))
+            if ts:
+                names.add(ts)
+    except Exception:
+        pass
+    return names
+
+
 def live_sat_holdings(
     *,
     health: dict[str, Any] | None,

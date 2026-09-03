@@ -213,7 +213,7 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText(/单轨择优/)).toBeNull();
     expect(await screen.findByText(/机会口径 · 核心 50%/)).toBeDefined();
     expect((await screen.findAllByText(/买入 锦江投资/)).length).toBeGreaterThan(0);
-    expect(screen.getByText('锦江投资')).toBeDefined();
+    expect(screen.getAllByText('锦江投资').length).toBeGreaterThan(0);
     expect(screen.getAllByText('000712.SZ').length).toBeGreaterThan(0);
     expect(await screen.findByText(/卫星闸 · R-wide 开闸 breadth 0\.588/)).toBeDefined();
     expect(await screen.findByText(/引擎模拟仓空/)).toBeDefined();
@@ -1007,7 +1007,7 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getAllByText(/600352\.SH/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/持仓簿满 4\/4/)).toBeNull();
     expect(screen.getByText(/刷新行情/)).toBeDefined();
-    expect(screen.getByText(/引擎模拟 4 只/)).toBeDefined();
+    expect(screen.getByText(/引擎模拟 4\/4/)).toBeDefined();
   });
 
   it('keeps ETFs and lists buy size as % of NAV when STOCK has no executable names', async () => {
@@ -1208,5 +1208,123 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getAllByText(/到期 2026-09-04/).length).toBe(4);
     expect(screen.getAllByText(/止损 19/).length).toBe(4);
     expect(screen.queryByText(/补录入场日/)).toBeNull();
+    expect(screen.getByText(/今日顺序 · 先核心再卫星/)).toBeDefined();
+    expect(screen.getByText('先调核心')).toBeDefined();
+    expect(screen.getByText('再卖卫星')).toBeDefined();
+    expect(screen.getByText('最后缺口买')).toBeDefined();
+    expect(screen.getByText(/C4 占用对照/)).toBeDefined();
+  });
+
+  it('splits STOCK-day sat recipe from leftover S-3 basket and hides recon as a trade bell', async () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/backtest/recon/latest')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            items: [
+              {
+                reconDate: '2026-09-02',
+                market: 'HK',
+                window: 'valid',
+                expected: 19,
+                actual: 0,
+                aligned: 0,
+                missing: 19,
+                extra: 0,
+                alignedReturnDiffPct: null,
+                detail: [{ type: 'missing', symbol: 'HK:02099', entry: '2026-08-05', score: 88.0, positionPct: 0.1 }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useTwinStarActionQueryMock.mockReturnValue({
+      data: {
+        sat: {
+          asOf: '2026-09-02',
+          gateOpen: true,
+          breadth: 0.55,
+          gapCount: 20,
+          candidates: [{ ts: '000712.SZ', name: '锦江投资', amp: 1, gapPct: 2, close: 10 }],
+          note: null,
+          coreTargetPct: 50,
+          satTargetPct: 50,
+          book: {
+            asOf: '2026-09-02',
+            holdings: [{ ts: '300413.SZ', name: '芒果超媒', daysLeft: 2 }],
+            exitsDue: [],
+            body: 3,
+          },
+        },
+      },
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      isFetching: false,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有股票篮',
+        message: '择强 STOCK',
+        pick: { key: 'STOCK', mom60: 6.88, symbol: 'STOCK' },
+        mode: 'mom_compare',
+      },
+      tradeDate: '2026-09-02',
+      regime: 'Strong',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 2, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [{ symbol: 'CN:600111', name: '北方稀土', score: 71 }],
+      holdings: [
+        {
+          ...HOLDING,
+          symbol: 'CN:300413',
+          name: '芒果超媒',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+          trailingLine: 19.5,
+          pyramidTriggerLine: 20.5,
+          pyramidAdded: false,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:600111',
+          name: '北方稀土',
+          positionPct: 10,
+          action: 'HOLD',
+          costPrice: 18,
+          entryDate: '2026-08-01',
+          lastClose: 19,
+          pnlPct: 5.5,
+          trailingLine: 17.2,
+          pyramidTriggerLine: 18.45,
+          pyramidAdded: false,
+        },
+      ],
+      multiAssetHoldings: [{ symbol: 'ETF:513110', positionPct: 48, name: '纳指' }],
+      hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
+    });
+    renderCard();
+    expect(await screen.findByText('卫星仓')).toBeDefined();
+    expect(screen.getByText('芒果超媒')).toBeDefined();
+    expect(screen.getAllByText('北方稀土').length).toBeGreaterThan(0);
+    expect(screen.getByText('移动线 17.2')).toBeDefined();
+    expect(screen.getByText('金字塔线 18.45')).toBeDefined();
+    expect(screen.queryByText('移动线 19.5')).toBeNull();
+    expect(screen.queryByText('金字塔线 20.5')).toBeNull();
+    expect(screen.queryByText(/股票篮对账/)).toBeNull();
+    expect(screen.queryByText(/缺 19/)).toBeNull();
+    expect(screen.getByText(/今日顺序 · 先核心再卫星/)).toBeDefined();
+    vi.unstubAllGlobals();
   });
 });

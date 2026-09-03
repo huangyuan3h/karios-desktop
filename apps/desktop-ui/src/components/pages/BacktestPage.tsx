@@ -421,7 +421,7 @@ function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuer
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-1.5 flex items-center gap-2 text-[12px] font-medium">
         <ShieldAlert className="size-3.5" />
-        回测 vs Paper 对账（每周一自动对账上周五）
+        回测 vs Paper 对账（S-3 单轨对照，不当双子星交易铃）
       </div>
       <div className="flex flex-col gap-1">
         {items.map((r) => {
@@ -457,7 +457,7 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <ShieldAlert className="size-3.5" />
-        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓）
+        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓 · 不当双子星交易铃）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {report?.generatedAt ?? ''} 生成
         </span>

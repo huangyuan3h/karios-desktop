@@ -108,10 +108,31 @@ def _as_float(v: Any) -> float | None:
     return n if n == n else None  # NaN
 
 
-def _holding_book(mode: str, pick: str | None, market: str) -> str:
-    """Which rulebook a holding is under. HK/CN S-3 basket is live only when pick=STOCK."""
+def _holding_book(
+    mode: str,
+    pick: str | None,
+    market: str,
+    symbol: str | None = None,
+    sat_ts: set[str] | None = None,
+) -> str:
+    """Which rulebook a holding is under.
+
+    Twin-star CN: pick≠STOCK → every A-share is satellite. pick=STOCK → only
+    names in the sat recipe/candidate/paper-open set are satellite; leftover
+    CN stays S-3. HK is never satellite (idle when the core is an ETF).
+    """
+    if mode == "twin_star" and market == "CN":
+        if pick != "STOCK":
+            return "sat"
+        if symbol:
+            from data_sync_service.service.twin_star_daily import ts_from_cn_symbol
+
+            ts = ts_from_cn_symbol(symbol)
+            if ts and sat_ts and ts in sat_ts:
+                return "sat"
+        return "s3"
     if mode == "twin_star" and pick != "STOCK":
-        return "sat" if market == "CN" else "idle"
+        return "idle"
     return "s3"
 
 
@@ -122,7 +143,7 @@ def _load_health_ctx() -> dict[str, Any]:
         h = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("notifications: portfolio health failed: %s", exc)
-        return {"blocks": {}, "pick": None, "tradeDate": None}
+        return {"blocks": {}, "pick": None, "tradeDate": None, "satTs": set()}
     blocks: dict[str, dict[str, Any]] = {}
     for key, market in (("", "CN"), ("hkHealth", "HK")):
         block = h if key == "" else h.get("hkHealth") or {}
@@ -130,7 +151,14 @@ def _load_health_ctx() -> dict[str, Any]:
             blocks[market] = block
     pick_raw = (h.get("multiAssetSleeve") or {}).get("pick") or {}
     pick = pick_raw.get("key") if isinstance(pick_raw, dict) else None
-    return {"blocks": blocks, "pick": pick, "tradeDate": h.get("tradeDate")}
+    sat_ts: set[str] = set()
+    try:
+        from data_sync_service.service.twin_star_daily import live_sat_ts_codes
+
+        sat_ts = live_sat_ts_codes()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("notifications: sat ts codes failed: %s", exc)
+    return {"blocks": blocks, "pick": pick, "tradeDate": h.get("tradeDate"), "satTs": sat_ts}
 
 
 def _anchor_blocks() -> dict[str, dict[str, Any]]:
@@ -301,15 +329,22 @@ def _stop_trail_alerts(mode: str = "single_track", ctx: dict[str, Any] | None = 
     ctx = ctx or {"blocks": _anchor_blocks(), "pick": None, "tradeDate": None}
     pick = ctx.get("pick")
     as_of = _parse_iso_day(ctx.get("tradeDate")) or date.today()
+    sat_ts = ctx.get("satTs") if isinstance(ctx.get("satTs"), set) else set()
     out: list[dict[str, Any]] = []
     rotate_n = 0
     for market, block in (ctx.get("blocks") or {}).items():
-        book = _holding_book(mode, pick if isinstance(pick, str) else None, market)
-        if book == "idle":
-            continue
         for hold in block.get("holdings") or []:
             symbol = str(hold.get("symbol") or "")
             if not symbol:
+                continue
+            book = _holding_book(
+                mode,
+                pick if isinstance(pick, str) else None,
+                market,
+                symbol,
+                sat_ts,
+            )
+            if book == "idle":
                 continue
             if mode == "single_track" and pick not in (None, "STOCK") and market == "CN":
                 rotate_n += 1
@@ -413,21 +448,27 @@ def _rolling_oos_warning() -> list[dict[str, Any]]:
 
 
 def _pyramid_trigger_alerts(mode: str = "single_track", ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """S-3 pyramid-add: only when the stock basket is the live book (pick=STOCK)."""
-    if mode == "twin_star":
-        return []
+    """S-3 pyramid-add: leftover basket names only. Never on satellite."""
     ctx = ctx or {"blocks": _anchor_blocks(), "pick": None}
     pick = ctx.get("pick")
     if pick not in (None, "STOCK"):
         return []
+    sat_ts = ctx.get("satTs") if isinstance(ctx.get("satTs"), set) else set()
     out: list[dict[str, Any]] = []
     for market, block in (ctx.get("blocks") or {}).items():
-        if _holding_book(mode, pick if isinstance(pick, str) else None, market) != "s3":
-            continue
         for hold in block.get("holdings") or []:
             symbol = str(hold.get("symbol") or "")
             name = str(hold.get("name") or symbol)
             if not symbol:
+                continue
+            book = _holding_book(
+                mode,
+                pick if isinstance(pick, str) else None,
+                market,
+                symbol,
+                sat_ts,
+            )
+            if book != "s3":
                 continue
             if hold.get("pyramidAdded"):
                 continue

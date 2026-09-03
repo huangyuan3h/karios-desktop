@@ -16,7 +16,7 @@
 |----|------|
 | §19 S-3 | ✅ 封闭（STOCK 腿生成器；pick=STOCK 才进篮） |
 | §22 / 机会双子星 | 🟢 **P0 主线** 实盘默认 = [机会双子星 v3.1 clip4](./backtests/state-bucket-algo-2026-08-31.md)（4×12.5%）；核心腿 [择强单轨](./modules/pick-strong-track.md) past_year **+190.6%** · clip4 **+194.9%** / DD12.6 |
-| §8 回测 | 🟡 下一刀 = B2/B3/B5 日流程 + A5 双子星 C4；action Zod（OPT-134）已锁 4×12.5% |
+| §8 回测 | 🟡 运营阶段 B2–B5/A5 日流程已落地（OPT-135）；S-3 C4 统计仍等 20 笔 |
 | §4/5/6 | 按需 OPT（124–127 稳定性），不改策略 |
 
 ## 当前方向（默认 clip4 之后）
@@ -24,7 +24,7 @@
 - **P0：把机会双子星跑成产品**——不扫新卫星参。三线并行：[工程 / 业务对齐 / 回测可分析](./designs/twin-star-ops-phase-2026-09-02.md)
 - 冻结：`skip_t1`+strict、4×12.5%、body=3、回测=T 开盘、保护止损不进腿、past_year 不当拒收闸
 - 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
-- 脉冲天平仍观察层；C4 要改成双子星 paper vs 回测（停用 S-3「缺 19 只」当交易铃）
+- 脉冲天平仍观察层；Watchlist 占用对照已是双子星 C4-lite（你卫星仓 vs 引擎模拟）；S-3 统计 C4 仍等 20 笔平仓
 
 ---
 
@@ -42,6 +42,7 @@
 | 4 [done] 2026-09-02 | 可分析 | 每日跳过数 + 卫星 blotter |
 | 5 [done] 2026-09-02 | 工程 | 12:30 快照失败可见；核心 ETF / dailybasic 新鲜度当双子星健康 |
 | 6 [done] 2026-09-02 | 工程 | `GET /api/backtest/twin-star/action` Zod + clip4 字面量（4×12.5% 再漂会拒收） |
+| 7 [done] 2026-09-02 | 业务+可分析 | 日流程写进 Watchlist；pick≠STOCK 全 CN 卫星；STOCK 日 sat/S-3 拆开；S-3 缺票不当交易铃 |
 
 **不做**：涨停顺位补、金字塔折进卫星、14:30 价当回测开盘、自动下单。
 
@@ -69,7 +70,7 @@
 
 ## P0-3 C4 paper对照（跳过·等20笔）
 
-≥20笔平仓后 `scripts/paper_vs_backtest_report.py` 跑，现在 3/20 跳过。
+≥20笔平仓后 `scripts/paper_vs_backtest_report.py` 跑，现在 3/20 跳过。双子星占用对照（你卫星仓 vs 引擎模拟）已在 Watchlist，不当交易铃。
 
 ---
 

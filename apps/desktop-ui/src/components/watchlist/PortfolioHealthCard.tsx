@@ -43,8 +43,12 @@ import {
   SAT_MAX_POS,
   buildTwinStarTradePlan,
   etfSleeveKey,
+  isLiveSatelliteStock,
   satConclusionLine,
   satConditionalLine,
+  satNameTsFromAction,
+  twinStarDayFlow,
+  type TwinStarDayStep,
   type TwinStarTradePlan,
   type TwinStarTradeRow,
 } from '@/lib/twin-star-trade-plan';
@@ -125,8 +129,8 @@ function PickStrongOpsPanel({
       steps.push(
         twinStar
           ? corePct >= 100
-            ? `现有 ${stockHoldingsCount} 只股票仓（卫星/S-3）· 今日无卫星占用 → 核心 100% 配 ETF`
-            : `现有 ${stockHoldingsCount} 只股票仓（卫星/S-3 · 核心 ${corePct}% 配 ETF）`
+            ? `现有 ${stockHoldingsCount} 只 CN 卫星仓（见上方 · 不要按股票篮轮出）· 今日无新占用 → 核心 100% 配 ETF`
+            : `现有 ${stockHoldingsCount} 只 CN 卫星仓（见上方 · 核心 ${corePct}% 配 ETF）`
           : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`,
       );
     }
@@ -139,7 +143,13 @@ function PickStrongOpsPanel({
         ? `今日无人过线 → 核心腿 ${corePct}% 转逆回购 / 观望`
         : '今日无人过线 → 100% 逆回购 / 空仓观望',
     );
-    if (stockHoldingsCount > 0) steps.push(twinStar ? '股票仓属卫星/S-3 体系（核心腿不持股票）' : '股票仓也应清到空（单轨不持）');
+    if (stockHoldingsCount > 0) {
+      steps.push(
+        twinStar
+          ? 'CN 股票属卫星仓（见上方），不是股票篮应轮出'
+          : '股票仓也应清到空（单轨不持）',
+      );
+    }
     if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
   }
 
@@ -319,6 +329,49 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
       {h.note && <div className="mt-1 text-[11px] text-[var(--k-muted)]">{h.note}</div>}
     </div>
   );
+}
+
+function TwinStarDayPlaybook({
+  plan,
+  afterSatWindow,
+  snapshotFailed,
+  gateOpen,
+}: {
+  plan: TwinStarTradePlan;
+  afterSatWindow: boolean;
+  snapshotFailed: boolean;
+  gateOpen: boolean;
+}) {
+  const steps = twinStarDayFlow({ plan, afterSatWindow, snapshotFailed, gateOpen });
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2">
+      <div className="mb-1.5 text-[11px] font-semibold">今日顺序 · 先核心再卫星</div>
+      <ol className="flex flex-col gap-1">
+        {steps.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+            <span className="w-10 shrink-0 font-mono text-[10px] text-[var(--k-muted)]">{s.clock}</span>
+            <span className="font-medium">{s.title}</span>
+            <DayStepBadge status={s.status} />
+            <span className="min-w-0 text-[var(--k-muted)]">{s.detail}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function DayStepBadge({ status }: { status: TwinStarDayStep['status'] }) {
+  const label =
+    status === 'blocked' ? '不可用' : status === 'wait' ? '等待' : status === 'idle' ? '无' : '做';
+  const cls =
+    status === 'blocked'
+      ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300'
+      : status === 'wait'
+        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+        : status === 'idle'
+          ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]'
+          : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+  return <span className={cn('rounded border px-1 py-px text-[9px] font-semibold', cls)}>{label}</span>;
 }
 
 function BuyList({
@@ -675,7 +728,9 @@ function SatSleevePanel({
           每只总资产 {plan.satSlotNavPct}% · body3 退出
         </span>
       </div>
-      <div className="mb-1.5 text-[10px] leading-snug text-[var(--k-muted)]">{plan.bookNote}</div>
+      <div className="mb-1.5 text-[10px] leading-snug text-[var(--k-muted)]">
+        C4 占用对照（不是交易铃）· {plan.bookNote}
+      </div>
       {empty ? (
         <div className="text-[11px] text-[var(--k-muted)]">空仓 · 等 R-wide 开闸后填槽</div>
       ) : null}
@@ -985,7 +1040,8 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   const sleeve = data?.multiAssetSleeve;
   const pickKey = sleeve?.pick?.key ?? null;
   const allowStockBuys = pickKey === 'STOCK';
-  const rotateOutStocks = pickKey != null && pickKey !== 'STOCK';
+  const rotateOutCn = !twinStar && pickKey != null && pickKey !== 'STOCK';
+  const rotateOutHk = pickKey != null && pickKey !== 'STOCK';
   const stockHoldingsCount =
     (data?.holdings?.length ?? 0) + (data?.hkHealth?.holdings?.length ?? 0);
   const coreTargetPct = twinStarQ.data?.sat?.coreTargetPct ?? 100;
@@ -1037,18 +1093,37 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
     });
   }, [twinStar, twinStarQ.data, data, afterSatWindow, pickKey, sleeve]);
 
+  const satNameTs = React.useMemo(
+    () => satNameTsFromAction(twinStarQ.data?.sat),
+    [twinStarQ.data?.sat],
+  );
   const satStockSymbols = React.useMemo(() => {
-    if (!tradePlan) return new Set<string>();
-    return new Set([
-      ...tradePlan.satHeldSymbols,
-      ...[...tradePlan.holds, ...tradePlan.buys, ...tradePlan.sells]
-        .filter((r) => r.sleeve === 'sat' && r.kind === 'stock')
-        .map((r) => r.symbol),
-    ]);
-  }, [tradePlan]);
+    if (!twinStar) return new Set<string>();
+    const fromPlan = tradePlan
+      ? [
+          ...tradePlan.satHeldSymbols,
+          ...[...tradePlan.holds, ...tradePlan.buys, ...tradePlan.sells]
+            .filter((r) => r.sleeve === 'sat' && r.kind === 'stock')
+            .map((r) => r.symbol),
+        ]
+      : [];
+    const fromLive = (data?.holdings ?? [])
+      .filter((h) => isLiveSatelliteStock(h.symbol, { pickKey, satNameTs }))
+      .map((h) => h.symbol);
+    return new Set([...fromPlan, ...fromLive]);
+  }, [twinStar, tradePlan, data, pickKey, satNameTs]);
 
   const cnBasketBlock = React.useMemo(() => {
-    if (!twinStar || !data || satStockSymbols.size === 0) return data;
+    if (!twinStar || !data) return data;
+    if (pickKey !== 'STOCK') {
+      return {
+        ...data,
+        holdings: [],
+        infoSummary: data.infoSummary
+          ? { ...data.infoSummary, holdingsCount: 0 }
+          : data.infoSummary,
+      };
+    }
     const holdings = (data.holdings ?? []).filter((h) => !satStockSymbols.has(h.symbol));
     if (holdings.length === (data.holdings ?? []).length) return data;
     return {
@@ -1058,7 +1133,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         ? { ...data.infoSummary, holdingsCount: holdings.length }
         : data.infoSummary,
     };
-  }, [twinStar, data, satStockSymbols]);
+  }, [twinStar, data, pickKey, satStockSymbols]);
 
   async function addToWatchlistAndRemind(values: { targetPrice: number | null; note: string }) {
     if (!reminderTarget) return;
@@ -1325,6 +1400,12 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
 
         {twinStar && tradePlan ? (
           <>
+            <TwinStarDayPlaybook
+              plan={tradePlan}
+              afterSatWindow={afterSatWindow}
+              snapshotFailed={satSnapFailed}
+              gateOpen={Boolean(twinStarQ.data?.sat?.gateOpen)}
+            />
             <TwinStarTradePlanPanel
               plan={tradePlan}
               snapshotAt={twinStarQ.data?.sat?.snapshotAt}
@@ -1359,7 +1440,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
               title="A股线（股票篮生成器）"
               tag="CN"
               block={cnBasketBlock}
-              recon={reconByMarket.get('CN')}
+              recon={undefined}
               onOpen={onOpenStock}
               onRemind={handleRemind}
               onBuy={handleBuy}
@@ -1367,13 +1448,15 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
               boughtSymbols={boughtSymbols}
               overall={data}
               allowStockBuys={allowStockBuys}
-              rotateOutStocks={rotateOutStocks}
+              rotateOutStocks={rotateOutCn}
               twinStar={twinStar}
               coreTargetPct={coreTargetPct}
               idleHint={
                 !allowStockBuys
                   ? `股票篮未启用 · 核心是 ${pickKey ?? 'ETF'} · 卫星见上方`
-                  : null
+                  : satStockSymbols.size > 0
+                    ? '卫星仓见上方 · 下方只列股票篮剩余持仓'
+                    : null
               }
             />
           </>
@@ -1397,7 +1480,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 title="港股线（股票篮生成器）"
                 tag="HK"
                 block={data?.hkHealth}
-                recon={reconByMarket.get('HK')}
+                recon={undefined}
                 onOpen={onOpenStock}
                 onRemind={handleRemind}
                 onBuy={handleBuy}
@@ -1405,15 +1488,13 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                 boughtSymbols={boughtSymbols}
                 overall={data}
                 allowStockBuys={allowStockBuys}
-                rotateOutStocks={rotateOutStocks}
+                rotateOutStocks={rotateOutHk}
                 twinStar={twinStar}
                 coreTargetPct={coreTargetPct}
               />
               {tradePlan && tradePlan.recipeNames.length > 0 ? (
                 <details className="text-[10px] text-[var(--k-muted)]">
-                  <summary className="cursor-pointer">
-                    引擎模拟 {tradePlan.recipeSatHeld} 只（对照）· 你卫星仓 {tradePlan.satHeld}/{SAT_MAX_POS}
-                  </summary>
+                  <summary className="cursor-pointer">引擎模拟名单（对照）</summary>
                   <div className="mt-1 font-mono leading-relaxed">
                     {tradePlan.recipeNames.map((h) => `${h.ts}${h.daysLeft != null ? `(剩${h.daysLeft}d)` : ''}`).join(' · ')}
                   </div>
@@ -1469,7 +1550,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                     boughtSymbols={boughtSymbols}
                     overall={data}
                     allowStockBuys={allowStockBuys}
-                    rotateOutStocks={rotateOutStocks}
+                    rotateOutStocks={rotateOutCn}
                     twinStar={twinStar}
                     coreTargetPct={coreTargetPct}
                   />
@@ -1485,7 +1566,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
                     boughtSymbols={boughtSymbols}
                     overall={data}
                     allowStockBuys={allowStockBuys}
-                    rotateOutStocks={rotateOutStocks}
+                    rotateOutStocks={rotateOutHk}
                     twinStar={twinStar}
                     coreTargetPct={coreTargetPct}
                   />

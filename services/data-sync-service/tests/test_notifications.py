@@ -295,6 +295,52 @@ def test_twin_star_does_not_emit_s3_pyramid_or_false_near_line(monkeypatch) -> N
     assert all(x.get("book") == "sat" for x in out)
 
 
+def test_twin_star_stock_day_splits_sat_from_s3_leftover() -> None:
+    ctx = {
+        "pick": "STOCK",
+        "tradeDate": "2026-09-02",
+        "satTs": {"300413.SZ"},
+        "blocks": {
+            "CN": {
+                "holdings": [
+                    {
+                        "symbol": "CN:300413",
+                        "name": "芒果超媒",
+                        "action": "HOLD",
+                        "pyramidAdded": False,
+                        "pyramidTriggerLine": 20.5,
+                        "lastClose": 21.0,
+                        "costPrice": 20,
+                        "entryDate": "2026-09-02",
+                        "trailingLine": 19.5,
+                        "nearStop": True,
+                        "nearStopLabel": "移动",
+                        "nearStopDistancePct": 0.4,
+                    },
+                    {
+                        "symbol": "CN:600111",
+                        "name": "北方稀土",
+                        "action": "HOLD",
+                        "pyramidAdded": False,
+                        "pyramidTriggerLine": 18.0,
+                        "lastClose": 19.0,
+                        "trailingLine": 17.2,
+                    },
+                ]
+            }
+        },
+    }
+    trail = nf._stop_trail_alerts("twin_star", ctx)
+    titles = [x["title"] for x in trail]
+    assert not any("接近移动" in t for t in titles)
+    assert not any("金字塔" in t for t in titles)
+    assert not any(x.get("book") == "s3" and "芒果" in x["title"] for x in trail)
+    pyramids = nf._pyramid_trigger_alerts("twin_star", ctx)
+    assert len(pyramids) == 1
+    assert "北方稀土" in pyramids[0]["title"]
+    assert pyramids[0]["book"] == "s3"
+
+
 def test_twin_star_sat_exit_and_protect_stop(monkeypatch) -> None:
     ctx = {
         "pick": "OIL",
