@@ -26,9 +26,12 @@
 | [`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
 | [`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
 | [`sat-hold-path-day2-2026-09-03.md`](./sat-hold-path-day2-2026-09-03.md) | 卫星第 1/2/3 日收盘路径（第 2 天亏了回不回） | ✅ 观察；不改 Live |
-| [`sat-fill-same-close-2026-09-03.md`](./sat-fill-same-close-2026-09-03.md) | 卫星成交：冻结 T 开盘 vs 当日收盘（Live 14:30 代理） | ❌ 拒收当成交改写（valid −17.7） |
+| [`sat-fill-same-close-2026-09-03.md`](./sat-fill-same-close-2026-09-03.md) | 卫星成交：T 开盘 vs 收盘 vs **真 14:30** | ❌ 14:30 相对核心 train/valid 亏；不改 Live |
+| [`sat-entry-c1-2026-09-03.md`](./sat-entry-c1-2026-09-03.md) | 14:30 入场过滤 C1（冲太高不买）/ C2（近涨停） | ❌ 不进 Live；C1 3% 修好夏普/回撤，valid tot 仍 −3.3 |
+| [`sat-habit-clock-2026-09-03.md`](./sat-habit-clock-2026-09-03.md) | 习惯 3 天 vs 4 天 · 13:30–15:00 买点 | ❌ 计数仍 3 天；换分钟无更佳；不改 Live |
+| [`sat-exit-hhmm-2026-09-03.md`](./sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | C1·14:30 卖三窗过核心；**未改 Live** |
 | [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
-| [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | 研究中，未进 Live |
+| [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | C1 已三窗，未进 Live |
 | [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 

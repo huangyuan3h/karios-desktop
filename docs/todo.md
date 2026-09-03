@@ -22,7 +22,8 @@
 ## 当前方向（默认 clip4 之后）
 
 - **P0：把机会双子星跑成产品**——不扫新卫星参。三线并行：[工程 / 业务对齐 / 回测可分析](./designs/twin-star-ops-phase-2026-09-02.md)
-- 卫星 **14:30 入场过滤**（观察层，不是 −5% 止损）：[一阶段草稿](./designs/sat-entry-filter-phase1-2026-09-03.md)——现有数据还不够判断能否提高收益
+- 卫星 **成交日历要对齐习惯，不能拿冻结 9:30 当 14:30**（P0-4）——优化目标是「我 14:30 买还能不能赚」，不是贴近 9:30 回测
+- 卫星 **14:30 入场过滤**：C1 3% 已三窗（tot/sr/dd）[sat-entry-c1](./backtests/sat-entry-c1-2026-09-03.md) — 相对无过滤 PASS+；vs 核心 valid tot −3.3，**不进 Live**
 - 冻结：`skip_t1`+strict、4×12.5%、body=3 收盘卖（无 −5%）、S-3 篮 10×10%、回测=T 开盘、past_year 不当拒收闸
 - 改策略前先读 [回测 SUMMARY](./backtests/SUMMARY.md) 与 [2026-09-03 讨论](./backtests/clip4-ops-decisions-2026-09-03.md)（Agent 规则在 `AGENTS.md`）
 - 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
@@ -74,6 +75,41 @@
 
 ≥20笔平仓后 `scripts/paper_vs_backtest_report.py` 跑，现在 3/20 跳过。双子星占用对照（你卫星仓 vs 引擎模拟）已在 Watchlist，不当交易铃。
 
+## P0-4 卫星成交日历：14:30 ≠ 冻结 9:30（2026-09-03）
+
+**大白话**：优化目标 = 在**你真实的买法**（当天缺口、约 14:30 买、第 3 日收盘卖）上，三窗不过拟合地找还能不能比纯核心赚。冻结 clip4 的 9:30 边是另一套策略，当对照，不当你的成绩单。
+
+已测（收盘代理）：[sat-fill-same-close-2026-09-03.md](./backtests/sat-fill-same-close-2026-09-03.md) — 相对冻结 T 开盘 valid −17.7，**拒收当改写 9:30 引擎**。习惯日历要另开实验室，主判据 twin vs **核心**（任一窗 >5pt 差于核心或明显过拟合 → 不进 Live）。
+
+### 导入什么（机器 36GB / 盘余 136GB / 库已 5.6GB）
+
+| 要 | 不要 |
+|----|------|
+| **5 分钟 · 按年汇总 · 2024+2025+2026** | 1 分钟（体积大、3 日持有用不上） |
+| **只入库 14:30–15:00 七根**（现成 `bar_5min`） | 30/60 分钟（14:30 对不齐） |
+| 全 A 尾盘即可（约 5000×500 日×7 ≈ 1700 万行、约 3–4GB） | 按月归档（和按年重复） |
+| | 全天 5 分钟（约 8× 行数，回测用不到早盘 K） |
+
+三窗是 2024-08～2026-08，少一年就不够。解压到 `data/2024_5min`、`data/2025_5min`、`data/2026_5min`，然后：
+
+```bash
+cd services/data-sync-service
+PYTHONPATH=src python3 scripts/import_ext_minute_csv.py
+```
+
+CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导完可删）。库只查引擎会扫的表。C1「14:30/今开」用日线开盘 + 已入库 14:30 价就够；只有要「14:30 之前振幅」才从 CSV **提炼一行/天**（9:30–14:30 OHLC），仍不要灌全天 48 根。
+
+**导入 [done] 2026-09-03**：三年尾盘 5 分钟入库（2320 万行，表 6.5GB）。`same_1430` 已跑：vs 核心 OOS2 +47.1、train −3.3、valid −10.9。
+
+### 回测顺序
+
+1. `same_1430` **[done] 2026-09-03**：当天缺口 + 14:30 成交。相对核心 train/valid 亏，不进 Live。
+2. **C1/C2 [done] 2026-09-03**：[sat-entry-c1](./backtests/sat-entry-c1-2026-09-03.md)。C1 3% 相对无过滤 tot/sr/dd 全过；vs 核心夏普、回撤已好，**valid 总收益 −3.3**。不进 Live。不重开 −5% / trail / 砍 4 槽。
+3. **3 天 vs 4 天 / 下午买点 [done] 2026-09-03**：[sat-habit-clock](./backtests/sat-habit-clock-2026-09-03.md)。计数仍 body=3；body=4 占槽；13:30–15:00 无更佳分钟。
+4. **C1 + 第 3 日卖点 [done] 2026-09-03**：[sat-exit-hhmm](./backtests/sat-exit-hhmm-2026-09-03.md)。14:30 卖三窗 tot/sr/dd 过核心；10:00 不如它。未改 Live。
+
+**不做**：1/30/60 分钟入库；全天 K；把 14:30 写进冻结 T 开盘；停等 baostock job；单窗好看就改 Live。
+
 ---
 
 ## 实施清单（剩余 P0/P1 各一行）
@@ -93,7 +129,7 @@
 
 ## 注意力预算
 
-每天：读本页 P0-0 + `modules/watchlist.md` Gate；每周一：跑天平；改 schema 前读 `AGENTS.md`。
+每天：读本页 P0-0 / P0-4 + `modules/watchlist.md` Gate；每周一：跑天平；改 schema 前读 `AGENTS.md`。
 
 ---
 *压缩规则：完成段只留外链，不回写 archive；新想法先 `designs/` 草稿。*

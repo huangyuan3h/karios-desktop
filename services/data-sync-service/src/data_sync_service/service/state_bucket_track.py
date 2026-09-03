@@ -5,8 +5,9 @@ S-gap 单态卫星 (frozen R12 / core_satellite_frozen_2026-08-31.json):
   factor  = amplitude 升序取前 1/3 (bucket_q=3, 最低波33%)
   gate    = R-wide (close>MA20 占比>0.5, 当日截面)
   entry   = T 日 open (信号取 T-1 状态), 滑点 0.15% 单边并入 COSTS_ROUNDTRIP
-            fill_mode=next_open is frozen. same_close is experiment-only
-            (today's S-gap, fill at today's close; Live ~14:30 proxy).
+            fill_mode=next_open is frozen. same_close / same_1430 and
+            14:30 entry filters (max_open_to_1430_pct / near_limit_buffer_pct)
+            are experiment-only. Live / UI must leave them unset.
   hold    = 3 交易日, close 出, 0.3% 往返
   slots   = 4 x POSITION_PCT 0.25 (sat sleeve ~100%; 12.5% of NAV at 50/50)
 
@@ -32,7 +33,10 @@ R_WIDE_THRESHOLD = 0.5
 WARMUP_CAL_DAYS = 120
 FILL_NEXT_OPEN = "next_open"
 FILL_SAME_CLOSE = "same_close"
-VALID_FILL_MODES = (FILL_NEXT_OPEN, FILL_SAME_CLOSE)
+FILL_SAME_1430 = "same_1430"
+VALID_FILL_MODES = (FILL_NEXT_OPEN, FILL_SAME_CLOSE, FILL_SAME_1430)
+SAME_DAY_FILL_MODES = (FILL_SAME_CLOSE, FILL_SAME_1430)
+HABIT_FILL_TIMES = ("1000", "1330", "1400", "1430", "1440", "1450", "1500")
 
 
 def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
@@ -180,6 +184,103 @@ def _t1_limit_locked(
     return float(r["close"]) >= pc * (1 + lim - 0.004)
 
 
+def _limit_locked_px(px: float | None, pre_close: float | None, ts: str) -> bool:
+    if not px or not pre_close or pre_close <= 0:
+        return False
+    lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
+    return float(px) >= float(pre_close) * (1 + lim - 0.004)
+
+
+def _board_limit_pct(ts: str) -> float:
+    return 0.20 if str(ts).startswith(("3", "68")) else 0.10
+
+
+def _same_1430_skip_reason(
+    *,
+    ts: str,
+    px: float | None,
+    open_px: float | None,
+    pre_close: float | None,
+    skip_t1_limit: bool,
+    max_open_to_1430_pct: float | None,
+    near_limit_buffer_pct: float | None,
+) -> str | None:
+    """Why this name should not fill at 14:30. None = still eligible.
+
+    skip_t1_limit uses the frozen 40bp-under-limit lock. C1 skips names that
+    already ran too far from today's open (pulse spent). C2 skips names already
+    hugging the board limit (unfillable / buying the high). Strict pool does
+    not refill from worse ranks; idle notional stays with core.
+    """
+    if skip_t1_limit and _limit_locked_px(px, pre_close, ts):
+        return "skip_t1_limit"
+    if px is None or px <= 0:
+        return None
+    if max_open_to_1430_pct is not None and open_px and open_px > 0:
+        if (float(px) / float(open_px) - 1.0) > max_open_to_1430_pct:
+            return "skip_1430_run"
+    if near_limit_buffer_pct is not None and pre_close and pre_close > 0:
+        lim = _board_limit_pct(ts)
+        if float(px) >= float(pre_close) * (1.0 + lim - near_limit_buffer_pct):
+            return "skip_1430_near_limit"
+    return None
+
+
+def _skip_kind_for_reason(reason: str) -> str:
+    if reason == "skip_t1_limit":
+        return "skip_t1"
+    if reason == "skip_1430_run":
+        return "skip_c1"
+    if reason == "skip_1430_near_limit":
+        return "skip_c2"
+    return "skip_entry"
+
+
+def _load_bar5_closes(
+    start: str, end: str, times: tuple[str, ...] = ("1430",)
+) -> dict[str, dict[str, dict[str, float]]]:
+    """{hhmm: {ts_code: {date: close}}} from bar_5min. Empty if table missing."""
+    if not times:
+        return {}
+    s = get_settings()
+    out: dict[str, dict[str, dict[str, float]]] = {t: defaultdict(dict) for t in times}
+    try:
+        conn = psycopg.connect(s.database_url)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ts_code, trade_date, trade_time, close FROM bar_5min "
+            "WHERE trade_time = ANY(%s) AND trade_date >= %s AND trade_date <= %s "
+            "AND close IS NOT NULL AND close > 0",
+            (list(times), start, end),
+        )
+        for ts, d, hhmm, c in cur.fetchall():
+            key = str(hhmm)
+            if key not in out:
+                continue
+            ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+            out[key][str(ts)][ds] = float(c)
+        conn.close()
+    except Exception:
+        return {t: {} for t in times}
+    return {t: dict(m) for t, m in out.items()}
+
+
+def _load_1430_closes(start: str, end: str) -> dict[str, dict[str, float]]:
+    """Last-hour 14:30 close per ts_code/day. Kept for tests/callers."""
+    return _load_bar5_closes(start, end, ("1430",)).get("1430") or {}
+
+
+def _intraday_px(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> float | None:
+    by = ctx.get("px_by_hhmm") or {}
+    px = (by.get(hhmm) or {}).get(ts, {}).get(day)
+    if px is not None:
+        return float(px)
+    if hhmm == "1430":
+        px = (ctx.get("px_1430") or {}).get(ts, {}).get(day)
+        return None if px is None else float(px)
+    return None
+
+
 def load_sgap_context(start: str, end: str) -> dict[str, Any]:
     """Load OHLCV/MV/calendar once; replays with different pool modes reuse this."""
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
@@ -193,6 +294,7 @@ def load_sgap_context(start: str, end: str) -> dict[str, Any]:
         m = {r["date"]: r["close"] for r in series if r["date"] in cal_set and r["close"]}
         if m:
             close_by_ts[ts] = m
+    px_by_hhmm = _load_bar5_closes(w_start, end, HABIT_FILL_TIMES)
     return {
         "per_ts": per_ts,
         "mv_map": mv_map,
@@ -201,6 +303,8 @@ def load_sgap_context(start: str, end: str) -> dict[str, Any]:
         "close_by_ts": close_by_ts,
         "idx_by_day": {d: i for i, d in enumerate(cal)},
         "feat_cache": {},
+        "px_by_hhmm": px_by_hhmm,
+        "px_1430": px_by_hhmm.get("1430") or {},
     }
 
 
@@ -363,16 +467,42 @@ def replay_sgap_from_context(
     protect_stop_pct: float | None = None,
     trail_after_body_pct: float | None = None,
     fill_mode: str = FILL_NEXT_OPEN,
+    fill_hhmm: str = "1430",
+    exit_hhmm: str | None = None,
+    max_open_to_1430_pct: float | None = None,
+    near_limit_buffer_pct: float | None = None,
 ) -> dict[str, Any]:
     """Replay S-gap on a preloaded context. Positions start empty at ``start``.
 
     fill_mode:
       next_open (frozen): yesterday S-gap → today open.
-      same_close (experiment): today's S-gap → today's close. Proxies Live
-      ~14:30 until bar_5min coverage is complete. Do not pass from Live/UI.
+      same_close (experiment): today's S-gap → today's close.
+      same_1430 (experiment): today's S-gap → bar_5min close at fill_hhmm
+      (default 1430). Do not pass same_* from Live/UI.
+
+    fill_hhmm: 5-minute bar-end time used with same_1430 (e.g. 1330, 1400, 1500).
+    exit_hhmm: experiment-only body-exit print (e.g. 1000, 1430). None = daily close.
+      Live / UI must leave this None.
+
+    max_open_to_1430_pct / near_limit_buffer_pct: experiment-only C1/C2
+    filters on same_1430. Live / UI must leave them None.
     """
     if fill_mode not in VALID_FILL_MODES:
         raise ValueError(f"fill_mode must be one of {VALID_FILL_MODES}, got {fill_mode!r}")
+    fill_hhmm = str(fill_hhmm or "1430")
+    if fill_mode == FILL_SAME_1430 and (len(fill_hhmm) != 4 or not fill_hhmm.isdigit()):
+        raise ValueError(f"fill_hhmm must be HHMM, got {fill_hhmm!r}")
+    if exit_hhmm is not None:
+        exit_hhmm = str(exit_hhmm)
+        if len(exit_hhmm) != 4 or not exit_hhmm.isdigit():
+            raise ValueError(f"exit_hhmm must be HHMM, got {exit_hhmm!r}")
+    if max_open_to_1430_pct is not None or near_limit_buffer_pct is not None:
+        if fill_mode != FILL_SAME_1430:
+            raise ValueError("14:30 entry filters require fill_mode=same_1430")
+        if max_open_to_1430_pct is not None and max_open_to_1430_pct <= 0:
+            raise ValueError("max_open_to_1430_pct must be > 0")
+        if near_limit_buffer_pct is not None and near_limit_buffer_pct <= 0:
+            raise ValueError("near_limit_buffer_pct must be > 0")
     if pool_mode is None:
         pool_mode = "fallback" if limit_fallback else "strict"
     clip = float(position_pct)
@@ -418,6 +548,10 @@ def replay_sgap_from_context(
         for ts, reason in to_close:
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
+            if reason == "body_exit" and exit_hhmm:
+                intra = _intraday_px(ctx, ts, day, exit_hhmm)
+                if intra is not None:
+                    cc = intra
             trade_ret = (cc / p["entry_price"] - 1) if cc and p["entry_price"] else 0.0
             if cc and p["entry_price"]:
                 realized += (trade_ret - COSTS_ROUNDTRIP) * clip
@@ -446,10 +580,12 @@ def replay_sgap_from_context(
         gap_count = 0
         strict_count = 0
         skip_t1_count = 0
+        skip_c1_count = 0
+        skip_c2_count = 0
         filled_today = 0
         gate_open = False
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
-            if fill_mode == FILL_SAME_CLOSE:
+            if fill_mode in SAME_DAY_FILL_MODES:
                 feat_all = _day_all
                 lock_day = day
             else:
@@ -459,29 +595,55 @@ def replay_sgap_from_context(
             gap_stocks = [ts for ts, d in feat_all.items() if d["is_gap"]]
             ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts]["amp"])
             qn = max(1, len(ranked) // bucket_q) if ranked else 0
-            locked = {
-                ts
-                for ts in ranked
-                if skip_t1_limit and _t1_limit_locked(per_ts, date_idx, lock_day, ts)
-            }
+            locked_reasons: dict[str, str] = {}
+            if fill_mode == FILL_SAME_1430:
+                apply_1430_filters = (
+                    skip_t1_limit
+                    or max_open_to_1430_pct is not None
+                    or near_limit_buffer_pct is not None
+                )
+                if apply_1430_filters:
+                    for ts in ranked:
+                        di_lock = date_idx.get(ts, {}).get(day, -1)
+                        series_l = per_ts.get(ts)
+                        bar_l = series_l[di_lock] if di_lock >= 0 and series_l else {}
+                        reason = _same_1430_skip_reason(
+                            ts=ts,
+                            px=_intraday_px(ctx, ts, day, fill_hhmm),
+                            open_px=bar_l.get("open") if bar_l else None,
+                            pre_close=bar_l.get("pre_close") if bar_l else None,
+                            skip_t1_limit=skip_t1_limit,
+                            max_open_to_1430_pct=max_open_to_1430_pct,
+                            near_limit_buffer_pct=near_limit_buffer_pct,
+                        )
+                        if reason:
+                            locked_reasons[ts] = reason
+            elif skip_t1_limit:
+                for ts in ranked:
+                    if _t1_limit_locked(per_ts, date_idx, lock_day, ts):
+                        locked_reasons[ts] = "skip_t1_limit"
+            locked = set(locked_reasons)
             gate_open = True
             gap_count = len(ranked)
             strict_count = qn
             bucket = ranked[:qn]
-            skip_t1_count = sum(1 for ts in bucket if ts in locked)
+            skip_t1_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_t1_limit")
+            skip_c1_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_run")
+            skip_c2_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_near_limit")
             for ts in bucket:
-                if ts not in locked:
+                reason = locked_reasons.get(ts)
+                if not reason:
                     continue
                 feat = feat_all.get(ts) or {}
                 blotter.append(
                     _audit_blotter_row(
-                        kind="skip_t1",
+                        kind=_skip_kind_for_reason(reason),
                         date=day,
                         ts=ts,
                         amp=feat.get("amp"),
                         amp_rank=ranked.index(ts) + 1,
-                        skip_t1=True,
-                        close_reason="skip_t1_limit",
+                        skip_t1=reason == "skip_t1_limit",
+                        close_reason=reason,
                         contrib_pct=0.0,
                     )
                 )
@@ -504,16 +666,22 @@ def replay_sgap_from_context(
                 if di < 0 or not series:
                     continue
                 bar = series[di]
-                px = bar.get("close") if fill_mode == FILL_SAME_CLOSE else bar.get("open")
+                if fill_mode == FILL_SAME_1430:
+                    px = _intraday_px(ctx, ts, day, fill_hhmm)
+                elif fill_mode == FILL_SAME_CLOSE:
+                    px = bar.get("close")
+                else:
+                    px = bar.get("open")
                 if px and px > 0:
-                    if skip_unfillable:
+                    if skip_unfillable or fill_mode == FILL_SAME_1430:
                         pc = bar.get("pre_close")
                         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
-                        one_word = (
-                            bar["high"] == bar["low"] == bar["close"]
-                            if fill_mode == FILL_SAME_CLOSE
-                            else bar["high"] == bar["low"] == bar["open"]
-                        )
+                        if fill_mode == FILL_SAME_1430:
+                            one_word = False
+                        elif fill_mode == FILL_SAME_CLOSE:
+                            one_word = bar["high"] == bar["low"] == bar["close"]
+                        else:
+                            one_word = bar["high"] == bar["low"] == bar["open"]
                         if pc and pc > 0 and (
                             one_word or px >= pc * (1 + lim - 0.004)
                         ):
@@ -549,6 +717,8 @@ def replay_sgap_from_context(
                 "gapCount": gap_count,
                 "strictCount": strict_count,
                 "skipT1Count": skip_t1_count,
+                "skipC1Count": skip_c1_count,
+                "skipC2Count": skip_c2_count,
                 "filledToday": filled_today,
                 "idleSlots": idle_slots,
                 "gateOpen": gate_open,
@@ -617,6 +787,8 @@ def replay_sgap_from_context(
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
     skip_n = sum(1 for b in blotter if b.get("kind") == "skip_t1")
+    skip_c1_n = sum(1 for b in blotter if b.get("kind") == "skip_c1")
+    skip_c2_n = sum(1 for b in blotter if b.get("kind") == "skip_c2")
     fill_n = sum(1 for b in blotter if b.get("kind") == "fill")
     close_reasons: dict[str, int] = {}
     held_days: list[int] = []
@@ -636,6 +808,8 @@ def replay_sgap_from_context(
             "satPct": round((final_nav - 1) * 100, 2),
             "satMaxDdPct": round(max_dd * 100, 1),
             "skipT1Count": skip_n,
+            "skipC1Count": skip_c1_n,
+            "skipC2Count": skip_c2_n,
             "fillCount": fill_n,
             "closeReasons": close_reasons,
             "avgHeldDays": round(sum(held_days) / len(held_days), 2) if held_days else 0.0,
@@ -644,6 +818,10 @@ def replay_sgap_from_context(
         "position_pct": clip,
         "max_pos": max_pos,
         "fill_mode": fill_mode,
+        "fill_hhmm": fill_hhmm if fill_mode == FILL_SAME_1430 else None,
+        "exit_hhmm": exit_hhmm,
+        "max_open_to_1430_pct": max_open_to_1430_pct,
+        "near_limit_buffer_pct": near_limit_buffer_pct,
     }
 
 
@@ -663,6 +841,10 @@ def build_sgap_timeline(
     protect_stop_pct: float | None = None,
     trail_after_body_pct: float | None = None,
     fill_mode: str = FILL_NEXT_OPEN,
+    fill_hhmm: str = "1430",
+    exit_hhmm: str | None = None,
+    max_open_to_1430_pct: float | None = None,
+    near_limit_buffer_pct: float | None = None,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -670,8 +852,8 @@ def build_sgap_timeline(
              openPositions: [...], summary: {...}}.
     skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
     pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
-    protect_stop_pct / trail_after_body_pct / fill_mode: experiment-only;
-    live UI must leave fill_mode at next_open and the stops at None.
+    protect_stop_pct / trail_after_body_pct / fill_mode / 14:30 filters:
+    experiment-only; live UI must leave fill_mode at next_open and the rest None.
     """
     ctx = load_sgap_context(start, end)
     return replay_sgap_from_context(
@@ -690,6 +872,10 @@ def build_sgap_timeline(
         protect_stop_pct=protect_stop_pct,
         trail_after_body_pct=trail_after_body_pct,
         fill_mode=fill_mode,
+        fill_hhmm=fill_hhmm,
+        exit_hhmm=exit_hhmm,
+        max_open_to_1430_pct=max_open_to_1430_pct,
+        near_limit_buffer_pct=near_limit_buffer_pct,
     )
 
 

@@ -168,6 +168,9 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
    - 核心 S-3 篮只数 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core-stock-clip-2026-09-03.md)
    - 卫星退出 / −5% / trail → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat-exit-trail-2026-09-03.md)
    - 卫星 14:30 / 收盘成交日历 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat-fill-same-close-2026-09-03.md)
+   - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat-entry-c1-2026-09-03.md)
+   - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat-habit-clock-2026-09-03.md)
+   - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat-exit-hhmm-2026-09-03.md)
    - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
    - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/state-bucket-algo-2026-08-31.md)
 2. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。

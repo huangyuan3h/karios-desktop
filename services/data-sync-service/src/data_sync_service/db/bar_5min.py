@@ -49,6 +49,8 @@ ON CONFLICT (ts_code, trade_date, trade_time) DO UPDATE SET
     vol = EXCLUDED.vol,
     amount = EXCLUDED.amount,
     source = EXCLUDED.source
+WHERE (CASE {TABLE_NAME}.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
+    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
 """
 
 
@@ -74,7 +76,6 @@ def upsert_5min_bars(
     """Idempotent upsert. Each row needs trade_date, time, close; OHLC/vol optional."""
     if not rows:
         return 0
-    ensure_table()
     payload = []
     for r in rows:
         close = r.get("close")
@@ -94,11 +95,58 @@ def upsert_5min_bars(
                 source,
             )
         )
+    return upsert_5min_payload(payload)
+
+
+def upsert_5min_payload(payload: list[tuple]) -> int:
+    """Bulk COPY into a temp table then ranked INSERT. Safe to rerun."""
     if not payload:
         return 0
+    ensure_table()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.executemany(UPSERT_SQL, payload)
+            cur.execute(
+                """
+                CREATE TEMP TABLE _bar_5min_in (
+                    ts_code TEXT,
+                    trade_date TEXT,
+                    trade_time TEXT,
+                    open DOUBLE PRECISION,
+                    high DOUBLE PRECISION,
+                    low DOUBLE PRECISION,
+                    close DOUBLE PRECISION,
+                    vol DOUBLE PRECISION,
+                    amount DOUBLE PRECISION,
+                    source TEXT
+                ) ON COMMIT DROP
+                """
+            )
+            with cur.copy(
+                "COPY _bar_5min_in (ts_code, trade_date, trade_time, "
+                "open, high, low, close, vol, amount, source) FROM STDIN"
+            ) as copy:
+                for row in payload:
+                    copy.write_row(row)
+            cur.execute(
+                f"""
+                INSERT INTO {TABLE_NAME}(
+                    ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
+                )
+                SELECT ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
+                FROM _bar_5min_in
+                WHERE close IS NOT NULL
+                ON CONFLICT (ts_code, trade_date, trade_time) DO UPDATE SET
+                    open = EXCLUDED.open,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    close = EXCLUDED.close,
+                    vol = EXCLUDED.vol,
+                    amount = EXCLUDED.amount,
+                    source = EXCLUDED.source
+                WHERE (CASE {TABLE_NAME}.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
+                    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
+                """
+            )
         conn.commit()
     return len(payload)
 

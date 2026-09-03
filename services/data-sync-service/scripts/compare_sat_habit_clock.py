@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-"""S-gap satellite fill: frozen next-open vs same-day close (Live habit proxy).
+"""Habit satellite clock: hold 3 vs 4 days, and afternoon fill time.
 
-Frozen engine: yesterday S-gap → next morning open, body=3 close.
-Live habit: today's tape as S-gap, buy ~14:30, body=3 close.
+Frozen recipe counts the entry day as day 1 (Mon buy → Wed close = body=3).
+14:30 buy on the gap day uses the same counter, so you miss most of day 1.
+This grid asks: (1) does body=4 restore the missing session? (2) among
+13:30 / 14:00 / 14:30 / 14:40 / 14:50 / 15:00, which fill is best?
 
-This grid does NOT rewrite 14:30 into the frozen T-open fill. It is a separate
-calendar: signal today, fill today's close (conservative 14:30 proxy until
-bar_5min coverage is complete). Close typically >= 14:30 on gap days that
-keep rising; day-1 MTM is ~0 (bought at close).
-
-Satellite stays frozen clip4 (4 × 25%, strict skip_t1). Core stays frozen
-pick-strong trail8. Verdict is twin NAV vs frozen next_open twin.
->5pt worse on any OOS2/train/valid window → reject as a Live fill rewrite.
-Even a PASS does not change Live; it only answers whether the habit still
-harvests the sat edge vs core.
+Scoreboard vs core on total + Sharpe + maxDD. Not a rewrite of frozen T-open.
+Live does not change.
 
 Usage:
   cd services/data-sync-service
-  PYTHONPATH=src:scripts python3 scripts/compare_sat_fill_same_close.py
-  PYTHONPATH=src:scripts python3 scripts/compare_sat_fill_same_close.py --save-report
+  PYTHONPATH=src:scripts python3 scripts/compare_sat_habit_clock.py --save-report
 """
 from __future__ import annotations
 
@@ -35,9 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from data_sync_service.service.ps_g50_blend import blend_nav_opportunity  # noqa: E402
 from data_sync_service.service.state_bucket_track import (  # noqa: E402
-    FILL_NEXT_OPEN,
     FILL_SAME_1430,
-    FILL_SAME_CLOSE,
     load_sgap_context,
     replay_sgap_from_context,
 )
@@ -55,23 +46,16 @@ FULL_START = "2024-08-01"
 FULL_END = "2026-08-28"
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
 REJECT_PT = 5.0
+BASE_ID = "t1430_b3"
 
 VARIANTS: tuple[dict[str, object], ...] = (
-    {
-        "id": "next_open",
-        "fill_mode": FILL_NEXT_OPEN,
-        "label": "T-1 S-gap → T open · frozen",
-    },
-    {
-        "id": "same_close",
-        "fill_mode": FILL_SAME_CLOSE,
-        "label": "today S-gap → today close · Live habit proxy",
-    },
-    {
-        "id": "same_1430",
-        "fill_mode": FILL_SAME_1430,
-        "label": "today S-gap → 14:30 print · Live habit",
-    },
+    {"id": "t1430_b3", "label": "14:30 · body=3 (current habit)", "fill_hhmm": "1430", "body": 3},
+    {"id": "t1430_b4", "label": "14:30 · body=4 (extra night)", "fill_hhmm": "1430", "body": 4},
+    {"id": "t1330_b3", "label": "13:30 · body=3", "fill_hhmm": "1330", "body": 3},
+    {"id": "t1400_b3", "label": "14:00 · body=3", "fill_hhmm": "1400", "body": 3},
+    {"id": "t1440_b3", "label": "14:40 · body=3", "fill_hhmm": "1440", "body": 3},
+    {"id": "t1450_b3", "label": "14:50 · body=3", "fill_hhmm": "1450", "body": 3},
+    {"id": "t1500_b3", "label": "15:00 · body=3", "fill_hhmm": "1500", "body": 3},
 )
 
 
@@ -98,6 +82,28 @@ def _stats(nav: list[float]) -> dict[str, float]:
 
 def _fmt(m: dict[str, float]) -> str:
     return f"{m['total_pct']:+.1f}/{m['sharpe']:.2f}/{m['max_dd']:.1f}"
+
+
+def _habit_tag(tot: list[float], sr: list[float], dd: list[float]) -> str:
+    flags: list[str] = []
+    if not all(t > 0 for t in tot):
+        flags.append("loses_core_tot")
+    if not all(s >= 0 for s in sr):
+        flags.append("worse_sharpe")
+    if not all(d <= 0 for d in dd):
+        flags.append("worse_dd")
+    return "beats_core" if not flags else "+".join(flags)
+
+
+def _habit_line(tot: list[float], sr: list[float], dd: list[float]) -> str:
+    return (
+        "tot "
+        + ", ".join(f"{w} {d:+.1f}" for w, d in zip(WF_WINDOWS, tot, strict=True))
+        + "  sr "
+        + ", ".join(f"{w} {d:+.2f}" for w, d in zip(WF_WINDOWS, sr, strict=True))
+        + "  dd "
+        + ", ".join(f"{w} {d:+.1f}" for w, d in zip(WF_WINDOWS, dd, strict=True))
+    )
 
 
 def _sat_series(sat: dict) -> tuple[list[str], list[float], list[int], list[bool]]:
@@ -152,17 +158,26 @@ def _pick_strong_nav(dates: list[str], start: str, end: str, etf_close) -> list[
     return out
 
 
+def _coverage(ctx: dict, hhmm: str) -> tuple[int, int]:
+    m = (ctx.get("px_by_hhmm") or {}).get(hhmm) or {}
+    days = {d for per in m.values() for d in per}
+    return len(m), len(days)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--save-report", action="store_true")
     args = ap.parse_args()
 
-    print("Sat fill: frozen next_open vs same_close (Live habit proxy)\n")
+    print("Sat habit clock: body 3 vs 4, afternoon fill time\n")
     print(f"loading context {FULL_START}~{FULL_END} ...", flush=True)
     ctx = load_sgap_context(FULL_START, FULL_END)
     print("  loaded.", flush=True)
-    etf_close = fetch_etf_closes()
+    for hhmm in ("1330", "1400", "1430", "1440", "1450", "1500"):
+        n_ts, n_days = _coverage(ctx, hhmm)
+        print(f"  {hhmm} coverage: {n_ts} names / {n_days} days", flush=True)
 
+    etf_close = fetch_etf_closes()
     results: dict[str, dict] = {}
     for wname, (s, e) in WINDOWS.items():
         print(f"=== {wname} ({s}~{e}) ===", flush=True)
@@ -170,6 +185,11 @@ def main() -> int:
         core_m: dict[str, float] | None = None
         row: dict[str, dict] = {}
         for var in VARIANTS:
+            hhmm = str(var["fill_hhmm"])
+            n_ts, _n_days = _coverage(ctx, hhmm)
+            if n_ts < 100:
+                print(f"  {var['id']:<12} SKIP (no {hhmm} bars)", flush=True)
+                continue
             sat = replay_sgap_from_context(
                 ctx,
                 start=s,
@@ -178,7 +198,9 @@ def main() -> int:
                 pool_mode="strict",
                 max_pos=4,
                 position_pct=0.25,
-                fill_mode=str(var["fill_mode"]),
+                body=int(var["body"]),
+                fill_mode=FILL_SAME_1430,
+                fill_hhmm=hhmm,
             )
             dates, sat_nav, slots, active = _sat_series(sat)
             if core is None:
@@ -193,75 +215,99 @@ def main() -> int:
             occ = _occupancy(slots[:n], active[:n], 0.25)
             summary = sat.get("summary") or {}
             delta_core = round(twin_m["total_pct"] - core_m["total_pct"], 1)
+            delta_core_sr = round(twin_m["sharpe"] - core_m["sharpe"], 2)
+            delta_core_dd = round(twin_m["max_dd"] - core_m["max_dd"], 1)
             row[str(var["id"])] = {
                 "label": var["label"],
-                "fill_mode": var["fill_mode"],
+                "fill_hhmm": hhmm,
+                "body": var["body"],
                 "sat": sat_m,
                 "twin": twin_m,
                 "delta_core_pt": delta_core,
+                "delta_core_sharpe": delta_core_sr,
+                "delta_core_dd": delta_core_dd,
                 "fillCount": summary.get("fillCount"),
                 "avgHeldDays": summary.get("avgHeldDays"),
-                "closeReasons": summary.get("closeReasons") or {},
                 **occ,
             }
-            reasons = summary.get("closeReasons") or {}
-            reason_s = ",".join(f"{k}:{v}" for k, v in sorted(reasons.items())) or "open-only"
             print(
-                f"  {var['id']:<12} twin {_fmt(twin_m)}  Δcore {delta_core:+.1f}  "
-                f"sat {_fmt(sat_m)}  pos {occ['avg_pos_active']:.1f} "
-                f"(act {occ['pct_active']:.0f}%)  hold {summary.get('avgHeldDays')}d  "
-                f"fills {summary.get('fillCount')}  {reason_s}",
+                f"  {var['id']:<12} twin {_fmt(twin_m)}  "
+                f"Δcore tot {delta_core:+.1f} sr {delta_core_sr:+.2f} dd {delta_core_dd:+.1f}  "
+                f"sat {_fmt(sat_m)}  hold {summary.get('avgHeldDays')}d  "
+                f"fills {summary.get('fillCount')}  act {occ['pct_active']:.0f}%",
                 flush=True,
             )
         assert core_m is not None
-        base_twin = row["next_open"]["twin"]["total_pct"]
+        base = row[BASE_ID]["twin"]
         for rec in row.values():
-            rec["delta_base_pt"] = round(rec["twin"]["total_pct"] - base_twin, 1)
+            rec["delta_base_pt"] = round(rec["twin"]["total_pct"] - base["total_pct"], 1)
+            rec["delta_base_sharpe"] = round(rec["twin"]["sharpe"] - base["sharpe"], 2)
+            rec["delta_base_dd"] = round(rec["twin"]["max_dd"] - base["max_dd"], 1)
         results[wname] = {"core": core_m, "variants": row}
 
-    print("\n## Twin NAV (total/Sharpe/maxDD) vs frozen next_open\n")
-    hdr = "| 窗口 | 核心 | " + " | ".join(v["id"] for v in VARIANTS) + " |"
-    sep = "|" + "|".join(["------"] * (2 + len(VARIANTS))) + "|"
-    print(hdr)
-    print(sep)
+    ran = [v for v in VARIANTS if str(v["id"]) in results[next(iter(WINDOWS))]["variants"]]
+    print("\n## Twin NAV tot/sr/dd vs 14:30 body=3\n")
+    print("| 窗口 | 核心 | " + " | ".join(v["id"] for v in ran) + " |")
+    print("|" + "|".join(["------"] * (2 + len(ran))) + "|")
     for wname in WINDOWS:
         cells = [_fmt(results[wname]["core"])]
-        for v in VARIANTS:
+        for v in ran:
             rec = results[wname]["variants"][str(v["id"])]
-            extra = f" ({rec['delta_base_pt']:+.1f})" if v["id"] != "next_open" else ""
+            extra = f" ({rec['delta_base_pt']:+.1f})" if v["id"] != BASE_ID else ""
             cells.append(f"{_fmt(rec['twin'])}{extra}")
         print(f"| {wname} | " + " | ".join(cells) + " |")
 
-    print("\n## Walk-forward vs frozen next_open twin (OOS2/train/valid, reject if any Δ < -5pt)\n")
+    print("\n## Walk-forward vs core (tot / Sharpe / maxDD)\n")
     verdicts: dict[str, str] = {}
-    for v in VARIANTS:
+    for v in ran:
         vid = str(v["id"])
-        if vid == "next_open":
-            verdicts[vid] = "baseline"
+        vs_core_tot = [results[w]["variants"][vid]["delta_core_pt"] for w in WF_WINDOWS]
+        vs_core_sr = [results[w]["variants"][vid]["delta_core_sharpe"] for w in WF_WINDOWS]
+        vs_core_dd = [results[w]["variants"][vid]["delta_core_dd"] for w in WF_WINDOWS]
+        harvest = _habit_tag(vs_core_tot, vs_core_sr, vs_core_dd)
+        if vid == BASE_ID:
+            verdicts[vid] = f"baseline/{harvest}"
+            print(f"- {vid}: vs core " + _habit_line(vs_core_tot, vs_core_sr, vs_core_dd) + f" → {harvest}")
             continue
-        deltas = [results[w]["variants"][vid]["delta_base_pt"] for w in WF_WINDOWS]
-        vs_core = [results[w]["variants"][vid]["delta_core_pt"] for w in WF_WINDOWS]
-        ok = all(d >= -REJECT_PT for d in deltas)
-        tag = "PASS" if ok else "REJECT"
-        if ok and all(d > 0 for d in deltas):
+        d_tot = [results[w]["variants"][vid]["delta_base_pt"] for w in WF_WINDOWS]
+        d_sr = [results[w]["variants"][vid]["delta_base_sharpe"] for w in WF_WINDOWS]
+        d_dd = [results[w]["variants"][vid]["delta_base_dd"] for w in WF_WINDOWS]
+        tot_ok = all(d >= -REJECT_PT for d in d_tot)
+        risk_flags: list[str] = []
+        if any(s < 0 for s in d_sr):
+            risk_flags.append("worse_sharpe")
+        if any(d > 0 for d in d_dd):
+            risk_flags.append("worse_dd")
+        if not tot_ok:
+            tag = "REJECT/total"
+        elif risk_flags:
+            tag = "PASS/" + "+".join(risk_flags)
+        elif all(d > 0 for d in d_tot):
             tag = "PASS+"
-        harvest = "beats_core" if all(c > 0 for c in vs_core) else "loses_core"
+        else:
+            tag = "PASS"
         verdicts[vid] = f"{tag}/{harvest}"
         print(
-            f"- {vid} ({v['label']}): "
-            + ", ".join(f"{w} {d:+.1f}" for w, d in zip(WF_WINDOWS, deltas, strict=True))
-            + f" vs frozen → {tag}; "
-            + ", ".join(f"{w} Δcore {c:+.1f}" for w, c in zip(WF_WINDOWS, vs_core, strict=True))
+            f"- {vid} ({v['label']}):\n"
+            f"    vs {BASE_ID} tot "
+            + ", ".join(f"{w} {d:+.1f}" for w, d in zip(WF_WINDOWS, d_tot, strict=True))
+            + "  sr "
+            + ", ".join(f"{w} {d:+.2f}" for w, d in zip(WF_WINDOWS, d_sr, strict=True))
+            + "  dd "
+            + ", ".join(f"{w} {d:+.1f}" for w, d in zip(WF_WINDOWS, d_dd, strict=True))
+            + f" → {tag}\n"
+            f"    vs core "
+            + _habit_line(vs_core_tot, vs_core_sr, vs_core_dd)
             + f" → {harvest}"
         )
 
     payload = {
-        "tag": "sat-fill-same-close-2026-09-03",
+        "tag": "sat-habit-clock-2026-09-03",
         "protocol": (
-            "window-local empty book; frozen clip4 sat (4×25% strict skip_t1); "
-            "fill_mode next_open vs same_close (today gap, today close); "
-            "frozen pick-strong core; opp_50. Close is a 14:30 proxy; "
-            "do not rewrite frozen T-open. bar_5min 1430 fill is a later stub."
+            "window-local empty book; clip4 sat; fill_mode=same_1430; "
+            "body 3 vs 4 at 14:30; afternoon fill 1330/1400/1430/1440/1450/1500; "
+            "frozen pick-strong trail8; opp_50. Score tot+Sharpe+maxDD vs core. "
+            "Do not rewrite frozen T-open."
         ),
         "variants": VARIANTS,
         "windows": results,
@@ -270,7 +316,7 @@ def main() -> int:
     }
     if args.save_report:
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path = REPORT_DIR / "sat_fill_same_close_2026-09-03.json"
+        path = REPORT_DIR / "sat_habit_clock_2026-09-03.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         print(f"\nsaved {path}")
     return 0

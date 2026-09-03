@@ -36,7 +36,10 @@
 | **固化进多资产腿** | mom60+MA200 / MIN_HOLD5 | multi_asset_sleeve | 择强 ETF 侧规则 |
 | 核心 S-3 篮 10→5/4/3 | 4 变体 | **4 全部拒收**（OOS2 −20~−39） | 操作负担不能靠砍核心篮；见 [core-stock-clip](core-stock-clip-2026-09-03.md) |
 | 卫星 body 后续 trail / −5% 入引擎 | 3 变体 | **3 全部拒收** | Live 已去掉 −5% overlay，只 body=3 收盘；见 [sat-exit-trail](sat-exit-trail-2026-09-03.md) |
-| 卫星当日收盘成交（Live 14:30 代理） | 1 变体 | **拒收当成交改写** | valid twin −17.7pt；不改冻结 T 开盘；见 [sat-fill-same-close](sat-fill-same-close-2026-09-03.md) |
+| 卫星当日收盘 / 真 14:30 成交 | 2 变体 | **拒收当改写 9:30**；14:30 vs 核心 train/valid 亏 | 见 [sat-fill-same-close](sat-fill-same-close-2026-09-03.md) |
+| 卫星 14:30 入场过滤 C1/C2 | 4 变体 | C1 3% 相对无过滤 PASS+（tot/sr/dd）；vs 核心 valid tot −3.3，**不进 Live** | 见 [sat-entry-c1](sat-entry-c1-2026-09-03.md) |
+| 卫星习惯 3 天 vs 4 天 / 下午买点 | 7 变体 | 计数仍 3 天；body=4 占槽；13:30–15:00 无更佳分钟 | 见 [sat-habit-clock](sat-habit-clock-2026-09-03.md) |
+| 卫星 C1 + 第 3 日 10:00/14:30 卖 | 3 变体 | C1·14:30 卖三窗 tot/sr/dd 过核心；**未改 Live** | 见 [sat-exit-hhmm](sat-exit-hhmm-2026-09-03.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
@@ -46,8 +49,11 @@
 5. 砍核心 S-3 篮宽度（10→5/4/3）→ OOS2 弱市年崩
 6. 卫星 −5% 当常规退出、或 body 后续 trail → 截断 3 日脉冲 / 占满 4 槽
 7. 把 Live 14:30 / 收盘成交写进冻结 T 开盘 → 日历错位；valid 上卫星边几乎消失
+8. 无过滤 14:30 习惯 vs 核心：train/valid 总收益亏，train 夏普也略差；C1 3% 修好夏普/回撤，valid 总收益仍 −3.3，不进 Live
+9. 14:30 改拿第 4 日 = 占槽税（aligned −16pt）；下午换分钟翻不了 valid
+10. 第 3 日改 10:00 卖不如 14:30 卖；C1+第 3 日 14:30 卖才三窗过核心（习惯配方，未写进 Live）
 
-调参查找：用户说篮子太多 → [core-stock-clip](core-stock-clip-2026-09-03.md)；说止损/拿长一点/第几天卖 → [sat-exit-trail](sat-exit-trail-2026-09-03.md) + [讨论记录](clip4-ops-decisions-2026-09-03.md)；说对齐 14:30 习惯回测 → [sat-fill-same-close](sat-fill-same-close-2026-09-03.md)。Agent 规则：仓库根 `AGENTS.md` → **Strategy / parameter changes**。
+调参查找：用户说篮子太多 → [core-stock-clip](core-stock-clip-2026-09-03.md)；说止损/拿长一点/第几天卖 → [sat-exit-trail](sat-exit-trail-2026-09-03.md) + [讨论记录](clip4-ops-decisions-2026-09-03.md) + [第 3 日卖点](sat-exit-hhmm-2026-09-03.md)；说对齐 14:30 习惯回测 → [sat-fill-same-close](sat-fill-same-close-2026-09-03.md) + [C1 过滤](sat-entry-c1-2026-09-03.md) + [3 天/买点](sat-habit-clock-2026-09-03.md)。Agent 规则：仓库根 `AGENTS.md` → **Strategy / parameter changes**。
 
 ## 2. A 股 S-3（STOCK 腿 · 非终局产品）
 

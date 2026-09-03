@@ -1,9 +1,9 @@
 # 卫星仓一阶段：尾盘买点 · 第 2 天路径 · 入场过滤（2026-09-03）
 
-> **状态**：研究草稿，**未拍板进 Live**。不是再开一轮卫星扫参。
+> **状态**：C1/C2 已三窗，结论在 [`sat-entry-c1-2026-09-03.md`](../backtests/sat-entry-c1-2026-09-03.md)。**未拍板进 Live**。
 > **产品冻结**：机会双子星 v3.1 clip4（4×12.5% · body=3 收盘卖 · 无 −5% · `skip_t1_limit` + strict）。
-> **关联**：[SUMMARY](../backtests/SUMMARY.md) · [clip4 讨论](../backtests/clip4-ops-decisions-2026-09-03.md) · [卫星退出拒收](../backtests/sat-exit-trail-2026-09-03.md) · [成交日历拒收](../backtests/sat-fill-same-close-2026-09-03.md) · [状态分桶真值](../backtests/state-bucket-algo-2026-08-31.md) · 尾盘 5 分钟 `bar_5min`（OPT-137）
-> **还需要谁拍板**：本页只观察。任何过滤进实盘，必须三窗 walk-forward 相对冻结 clip4 **无窗 >5pt 劣化**。用户拍板后才写回测脚本。
+> **关联**：[SUMMARY](../backtests/SUMMARY.md) · [clip4 讨论](../backtests/clip4-ops-decisions-2026-09-03.md) · [卫星退出拒收](../backtests/sat-exit-trail-2026-09-03.md) · [成交日历拒收](../backtests/sat-fill-same-close-2026-09-03.md) · [C1 三窗](../backtests/sat-entry-c1-2026-09-03.md) · [状态分桶真值](../backtests/state-bucket-algo-2026-08-31.md)
+> **还需要谁拍板**：若接受 valid 总收益低于核心 3.3pt、换更好夏普/回撤，才能把 C1 3% 写进 Live 14:30 清单。冻结 9:30 仍不动。
 
 ---
 

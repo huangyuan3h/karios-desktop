@@ -62,6 +62,8 @@ def _patch_loaders(monkeypatch, dates, per_ts, mv):
     monkeypatch.setattr(sbt, "_load_calendar", lambda w_start, end: dates)
     monkeypatch.setattr(sbt, "_load_rows", lambda w_start, end: per_ts)
     monkeypatch.setattr(sbt, "_load_mv", lambda w_start, end: mv)
+    monkeypatch.setattr(sbt, "_load_bar5_closes", lambda *_a, **_k: {})
+    monkeypatch.setattr(sbt, "_load_1430_closes", lambda w_start, end: {})
 
 
 class TestDayFeatures:
@@ -264,11 +266,202 @@ class TestBuildSgapTimeline:
         assert row["filledToday"] == 0
         assert r["summary"]["fillCount"] == 0
 
+    def test_same_1430_fills_gap_day_at_1430_print(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_1430 = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_1430}}},
+        )
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            debug_fills=fills,
+        )
+        assert fills == [(dates[20], "A.SH")]
+        assert r["fill_mode"] == sbt.FILL_SAME_1430
+        exp_nav = 1.0 + ((per_ts["A.SH"][22]["close"] / px_1430 - 1) - 0.003) * sbt.POSITION_PCT
+        assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
+
+    def test_same_1430_skips_when_print_missing(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        monkeypatch.setattr(sbt, "_load_bar5_closes", lambda *_a, **_k: {})
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            debug_fills=fills,
+        )
+        assert fills == []
+        assert r["summary"]["fillCount"] == 0
+
+    def test_same_1430_fill_hhmm_1500(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_1500 = round(float(per_ts["A.SH"][20]["close"]), 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1500": {"A.SH": {dates[20]: px_1500}}},
+        )
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1500",
+            debug_fills=fills,
+        )
+        assert fills == [(dates[20], "A.SH")]
+        assert r["fill_hhmm"] == "1500"
+        exp_nav = 1.0 + ((per_ts["A.SH"][22]["close"] / px_1500 - 1) - 0.003) * sbt.POSITION_PCT
+        assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
+
+    def test_same_1430_body4_exits_one_day_later(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_1430 = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_1430}}},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            body=4,
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["entryDate"] == dates[20]
+        assert fill_blot[0]["exitDate"] == dates[23]
+        held = [i for i, row in enumerate(r["rows"]) if row["satPositions"] == 1]
+        assert len(held) == 3
+
+    def test_body_exit_at_1430_print(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        px_exit = round(float(per_ts["A.SH"][22]["close"]) * 1.02, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry, dates[22]: px_exit}}},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+            exit_hhmm="1430",
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["exitDate"] == dates[22]
+        exp_nav = 1.0 + ((px_exit / px_entry - 1) - 0.003) * sbt.POSITION_PCT
+        assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
+        assert r["exit_hhmm"] == "1430"
+
+    def test_c1_skips_when_1430_ran_past_open(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        open_px = float(per_ts["A.SH"][20]["open"])
+        px_1430 = round(open_px * 1.04, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_1430}}},
+        )
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            pool_mode="strict",
+            fill_mode=sbt.FILL_SAME_1430,
+            max_open_to_1430_pct=0.03,
+            debug_fills=fills,
+        )
+        assert fills == []
+        row = next(x for x in r["rows"] if x["date"] == dates[20])
+        assert row["skipC1Count"] == 1
+        assert row["filledToday"] == 0
+        assert r["summary"]["skipC1Count"] == 1
+        skips = [b for b in r["blotter"] if b["kind"] == "skip_c1"]
+        assert skips and skips[0]["closeReason"] == "skip_1430_run"
+
+    def test_c1_fills_when_1430_near_open(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        open_px = float(per_ts["A.SH"][20]["open"])
+        px_1430 = round(open_px * 1.01, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_1430}}},
+        )
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            max_open_to_1430_pct=0.03,
+            debug_fills=fills,
+        )
+        assert fills == [(dates[20], "A.SH")]
+        assert r["summary"]["skipC1Count"] == 0
+
+    def test_c2_skips_near_limit_at_1430(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        pc = float(per_ts["A.SH"][20]["pre_close"])
+        px_1430 = round(pc * 1.091, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_1430}}},
+        )
+        fills: list[tuple[str, str]] = []
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            pool_mode="strict",
+            fill_mode=sbt.FILL_SAME_1430,
+            near_limit_buffer_pct=0.01,
+            debug_fills=fills,
+        )
+        assert fills == []
+        row = next(x for x in r["rows"] if x["date"] == dates[20])
+        assert row["skipC2Count"] == 1
+        skips = [b for b in r["blotter"] if b["kind"] == "skip_c2"]
+        assert skips and skips[0]["closeReason"] == "skip_1430_near_limit"
+
+    def test_1430_filters_require_same_1430(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        try:
+            sbt.build_sgap_timeline(
+                start=dates[0],
+                end=dates[-1],
+                fill_mode=sbt.FILL_NEXT_OPEN,
+                max_open_to_1430_pct=0.03,
+            )
+        except ValueError as exc:
+            assert "same_1430" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
+
     def test_unknown_fill_mode_raises(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()
         _patch_loaders(monkeypatch, dates, per_ts, mv)
         try:
-            sbt.build_sgap_timeline(start=dates[0], end=dates[-1], fill_mode="same_1430")
+            sbt.build_sgap_timeline(start=dates[0], end=dates[-1], fill_mode="bogus")
         except ValueError as exc:
             assert "fill_mode" in str(exc)
         else:

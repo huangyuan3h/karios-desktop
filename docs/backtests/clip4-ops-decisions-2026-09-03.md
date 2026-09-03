@@ -67,7 +67,13 @@ Watchlist「已持 n/3 / 到期日收盘卖」按这个数。paper 17:43 用当�
 
 不要把 14:30 成交价写进回测当开盘价（`docs/designs/twin-star-ops-phase-2026-09-02.md` E 线不做）。
 
-**2026-09-03 已测当日收盘代理**：[sat-fill-same-close-2026-09-03.md](./sat-fill-same-close-2026-09-03.md)。相对冻结 T 开盘 valid twin **−17.7pt**，REJECT 当成交改写。OOS2 +26.8 是单窗。习惯日历在 valid 上几乎收不到卫星边（Δcore +0.4 vs 冻结 +18.1）。14:30 价齐了再观察，不改 Live。
+**2026-09-03 已测当日收盘代理 + 真 14:30**：[sat-fill-same-close-2026-09-03.md](./sat-fill-same-close-2026-09-03.md)。相对冻结 T 开盘 REJECT。习惯 14:30 vs 核心 train/valid 亏。
+
+**C1 入场过滤**：[sat-entry-c1-2026-09-03.md](./sat-entry-c1-2026-09-03.md)。14:30/今开 >3% 不买：相对无过滤 tot/sr/dd 全过；vs 核心夏普、回撤已好，valid 总收益仍 −3.3。**Live 不改。**
+
+**3 天 vs 4 天 / 买点**：[sat-habit-clock-2026-09-03.md](./sat-habit-clock-2026-09-03.md)。计数仍是入场日 = 第 1 天（周一 14:30 → 周三收盘）。多拿一晚是占槽；13:30–15:00 没有更佳分钟。
+
+**C1 + 第 3 日卖点**：[sat-exit-hhmm-2026-09-03.md](./sat-exit-hhmm-2026-09-03.md)。第 3 日 **14:30 卖** 优于收盘和 10:00，习惯配方三窗 tot/sr/dd 过核心。Live / paper 仍收盘卖，未改。
 
 ---
 
