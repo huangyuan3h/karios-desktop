@@ -471,7 +471,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 - **候选**：当日 `S-gap` 桶内按 `amp` **升序**取前 **1/3**（`bucket_q=3`，最低波 33%）。
 - **闸**：仅 `R-wide` 日开仓（用 T 日 breadth；候选信号用 **T-1 日** 状态）。
 - **入场**：T 日 **open** 价；**单边滑点 0.15%** 含在 `COSTS_ROUNDTRIP=0.003`（0.3% 往返）内，出场时一次性计提。
-- **持仓**：`body=3` 交易日（第 3 日 close 出）；`max_pos=4`、每槽 `POSITION_PCT=0.25` → **卫星套筒满仓 100%**（4×25%；合成后每只总资产 12.5%）。v3 的 15×10%（名义 150%）已由 v3.1 替代。
+- **持仓**：`body=3` 交易日——**入场日算第 1 天，第 3 日 close 出**（周一买 → 周三收盘卖）。**无保护止损**（`protect5` / trail-after-body 2026-09-03 三窗拒收；Live 已对齐）。`max_pos=4`、每槽 `POSITION_PCT=0.25` → **卫星套筒满仓 100%**（4×25%；合成后每只总资产 12.5%）。v3 的 15×10%（名义 150%）已由 v3.1 替代。
 - **NAV**：`NAV = 1 + Σ已实现 + (Σ槽位市值 − 槽位数×clip)`；信号取 T-1 收盘 → T 开盘执行，无前视。
 - 宇宙 = 全 A 非 ST/BJ/退市（`stock_basic` JOIN：`delist_date IS NULL`、`name NOT LIKE '%ST%'`、排除 `.BJ`）。
 
@@ -501,9 +501,11 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
   - 开闸且 **strict 可成交候选非空** **或** 持仓簿非空 → **核心 50% / 卫星 50%**。
   - 卫星每只 **总资产 12.5%**（套筒 25%），最多 **4 只**。
   - 涨停买不进 → **放弃该票**（不顺位补），空出来的钱留在核心。
-  - body=3 收盘卖（持仓簿 `exitsDue`）。
+  - body=3 收盘卖（入场日=第 1 天；持仓簿 `exitsDue`）。**不要**挂 −5% 券商止损、也不要看见 −5% 就卖。
   - 执行顺序：先按 `coreTargetPct` 调核心腿；再按持仓簿卖到期 / 开闸买 strict 候选。
+  - 核心 pick=STOCK 时 S-3 篮仍是 **10×10%**（收到 5/4/3 只 2026-09-03 OOS2 拒收）。Watchlist top 5 只是展示。
 - **对照**：Settings 切 `single_track` = 无卫星的纯择强。
+- **讨论记录**：[`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md)。
 
 ### 7.8 14:30 前操作提醒 + 卫星持仓簿
 

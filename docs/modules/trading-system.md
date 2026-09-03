@@ -158,7 +158,7 @@ RS 过滤=0.5 · Diverging 仓位=1.0 · 仓位 10% · 持仓上限 20 · gates=
 
 ### 6.3 paper 实盘（已固化 2026-08-21 · 三窗 + past_year 验证）
 
-- **paper 书**：`paper_trades` 表（`source S3/S3HK` 股票篮；`source=twin_star` 机会双子星卫星 4 槽 × 12.5%，body=3 / −5%，`cron 17:43 paper_twin_star`，S-3 update 跳过这些行；`sleeve_pct` 闲置套筒，`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update` + `18:20 sleeve_paper_auto`（`service/sleeve_paper_auto.py`）
+- **paper 书**：`paper_trades` 表（`source S3/S3HK` 股票篮；`source=twin_star` 机会双子星卫星 4 槽 × 12.5%，body=3 收盘卖、无 −5%，`cron 17:43 paper_twin_star`，S-3 update 跳过这些行；`sleeve_pct` 闲置套筒，`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update` + `18:20 sleeve_paper_auto`（`service/sleeve_paper_auto.py`）
 - **闲置套筒**：`T6` 单纳指 `513100>MA200` 三窗 `OOS2+3.9/train+15.3/valid+21.8/past+51.1`；**多资产轮动** `GOLD/OIL/NASDAQ/BOND10 mom60>0 top2 Nasdaq-first` 三窗 `OOS2+19.3/train+17.9/valid+14.4/past+38.1` 全过（`service/multi_asset_sleeve.py:52`），`portfolio_health multiAssetSleeve` + `GET /commodities/sleeve` 已上线，`watchlist` 与 `paper` 同码
 - **脉冲高置信** `OIL RSI<25 90% n30 +3.92%/10d`（`commodity_pattern_scan.py`）`valid +28.5` 三窗全过，已进 `impulseSleeve`（`2×` 杠杆），`NASDAQ RSI>75 78%` 等 `R1-R5` 按 `todo §22.7` 分批固化
 - **对账**：`C4 paper_vs_backtest_report.py` + `BehavioAudit` + `BacktestPage Timeline`（`GET /api/backtest/timeline?start=2025-08-01` 日级 `pick/navBase/navMulti/deployedPct` 分布，`TimelineCard` 色条 `GOLD/OIL/NASDAQ/BOND`），`paper ≥20 笔` 后出统计定论

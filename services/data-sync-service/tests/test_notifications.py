@@ -341,7 +341,7 @@ def test_twin_star_stock_day_splits_sat_from_s3_leftover() -> None:
     assert pyramids[0]["book"] == "s3"
 
 
-def test_twin_star_sat_exit_and_protect_stop(monkeypatch) -> None:
+def test_twin_star_sat_exit_ignores_protect_stop(monkeypatch) -> None:
     ctx = {
         "pick": "OIL",
         "tradeDate": "2026-09-02",
@@ -362,7 +362,8 @@ def test_twin_star_sat_exit_and_protect_stop(monkeypatch) -> None:
     out = nf._stop_trail_alerts("twin_star", ctx)
     types = {x["type"] for x in out}
     assert "sat_exit" in types
-    assert "sat_stop" in types
+    assert "sat_stop" not in types
+    assert "sat_near_stop" not in types
 
 
 def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:

@@ -96,8 +96,8 @@ function timingInfos(mode: ReplicaGapMode, corePct: number, satBudget: number): 
     infos.push({
       id: 'conditional_orders',
       severity: 'info',
-      title: '卫星纪律：到期卖 / 保护止损 −5%，不是收盘瞬间换仓',
-      detail: 'body 未到期的卫星仓关闸日也可以留着。条件单按触发价成交，会拉开与回测 T 开盘的距离。',
+      title: '卫星纪律：第 3 个交易日收盘卖，中途不止损',
+      detail: '冻结 S-gap 只有 body=3 收盘。−5% 保护止损已从 Live / paper 拿掉（2026-09-03 三窗拒收）。body 未到期的卫星仓关闸日也可以留着。',
     });
   } else {
     infos.push({

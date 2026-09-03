@@ -46,7 +46,7 @@ const GOLDEN: TwinStarAction = {
     slotOfSleeve: 0.25,
     satSlotNavPct: 12.5,
     body: 3,
-    protectStopPct: 0.05,
+    protectStopPct: 0,
   },
 };
 
@@ -59,7 +59,7 @@ describe('TWIN_STAR_CLIP4', () => {
       TWIN_STAR_CLIP4.satSleevePct,
     );
     expect(TWIN_STAR_CLIP4.body).toBe(3);
-    expect(TWIN_STAR_CLIP4.protectStopPct).toBe(0.05);
+    expect(TWIN_STAR_CLIP4.protectStopPct).toBe(0);
   });
 });
 

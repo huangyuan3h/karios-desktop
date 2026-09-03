@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_BODY_EXIT,
-    CLOSE_REASON_STOP_HIT,
     SOURCE_TWIN_STAR,
 )
 from data_sync_service.service import paper_trading as pt_svc
@@ -57,8 +56,8 @@ def test_intake_skips_when_slots_full(monkeypatch) -> None:
     assert out["skippedReasons"]["slots_full"] == 1
 
 
-def test_update_closes_body3_and_stop(monkeypatch) -> None:
-    closed: list[str] = []
+def test_update_closes_body3_not_protect_stop(monkeypatch) -> None:
+    closed: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
         pts,
@@ -90,15 +89,14 @@ def test_update_closes_body3_and_stop(monkeypatch) -> None:
     )
 
     def fake_close(**kwargs):
-        closed.append(kwargs["close_reason"])
+        closed.append((kwargs["trade_id"], kwargs["close_reason"]))
         return {"id": kwargs["trade_id"]}
 
     monkeypatch.setattr(pts, "close_paper_trade", fake_close)
     monkeypatch.setattr(pts, "round_trip_cost_pct", lambda m: 0.0)
     out = pts.run_update_twin_star(today_iso_s="2026-09-02")
-    assert out["closed"] == 2
-    assert CLOSE_REASON_BODY_EXIT in closed
-    assert CLOSE_REASON_STOP_HIT in closed
+    assert out["closed"] == 1
+    assert closed == [("a", CLOSE_REASON_BODY_EXIT)]
 
 
 def test_intake_skips_already_open_and_gate_closed(monkeypatch) -> None:

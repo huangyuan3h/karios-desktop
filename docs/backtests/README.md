@@ -1,6 +1,6 @@
 # Karios 回测实验记录（Backtest Experiments）
 
-> **何时看**：任何新回测实验前、复盘策略演进时。
+> **何时看**：任何新回测实验前、复盘策略演进时。**用户要改策略 / 仓位 / 退出时，Agent 先读 [`SUMMARY.md`](./SUMMARY.md) 和本目录实验，再开口。**
 > **终局策略**：**机会双子星 v3.1 clip4**（择强核心 + strict S-gap 4×12.5%）—— [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)。核心腿规则在 [`pick-strong-track.md`](../modules/pick-strong-track.md)。  
 > 本目录记录通往该策略的实验（含拒收）；**新结论必须写清对机会双子星 / 其核心腿的增量**。
 
@@ -23,6 +23,9 @@
 | [`experiments-planned.md`](./experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
 | [`s3-gate-pickstrong-optimization-2026-09-01.md`](./s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
 | [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
+| [`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
+| [`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
+| [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
 | [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 
@@ -59,6 +62,8 @@
 |------|------|
 | `pick_strong_track_past_year.json` | **择强单轨**过去一年（定案 mom_compare） |
 | `past_year_twin_vs_core_2026-09-02.json` | 过去一年三方：单轨 vs 双子星 v3 15×5% vs clip4 |
+| `core_stock_clip_2026-09-03.json` | 核心 S-3 篮集中度三窗（拒收） |
+| `sat_exit_trail_2026-09-03.json` | 卫星退出 body/protect/trail 三窗（拒收） |
 | `walk_forward_baseline.json` | S-3 股票腿 CN 基线（NAV） |
 | `walk_forward_latest.json` | 最近一次三窗结果 |
 | `walk_forward_hk_baseline.json` | HK 并行线基线 |

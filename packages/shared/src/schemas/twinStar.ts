@@ -16,7 +16,8 @@ export const TWIN_STAR_CLIP4 = {
   /** Each sat name as % of NAV when the sleeve is 50/50 (4 × 12.5%). */
   satSlotNavPct: 12.5,
   body: 3,
-  protectStopPct: 0.05,
+  /** 0 = no live overlay. Frozen S-gap is body=3 close only (protect5 REJECT 2026-09-03). */
+  protectStopPct: 0,
   rWideThreshold: 0.5,
   bucketQ: 3,
 } as const;

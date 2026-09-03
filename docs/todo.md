@@ -22,7 +22,8 @@
 ## 当前方向（默认 clip4 之后）
 
 - **P0：把机会双子星跑成产品**——不扫新卫星参。三线并行：[工程 / 业务对齐 / 回测可分析](./designs/twin-star-ops-phase-2026-09-02.md)
-- 冻结：`skip_t1`+strict、4×12.5%、body=3、回测=T 开盘、保护止损不进腿、past_year 不当拒收闸
+- 冻结：`skip_t1`+strict、4×12.5%、body=3 收盘卖（无 −5%）、S-3 篮 10×10%、回测=T 开盘、past_year 不当拒收闸
+- 改策略前先读 [回测 SUMMARY](./backtests/SUMMARY.md) 与 [2026-09-03 讨论](./backtests/clip4-ops-decisions-2026-09-03.md)（Agent 规则在 `AGENTS.md`）
 - 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
 - 脉冲天平仍观察层；Watchlist 占用对照已是双子星 C4-lite（你卫星仓 vs 引擎模拟）；S-3 统计 C4 仍等 20 笔平仓
 

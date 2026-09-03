@@ -333,7 +333,7 @@ class TestCoreTargetPct:
             "slotOfSleeve": 0.25,
             "satSlotNavPct": 12.5,
             "body": 3,
-            "protectStopPct": 0.05,
+            "protectStopPct": 0,
         }
 
 

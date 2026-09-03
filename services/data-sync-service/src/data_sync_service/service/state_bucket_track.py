@@ -311,6 +311,36 @@ def select_live_gap_picks(
     return {"primary": primary, "blocked": blocked, "alternates": alternates}
 
 
+def sat_exit_decision(
+    *,
+    held: int,
+    body: int,
+    close: float | None,
+    entry: float,
+    peak: float,
+    protect_stop_pct: float | None = None,
+    trail_after_body_pct: float | None = None,
+) -> str | None:
+    """Decide whether an S-gap satellite position should close today.
+
+    Frozen live path (both optionals None): force close on the body-th hold day.
+    ``protect_stop_pct`` is a hard stop vs cost, checked every day.
+    ``trail_after_body_pct`` replaces the body force-close: after ``held >= body``,
+    exit when close <= peak * (1 - trail). Protect wins if both fire.
+    """
+    if protect_stop_pct is not None and close is not None and entry > 0:
+        if close <= entry * (1.0 - protect_stop_pct):
+            return "protect_stop"
+    if trail_after_body_pct is not None:
+        if held >= body and close is not None and peak > 0:
+            if close <= peak * (1.0 - trail_after_body_pct):
+                return "trail_exit"
+        return None
+    if held >= body:
+        return "body_exit"
+    return None
+
+
 def replay_sgap_from_context(
     ctx: dict[str, Any],
     *,
@@ -325,6 +355,8 @@ def replay_sgap_from_context(
     limit_fallback: bool = False,
     pool_mode: str | None = None,
     position_pct: float = POSITION_PCT,
+    protect_stop_pct: float | None = None,
+    trail_after_body_pct: float | None = None,
 ) -> dict[str, Any]:
     """Replay S-gap on a preloaded context. Positions start empty at ``start``."""
     if pool_mode is None:
@@ -346,15 +378,30 @@ def replay_sgap_from_context(
             continue
         _day_all, breadth = _cached_day_features(ctx, day)
         r_wide = breadth > R_WIDE_THRESHOLD
-        to_close = []
+        to_close: list[tuple[str, str]] = []
         for ts, p in list(positions.items()):
             ei = idx_by_day.get(p["entry_date"], -1)
             ci = idx_by_day.get(day, -1)
             held = ci - ei + 1 if ei >= 0 and ci >= 0 else 999
-            if held >= body:
-                to_close.append(ts)
-        closed_today = list(to_close)
-        for ts in to_close:
+            cc = close_by_ts.get(ts, {}).get(day)
+            entry = float(p.get("entry_price") or 0.0)
+            peak = float(p.get("peak") or entry)
+            if cc is not None and cc > peak:
+                peak = float(cc)
+                p["peak"] = peak
+            reason = sat_exit_decision(
+                held=held,
+                body=body,
+                close=cc,
+                entry=entry,
+                peak=peak,
+                protect_stop_pct=protect_stop_pct,
+                trail_after_body_pct=trail_after_body_pct,
+            )
+            if reason:
+                to_close.append((ts, reason))
+        closed_today = [ts for ts, _ in to_close]
+        for ts, reason in to_close:
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
             trade_ret = (cc / p["entry_price"] - 1) if cc and p["entry_price"] else 0.0
@@ -378,7 +425,7 @@ def replay_sgap_from_context(
                     contrib_pct=(trade_ret - COSTS_ROUNDTRIP) * clip * 100
                     if cc and p["entry_price"]
                     else 0.0,
-                    close_reason="body_exit",
+                    close_reason=reason,
                     held_days=held,
                 )
             )
@@ -450,6 +497,7 @@ def replay_sgap_from_context(
                     positions[ts] = {
                         "entry_date": day,
                         "entry_price": open_px,
+                        "peak": open_px,
                         "amp": feat.get("amp"),
                         "amp_rank": ranked.index(ts) + 1,
                         "exit_due": exit_due,
@@ -545,6 +593,16 @@ def replay_sgap_from_context(
             max_dd = max(max_dd, (peak - nav) / peak)
     skip_n = sum(1 for b in blotter if b.get("kind") == "skip_t1")
     fill_n = sum(1 for b in blotter if b.get("kind") == "fill")
+    close_reasons: dict[str, int] = {}
+    held_days: list[int] = []
+    for b in blotter:
+        if b.get("kind") != "fill":
+            continue
+        reason = str(b.get("closeReason") or "unknown")
+        close_reasons[reason] = close_reasons.get(reason, 0) + 1
+        hd = b.get("heldDays")
+        if hd is not None:
+            held_days.append(int(hd))
     return {
         "rows": rows,
         "openPositions": open_positions,
@@ -554,6 +612,8 @@ def replay_sgap_from_context(
             "satMaxDdPct": round(max_dd * 100, 1),
             "skipT1Count": skip_n,
             "fillCount": fill_n,
+            "closeReasons": close_reasons,
+            "avgHeldDays": round(sum(held_days) / len(held_days), 2) if held_days else 0.0,
         },
         "pool_mode": pool_mode,
         "position_pct": clip,
@@ -574,6 +634,8 @@ def build_sgap_timeline(
     limit_fallback: bool = False,
     pool_mode: str | None = None,
     position_pct: float = POSITION_PCT,
+    protect_stop_pct: float | None = None,
+    trail_after_body_pct: float | None = None,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -581,6 +643,7 @@ def build_sgap_timeline(
              openPositions: [...], summary: {...}}.
     skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
     pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
+    protect_stop_pct / trail_after_body_pct: experiment-only; live UI must leave None.
     """
     ctx = load_sgap_context(start, end)
     return replay_sgap_from_context(
@@ -596,6 +659,8 @@ def build_sgap_timeline(
         limit_fallback=limit_fallback,
         pool_mode=pool_mode,
         position_pct=position_pct,
+        protect_stop_pct=protect_stop_pct,
+        trail_after_body_pct=trail_after_body_pct,
     )
 
 

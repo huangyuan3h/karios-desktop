@@ -1,8 +1,8 @@
 # 回测总结（指向 **择强单轨** · 2026-08-29）
 
-> **何时看**：任何人想「再回测 / 再优化」之前——先读本页 + [`modules/pick-strong-track.md`](../modules/pick-strong-track.md)（核心腿）+ [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)（实盘默认机会双子星）。
-> **一句话**：**实盘默认 = 机会双子星 v3.1 clip4**（择强核心 + strict S-gap 卫星 4×12.5%）。单轨是核心腿 / Settings 对照。  
-> S-3 / 套筒 / 信号池实验是子组件与拒收档案，**不再作为并列终局结论**。
+> **何时看**：任何人想「再回测 / 再优化 / 改实盘规则」之前——先读本页 + [`clip4-ops-decisions-2026-09-03.md`](clip4-ops-decisions-2026-09-03.md)（2026-09-03 讨论）+ [`modules/pick-strong-track.md`](../modules/pick-strong-track.md)（核心腿）+ [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)（实盘默认机会双子星）。
+> **一句话**：**实盘默认 = 机会双子星 v3.1 clip4**（择强核心 + strict S-gap 卫星 4×12.5%、第 3 日收盘卖、无 −5%）。单轨是核心腿 / Settings 对照。  
+> S-3 / 套筒 / 信号池实验是子组件与拒收档案，**不再作为并列终局结论**。已 REJECT 的变体不要再当实盘方案提出。
 
 ---
 
@@ -17,7 +17,7 @@
 | 三窗绝对 NAV（trail8） | OOS2 **+17.8** / train **+40.7** / valid **+139.1**（dd 18.0/8.4/11.9） |
 | 报告 | `pick_strong_trail8_20260829.json` · `past_year_twin_vs_core_2026-09-02.json` · `opportunity_twin_star_v3_clip4_frozen.json` |
 | 参数定案 | LB60·MA200·hold1·100% mom（[加固实验](pick-strong-hardening-2026-08-29.md) **维持 A0**；hold5/短 LB/risk-adj/Top2 拒收） |
-| 优化范围 | 择强打分已扫一轮；**S-3 冻结**；下一刀优先 Timeline 对齐 |
+| 优化范围 | 择强打分已扫一轮；**S-3 冻结 10×10%**；卫星 **body=3 收盘、无 −5%**；下一刀优先工程/对齐，不扫新卫星参 |
 
 对照（非定案）：STOCK 优先 +110.8%；UI Timeline 旧口径 +123.9%；纯 CN S-3 引擎 +58.3%。
 
@@ -34,12 +34,18 @@
 | 早期实验 | ~10 项 | 全部拒收 | — |
 | **固化进 STOCK 腿** | 环境感知 / 仓位 / 数据修复 | 见 strategy-params | 提供择强用的股票篮 |
 | **固化进多资产腿** | mom60+MA200 / MIN_HOLD5 | multi_asset_sleeve | 择强 ETF 侧规则 |
+| 核心 S-3 篮 10→5/4/3 | 4 变体 | **4 全部拒收**（OOS2 −20~−39） | 操作负担不能靠砍核心篮；见 [core-stock-clip](core-stock-clip-2026-09-03.md) |
+| 卫星 body 后续 trail / −5% 入引擎 | 3 变体 | **3 全部拒收** | Live 已去掉 −5% overlay，只 body=3 收盘；见 [sat-exit-trail](sat-exit-trail-2026-09-03.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
 2. 防守收紧 → 截断右尾
 3. 与 RS 共线 / 闸门重合 → 零增量
 4. 单窗好看 = 过拟合
+5. 砍核心 S-3 篮宽度（10→5/4/3）→ OOS2 弱市年崩
+6. 卫星 −5% 当常规退出、或 body 后续 trail → 截断 3 日脉冲 / 占满 4 槽
+
+调参查找：用户说篮子太多 → [core-stock-clip](core-stock-clip-2026-09-03.md)；说止损/拿长一点/第几天卖 → [sat-exit-trail](sat-exit-trail-2026-09-03.md) + [讨论记录](clip4-ops-decisions-2026-09-03.md)。Agent 规则：仓库根 `AGENTS.md` → **Strategy / parameter changes**。
 
 ## 2. A 股 S-3（STOCK 腿 · 非终局产品）
 

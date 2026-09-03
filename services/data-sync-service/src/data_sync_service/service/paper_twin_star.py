@@ -2,7 +2,7 @@
 
 Occupancy for live Watchlist is the broker book. This module records what the
 frozen S-gap recipe would have done: at most 4 slots × 12.5% NAV, body=3
-weekday exit, protect stop −5%. No pyramid, no trailing, no 60-day hold.
+weekday close exit. No protect stop, pyramid, trailing, or 60-day hold.
 
 source='twin_star' rows must not go through paper_s3 / paper_trading.run_update.
 """
@@ -15,7 +15,6 @@ from typing import Any
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_BODY_EXIT,
-    CLOSE_REASON_STOP_HIT,
     SOURCE_TWIN_STAR,
     close_paper_trade,
     insert_paper_trade,
@@ -33,7 +32,6 @@ from data_sync_service.service.twin_star_daily import (
 
 logger = logging.getLogger(__name__)
 
-SAT_STOP_PCT = -5.0
 SLEEVE_PCT = POSITION_PCT * 0.5  # 0.125 of NAV when sat sleeve is 50%
 
 
@@ -160,7 +158,7 @@ def run_intake_twin_star(*, trade_date: str | None = None) -> dict[str, Any]:
 
 
 def run_update_twin_star(*, today_iso_s: str | None = None) -> dict[str, Any]:
-    """Close twin_star paper on body=3 weekdays or protect stop −5%."""
+    """Close twin_star paper at body=3 close. No protect stop (frozen S-gap)."""
     day = today_iso_s or today_iso()
     summary: dict[str, Any] = {
         "today": day,
@@ -207,13 +205,9 @@ def run_update_twin_star(*, today_iso_s: str | None = None) -> dict[str, Any]:
         gross = (px - entry) / entry * 100.0
         net = gross - costs_pct
         held = _held_days(str(t.get("entryDate") or t.get("entry_date") or ""), day)
-        reason = None
-        if net <= SAT_STOP_PCT:
-            reason = CLOSE_REASON_STOP_HIT
-        elif held >= BODY:
-            reason = CLOSE_REASON_BODY_EXIT
-        if reason is None:
+        if held < BODY:
             continue
+        reason = CLOSE_REASON_BODY_EXIT
         try:
             closed = close_paper_trade(
                 trade_id=trade_id,

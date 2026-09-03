@@ -220,7 +220,7 @@ describe('contract: twin-star action (/api/backtest/twin-star/action vs shared Z
         slotOfSleeve: 0.25,
         satSlotNavPct: 12.5,
         body: 3,
-        protectStopPct: 0.05,
+        protectStopPct: 0,
       },
     };
     expect(TwinStarActionResponseSchema.parse(payload).clip4.satSlotNavPct).toBe(12.5);

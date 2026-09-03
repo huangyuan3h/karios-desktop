@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SAT_MAX_POS,
+  SAT_PROTECT_STOP_PCT,
   SAT_SLOT_NAV_PCT,
   SAT_SLOT_OF_SLEEVE,
   TWIN_STAR_LIVE_RECIPE,
@@ -56,6 +57,7 @@ describe('buildTwinStarTradePlan', () => {
     expect(SAT_MAX_POS).toBe(TWIN_STAR_LIVE_RECIPE.maxPos);
     expect(SAT_SLOT_OF_SLEEVE).toBe(TWIN_STAR_LIVE_RECIPE.slotOfSleeve);
     expect(SAT_SLOT_NAV_PCT).toBe(12.5);
+    expect(SAT_PROTECT_STOP_PCT).toBe(0);
   });
 
   it('drains the weaker ETF before touching the core park ETF', () => {
@@ -338,7 +340,7 @@ describe('buildTwinStarTradePlan', () => {
     expect(plan.bookNote).toMatch(/引擎模拟 15 只为对照/);
   });
 
-  it('counts body=3 from the live entry date and prints a -5% broker stop', () => {
+  it('counts body=3 from the live entry date; no -5% broker stop', () => {
     expect(satBodyProgress('2026-09-02', '2026-09-02')).toEqual({
       heldDays: 1,
       daysLeft: 2,
@@ -346,7 +348,7 @@ describe('buildTwinStarTradePlan', () => {
       due: false,
       missingEntry: false,
     });
-    expect(satProtectStop(20)).toBe(19);
+    expect(satProtectStop(20)).toBeNull();
     const plan = buildTwinStarTradePlan(
       base({
         asOfDate: '2026-09-02',
@@ -368,9 +370,9 @@ describe('buildTwinStarTradePlan', () => {
     expect(row?.heldDays).toBe(1);
     expect(row?.daysLeft).toBe(2);
     expect(row?.exitDue).toBe('2026-09-04');
-    expect(row?.protectStop).toBe(19);
+    expect(row?.protectStop).toBeNull();
     expect(row?.side).toBe('HOLD');
-    expect(satConditionalLine(row!)).toBe('芒果超媒 300413.SZ 止损19 到期2026-09-04 持有');
+    expect(satConditionalLine(row!)).toBe('芒果超媒 300413.SZ 到期2026-09-04 持有至到期收盘');
   });
 
   it('sells a live satellite name on the 3rd weekday', () => {
@@ -394,7 +396,7 @@ describe('buildTwinStarTradePlan', () => {
     expect(plan.satHeadline).toMatch(/卖 芒果超媒/);
   });
 
-  it('flags a protective stop breach without waiting for body=3', () => {
+  it('does not sell a -5% dip before body=3 close', () => {
     const plan = buildTwinStarTradePlan(
       base({
         asOfDate: '2026-09-02',
@@ -411,9 +413,11 @@ describe('buildTwinStarTradePlan', () => {
         ],
       }),
     );
-    const row = plan.sells.find((r) => r.symbol === 'CN:300413');
-    expect(row?.stopBreached).toBe(true);
-    expect(row?.reason).toMatch(/保护止损已破 19/);
+    expect(plan.sells.find((r) => r.symbol === 'CN:300413')).toBeUndefined();
+    const row = plan.holds.find((r) => r.symbol === 'CN:300413');
+    expect(row?.side).toBe('HOLD');
+    expect(row?.stopBreached).toBe(false);
+    expect(row?.reason).toMatch(/交易日后收盘卖/);
   });
 
   it('targets the pick ETF at coreTargetPct of NAV', () => {

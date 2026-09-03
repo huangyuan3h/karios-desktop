@@ -112,13 +112,28 @@ def _vol20(mp: dict[str, float], days_k: list[str], pi: int) -> float:
     return max(math.sqrt(var), 1e-6)
 
 
-def warm_window(start: str, end: str, etf_close: dict) -> dict:
-    """Run S-3 once; return reusable engine + ETF return maps."""
-    cfg_cn = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
-    cfg_hk = BacktestConfig(start_date=start, end_date=end, **HK_S3_CONFIG)
-    data_cn = BacktestData(cfg_cn)
+def warm_window(
+    start: str,
+    end: str,
+    etf_close: dict,
+    *,
+    s3_cn: dict | None = None,
+    s3_hk: dict | None = None,
+    data_cn: BacktestData | None = None,
+    data_hk: BacktestData | None = None,
+) -> dict:
+    """Run S-3 once; return reusable engine + ETF return maps.
+
+    Optional ``s3_cn`` / ``s3_hk`` overlay frozen S3_CONFIG / HK_S3_CONFIG.
+    Pass preloaded ``data_cn`` / ``data_hk`` to reuse bars across clip variants.
+    """
+    cfg_cn = BacktestConfig(start_date=start, end_date=end, **{**S3_CONFIG, **(s3_cn or {})})
+    cfg_hk = BacktestConfig(start_date=start, end_date=end, **{**HK_S3_CONFIG, **(s3_hk or {})})
+    if data_cn is None:
+        data_cn = BacktestData(cfg_cn)
+    if data_hk is None:
+        data_hk = BacktestData(cfg_hk)
     run_cn = simulate(cfg_cn, data_cn)
-    data_hk = BacktestData(cfg_hk)
     run_hk = simulate(cfg_hk, data_hk)
     calendar = sorted(set(data_cn.calendar) | set(data_hk.calendar))
     close_by_ts = {**data_cn.close_by_ts_day, **data_hk.close_by_ts_day}
@@ -139,6 +154,8 @@ def warm_window(start: str, end: str, etf_close: dict) -> dict:
         "snap_cn": {str(s.get("date")): s for s in run_cn.positions_by_day},
         "snap_hk": {str(s.get("date")): s for s in run_hk.positions_by_day},
         "ts_days": {ts: sorted(mp.keys()) for ts, mp in close_by_ts.items()},
+        "data_cn": data_cn,
+        "data_hk": data_hk,
     }
 
 
@@ -191,6 +208,7 @@ def build_nav_from_cache(
     etf_peak = 0.0
     trail_exits = 0
     nav_map = {}
+    stock_day_n: list[int] = []
     if calendar:
         nav_map[calendar[0]] = 1.0
 
@@ -340,12 +358,16 @@ def build_nav_from_cache(
         else:
             fused_ret = etf_ret.get(hold_pick, {}).get(day, 0.0)
 
+        if hold_pick == "STOCK":
+            stock_day_n.append(len(stock_poses))
+
         nav *= 1.0 + fused_ret - (cost if switched else 0.0)
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
         nav_map[day] = nav
 
+    n_loop = max(1, len(calendar) - 1)
     return {
         "fusedPct": round((nav - 1.0) * 100.0, 2),
         "maxDdFusedPct": round(max_dd * 100.0, 1),
@@ -353,6 +375,9 @@ def build_nav_from_cache(
         "trailExits": trail_exits,
         "calendarDays": len(calendar),
         "nav": nav_map,
+        "stockDayPct": round(100.0 * len(stock_day_n) / n_loop, 1),
+        "avgStockNames": round(sum(stock_day_n) / len(stock_day_n), 2) if stock_day_n else 0.0,
+        "maxStockNames": max(stock_day_n) if stock_day_n else 0,
     }
 
 

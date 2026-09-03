@@ -1,0 +1,664 @@
+{
+  "tag": "sat-exit-trail-2026-09-03",
+  "protocol": "window-local empty book; frozen clip4 sat (4×25% strict skip_t1) with optional protect/trail-after-body; frozen pick-strong core; opp_50",
+  "variants": [
+    {
+      "id": "body",
+      "protect_stop_pct": null,
+      "trail_after_body_pct": null,
+      "label": "body=3 close · frozen"
+    },
+    {
+      "id": "body_protect5",
+      "protect_stop_pct": 0.05,
+      "trail_after_body_pct": null,
+      "label": "body=3 + protect −5% vs cost"
+    },
+    {
+      "id": "protect5_trail5",
+      "protect_stop_pct": 0.05,
+      "trail_after_body_pct": 0.05,
+      "label": "protect −5% + trail 5% after body (no force sell)"
+    },
+    {
+      "id": "protect5_trail8",
+      "protect_stop_pct": 0.05,
+      "trail_after_body_pct": 0.08,
+      "label": "protect −5% + trail 8% after body (no force sell)"
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 17.8,
+        "max_dd": 18.0,
+        "sharpe": 0.72
+      },
+      "variants": {
+        "body": {
+          "label": "body=3 close · frozen",
+          "protect_stop_pct": null,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 118.3,
+            "max_dd": 7.2,
+            "sharpe": 3.92
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 64.7,
+            "max_dd": 16.1,
+            "sharpe": 2.13
+          },
+          "delta_core_pt": 46.9,
+          "fillCount": 291,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 291
+          },
+          "avg_pos": 2.31,
+          "avg_pos_active": 3.6,
+          "pct_active": 64.2,
+          "avg_sat_invested": 57.7,
+          "delta_base_pt": 0.0
+        },
+        "body_protect5": {
+          "label": "body=3 + protect −5% vs cost",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 108.5,
+            "max_dd": 12.6,
+            "sharpe": 3.42
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 60.9,
+            "max_dd": 16.4,
+            "sharpe": 2.01
+          },
+          "delta_core_pt": 43.1,
+          "fillCount": 298,
+          "avgHeldDays": 2.93,
+          "closeReasons": {
+            "protect_stop": 41,
+            "body_exit": 257
+          },
+          "avg_pos": 2.28,
+          "avg_pos_active": 3.53,
+          "pct_active": 64.6,
+          "avg_sat_invested": 57.0,
+          "delta_base_pt": -3.8
+        },
+        "protect5_trail5": {
+          "label": "protect −5% + trail 5% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.05,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 138.7,
+            "max_dd": 22.6,
+            "sharpe": 1.76
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 80.0,
+            "max_dd": 11.9,
+            "sharpe": 1.99
+          },
+          "delta_core_pt": 62.2,
+          "fillCount": 69,
+          "avgHeldDays": 10.38,
+          "closeReasons": {
+            "protect_stop": 21,
+            "trail_exit": 48
+          },
+          "avg_pos": 2.81,
+          "avg_pos_active": 3.35,
+          "pct_active": 83.9,
+          "avg_sat_invested": 70.2,
+          "delta_base_pt": 15.3
+        },
+        "protect5_trail8": {
+          "label": "protect −5% + trail 8% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.08,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 108.3,
+            "max_dd": 21.4,
+            "sharpe": 1.56
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 73.5,
+            "max_dd": 13.1,
+            "sharpe": 1.9
+          },
+          "delta_core_pt": 55.7,
+          "fillCount": 54,
+          "avgHeldDays": 12.39,
+          "closeReasons": {
+            "protect_stop": 21,
+            "trail_exit": 33
+          },
+          "avg_pos": 2.94,
+          "avg_pos_active": 3.29,
+          "pct_active": 89.4,
+          "avg_sat_invested": 73.5,
+          "delta_base_pt": 8.8
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.7,
+        "max_dd": 8.4,
+        "sharpe": 3.01
+      },
+      "variants": {
+        "body": {
+          "label": "body=3 close · frozen",
+          "protect_stop_pct": null,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 38.0,
+            "max_dd": 4.3,
+            "sharpe": 3.28
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 51.4,
+            "max_dd": 7.8,
+            "sharpe": 4.05
+          },
+          "delta_core_pt": 10.7,
+          "fillCount": 132,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 132
+          },
+          "avg_pos": 2.06,
+          "avg_pos_active": 3.72,
+          "pct_active": 55.5,
+          "avg_sat_invested": 51.6,
+          "delta_base_pt": 0.0
+        },
+        "body_protect5": {
+          "label": "body=3 + protect −5% vs cost",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 35.8,
+            "max_dd": 4.9,
+            "sharpe": 3.09
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 48.7,
+            "max_dd": 7.3,
+            "sharpe": 3.91
+          },
+          "delta_core_pt": 8.0,
+          "fillCount": 134,
+          "avgHeldDays": 2.93,
+          "closeReasons": {
+            "body_exit": 116,
+            "protect_stop": 18
+          },
+          "avg_pos": 2.02,
+          "avg_pos_active": 3.6,
+          "pct_active": 56.2,
+          "avg_sat_invested": 50.6,
+          "delta_base_pt": -2.7
+        },
+        "protect5_trail5": {
+          "label": "protect −5% + trail 5% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.05,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 25.4,
+            "max_dd": 10.5,
+            "sharpe": 1.59
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 43.9,
+            "max_dd": 8.0,
+            "sharpe": 3.33
+          },
+          "delta_core_pt": 3.2,
+          "fillCount": 31,
+          "avgHeldDays": 10.35,
+          "closeReasons": {
+            "trail_exit": 24,
+            "protect_stop": 7
+          },
+          "avg_pos": 2.39,
+          "avg_pos_active": 3.15,
+          "pct_active": 75.8,
+          "avg_sat_invested": 59.8,
+          "delta_base_pt": -7.5
+        },
+        "protect5_trail8": {
+          "label": "protect −5% + trail 8% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.08,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 9.1,
+            "max_dd": 11.9,
+            "sharpe": 0.8
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 35.2,
+            "max_dd": 8.0,
+            "sharpe": 3.14
+          },
+          "delta_core_pt": -5.5,
+          "fillCount": 19,
+          "avgHeldDays": 17.84,
+          "closeReasons": {
+            "trail_exit": 13,
+            "protect_stop": 6
+          },
+          "avg_pos": 2.59,
+          "avg_pos_active": 3.72,
+          "pct_active": 69.5,
+          "avg_sat_invested": 64.6,
+          "delta_base_pt": -16.2
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 139.1,
+        "max_dd": 11.9,
+        "sharpe": 3.37
+      },
+      "variants": {
+        "body": {
+          "label": "body=3 close · frozen",
+          "protect_stop_pct": null,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 14.5,
+            "max_dd": 6.2,
+            "sharpe": 1.69
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 157.2,
+            "max_dd": 11.9,
+            "sharpe": 3.71
+          },
+          "delta_core_pt": 18.1,
+          "fillCount": 56,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 56
+          },
+          "avg_pos": 1.06,
+          "avg_pos_active": 3.61,
+          "pct_active": 29.5,
+          "avg_sat_invested": 26.6,
+          "delta_base_pt": 0.0
+        },
+        "body_protect5": {
+          "label": "body=3 + protect −5% vs cost",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 11.5,
+            "max_dd": 7.2,
+            "sharpe": 1.45
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 142.3,
+            "max_dd": 11.9,
+            "sharpe": 3.55
+          },
+          "delta_core_pt": 3.2,
+          "fillCount": 57,
+          "avgHeldDays": 2.96,
+          "closeReasons": {
+            "body_exit": 51,
+            "protect_stop": 6
+          },
+          "avg_pos": 1.06,
+          "avg_pos_active": 3.5,
+          "pct_active": 30.4,
+          "avg_sat_invested": 26.6,
+          "delta_base_pt": -14.9
+        },
+        "protect5_trail5": {
+          "label": "protect −5% + trail 5% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.05,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 4.7,
+            "max_dd": 14.1,
+            "sharpe": 0.6
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 135.0,
+            "max_dd": 11.9,
+            "sharpe": 3.43
+          },
+          "delta_core_pt": -4.1,
+          "fillCount": 17,
+          "avgHeldDays": 7.24,
+          "closeReasons": {
+            "trail_exit": 8,
+            "protect_stop": 9
+          },
+          "avg_pos": 1.15,
+          "avg_pos_active": 3.69,
+          "pct_active": 31.2,
+          "avg_sat_invested": 28.8,
+          "delta_base_pt": -22.2
+        },
+        "protect5_trail8": {
+          "label": "protect −5% + trail 8% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.08,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 21.3,
+            "max_dd": 11.0,
+            "sharpe": 1.45
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 152.3,
+            "max_dd": 11.9,
+            "sharpe": 3.65
+          },
+          "delta_core_pt": 13.2,
+          "fillCount": 7,
+          "avgHeldDays": 18.14,
+          "closeReasons": {
+            "trail_exit": 6,
+            "protect_stop": 1
+          },
+          "avg_pos": 1.28,
+          "avg_pos_active": 3.49,
+          "pct_active": 36.6,
+          "avg_sat_invested": 31.9,
+          "delta_base_pt": -4.9
+        }
+      }
+    },
+    "past_year": {
+      "core": {
+        "n_days": 257,
+        "total_pct": 181.2,
+        "max_dd": 12.6,
+        "sharpe": 2.43
+      },
+      "variants": {
+        "body": {
+          "label": "body=3 close · frozen",
+          "protect_stop_pct": null,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 51.7,
+            "max_dd": 4.7,
+            "sharpe": 2.42
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 195.9,
+            "max_dd": 12.6,
+            "sharpe": 2.62
+          },
+          "delta_core_pt": 14.7,
+          "fillCount": 200,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 200
+          },
+          "avg_pos": 1.58,
+          "avg_pos_active": 3.63,
+          "pct_active": 43.6,
+          "avg_sat_invested": 39.6,
+          "delta_base_pt": 0.0
+        },
+        "body_protect5": {
+          "label": "body=3 + protect −5% vs cost",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 46.6,
+            "max_dd": 5.4,
+            "sharpe": 2.24
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 185.5,
+            "max_dd": 12.6,
+            "sharpe": 2.54
+          },
+          "delta_core_pt": 4.3,
+          "fillCount": 203,
+          "avgHeldDays": 2.95,
+          "closeReasons": {
+            "body_exit": 177,
+            "protect_stop": 26
+          },
+          "avg_pos": 1.56,
+          "avg_pos_active": 3.53,
+          "pct_active": 44.4,
+          "avg_sat_invested": 39.1,
+          "delta_base_pt": -10.4
+        },
+        "protect5_trail5": {
+          "label": "protect −5% + trail 5% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.05,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 24.0,
+            "max_dd": 12.1,
+            "sharpe": 0.96
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 169.9,
+            "max_dd": 12.6,
+            "sharpe": 2.42
+          },
+          "delta_core_pt": -11.3,
+          "fillCount": 54,
+          "avgHeldDays": 9.67,
+          "closeReasons": {
+            "trail_exit": 35,
+            "protect_stop": 19
+          },
+          "avg_pos": 1.91,
+          "avg_pos_active": 3.25,
+          "pct_active": 58.8,
+          "avg_sat_invested": 47.8,
+          "delta_base_pt": -26.0
+        },
+        "protect5_trail8": {
+          "label": "protect −5% + trail 8% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.08,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 21.6,
+            "max_dd": 13.0,
+            "sharpe": 0.8
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 154.7,
+            "max_dd": 11.9,
+            "sharpe": 2.32
+          },
+          "delta_core_pt": -26.5,
+          "fillCount": 31,
+          "avgHeldDays": 17.55,
+          "closeReasons": {
+            "trail_exit": 20,
+            "protect_stop": 11
+          },
+          "avg_pos": 2.09,
+          "avg_pos_active": 3.57,
+          "pct_active": 58.4,
+          "avg_sat_invested": 52.1,
+          "delta_base_pt": -41.2
+        }
+      }
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "variants": {
+        "body": {
+          "label": "body=3 close · frozen",
+          "protect_stop_pct": null,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 34.5,
+            "max_dd": 8.7,
+            "sharpe": 1.6
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 194.9,
+            "max_dd": 12.6,
+            "sharpe": 2.64
+          },
+          "delta_core_pt": 4.3,
+          "fillCount": 188,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 188
+          },
+          "avg_pos": 1.52,
+          "avg_pos_active": 3.59,
+          "pct_active": 42.3,
+          "avg_sat_invested": 37.9,
+          "delta_base_pt": 0.0
+        },
+        "body_protect5": {
+          "label": "body=3 + protect −5% vs cost",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": null,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 24.6,
+            "max_dd": 13.0,
+            "sharpe": 1.2
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 178.6,
+            "max_dd": 12.6,
+            "sharpe": 2.51
+          },
+          "delta_core_pt": -12.0,
+          "fillCount": 195,
+          "avgHeldDays": 2.93,
+          "closeReasons": {
+            "body_exit": 166,
+            "protect_stop": 29
+          },
+          "avg_pos": 1.51,
+          "avg_pos_active": 3.51,
+          "pct_active": 43.1,
+          "avg_sat_invested": 37.8,
+          "delta_base_pt": -16.3
+        },
+        "protect5_trail5": {
+          "label": "protect −5% + trail 5% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.05,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 10.4,
+            "max_dd": 15.7,
+            "sharpe": 0.49
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 159.3,
+            "max_dd": 12.6,
+            "sharpe": 2.33
+          },
+          "delta_core_pt": -31.3,
+          "fillCount": 56,
+          "avgHeldDays": 8.7,
+          "closeReasons": {
+            "protect_stop": 21,
+            "trail_exit": 35
+          },
+          "avg_pos": 1.88,
+          "avg_pos_active": 3.24,
+          "pct_active": 58.1,
+          "avg_sat_invested": 47.0,
+          "delta_base_pt": -35.6
+        },
+        "protect5_trail8": {
+          "label": "protect −5% + trail 8% after body (no force sell)",
+          "protect_stop_pct": 0.05,
+          "trail_after_body_pct": 0.08,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 24.6,
+            "max_dd": 12.8,
+            "sharpe": 0.89
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 153.1,
+            "max_dd": 11.9,
+            "sharpe": 2.35
+          },
+          "delta_core_pt": -37.5,
+          "fillCount": 31,
+          "avgHeldDays": 16.1,
+          "closeReasons": {
+            "protect_stop": 11,
+            "trail_exit": 20
+          },
+          "avg_pos": 2.08,
+          "avg_pos_active": 3.24,
+          "pct_active": 64.0,
+          "avg_sat_invested": 51.9,
+          "delta_base_pt": -41.8
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "body": "baseline",
+    "body_protect5": "REJECT",
+    "protect5_trail5": "REJECT",
+    "protect5_trail8": "REJECT"
+  },
+  "as_of": "2026-09-03T00:24:58+00:00"
+}

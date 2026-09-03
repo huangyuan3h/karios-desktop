@@ -625,7 +625,6 @@ function SatStockRow({
 }) {
   const { code, pretty } = satRowPretty(r);
   const isSell = r.side === 'SELL';
-  const stopLabel = r.protectStop != null ? String(r.protectStop) : '—';
   const dueLabel = r.exitDue ?? '—';
   const heldLabel =
     r.heldDays != null ? `${r.heldDays}/3` : r.missingEntry ? '缺入场日' : '—';
@@ -659,17 +658,10 @@ function SatStockRow({
         {isSell && bought ? <span className="text-[10px] text-[var(--k-muted)]">已记</span> : null}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
-        <span title="S-gap body=3：入场日起第 3 个交易日收盘卖">已持 {heldLabel}</span>
+        <span title="S-gap：入场日起第 3 个交易日收盘卖，中途不设止损">已持 {heldLabel}</span>
         <span className={isSell ? 'font-semibold text-red-600 dark:text-red-400' : undefined}>
           到期 {dueLabel}
-          {isSell && !r.stopBreached ? ' 收盘卖' : ''}
-        </span>
-        <span
-          className={r.stopBreached ? 'font-semibold text-red-600 dark:text-red-400' : undefined}
-          title="券商条件单用：成本−5%。S-gap 回测本身只有 body3，没有止损腿"
-        >
-          止损 {stopLabel}
-          {r.missingCost ? ' · 补录成本' : '（成本−5%）'}
+          {isSell ? ' 收盘卖' : ''}
         </span>
         {r.lastClose != null ? <span>现价 {r.lastClose}</span> : null}
         {r.pnlPct != null ? (
@@ -681,9 +673,9 @@ function SatStockRow({
           type="button"
           onClick={() => copyText(satConditionalLine(r))}
           className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
-          title="复制到剪贴板，去券商下止损条件单"
+          title="复制到期日，第 3 个交易日收盘卖"
         >
-          复制止损
+          复制到期
         </button>
       </div>
       <div className="text-[10px] text-[var(--k-muted)]">{r.reason}</div>
@@ -719,13 +711,13 @@ function SatSleevePanel({
             type="button"
             onClick={() => copyText(copyAllRows.map(satConditionalLine).join('\n'))}
             className="rounded border border-sky-500/30 bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
-            title="复制全部止损/到期，去券商下条件单"
+            title="复制全部到期日（第 3 个交易日收盘卖）"
           >
-            复制止损单
+            复制全部到期
           </button>
         ) : null}
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          每只总资产 {plan.satSlotNavPct}% · body3 退出
+          每只总资产 {plan.satSlotNavPct}% · 第3日收盘卖
         </span>
       </div>
       <div className="mb-1.5 text-[10px] leading-snug text-[var(--k-muted)]">

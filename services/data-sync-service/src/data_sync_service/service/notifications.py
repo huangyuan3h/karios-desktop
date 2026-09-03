@@ -19,8 +19,6 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SAT_BODY = 3
-SAT_PROTECT_STOP_PCT = 0.05
-SAT_NEAR_STOP_PCT = 2.0
 
 REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports"
 
@@ -171,14 +169,11 @@ def _sat_holding_alerts(
     hold: dict[str, Any],
     as_of: date | None,
 ) -> list[dict[str, Any]]:
-    """Twin-star satellite: body=3 close sell + cost−5% protective stop. Not S-3."""
+    """Twin-star satellite: body=3 close sell. No protect stop (frozen S-gap)."""
     symbol = str(hold.get("symbol") or "")
     name = str(hold.get("name") or symbol)
     out: list[dict[str, Any]] = []
     entry = _parse_iso_day(hold.get("entryDate"))
-    cost = _as_float(hold.get("costPrice"))
-    last = _as_float(hold.get("lastClose") or hold.get("evaluatedPrice"))
-    protect = round(cost * (1 - SAT_PROTECT_STOP_PCT), 3) if cost and cost > 0 else None
     if entry and as_of:
         held = _count_weekdays_inclusive(entry, as_of)
         due = _nth_weekday_inclusive(entry, SAT_BODY)
@@ -216,31 +211,6 @@ def _sat_holding_alerts(
             lane="trade",
             book="sat",
         ))
-    if protect is not None and last is not None and last > 0:
-        if last <= protect:
-            out.append(_note(
-                nid=f"sat-stop:{market}:{symbol}",
-                type="sat_stop",
-                severity="high",
-                title=f"保护止损已破 · {name}",
-                detail=f"{symbol} 现价 {last} ≤ 止损 {protect}（成本−{SAT_PROTECT_STOP_PCT * 100:.0f}%）",
-                anchor="holdings",
-                lane="trade",
-                book="sat",
-            ))
-        else:
-            dist = (last - protect) / last * 100.0
-            if 0 <= dist < SAT_NEAR_STOP_PCT:
-                out.append(_note(
-                    nid=f"sat-near:{market}:{symbol}",
-                    type="sat_near_stop",
-                    severity="medium",
-                    title=f"接近保护止损 · {name}",
-                    detail=f"{symbol} 距止损 {dist:.2f}%（现价 {last} / 线 {protect}）",
-                    anchor="holdings",
-                    lane="trade",
-                    book="sat",
-                ))
     return out
 
 
@@ -599,9 +569,9 @@ def build_notifications(mode: str = "twin_star") -> list[dict[str, Any]]:
     """All actionable notifications, most severe first.
 
     ``mode`` is the live Settings strategy (``twin_star`` | ``single_track``).
-    Default is twin-star (clip4). Twin-star CN holdings use S-gap body3 +
-    protect stop; S-3 pyramid/trail and paper-vs-backtest recon stay on the
-    single-track book.
+    Default is twin-star (clip4). Twin-star CN holdings use S-gap body=3 close
+    only (no protect stop); S-3 pyramid/trail and paper-vs-backtest recon stay
+    on the single-track book.
     """
     live_mode = "twin_star" if mode == "twin_star" else "single_track"
     ctx = _load_health_ctx()

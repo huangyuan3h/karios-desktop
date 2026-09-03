@@ -9,7 +9,7 @@
 | 文档 | 干什么用 | 何时看 |
 |------|----------|--------|
 | [`todo.md`](./todo.md) | 产品级路线图（领域分章 + `[P0..P4]`） | 每次开工前先扫 §0 / §1 |
-| [`AGENTS.md`](../AGENTS.md) | Agent / 维护者必读（Alembic、schema 改、OPT 任务模板） | 改 schema 或开 Agent 会话 |
+| [`AGENTS.md`](../AGENTS.md) | Agent / 维护者必读（Alembic、schema、**改策略前先读回测实验**） | 改 schema、开 Agent 会话、用户要调策略参数 |
 | 仓库根 [`README.md`](../README.md) | 项目背景 / 启动方式 / 模块协作 | 新成员第一天 / 部署时 |
 
 ---
@@ -25,7 +25,7 @@
 | S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
 | **择强单轨（产品策略真值 · 全资产同权 100% 硬切）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
 | 回测结论 / 实验记录（2026-08-09 归档 · 现行真值见 strategy-params.md） | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) → [`archive/modules-legacy/backtest-strategy-legacy.md`](../archive/modules-legacy/backtest-strategy-legacy.md) |
-| **回测实验记录（最终指向择强单轨）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) |
+| **回测实验记录（最终指向择强单轨 / 机会双子星）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 调策略先看 [`clip4-ops-decisions-2026-09-03.md`](./backtests/clip4-ops-decisions-2026-09-03.md) |
 | 交易系统总纲（含 S-3 生命周期） | [`modules/trading-system.md`](./modules/trading-system.md) |
 | 行业资金流 | [`modules/industry-flow.md`](./modules/industry-flow.md) |
 | 市场情绪 | [`modules/market-sentiment.md`](./modules/market-sentiment.md) |

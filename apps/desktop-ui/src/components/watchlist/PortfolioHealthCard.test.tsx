@@ -1203,10 +1203,11 @@ describe('PortfolioHealthCard', () => {
     expect(screen.queryByText('卫星缺口买入')).toBeNull();
     expect(screen.queryByText('603221.SH')).toBeNull();
     expect(screen.queryByText('🔴 卖出')).toBeNull();
-    expect(screen.getByText('复制止损单')).toBeDefined();
+    expect(screen.queryByText('复制止损单')).toBeNull();
+    expect(screen.getByText('复制全部到期')).toBeDefined();
     expect(screen.getAllByText(/已持 1\/3/).length).toBe(4);
     expect(screen.getAllByText(/到期 2026-09-04/).length).toBe(4);
-    expect(screen.getAllByText(/止损 19/).length).toBe(4);
+    expect(screen.queryByText(/止损 19/)).toBeNull();
     expect(screen.queryByText(/补录入场日/)).toBeNull();
     expect(screen.getByText(/今日顺序 · 先核心再卫星/)).toBeDefined();
     expect(screen.getByText('先调核心')).toBeDefined();

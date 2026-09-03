@@ -55,6 +55,7 @@
 | OPT-133 | 12:30 快照失败可见 + 双子星数据健康 | P0 | 0.5–1 天 | [x] |
 | OPT-134 | twin-star/action Zod 合同 + clip4 字面量 | P0 | 0.5 天 | [x] |
 | OPT-135 | Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃 | P0 | 1 天 | [x] |
+| OPT-136 | 卫星 Live 对齐冻结 body=3（去掉 −5% overlay） | P0 | 0.5 天 | [x] |
 
 ---
 
@@ -3225,7 +3226,7 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 **落地**：
 - `_core_target_pct` / 提醒「今日卖」用 Watchlist CN 卫星仓，不用引擎回放（引擎可到 15 只旧槽）
 - pick≠STOCK（含 pick 空）→ 全部 CN 持仓算卫星；pick=STOCK → 仅 recipe/候选集合
-- paper 簿独立：最多 4 槽 × 12.5% NAV，body=3 工作日退出，保护止损 −5%；无金字塔 / 移动止损 / 60 日持有
+- paper 簿独立：最多 4 槽 × 12.5% NAV，body=3 工作日收盘退出；无保护止损 / 金字塔 / 移动止损 / 60 日持有
 - S-3 `run_update` 跳过 `source=twin_star`；工作日 17:43 自管入出
 
 **验证**：`test_twin_star_daily.py`（引擎 15 只不翻核心%、OIL 2 只 live=50%）· `test_paper_twin_star.py`（cap 4 / body_exit / stop_hit / S-3 skip）
@@ -3265,7 +3266,7 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 **验收**：后端一旦把槽位改成 10%×10，前端 Zod 拒收，不会默默按错误仓位下 QuickBuy
 
 **落地**：
-- `TWIN_STAR_CLIP4`：`maxPos=4` `slotOfSleeve=0.25` `satSlotNavPct=12.5` `body=3` `protectStopPct=0.05`
+- `TWIN_STAR_CLIP4`：`maxPos=4` `slotOfSleeve=0.25` `satSlotNavPct=12.5` `body=3` `protectStopPct=0`
 - `GET/POST /api/backtest/twin-star/*` 带 `clip4` 字面量；`coreTargetPct ∈ {50,100}`
 - `useTwinStarActionQuery` / `refreshTwinStarAction` `parseTwinStarAction`
 - 前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` / replica-gap 文案从 shared 常量来
@@ -3287,6 +3288,21 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 - 不做：把 `paper_vs_backtest_report.py` 改成双子星统计 C4（样本仍小；P0-3 等 20 笔仍是 S-3 簿）
 
 **验证**：`PortfolioHealthCard.test.tsx` STOCK-day split · `twin-star-trade-plan.test.ts` day flow · `test_notifications.py::test_twin_star_stock_day_splits_sat_from_s3_leftover`
+
+---
+
+### OPT-136：卫星 Live 对齐冻结 body=3（去掉 −5% overlay）
+
+**状态**：[x] 2026-09-03 · P0  
+**范围**：Watchlist 交易计划 / paper `twin_star` / 通知 / clip4 `protectStopPct=0`  
+**验收**：跌破成本 −5% 不再改成卖、不再发交易铃、paper 不按 stop 平仓；到期日文案是「第 3 个交易日收盘卖」
+
+**落地**：
+- 冻结 S-gap 只有 `held >= 3` 当日 close；`body_protect5` 三窗 REJECT（valid −14.9）
+- `TWIN_STAR_CLIP4.protectStopPct` 0；Zod / Python `clip4` 同步
+- Health 去掉「复制止损」；通知去掉 `sat_stop` / `sat_near_stop`
+
+**验证**：`test_paper_twin_star.py::test_update_closes_body3_not_protect_stop` · `twin-star-trade-plan.test.ts` · `test_notifications.py::test_twin_star_sat_exit_ignores_protect_stop`
 
 ---
 

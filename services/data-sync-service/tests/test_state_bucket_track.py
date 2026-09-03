@@ -83,6 +83,91 @@ class TestDayFeatures:
         assert day_all["A.SH"]["amp"] < day_all["B.SH"]["amp"] < day_all["C.SH"]["amp"]
 
 
+class TestSatExitDecision:
+    def test_frozen_body_only(self) -> None:
+        assert sbt.sat_exit_decision(held=2, body=3, close=10.0, entry=10.0, peak=10.0) is None
+        assert (
+            sbt.sat_exit_decision(held=3, body=3, close=10.0, entry=10.0, peak=10.0) == "body_exit"
+        )
+
+    def test_protect_beats_body_and_trail(self) -> None:
+        assert (
+            sbt.sat_exit_decision(
+                held=1,
+                body=3,
+                close=9.4,
+                entry=10.0,
+                peak=10.0,
+                protect_stop_pct=0.05,
+            )
+            == "protect_stop"
+        )
+        assert (
+            sbt.sat_exit_decision(
+                held=4,
+                body=3,
+                close=9.4,
+                entry=10.0,
+                peak=11.0,
+                protect_stop_pct=0.05,
+                trail_after_body_pct=0.08,
+            )
+            == "protect_stop"
+        )
+
+    def test_trail_after_body_replaces_force_close(self) -> None:
+        assert (
+            sbt.sat_exit_decision(
+                held=3,
+                body=3,
+                close=11.0,
+                entry=10.0,
+                peak=11.0,
+                trail_after_body_pct=0.08,
+            )
+            is None
+        )
+        assert (
+            sbt.sat_exit_decision(
+                held=3,
+                body=3,
+                close=10.0,
+                entry=10.0,
+                peak=11.0,
+                trail_after_body_pct=0.08,
+            )
+            == "trail_exit"
+        )
+        assert (
+            sbt.sat_exit_decision(
+                held=2,
+                body=3,
+                close=10.0,
+                entry=10.0,
+                peak=11.0,
+                trail_after_body_pct=0.08,
+            )
+            is None
+        )
+
+
+class TestTrailAfterBodyReplay:
+    def test_rising_name_holds_past_body(self, monkeypatch) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            trail_after_body_pct=0.08,
+        )
+        exit_row = next(row for row in r["rows"] if row["date"] == dates[23])
+        assert exit_row["satPositions"] == 1
+        fills = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fills == []
+        assert r["summary"]["closeReasons"] == {}
+        assert any(p["ts"] == "A.SH" for p in r.get("openPositions") or [])
+
+
 class TestBuildSgapTimeline:
     def test_entry_exit_cost_and_slots(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()

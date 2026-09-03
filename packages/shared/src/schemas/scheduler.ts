@@ -659,7 +659,7 @@ meta(
     'paper_twin_star',
     'watchlistAutomation',
     '机会双子星 paper 簿',
-    '工作日 17:43 写入 clip4 卫星 paper（最多 4 槽 × 12.5% NAV，body=3 / −5% 保护止损）。与 S-3 paper 拆开，引擎回放只作对照。',
+    '工作日 17:43 写入 clip4 卫星 paper（最多 4 槽 × 12.5% NAV，body=3 收盘卖，无保护止损）。与 S-3 paper 拆开，引擎回放只作对照。',
     '工作日 17:43',
     '43 17 * * 1-5',
     'cron',

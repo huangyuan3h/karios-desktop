@@ -30,10 +30,10 @@ LOOKBACK_DAYS = 90
 BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = MAX_POS
 SAT_SLOT_NAV_PCT = round(50 * POSITION_PCT, 2)  # clip4: 4 × 12.5% NAV when sleeve is 50/50
-SAT_PROTECT_STOP_PCT = 0.05
+SAT_PROTECT_STOP_PCT = 0.0
 
 # JSON contract: packages/shared TwinStarActionResponseSchema (OPT-134).
-# clip4 literals: maxPos=4 slotOfSleeve=0.25 satSlotNavPct=12.5 body=3 protectStopPct=0.05
+# clip4 literals: maxPos=4 slotOfSleeve=0.25 satSlotNavPct=12.5 body=3 protectStopPct=0
 # sat.coreTargetPct ∈ {50, 100}; sat.satTargetPct ∈ {0, 50}
 
 

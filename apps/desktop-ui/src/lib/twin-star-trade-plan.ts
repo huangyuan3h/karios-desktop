@@ -24,7 +24,7 @@ export const SAT_MAX_POS = TWIN_STAR_CLIP4.maxPos;
 export const SAT_SLOT_OF_SLEEVE = TWIN_STAR_CLIP4.slotOfSleeve;
 /** Each sat name as % of total NAV when the sleeve is 50/50 (4 × 12.5%). */
 export const SAT_SLOT_NAV_PCT = TWIN_STAR_CLIP4.satSlotNavPct;
-/** Broker protective stop from cost. Not part of the S-gap backtest (body=3 only). */
+/** Frozen S-gap has no stop; 0 disables any leftover overlay math. */
 export const SAT_PROTECT_STOP_PCT = TWIN_STAR_CLIP4.protectStopPct;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** Frozen live mapping of opportunity twin-star v3.1 clip4 — lockstep with state_bucket_track.py. */
@@ -40,7 +40,7 @@ export const TWIN_STAR_LIVE_RECIPE = {
 } as const;
 
 export function twinStarRecipeLine(slotNavPct: number): string {
-  return `口径核 · 核心择强 mom_compare · 卫星 ${TWIN_STAR_LIVE_RECIPE.sat} ${TWIN_STAR_LIVE_RECIPE.pool} · ${TWIN_STAR_LIVE_RECIPE.gate} · 每槽套筒${TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 100}%=总资产${slotNavPct}% · body${TWIN_STAR_LIVE_RECIPE.body} · 空篮留最强ETF`;
+  return `口径核 · 核心择强 mom_compare · 卫星 ${TWIN_STAR_LIVE_RECIPE.sat} ${TWIN_STAR_LIVE_RECIPE.pool} · ${TWIN_STAR_LIVE_RECIPE.gate} · 每槽套筒${TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 100}%=总资产${slotNavPct}% · 第${TWIN_STAR_LIVE_RECIPE.body}日收盘卖 · 空篮留最强ETF`;
 }
 
 export function roundNavPct(n: number): number {
@@ -116,6 +116,7 @@ export function satBodyProgress(entryDate: string | null | undefined, asOf: stri
 }
 
 export function satProtectStop(cost: number | null | undefined): number | null {
+  if (SAT_PROTECT_STOP_PCT <= 0) return null;
   if (cost == null || !Number.isFinite(cost) || cost <= 0) return null;
   return Math.round(cost * (1 - SAT_PROTECT_STOP_PCT) * 1000) / 1000;
 }
@@ -281,10 +282,9 @@ export type TwinStarTradeRow = {
 export function satConditionalLine(r: TwinStarTradeRow): string {
   const code = toTsCodeFromSymbol(r.symbol) ?? r.symbol;
   const name = r.name && r.name !== code && r.name !== r.symbol ? r.name : '';
-  const stop = r.protectStop != null ? String(r.protectStop) : '—';
   const due = r.exitDue ?? '—';
-  const act = r.side === 'SELL' ? '需卖' : '持有';
-  return [name, code, `止损${stop}`, `到期${due}`, act].filter(Boolean).join(' ');
+  const act = r.side === 'SELL' ? '今日收盘卖' : '持有至到期收盘';
+  return [name, code, `到期${due}`, act].filter(Boolean).join(' ');
 }
 
 export type TwinStarEtfHolding = {
@@ -482,17 +482,16 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     const body = satBodyProgress(h.entryDate ?? recipeRow?.entryDate, asOf);
     const protectStop = satProtectStop(h.costPrice ?? recipeRow?.entryPrice);
     const lastClose = h.lastClose ?? recipeRow?.close ?? null;
-    const stopBreached = lastClose != null && protectStop != null && lastClose <= protectStop;
     satMeta.set(ts, {
       holding: h,
       body,
       protectStop,
       lastClose,
       pnlPct: h.pnlPct ?? recipeRow?.pnlPct ?? null,
-      stopBreached,
+      stopBreached: false,
       recipe: recipeRow,
     });
-    if (body.due || stopBreached || recipeExitTs.has(ts)) exitTs.add(ts);
+    if (body.due || recipeExitTs.has(ts)) exitTs.add(ts);
   }
 
   const satHeld = liveSat.length;
@@ -569,21 +568,18 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
       daysLeft: body.daysLeft,
       exitDue: body.exitDue ?? meta?.recipe?.exitDue ?? null,
       protectStop,
-      stopBreached: Boolean(meta?.stopBreached),
+      stopBreached: false,
       missingEntry: body.missingEntry,
-      missingCost: protectStop == null,
+      missingCost: false,
     };
     if (exitTs.has(ts)) {
-      const stopOnly = Boolean(meta?.stopBreached) && !body.due && !recipeExitTs.has(ts);
       pushRow(sells, {
         side: 'SELL',
         sleeve: 'sat',
         symbol: h.symbol,
         name: h.name ?? ts,
         navPct: h.positionPct ?? satSlotNavPct,
-        reason: stopOnly
-          ? `保护止损已破 ${protectStop}（成本−${SAT_PROTECT_STOP_PCT * 100}%）`
-          : `卫星到期卖 · ${overlay.exitDue ?? '今日'} · body3 收盘`,
+        reason: `卫星到期 · ${overlay.exitDue ?? '今日'} 收盘卖（第${TWIN_STAR_LIVE_RECIPE.body}个交易日）`,
         purpose: 'sat-exit',
         ...overlay,
       });
@@ -593,9 +589,9 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     if (body.missingEntry) {
       reason = '补录入场日才能算 body3 到期';
     } else if (body.daysLeft === 1) {
-      reason = '明日收盘卖（body3）';
+      reason = '明日收盘卖（第3个交易日）';
     } else {
-      reason = `${body.daysLeft} 个交易日后收盘卖（body3）`;
+      reason = `${body.daysLeft} 个交易日后收盘卖`;
     }
     pushRow(holds, {
       side: 'HOLD',
