@@ -211,9 +211,9 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def datasource_freshness() -> list[dict[str, Any]]:
     now = datetime.now(UTC)
-    # Weekend (Shanghai) has no new data until Monday's close; relax the
-    # thresholds so the alert does not cry wolf every Saturday/Sunday.
-    weekend_extra_hours = 48 if _is_shanghai_weekend(now) else 0
+    # Non-trading days have no new data until the next close; relax the
+    # thresholds so the alert does not cry wolf on weekends/holidays.
+    weekend_extra_hours = _relax_extra_hours(now)
     sources: list[dict[str, Any]] = []
     for spec in _SOURCES:
         if spec.get("resolver") == "intraday_snapshot":
@@ -288,6 +288,38 @@ def _is_shanghai_weekend(now: datetime) -> bool:
     if sh.weekday() >= 5:
         return True
     return is_non_trading_day(sh.date())
+
+
+def _relax_extra_hours(now: datetime) -> int:
+    """Freshness threshold relaxation for non-trading streaks.
+
+    Weekend Sat+Sun → 48h (legacy behavior). Longer holidays (国庆/春节)
+    scale 24h per consecutive non-trading day, capped at 10 days — one
+    calendar query, computed locally. Falls back to the weekend rule when
+    the calendar is unreadable.
+    """
+    from datetime import timedelta, timezone
+
+    try:
+        from data_sync_service.db.trade_calendar import get_open_dates
+
+        sh = now.astimezone(timezone(timedelta(hours=8))).date()
+        start = sh - timedelta(days=14)
+        opens = set(get_open_dates(exchange="SSE", start_date=start, end_date=sh))
+        if not opens:
+            # Unseeded calendar: legacy Mon–Fri fallback.
+            return 48 if sh.weekday() >= 5 else 0
+        streak = 0
+        d = sh
+        while d not in opens and streak < 10:
+            streak += 1
+            d -= timedelta(days=1)
+        if streak:
+            # Weekend floor stays 48h (legacy); longer holiday streaks scale.
+            return 24 * max(streak, 2)
+    except Exception:  # noqa: BLE001
+        pass
+    return 48 if _is_shanghai_weekend(now) else 0
 
 
 def recent_job_failures(hours: int = 24) -> dict[str, Any]:

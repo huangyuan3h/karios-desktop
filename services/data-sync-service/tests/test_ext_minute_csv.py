@@ -89,8 +89,8 @@ def test_parse_vendor_csv_slash_date_2026(tmp_path: Path) -> None:
 
 @pytest.mark.requires_postgres
 def test_15min_does_not_overwrite_5min_source() -> None:
-    from data_sync_service.db.bar_5min import TABLE_NAME, ensure_table, upsert_5min_bars
     from data_sync_service.db import get_connection
+    from data_sync_service.db.bar_5min import TABLE_NAME, ensure_table, upsert_5min_bars
 
     ts = "999991.SZ"
     day = "2025-01-02"

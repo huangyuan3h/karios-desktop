@@ -48,6 +48,7 @@ HIGH_JOB_TYPES = {
     "cn_industry_post_close_sync",
     "index_basic_sync",
     "twin_star_intraday",
+    "twin_star_reminder",  # user decision 2026-09-04: the 14:30 reminder failing pages the phone
     "sleeve_etf_daily_sync",
     "stock_daily_basic_sync",
 }

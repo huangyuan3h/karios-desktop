@@ -663,12 +663,12 @@ def replay_sgap_from_context(
             elif rank_key == "gap_asc":
                 ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts].get("gap", 0))
             else:  # absrunup_asc: |fill print / open - 1|, missing print ranks last
-                def _abs_runup(ts: str) -> float:
-                    di = date_idx.get(ts, {}).get(day, -1)
+                def _abs_runup(ts: str, _day: str = day) -> float:
+                    di = date_idx.get(ts, {}).get(_day, -1)
                     series = per_ts.get(ts)
                     bar = series[di] if di >= 0 and series else {}
                     open_px = (bar or {}).get("open") or 0
-                    px = _intraday_px(ctx, ts, day, fill_hhmm)
+                    px = _intraday_px(ctx, ts, _day, fill_hhmm)
                     if not open_px or not px:
                         return float("inf")
                     return abs(float(px) / float(open_px) - 1.0)

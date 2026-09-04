@@ -112,7 +112,7 @@ def _day_state_fv(
         amp_q10 = float(np.percentile(amp_sorted, 10)) if amp_sorted else 0.0
         turn_vals = [v["turn"] for v in day_all.values() if v["turn"] == v["turn"]]
         turn_q30 = float(np.percentile(turn_vals, 30)) if turn_vals else 1.0
-        for ts, d in day_all.items():
+        for _ts, d in day_all.items():
             if (
                 d["amp"] == d["amp"]
                 and d["amp"] <= amp_q10
@@ -240,7 +240,7 @@ def combo_sliced_nav(navs: list[list[float]], weights: list[float]) -> list[floa
     n = min(len(r) for r in rets) if rets else 0
     out = [1.0]
     for i in range(n):
-        dr = sum(w * r[i] for w, r in zip(ws, rets))
+        dr = sum(w * r[i] for w, r in zip(ws, rets, strict=True))
         out.append(out[-1] * (1.0 + dr))
     return out
 
