@@ -40,11 +40,13 @@ def test_no_sleeve_when_both_weak_and_below_ma():
 
 
 def test_resolve_weights_with_sleeve_shape():
+    # Hermetic: stub the multi-asset _pick() instead of reading live ETF bars.
+    # (CI runs on a fresh-migrated empty DB where _pick() finds no bars.)
     with patch("data_sync_service.service.allocation.live_regimes",
                return_value={"CN": "Weak", "HK": "Weak"}):
         with patch(
-            "data_sync_service.service.third_asset_sleeve._etf_market_data",
-            return_value={"ok": True, "above_ma200": True},
+            "data_sync_service.service.multi_asset_sleeve._pick",
+            return_value={"key": "NASDAQ", "above_ma200": True},
         ):
             out = resolve_weights_with_sleeve(as_of_date="2026-08-21")
     assert out["weights"] == {"CN": 0.0, "HK": 0.0, "ETF": 1.0}

@@ -110,6 +110,9 @@ class TestBuildIntradaySat:
             },
         )
         monkeypatch.setattr(m, "fill_candidate_names", lambda *a, **k: None)
+        # Hermetic: the fixture date must read as a trading day without a DB.
+        # (CI runs on a fresh-migrated empty DB; trade_calendar has no rows.)
+        monkeypatch.setattr(m, "_is_trading_day", lambda day: True)
 
     def test_signal_shape_and_approx_flag(self) -> None:
         sat = m.build_intraday_sat(self.today)
