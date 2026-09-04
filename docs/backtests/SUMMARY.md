@@ -41,6 +41,7 @@
 | 卫星习惯 3 天 vs 4 天 / 下午买点 | 7 变体 | 计数仍 3 天；body=4 占槽；13:30–15:00 无更佳分钟 | 见 [sat-habit-clock](sat-habit-clock-2026-09-03.md) |
 | 卫星 C1 + 第 3 日 10:00/14:30 卖 | 3 变体 | C1·14:30 卖三窗 tot/sr/dd 过核心；**Live 已切 habit（2026-09-03 全量跟进）** | 见 [sat-exit-hhmm](sat-exit-hhmm-2026-09-03.md) |
 | 卫星第 3 日条件单 D3（高点−2% 否则 14:30） | 2 变体+自检 | **REJECT/total**：OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 ~63%；回吐≠反转，网格不补 | 见 [sat-exit-d3trail](sat-exit-d3trail-2026-09-04.md) |
+| 卫星名单漂移（全天振幅 vs 14:30-proxy 排名） | 1 诊断（OOS2+train，valid 未碰） | **无超额，不改 Live**：top-4 Jaccard 均值 0.43（相同 20/205 天），3 日前瞻 +2.05% vs +1.90%（差 0.14pp/笔）；Live 本来就是快照-proxy 排名 | 见 [sat-list-drift](sat-list-drift-2026-09-04.md) |
 | 卫星习惯口径冻结成绩单 OPT-141 | 1 口径×三窗 | **PASS+/beats_core**：OOS2 +76.3/+2.22/−1.9 · train +14.5/+1.53/−2.7 · valid +2.7/+0.21/0（09-03 逐数复现）；入场 100% 真 14:30 bar，出场 ~5% 收盘回退（已记血统） | 见 [sat-live-caliber](sat-live-caliber-2026-09-04.md) |
 | 卫星习惯排名 H1（无前视键） | 2 变体 | **2 全部拒收**：gap升序 OOS2 −96pt；\|14:30/今开−1\|升序 valid +14.4 但 OOS2 −21.5（过拟合陷阱，拒） | 见 [sat-rank-hhmm](sat-rank-hhmm-2026-09-04.md) |
 | 卫星习惯 C1 网格 H2（2/3/4/5%） | 3 变体 | **C1=3% 维持**：2% 打平（train −4.0/sr−0.27，不换）；4% 走弱；5% train −5.8 拒收 | 见 [sat-c1-grid](sat-c1-grid-2026-09-04.md) |

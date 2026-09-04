@@ -137,6 +137,23 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
+## P0-6 今日可跑实验队列（2026-09-04）
+
+> 按重要程度排序，脚本+数据就绪、不碰 Live、不过预注册红线。做完一条标 `[done] YYYY-MM-DD`。
+> 不在 `docs/` 根单开文件，此段即唯一队列。CHURN 重验 / C4 paper（3/20）/ V7.0-03 进 Live / 砍篮 / trail / gap 升序不在列（预注册锁死或已 REJECT）。
+
+| # | 实验 | 脚本/数据 | 验收 |
+|---|------|-----------|------|
+| 1 | [done] 2026-09-04 卫星 holdout 只读重跑（冻结窗复现一致：19 sessions/32 fills，core −1.5/twin −6.6/Δ−5.1；外推至 09-04：20 sessions/36 fills，Δ−4.8，仍在分布内，不调参） | `scripts/holdout_habit_check.py` | Δ 是否在 p5（-5.53）内；弱不重开已拒变体，强也不开新变体 |
+| 2 | [done] 2026-09-04 TIP-014 Phase3 名单漂移（Jaccard 0.43 但 fwd 差 0.14pp/笔，无超额；Live 本来就是 proxy 排名，不改；档 `sat-list-drift-2026-09-04.md`） | `bar_5min` 已入库 + `scripts/diag_sat_list_drift.py`（新建只读诊断） | 漂移率表，只写结论，不改 clip4 Live |
+| 3 | [done] 2026-09-04 P0-2 套筒 20d -10% 硬切 GC001 三窗（OOS2/train 零触发无信息，valid +7.0 单窗亮，证据不足不进 Live；档 `sleeve-exit-hard20-2026-09-04.md`） | `scripts/multi_sleeve_grid.py` + `sleeve_exit_variants.py`，走 `run_walk_forward.py` | 三窗 tot/dd/sharpe vs 现状，>5pt 劣化拒收 |
+| 4 | [done] 2026-09-04 P0-1 脉冲天平周更（全历史重算：RSI>80 n35 逐数复现，RSI>70 n84/win72.6%，mom<-5% n63 无新增；今日无触发，不进杠杆） | `scripts/commodity_pattern_scan.py` → 追加一行到 `gold-oil-nasdaq-balance.md` | 条件→n→win→mean→可杠杆，不写策略代码 |
+| 5 | [done] 2026-09-04 TIP-013 结论落回（有效因子清单：空，无新增；S-3择时为唯一超额源） | 纯文档：`factor-ic-2026-08-22` + `factor-ic-phaseB` | 条目勾选“空，无新增，S-3择时为唯一超额源” |
+| 6 | [done] 2026-09-04 形态独立验证首跑（目录核查：8形态7拒，唯一≥80%已落库；OOS快照因破位规则实现缺失判underpowered；生产表仅1天backfill无日调度；档 `scoop-exhaustion-oos-check-2026-09-04.md`） | `scripts/pin_bar_scan.py` + `designs/pattern-factor-validation.md` | 胜率/盈亏比 vs base rate，不进 S-3 |
+| 7 | [blocked] TIP-010 宽宇宙 Jaccard 对照（需用户从东财手动导 ≥5 个交易日“均线多头排列”名单；收到后跑同口径回撤+TrendOK 算 Jaccard，不上线替换） | 人工导 5 日东财多头列表 + TrendOK 同口径 | 表格落 checklist，不上线替换 |
+
+---
+
 ## 实施清单（剩余 P0/P1 各一行）
 
 | # | 动作 | 预期 |

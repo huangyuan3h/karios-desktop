@@ -67,7 +67,7 @@ TV Screener（候选宇宙）
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [x] 2026-08-04 |
 | TIP-012 | 研报 → Alpha 通道（评级/目标价进池） | P1 | ★★★★☆（新供给） | 2–3 天 | [x] 2026-08-05 |
-| TIP-013 | 信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬） | P2 | ★★★★☆（度量闭环） | Phase A 1–2 天 / Phase B 2–3 天 | [ ] |
+| TIP-013 | 信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬） | P2 | ★★★★☆（度量闭环） | Phase A 1–2 天 / Phase B 2–3 天 | [x] 2026-09-04 |
 | TIP-014 | 环境×买入风格适配（电风扇→回调低吸 / 主升→追强龙头） | **P1** | ★★★★★（收益域演进） | Phase 1 2–3 小时 / Phase 2 1 天 | [ ] |
 | V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
@@ -813,7 +813,7 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 - [x] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数） `score/rs/amount` `30d IC -0.12 ICIR -0.42` `≥90 -3.23 vs <70 +0.12` `1y IC -0.02` 无预测力
 - [x] Phase B：≥3 个自研因子入库并跑通同一管道（动量/波动/换手/资金流，ICIR≥0.5才接入） `mom20/vol20/dd60/flow5d` `1y IC -0.04/-0.04/-0.01/-0.04` `ICIR<0.5` 均不达标 `docs/backtests/factor-ic-phaseB-2026-08-22.md`
-- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**
+- [x] 结论落回本条目（2026-09-04）：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**（Phase A `score/rs/amount` 1y `|IC|<0.04`；Phase B `mom20/vol20/dd60/flow5d` 全 `ICIR<0.5`；Scout R0-IC 仅 `amplitude` 三窗同负但回放 valid −21.8 拒收）
 - [x] full pytest + frontend test 全绿（沿用 27 张表零变化纪律） `test_factor_validation 3/3`
 
 ---
