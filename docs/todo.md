@@ -154,6 +154,62 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
+## P0-7 外购历史数据计划（2026-09-04 拍板）
+
+> 用户外购分钟/复权包。定位：**数据≠新策略**，只干三件实事——熊市回放验稳健、复权对拍保质量、指数/ETF 存盘备用。工程部分见 [OPT-145](./optimization-checklist.md)。
+> 交接规则：一次一阶段，前一阶段验收不过就停；C 阶段是诊断（无论结果不调 Live）。
+
+| 阶段 | 做什么 | 在哪 | 验收 | 状态 |
+|------|--------|------|------|------|
+| A | 2024 vendor 5 分钟 vs 库内 `bar_5min` 对拍 | OPT-145 | 吻合率 ≥99.5%，不过就停 | [ ] |
+| B | 下 2021–2023 三年股票 5 分钟，切片入库尾盘七根 | OPT-145 | 三年七根入库 + 覆盖率表；磁盘余 >20G | [ ] |
+| C | 习惯配方熊市回放（重点 2022） | 本段交接块 → 结论进 `docs/backtests/` | 三窗式对照表；不调 Live | [ ] |
+| D | 复权双份 vs 库内抽样对拍 | OPT-145 | 差异表短档；只报不修 | [ ] |
+| E | 指数/ETF 分钟存盘不导入 | — | 网盘留档即可 | [deferred] |
+
+### 交接块 A（对拍验质量）
+
+```text
+做 docs/optimization-checklist.md OPT-145 的 A 阶段。
+- 新建 services/data-sync-service/scripts/compare_vendor_minute.py（只读）：
+  读 repo data/ 下 2024 年 vendor 5 分钟 CSV，与库内 bar_5min 同（ts, 日, 时点）
+  逐点对 close 价，输出总行数/吻合行数/价差>1分钱占比/缺失对照。
+- vendor CSV 先由用户放到 services/data-sync-service/data/2024_5min_vendor/（没有就停下来要）。
+- 验收：吻合率 ≥99.5% 才算过；附 1 个单测；pytest 过；不写库不改引擎。
+```
+
+### 交接块 B（切片入库）
+
+```text
+做 docs/optimization-checklist.md OPT-145 的 B 阶段（前置：A 已过）。
+- 用户已下好 2021/2022/2023 三年股票 5 分钟按年包放 data/2021_5min 等目录。
+- 复用 scripts/import_ext_minute_csv.py --times 只留尾盘七根导入 bar_5min；
+  导完删解压目录留 zip，磁盘余量保持 >20G。
+- 验收：三年七根行数 + skipNoPrint1430 覆盖率（含熊市年）；pytest 过。
+```
+
+### 交接块 C（熊市回放 · 诊断）
+
+```text
+习惯配方（C1 3% + same_1430 + body=3 + 第3日14:30卖，冻结口径）在 2021–2023（含 2022 熊市）
+的只读回放，回答“配方在真熊市活不活”。
+- 前置：B 已入库。只读，不碰 Live、不重选参（valid 不参与选择，沿用 S1/H1 诊断纪律）。
+- 输出 twin vs 核心对照表（tot/sr/dd/Δ）+ fills/skip 口径说明，结论写新档
+  docs/backtests/sat-bear-replay-2026-0X.md（PASS 或“熊市水土不服”都留档）。
+- 验收：表 + 档；任何情况下不改 Live 参数。
+```
+
+### 交接块 D（复权对拍）
+
+```text
+做 docs/optimization-checklist.md OPT-145 的 D 阶段。
+- 新建 scripts/compare_vendor_adj.py（只读）：vendor 东财/tushare 双份因子 vs 库内
+  adj_factor，抽样最活 200 只 × 除权除息日，输出差异表。
+- 验收：差异表短档进 docs/backtests/；只报不修；pytest 过。
+```
+
+---
+
 ## 实施清单（剩余 P0/P1 各一行）
 
 | # | 动作 | 预期 |
