@@ -18,6 +18,10 @@ type QuickBuyDialogProps = {
   state: QuickBuyDialogState;
   suggestPct: number;
   side?: 'BUY' | 'SELL';
+  /** Live price already in memory (row quote) — prefill instantly, skip fetch. */
+  initialPrice?: number | null;
+  busy?: boolean;
+  error?: string | null;
   onClose: () => void;
   onConfirm: (values: { price: number; positionPct: number }) => void;
 };
@@ -29,15 +33,25 @@ export function QuickBuyDialog({
   state,
   suggestPct,
   side = 'BUY',
+  initialPrice = null,
+  busy = false,
+  error = null,
   onClose,
   onConfirm,
 }: QuickBuyDialogProps) {
+  const hasInitial =
+    typeof initialPrice === 'number' && Number.isFinite(initialPrice) && initialPrice > 0;
   const [positionPct, setPositionPct] = React.useState(String(suggestPct));
-  const [price, setPrice] = React.useState('');
-  const [priceLoading, setPriceLoading] = React.useState(true);
+  const [price, setPrice] = React.useState(hasInitial ? String(initialPrice) : '');
+  const [priceLoading, setPriceLoading] = React.useState(!hasInitial);
 
   React.useEffect(() => {
     setPositionPct(String(suggestPct));
+    if (hasInitial) {
+      setPrice(String(initialPrice));
+      setPriceLoading(false);
+      return;
+    }
     setPrice('');
     setPriceLoading(true);
     let cancelled = false;
@@ -49,7 +63,10 @@ export function QuickBuyDialog({
         if (cancelled) return;
         const q = snap.quotes[state.symbol.toUpperCase()];
         const p = q?.price;
-        if (typeof p === 'number' && Number.isFinite(p) && p > 0) setPrice(String(p));
+        // Only prefill when the user hasn't typed yet — never wipe input.
+        if (typeof p === 'number' && Number.isFinite(p) && p > 0) {
+          setPrice((prev) => (prev === '' ? String(p) : prev));
+        }
       })
       .catch(() => {
         /* keep the field empty; user can type the price */
@@ -60,6 +77,7 @@ export function QuickBuyDialog({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.symbol, suggestPct]);
 
   const parsedPrice = Number(price);
@@ -106,10 +124,9 @@ export function QuickBuyDialog({
             </div>
             <input
               className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 font-mono text-sm outline-none"
-              placeholder={priceLoading ? '加载中…' : '0.000'}
+              placeholder={priceLoading ? '加载中…（可直接输入）' : '0.000'}
               inputMode="decimal"
               value={price}
-              disabled={priceLoading}
               onChange={(e) => {
                 const raw = e.target.value;
                 if (raw === '' || PRICE_RE.test(raw)) setPrice(raw);
@@ -131,17 +148,18 @@ export function QuickBuyDialog({
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             取消
           </Button>
           <Button
             size="sm"
-            disabled={!valid}
+            disabled={!valid || busy}
             onClick={() => onConfirm({ price: parsedPrice, positionPct: parsedPct })}
           >
-            确认{side === 'SELL' ? '卖出' : '买入'}
+            {busy ? '提交中…' : `确认${side === 'SELL' ? '卖出' : '买入'}`}
           </Button>
         </div>
+        {error ? <div className="mt-2 text-[11px] text-red-500">记录交易失败：{error}</div> : null}
       </div>
     </div>,
     document.body,

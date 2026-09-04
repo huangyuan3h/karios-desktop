@@ -297,6 +297,29 @@ def _intraday_px(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> float | N
     return None
 
 
+def _d3_trail_px(ctx: dict[str, Any], ts: str, day: str, pct: float) -> float | None:
+    """Exit-day conditional-order trail (experiment-only, D-series).
+
+    Walk the exit-day 5-minute bars (open → 14:30, ascending) from
+    ctx["d3trail_series"][(ts, day)] as (hhmm, open, high, low, close).
+    Return peak*(1-pct) at the first bar whose low prints pct below the
+    running high (fill = trigger level, no extra slippage — documented
+    assumption). None = never triggered or series missing → caller falls
+    back to exit_hhmm/close.
+    """
+    series = (ctx.get("d3trail_series") or {}).get((ts, day))
+    if not series:
+        return None
+    trig = 1.0 - float(pct)
+    peak = 0.0
+    for _hhmm, _o, hi, lo, _c in series:
+        if hi and hi > peak:
+            peak = float(hi)
+        if peak > 0 and lo and float(lo) <= peak * trig:
+            return peak * trig
+    return None
+
+
 def load_sgap_context(start: str, end: str) -> dict[str, Any]:
     """Load OHLCV/MV/calendar once; replays with different pool modes reuse this."""
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
@@ -494,6 +517,7 @@ def replay_sgap_from_context(
     fill_mode: str = FILL_NEXT_OPEN,
     fill_hhmm: str = "1430",
     exit_hhmm: str | None = None,
+    exit_day_trail_pct: float | None = None,
     max_open_to_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
@@ -511,6 +535,10 @@ def replay_sgap_from_context(
 
     fill_hhmm: 5-minute bar-end time used with same_1430 (e.g. 1330, 1400, 1500).
     exit_hhmm: experiment-only body-exit print (e.g. 1000, 1430). None = daily close.
+      Live / UI must leave this None.
+    exit_day_trail_pct: experiment-only day-3 conditional-order trail (e.g. 0.02 =
+      sell when a 5-minute bar prints 2% below the exit-day running high, else
+      fall back to exit_hhmm/close). Series come from ctx["d3trail_series"].
       Live / UI must leave this None.
 
     max_open_to_1430_pct / near_limit_buffer_pct: experiment-only C1/C2
@@ -537,6 +565,11 @@ def replay_sgap_from_context(
         exit_hhmm = str(exit_hhmm)
         if len(exit_hhmm) != 4 or not exit_hhmm.isdigit():
             raise ValueError(f"exit_hhmm must be HHMM, got {exit_hhmm!r}")
+    if exit_day_trail_pct is not None:
+        if fill_mode != FILL_SAME_1430:
+            raise ValueError("exit_day_trail_pct requires fill_mode=same_1430")
+        if not 0 < float(exit_day_trail_pct) < 1:
+            raise ValueError("exit_day_trail_pct must be in (0, 1)")
     if max_open_to_1430_pct is not None or near_limit_buffer_pct is not None:
         if fill_mode != FILL_SAME_1430:
             raise ValueError("14:30 entry filters require fill_mode=same_1430")
@@ -607,7 +640,12 @@ def replay_sgap_from_context(
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
             exit_src = "close"
-            if reason == "body_exit" and exit_hhmm:
+            if reason == "body_exit" and exit_day_trail_pct is not None:
+                trail_px = _d3_trail_px(ctx, ts, day, float(exit_day_trail_pct))
+                if trail_px is not None:
+                    cc = trail_px
+                    exit_src = "d3trail"
+            if reason == "body_exit" and exit_src == "close" and exit_hhmm:
                 intra = _intraday_px(ctx, ts, day, exit_hhmm)
                 if intra is not None:
                     cc = intra
@@ -943,6 +981,7 @@ def replay_sgap_from_context(
         "fill_mode": fill_mode,
         "fill_hhmm": fill_hhmm if fill_mode == FILL_SAME_1430 else None,
         "exit_hhmm": exit_hhmm,
+        "exit_day_trail_pct": exit_day_trail_pct,
         "max_open_to_1430_pct": max_open_to_1430_pct,
         "near_limit_buffer_pct": near_limit_buffer_pct,
         "min_open_to_1430_pct": min_open_to_1430_pct,

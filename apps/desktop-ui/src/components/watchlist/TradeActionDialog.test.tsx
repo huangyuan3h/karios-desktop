@@ -63,4 +63,28 @@ describe('TradeActionDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认买入' }));
     expect(onConfirm).toHaveBeenCalled();
   });
+
+  it('keeps typed input across parent re-renders (2026-09-04 modal-wipe fix)', () => {
+    const onConfirm = vi.fn();
+    const { rerender } = render(
+      <TradeActionDialog
+        state={{ kind: 'sell', item: ITEM, currentPrice: 1600 }}
+        suggestPct={5}
+        onClose={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+    const priceInput = screen.getByPlaceholderText('0.000');
+    fireEvent.change(priceInput, { target: { value: '1599' } });
+    // Background refetch creates a fresh state object — input must survive.
+    rerender(
+      <TradeActionDialog
+        state={{ kind: 'sell', item: { ...ITEM }, currentPrice: 1601 }}
+        suggestPct={5}
+        onClose={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+    expect((screen.getByPlaceholderText('0.000') as HTMLInputElement).value).toBe('1599');
+  });
 });

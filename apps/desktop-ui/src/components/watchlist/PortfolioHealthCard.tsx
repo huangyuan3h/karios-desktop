@@ -1072,9 +1072,11 @@ export function PortfolioHealthCard({
     rs?: number | null;
     sizePct: number;
     side: 'BUY' | 'SELL';
+    initialPrice?: number | null;
   } | null>(null);
   const [boughtSymbols, setBoughtSymbols] = React.useState<Set<string>>(new Set());
   const [buyError, setBuyError] = React.useState<string | null>(null);
+  const [buyBusy, setBuyBusy] = React.useState(false);
   const [reminders, setReminders] = React.useState<BuyReminder[]>([]);
   const [reminderError, setReminderError] = React.useState<string | null>(null);
 
@@ -1249,31 +1251,37 @@ export function PortfolioHealthCard({
   }
 
   async function confirmBuy(values: { price: number; positionPct: number }) {
-    if (!buyTarget) return;
+    if (!buyTarget || buyBusy) return;
     setBuyError(null);
+    setBuyBusy(true);
+    const target = buyTarget;
     try {
       const next = upsertWatchlistOpenTrade(loadWatchlist(), {
-        symbol: buyTarget.symbol,
-        name: buyTarget.name,
-        side: buyTarget.side,
+        symbol: target.symbol,
+        name: target.name,
+        side: target.side,
         price: values.price,
         positionPct: values.positionPct,
         entryDate: getShanghaiTodayIso(),
       });
       await saveWatchlist(next);
       await recordUserTrade({
-        symbol: buyTarget.symbol,
-        side: buyTarget.side,
+        symbol: target.symbol,
+        side: target.side,
         price: values.price,
         positionPct: values.positionPct,
         source: 'RESEARCH',
-        market: tradeMarketForSymbol(buyTarget.symbol),
+        market: tradeMarketForSymbol(target.symbol),
       });
-      await invalidateUserTradesQueries(queryClient);
-      setBoughtSymbols((prev) => new Set(prev).add(buyTarget.symbol));
+      // Close first so the dialog never sits frozen on network; the derived
+      // surfaces refresh in the background (2026-09-04 modal-freeze fix).
       setBuyTarget(null);
+      setBoughtSymbols((prev) => new Set(prev).add(target.symbol));
+      void invalidateUserTradesQueries(queryClient).catch(() => {});
     } catch (e) {
       setBuyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuyBusy(false);
     }
   }
 
@@ -1300,6 +1308,8 @@ export function PortfolioHealthCard({
   }
 
   function handlePlanAct(row: TwinStarTradeRow) {
+    const q = quoteMap[row.symbol] ?? quoteMap[row.symbol.toUpperCase()];
+    const qp = typeof q?.price === 'number' && Number.isFinite(q.price) ? q.price : null;
     setBuyTarget({
       symbol: row.symbol,
       name: row.name ?? null,
@@ -1307,6 +1317,7 @@ export function PortfolioHealthCard({
       rs: null,
       sizePct: row.navPct,
       side: row.side === 'SELL' ? 'SELL' : 'BUY',
+      initialPrice: qp ?? (typeof row.lastClose === 'number' ? row.lastClose : null),
     });
   }
 
@@ -1433,7 +1444,7 @@ export function PortfolioHealthCard({
                   : tradePlan
                     ? satConclusionLine(tradePlan, Boolean(twinStarQ.data.sat.gateOpen))
                     : !twinStarQ.data.sat.gateOpen
-                      ? 'R-wide 关闸（不开仓）'
+                      ? `R-wide 关闸（breadth ${twinStarQ.data.sat.breadth} < 0.5，今日不开仓）`
                       : afterSatWindow
                         ? `R-wide 开闸 → 14:30价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
                         : 'R-wide 开闸 · 候选 14:30 后公布（当日近似）'}
@@ -1442,8 +1453,8 @@ export function PortfolioHealthCard({
             {twinStarQ.data?.sat?.asOf != null ? (
               <div className="mt-1 text-[10px] tabular-nums text-[var(--k-muted)]">
                 {twinStarQ.data.sat.gateOpen
-                  ? `卫星闸 · R-wide 开闸 breadth ${twinStarQ.data.sat.breadth} · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
-                  : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}`}
+                  ? `卫星闸 · R-wide 开闸 breadth ${twinStarQ.data.sat.breadth}（> 0.5 开仓） · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
+                  : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}（< 0.5 不开仓）`}
                 {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf}
                 {twinStarQ.data.sat.approx
                   ? ` · 盘中近似${
@@ -1680,6 +1691,7 @@ export function PortfolioHealthCard({
       )}
       {buyTarget && (
         <QuickBuyDialog
+          key={`${buyTarget.side}-${buyTarget.symbol}`}
           state={{
             symbol: buyTarget.symbol,
             name: buyTarget.name,
@@ -1688,6 +1700,9 @@ export function PortfolioHealthCard({
           }}
           suggestPct={buyTarget.sizePct}
           side={buyTarget.side}
+          initialPrice={buyTarget.initialPrice ?? null}
+          busy={buyBusy}
+          error={buyError}
           onClose={() => setBuyTarget(null)}
           onConfirm={(values) => void confirmBuy(values)}
         />

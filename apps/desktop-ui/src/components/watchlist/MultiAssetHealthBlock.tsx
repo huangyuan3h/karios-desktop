@@ -73,6 +73,13 @@ export function MultiAssetHealthBlock({
         ) : null}
       </div>
 
+      {twinStar && sleeve?.idlePct != null && sleeve.idlePct >= 1 && pickKey != null && (pickKey !== 'STOCK' || coreDestinationReady) ? (
+        <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
+          今日动作：用闲置 {sleeve.idlePct}% 买入 {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}，核心补足 {coreTargetPct}%
+          {coreTargetPct === 100 ? '（卫星关闸/无仓 → 核心 100%，闲置不是留现金）' : '（核心 50%，余下 50% 留给卫星）'}
+        </div>
+      ) : null}
+
       {hasHoldings ? (
         <div className="flex flex-col gap-1.5">
           {openHoldings.map((h) => {

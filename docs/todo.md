@@ -115,6 +115,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 10. **习惯 holdout 审计 S1 [done] 2026-09-04**：[sat-holdout](./backtests/sat-holdout-2026-09-04.md)。19 sessions Δ −5.1 ≈ 第 7 百分位坏月份（p5 −5.53），分布内。**不调参**；真风险是方差（~7% 月份 −5pt），不对月考核卫星。
 11. **习惯 CHURN 过滤 S4 [done] 2026-09-04**：[sat-churn](./backtests/sat-churn-2026-09-04.md)。六维诊断（换手/板块/市值/年限/大盘高开/breadth）只活一个：T-1 放量>4x 不追，train +2.4/valid +1.5 但 OOS2 −1.0 → PASS/worse。**不进 Live，记候选**（待 holdout 满 60 sessions 或 paper 20 笔重验）。
 12. **大盘风格 vs 卫星 G1 [done] 2026-09-04**：[sat-regime](./backtests/sat-regime-2026-09-04.md)。up 三窗全赚最稳，choppy 次之，down 被 R-wide 拦；波动率非稳定因子。**无新规则**。
+13. **第 3 日条件单 D3（用户规则）[done] 2026-09-04**：[sat-exit-d3trail](./backtests/sat-exit-d3trail-2026-09-04.md)。盘中高点回落 2% 卖否则 14:30，三窗 REJECT/total（OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 63%）。**回吐≠反转，不进 Live**；1%/3% 网格不补（机制证伪）。
 
 **不做**：1/30/60 分钟入库；全天 K；把 14:30 写进冻结 T 开盘；停等 baostock job；单窗好看就改 Live。
 

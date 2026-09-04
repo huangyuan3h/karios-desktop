@@ -18,6 +18,7 @@ export type TradeDialogOpenState = {
 type TradeActionDialogProps = {
   state: TradeDialogOpenState;
   suggestPct: number;
+  busy?: boolean;
   onClose: () => void;
   onConfirm: (values: { price: number; positionPct: number; costPrice?: number }) => void;
 };
@@ -39,6 +40,7 @@ function pctLabelForKind(kind: TradeDialogKind): string {
 export function TradeActionDialog({
   state,
   suggestPct,
+  busy = false,
   onClose,
   onConfirm,
 }: TradeActionDialogProps) {
@@ -52,20 +54,15 @@ export function TradeActionDialog({
   // leg still lands with pnl; leaving it empty records the sell without pnl.
   const missingCost = kind === 'sell' && typeof item.costPrice !== 'number';
   const defaultPrice = currentPrice != null ? String(currentPrice) : '';
+  // NOTE (2026-09-04): inputs are mount-initialized ONLY. A previous version
+  // re-synced them in an effect keyed on the `state` object identity — every
+  // background refetch/re-render created a fresh object and wiped whatever
+  // the user had typed. The call site remounts per open via `key` instead.
   const [price, setPrice] = React.useState(defaultPrice);
   const [positionPct, setPositionPct] = React.useState(
     kind === 'sell' ? String(heldPct) : String(Math.round(suggestPct * 100) / 100),
   );
   const [costPrice, setCostPrice] = React.useState('');
-
-  React.useEffect(() => {
-    setPrice(defaultPrice);
-    setPositionPct(
-      kind === 'sell' ? String(heldPct) : String(Math.round(suggestPct * 100) / 100),
-    );
-    setCostPrice('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
 
   const parsedPrice = Number(price);
   const parsedPct = Number(positionPct);
@@ -187,12 +184,12 @@ export function TradeActionDialog({
           </div>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <Button size="sm" variant="secondary" onClick={onClose}>
+          <Button size="sm" variant="secondary" onClick={onClose} disabled={busy}>
             取消
           </Button>
           <Button
             size="sm"
-            disabled={!valid}
+            disabled={!valid || busy}
             onClick={() =>
               onConfirm({
                 price: parsedPrice,
@@ -201,7 +198,7 @@ export function TradeActionDialog({
               })
             }
           >
-            确认{titleForKind(kind)}
+            确认{busy ? '提交中…' : titleForKind(kind)}
           </Button>
         </div>
       </div>
