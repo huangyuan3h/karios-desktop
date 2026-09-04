@@ -92,7 +92,8 @@ describe('TwinStarActionResponseSchema', () => {
   });
 
   it('rejects a missing clip4 block', () => {
-    const { clip4: _drop, ...rest } = GOLDEN;
+    const { clip4: droppedClip4, ...rest } = GOLDEN;
+    expect(droppedClip4).toBeDefined();
     expect(() => TwinStarActionResponseSchema.parse(rest)).toThrow();
   });
 
