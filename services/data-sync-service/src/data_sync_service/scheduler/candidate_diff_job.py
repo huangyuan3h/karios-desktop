@@ -18,6 +18,7 @@ from datetime import date, timedelta
 from apscheduler.triggers.cron import CronTrigger
 
 from data_sync_service.db.trade_calendar import last_trading_day
+from data_sync_service.scheduler._job_guard import record_success, run_guarded
 from data_sync_service.service.paper_s3 import build_s3_candidates
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,12 @@ def candidate_diff(*, trade_date: str | None = None) -> dict:
 
 
 def run() -> None:
-    try:
-        result = candidate_diff()
-        if result["added_by_market"]:
-            logger.info(
-                "candidate diff: %s",
-                {m: len(v) for m, v in result["added_by_market"].items()},
-            )
-    except Exception:  # noqa: BLE001
-        logger.exception("candidate diff job failed")
+    result = run_guarded(JOB_ID, candidate_diff, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+    if result["added_by_market"]:
+        logger.info(
+            "candidate diff: %s",
+            {m: len(v) for m, v in result["added_by_market"].items()},
+        )
+    record_success(JOB_ID)

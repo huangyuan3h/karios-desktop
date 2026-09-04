@@ -65,6 +65,11 @@ def test_run_emits_audit_issues_when_found() -> None:
         ),
         patch("data_sync_service.scheduler.behavior_audit_job.emit_event", emit),
         patch("data_sync_service.scheduler.behavior_audit_job.insert_record"),
+        # STOCK pick → missing counts as an issue (non-STOCK pick suppresses it)
+        patch(
+            "data_sync_service.service.multi_asset_sleeve._pick",
+            return_value={"key": "STOCK"},
+        ),
     ):
         job.run()
 

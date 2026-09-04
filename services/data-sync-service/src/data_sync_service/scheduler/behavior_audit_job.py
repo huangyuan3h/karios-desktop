@@ -81,6 +81,14 @@ def run() -> None:
                         for e in (v.get("extraList") or [])
                     ],
                     "missing": [m2.get("symbol") for m2 in (v.get("missingList") or [])],
+                    # Satellite leg is info-only (twin-star engine book) —
+                    # it never triggers this event (OPT-140).
+                    "sat": {
+                        "expected": v.get("satExpected", 0),
+                        "actual": v.get("actualSat", 0),
+                        "extra": [e.get("symbol") for e in (v.get("satExtraList") or [])],
+                        "missing": [m2.get("symbol") for m2 in (v.get("satMissingList") or [])],
+                    },
                 }
                 for m, v in available.items()
             },

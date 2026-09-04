@@ -158,9 +158,9 @@ export function isLiveSatelliteStock(
 
 /** Recipe + candidate ts codes from GET /api/backtest/twin-star/action. */
 export function satNameTsFromAction(sat: {
-  candidates?: Array<{ ts?: string | null }>;
-  blocked?: Array<{ ts?: string | null }>;
-  alternates?: Array<{ ts?: string | null }>;
+  candidates?: Array<{ ts?: string | null }> | null;
+  blocked?: Array<{ ts?: string | null }> | null;
+  alternates?: Array<{ ts?: string | null }> | null;
   book?: { holdings?: Array<{ ts?: string | null }> | null } | null;
 } | null | undefined): Set<string> {
   const names = new Set<string>();

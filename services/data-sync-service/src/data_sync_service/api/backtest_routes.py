@@ -202,8 +202,10 @@ def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
 
     Compares the user's actual registry holdings against the S-3 backtest
     "should hold" set: extra = 买了不该买 / 该卖没卖, missing = 该持没买.
-    Refreshed by POST /backtest/behavior-audit/refresh (simulate ~minutes)
-    or the daily close cron.
+    OPT-140: satellite-leg holdings are split out (satExpected/actualSat/
+    satExtra/satMissing vs the twin-star engine book) and never count as
+    S-3 extra. Refreshed by POST /backtest/behavior-audit/refresh (simulate
+    ~minutes) or the daily close cron.
     """
     from data_sync_service.db.behavior_audit import latest_audit
 
@@ -229,7 +231,9 @@ def behavior_audit_refresh(
         raise HTTPException(status_code=500, detail=f"behavior audit failed: {exc}") from exc
     summary = {
         m: {"expected": v["expected"], "actual": v["actual"],
-            "extra": v.get("extraList", []), "missing": v.get("missingList", [])}
+            "extra": v.get("extraList", []), "missing": v.get("missingList", []),
+            "satExpected": v.get("satExpected", 0), "actualSat": v.get("actualSat", 0),
+            "satExtra": v.get("satExtraList", []), "satMissing": v.get("satMissingList", [])}
         for m, v in out["markets"].items() if v.get("available")
     }
     return {"ok": True, "reconDate": out["reconDate"], "markets": summary}

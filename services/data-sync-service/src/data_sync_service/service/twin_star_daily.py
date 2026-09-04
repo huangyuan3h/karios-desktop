@@ -131,11 +131,66 @@ def sat_name_ts(sat: dict[str, Any], book: dict[str, Any]) -> set[str]:
     return names
 
 
-def live_sat_ts_codes(today: date | None = None) -> set[str]:
-    """Candidate + paper-open ts codes. Does not replay the S-gap engine.
+def holding_book(
+    mode: str,
+    pick: str | None,
+    market: str,
+    symbol: str | None = None,
+    sat_ts: set[str] | None = None,
+) -> str:
+    """Which rulebook a holding is under (single leg truth, OPT-140).
 
-    Used by notifications to split STOCK-day satellite names from leftover
-    S-3 basket names without a second health/engine pass.
+    Twin-star CN: pick≠STOCK → every A-share is satellite. pick=STOCK → only
+    names in the sat recipe/candidate/paper-open/engine-book set are
+    satellite; leftover CN stays S-3. HK is never satellite (idle when the
+    core is an ETF).
+    """
+    if mode == "twin_star" and market == "CN":
+        if pick != "STOCK":
+            return "sat"
+        if symbol:
+            ts = ts_from_cn_symbol(symbol)
+            if ts and sat_ts and ts in sat_ts:
+                return "sat"
+        return "s3"
+    if mode == "twin_star" and pick != "STOCK":
+        return "idle"
+    return "s3"
+
+
+_book_ts_cache: dict[str, set[str]] = {}
+
+
+def sat_book_ts_codes(today: date | None = None) -> set[str]:
+    """Engine-book satellite ts codes (S-gap replay openPositions).
+
+    Cached per day — the 45-day replay runs at most once per process/day,
+    so the 5-min hub path and the daily audit share one replay.
+    Never raises (empty set on failure).
+    """
+    day = today or date.today()
+    key = day.isoformat()
+    if key not in _book_ts_cache:
+        out: set[str] = set()
+        try:
+            for h in _sat_book(day).get("holdings") or []:
+                ts = str(h.get("ts") or "")
+                if ts:
+                    out.add(ts)
+        except Exception:
+            pass
+        if len(_book_ts_cache) >= 16:
+            _book_ts_cache.clear()
+        _book_ts_cache[key] = out
+    return set(_book_ts_cache[key])
+
+
+def live_sat_ts_codes(today: date | None = None) -> set[str]:
+    """Candidate + paper-open + engine-book ts codes.
+
+    Used by notifications and the behavior audit to split STOCK-day
+    satellite names from leftover S-3 basket names. The engine-book leg is
+    day-cached (see :func:`sat_book_ts_codes`) so hot paths stay cheap.
     """
     names: set[str] = set()
     try:
@@ -157,6 +212,11 @@ def live_sat_ts_codes(today: date | None = None) -> set[str]:
             ts = ts_from_cn_symbol(str(row.get("symbol") or ""))
             if ts:
                 names.add(ts)
+    except Exception:
+        pass
+    try:
+        day = today or date.today()
+        names |= sat_book_ts_codes(day)
     except Exception:
         pass
     return names

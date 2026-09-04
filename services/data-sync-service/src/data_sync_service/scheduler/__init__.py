@@ -340,12 +340,8 @@ def create_scheduler() -> BackgroundScheduler:
         id=paper_backtest_mirror_job.JOB_ID,
         replace_existing=True,
     )
-    scheduler.add_job(
-        news_enrich_job.run,
-        news_enrich_job.build_trigger(),
-        id=news_enrich_job.JOB_ID,
-        replace_existing=True,
-    )
+    # (second registration removed OPT-139: duplicate of the block above;
+    # same id + replace_existing made it harmless but confusing)
     # TIP-012: research report ingestion (研报 → Alpha channel)
     scheduler.add_job(
         research_report_job.run,

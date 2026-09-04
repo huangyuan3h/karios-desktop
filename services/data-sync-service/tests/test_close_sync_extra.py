@@ -56,6 +56,15 @@ def _patch(monkeypatch, pro=None, today_run=None, last_ok=None, open_flag=True,
     monkeypatch.setattr(cs, "update_adj_factor_from_dataframe", lambda df: len(df))
     monkeypatch.setattr(cs, "insert_record", lambda *a, **k: None)
     monkeypatch.setattr(cs, "sync_trade_calendar", lambda **kw: {"ok": True})
+    # close_sync calls cn_extra_sync best-effort after daily bars succeed —
+    # stub it so orchestration tests never touch tushare/DB fallbacks.
+    from data_sync_service.service import cn_extra_sync as extra
+
+    monkeypatch.setattr(extra, "sync_margin_detail_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_moneyflow_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_hk_hold_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_financial_for_range", lambda s, e: {"ok": True})
+    monkeypatch.setattr(extra, "sync_holder_for_range", lambda s, e: {"ok": True})
     return pro
 
 

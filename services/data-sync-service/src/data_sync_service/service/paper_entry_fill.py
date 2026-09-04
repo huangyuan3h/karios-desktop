@@ -13,11 +13,9 @@ from datetime import date, timedelta
 from typing import Any
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch, fetch_ohlcv_batch_between
+from data_sync_service.service.trade_calendar_utils import open_sessions_between
 
 logger = logging.getLogger(__name__)
-
-# Shared CN session calendar proxy (index has dense bars).
-_CALENDAR_TS = "000001.SH"
 
 
 def _f(v: Any) -> float | None:
@@ -28,25 +26,24 @@ def _f(v: Any) -> float | None:
     return x if x > 0 else None
 
 
-def _next_session_after(signal_day: str, *, calendar_ts: str = _CALENDAR_TS) -> str | None:
-    """Return the next trading date strictly after ``signal_day``."""
+def _next_session_after(signal_day: str, *, calendar_ts: str = "") -> str | None:
+    """Return the next trading date strictly after ``signal_day``.
+
+    Uses the real trading calendar (``trade_calendar_utils``, Mon–Fri
+    fallback when unseeded). Previously this proxied ``000001.SH`` bars in
+    ``daily`` — but index bars live in ``index_daily``, so the proxy was
+    empty and CN intake silently opened nothing (OPT-138).
+    ``calendar_ts`` is kept as an ignored kwarg for backward compatibility.
+    """
     try:
         start = date.fromisoformat(signal_day[:10])
     except ValueError:
         return None
     end = (start + timedelta(days=20)).isoformat()
-    bars = fetch_ohlcv_batch_between([calendar_ts], signal_day[:10], end).get(calendar_ts) or []
-    for b in bars:
-        d = str(b[0])[:10]
-        if d > signal_day[:10]:
-            return d
-    # Fallback: look at recent bars if between-query empty (weekend catchup).
-    recent = fetch_last_ohlcv_batch([calendar_ts], days=30).get(calendar_ts) or []
-    for b in recent:
-        d = str(b[0])[:10]
-        if d > signal_day[:10]:
-            return d
-    return None
+    sessions = open_sessions_between(
+        (start + timedelta(days=1)).isoformat(), end
+    )
+    return sessions[0] if sessions else None
 
 
 def resolve_next_open_fill(

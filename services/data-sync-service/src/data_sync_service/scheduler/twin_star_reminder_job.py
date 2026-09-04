@@ -10,6 +10,7 @@ import logging
 from apscheduler.triggers.cron import CronTrigger
 
 from data_sync_service.db.webhook import emit_event
+from data_sync_service.scheduler._job_guard import record_failure, record_success
 from data_sync_service.service.twin_star_daily import (
     build_twin_star_reminder_payload,
     now_cn,
@@ -32,6 +33,8 @@ def build_trigger() -> CronTrigger:
 
 def run() -> None:
     today = now_cn().date()
+    day_iso = today.isoformat()
+    stale_snapshot = False
     try:
         sat = build_intraday_sat(today)
         if sat is not None:
@@ -43,10 +46,18 @@ def run() -> None:
             )
         else:
             logger.warning("twin_star_reminder: afternoon snapshot unavailable, using cache/t-1")
+            stale_snapshot = True
     except Exception:  # noqa: BLE001
         logger.exception("twin_star_reminder snapshot refresh failed")
-    payload = build_twin_star_reminder_payload(today)
+        stale_snapshot = True
+    try:
+        payload = build_twin_star_reminder_payload(today)
+    except Exception as exc:  # noqa: BLE001
+        record_failure(JOB_ID, exc, last_ts_code=day_iso)
+        logger.exception("twin_star_reminder payload build failed")
+        return
     if not payload.get("detail"):
+        record_success(JOB_ID, last_ts_code=f"{day_iso}|no-detail")
         return
     try:
         emit_event(
@@ -55,8 +66,12 @@ def run() -> None:
             dedupe_key=f"twin_star_reminder:{today.isoformat()}",
         )
         logger.info("twin_star_reminder emitted: %s", payload["detail"])
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        record_failure(JOB_ID, exc, last_ts_code=day_iso)
         logger.exception("twin_star_reminder emit failed")
+        return
+    note = "|stale-snapshot" if stale_snapshot else ""
+    record_success(JOB_ID, last_ts_code=f"{day_iso}{note}")
 
 
 if __name__ == "__main__":

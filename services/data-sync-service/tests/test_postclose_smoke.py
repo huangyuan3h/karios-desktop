@@ -140,7 +140,8 @@ def test_postclose_chain_end_to_end() -> None:
     open_rows = pt_db.list_paper_trades(status="open", limit=100)
     opened = next((t for t in open_rows if t.get("symbol") == sym), None)
     assert opened is not None, "trade did not open"
-    assert opened["entryDate"] == ENTRY_DATE
+    # next_open fill: signal ENTRY_DATE (08-03) fills on the next session open.
+    assert opened["entryDate"] == "2026-08-04"
     assert opened["market"] == "CN"
     assert opened["source"] == "TV"
 

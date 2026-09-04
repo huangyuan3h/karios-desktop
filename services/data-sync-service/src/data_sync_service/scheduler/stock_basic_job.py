@@ -6,6 +6,7 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
+from data_sync_service.scheduler._job_guard import record_dict_result, run_guarded
 from data_sync_service.service.stock_basic import sync_stock_basic
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,14 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_stock_basic()
-    if result.get("ok"):
-        logger.info("stock_basic_sync ok: updated=%s", result.get("updated", 0))
-    else:
-        logger.warning("stock_basic_sync failed: %s", result.get("error", "unknown"))
+    result = run_guarded(JOB_ID, sync_stock_basic, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+
+    def _ok(r) -> None:
+        logger.info("stock_basic_sync ok: updated=%s", r.get("updated", 0))
+
+    def _fail(r) -> None:
+        logger.warning("stock_basic_sync failed: %s", r.get("error", "unknown"))
+
+    record_dict_result(JOB_ID, result, ok_log=_ok, fail_log=_fail)

@@ -19,6 +19,18 @@ def _patch_cn_today(monkeypatch: pytest.MonkeyPatch, d: date) -> None:
     )
 
 
+def _patch_extra_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """close_sync runs cn_extra_sync best-effort after daily bars succeed —
+    stub it so orchestration tests never touch tushare/DB fallbacks."""
+    from data_sync_service.service import cn_extra_sync as extra
+
+    monkeypatch.setattr(extra, "sync_margin_detail_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_moneyflow_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_hk_hold_for_dates", lambda dates: {"ok": True})
+    monkeypatch.setattr(extra, "sync_financial_for_range", lambda s, e: {"ok": True})
+    monkeypatch.setattr(extra, "sync_holder_for_range", lambda s, e: {"ok": True})
+
+
 def test_non_trading_day_skips_when_data_current(monkeypatch: pytest.MonkeyPatch) -> None:
     saturday = date(2026, 7, 4)
     friday = date(2026, 7, 3)
@@ -64,6 +76,7 @@ def test_non_trading_day_catchup_when_stale(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(cs, "_fetch_paged_daily", lambda pro, td: synced.append(td) or 100)
     monkeypatch.setattr(cs, "_fetch_paged_adj_factor", lambda pro, td: 50)
     monkeypatch.setattr(cs, "insert_record", lambda *a, **k: None)
+    _patch_extra_ok(monkeypatch)
 
     out = cs.sync_close(force=True)
     assert out["ok"] is True
@@ -94,6 +107,7 @@ def test_non_trading_day_force_heals_missing_db_rows(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(cs, "_fetch_paged_daily", lambda pro, td: synced.append(td) or 100)
     monkeypatch.setattr(cs, "_fetch_paged_adj_factor", lambda pro, td: 50)
     monkeypatch.setattr(cs, "insert_record", lambda *a, **k: None)
+    _patch_extra_ok(monkeypatch)
 
     out = cs.sync_close(force=True)
     assert out["ok"] is True

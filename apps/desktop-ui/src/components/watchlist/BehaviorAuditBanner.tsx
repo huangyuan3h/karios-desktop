@@ -16,6 +16,10 @@ import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfoli
  * Weak / panic cooldown / circuit breaker, so new entries are impossible),
  * that market's 该持没买 suggestions are hidden — only actionable exits
  * (该卖没卖) and held-but-unapproved rows (买了不该买) stay visible.
+ *
+ * OPT-140: satellite-leg holdings are split out of the S-3 comparison
+ * backend-side — they render here as a neutral 🛰 卫星腿 panel (vs the
+ * twin-star engine book), never as 买了不该买.
  */
 export function BehaviorAuditBanner() {
   const auditQuery = useBehaviorAuditQuery();
@@ -48,6 +52,46 @@ export function BehaviorAuditBanner() {
   const visibleMissing = missingRows.filter((m) => !blockedMarkets.has(m.market));
   const latestDate = rows[0]?.auditDate;
 
+  // OPT-140 satellite leg (vs twin-star engine book — info, never a warning).
+  const satExtraRows = rows.flatMap((r) =>
+    (r.satExtraList ?? []).map((e) => ({ ...e, market: r.market, auditDate: r.auditDate })),
+  );
+  const satMissingRows = rows.flatMap((r) =>
+    (r.satMissingList ?? []).map((m) => ({ ...m, market: r.market, auditDate: r.auditDate })),
+  );
+  const satExpected = rows.reduce((n, r) => n + (r.satExpected ?? 0), 0);
+  const satActual = rows.reduce((n, r) => n + (r.actualSat ?? 0), 0);
+  const hasSatData = satExpected > 0 || satActual > 0 || satExtraRows.length > 0 || satMissingRows.length > 0;
+
+  const satPanel = hasSatData ? (
+    <div className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[12px]">
+      <div className="font-medium text-sky-800 dark:text-sky-200">
+        🛰 卫星腿（引擎账本对照）：实持 {satActual} / 引擎应持 {satExpected}
+        {satExtraRows.length === 0 && satMissingRows.length === 0 ? ' · 一致' : ''}
+      </div>
+      {satExtraRows.length ? (
+        <div className="mt-1 space-y-0.5 text-sky-700 dark:text-sky-300">
+          {satExtraRows.map((e) => (
+            <div key={`${e.auditDate}-${e.symbol}`}>
+              账外持有：<span className="font-mono">{e.symbol}</span>
+              {e.name ? <span> {e.name}</span> : null}
+              <span className="text-[var(--k-muted)]"> · 引擎账本无（对照双子星，非 S-3 口径）</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {satMissingRows.length ? (
+        <div className="mt-1 space-y-0.5 text-sky-700 dark:text-sky-300">
+          {satMissingRows.map((m) => (
+            <div key={`${m.auditDate}-${m.symbol}`}>
+              引擎应持未持有：<span className="font-mono">{m.symbol}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   const onRefresh = () => {
     setRefreshing(true);
     void refresh.mutateAsync(undefined, {
@@ -58,11 +102,14 @@ export function BehaviorAuditBanner() {
   if (!extraRows.length && !visibleMissing.length && !hiddenMissing.length) {
     // Silent when there's nothing to flag — but still allow a manual refresh.
     return latestDate ? (
-      <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
-        <span>✅ 行为对账（{latestDate}）：持仓与 S-3 回测口径一致</span>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
-          {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
-        </Button>
+      <div className="mb-4">
+        <div className="flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
+          <span>✅ 行为对账（{latestDate}）：持仓与 S-3 回测口径一致</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+            {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
+          </Button>
+        </div>
+        {satPanel}
       </div>
     ) : (
       <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
@@ -78,14 +125,17 @@ export function BehaviorAuditBanner() {
     // Everything flagged is a buy suggestion — but the gate is closed, so
     // nothing is actionable today; stay quiet and say so.
     return (
-      <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
-        <span>
-          ✅ 行为对账（{latestDate ?? '—'}）：无待操作提醒
-          {hiddenMissing.length ? ` — 闸门关闭 · 今日不可买入，已隐藏 ${hiddenMissing.length} 条该持没买` : ''}
-        </span>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
-          {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
-        </Button>
+      <div className="mb-4">
+        <div className="flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
+          <span>
+            ✅ 行为对账（{latestDate ?? '—'}）：无待操作提醒
+            {hiddenMissing.length ? ` — 闸门关闭 · 今日不可买入，已隐藏 ${hiddenMissing.length} 条该持没买` : ''}
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+            {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
+          </Button>
+        </div>
+        {satPanel}
       </div>
     );
   }
@@ -132,6 +182,7 @@ export function BehaviorAuditBanner() {
           🔒 闸门关闭 · 今日不可买入——已隐藏 {hiddenMissing.length} 条该持没买
         </div>
       ) : null}
+      {satPanel}
     </div>
   );
 }

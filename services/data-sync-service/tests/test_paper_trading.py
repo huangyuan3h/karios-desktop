@@ -258,6 +258,19 @@ def test_run_intake_filters_out_of_scope_symbols() -> None:
             return_value={"00700.HK": [("2026-08-01", 480.0, 481.0, 479.0, 480.0, 10000)]},
         ),
         patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
+        ),
+        patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
             return_value={"id": "x"},
         ) as mock_insert,
@@ -381,6 +394,19 @@ def test_run_intake_treats_idempotent_insert_as_skip() -> None:
         patch(
             "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
             return_value={"600519.SH": [("2026-08-01", 1700.0, 1700.0, 1699.0, 1700.0, 100)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
         ),
         patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
@@ -880,6 +906,19 @@ def test_run_intake_insert_side_not_leaked_from_last_change() -> None:
             return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
         ),
         patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
+        ),
+        patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
             side_effect=fake_insert,
         ),
@@ -948,6 +987,19 @@ def test_run_intake_handles_registry_failure() -> None:
             return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
         ),
         patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
+        ),
+        patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
             return_value={"id": "x"},
         ) as mock_insert,
@@ -1007,6 +1059,19 @@ def test_run_intake_counts_insert_errors_as_skipped() -> None:
         patch(
             "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
             return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            side_effect=lambda ts, day, signal_close=None: {
+                "entry_date": "2026-08-04",
+                "entry_price": float(signal_close or 0),
+                "pending_open_fill": True,
+                "signal_snapshot": {
+                    "entryMode": "next_open",
+                    "signalDate": day,
+                    "pendingOpenFill": True,
+                },
+            },
         ),
         patch(
             "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",

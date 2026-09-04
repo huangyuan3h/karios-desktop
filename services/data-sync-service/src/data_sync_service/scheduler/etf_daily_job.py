@@ -13,6 +13,7 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
 
+from data_sync_service.scheduler._job_guard import record_dict_result, run_guarded
 from data_sync_service.service.etf_daily import sync_etf_daily_full, sync_sleeve_etfs
 
 logger = logging.getLogger(__name__)
@@ -28,11 +29,17 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_sleeve_etfs()
-    if result.get("ok"):
-        logger.info("sleeve_etf_daily_sync ok: updated=%s", result.get("updated", 0))
-    else:
-        logger.warning("sleeve_etf_daily_sync failed: %s", result.get("error", "unknown"))
+    result = run_guarded(JOB_ID, sync_sleeve_etfs, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+
+    def _ok(r) -> None:
+        logger.info("sleeve_etf_daily_sync ok: updated=%s", r.get("updated", 0))
+
+    def _fail(r) -> None:
+        logger.warning("sleeve_etf_daily_sync failed: %s", r.get("error", "unknown"))
+
+    record_dict_result(JOB_ID, result, ok_log=_ok, fail_log=_fail)
 
 
 def run_full() -> None:

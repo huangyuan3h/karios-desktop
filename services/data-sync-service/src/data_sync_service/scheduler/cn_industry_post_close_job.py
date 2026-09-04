@@ -37,6 +37,14 @@ def _today_iso_utc() -> str:
 
 
 def run() -> None:
+    try:
+        _run()
+    except Exception as exc:  # noqa: BLE001
+        insert_record(JOB_ID, success=False, error_message=f"{type(exc).__name__}: {exc}"[:500])
+        logger.exception("cn_industry_post_close_sync failed: %s", exc)
+
+
+def _run() -> None:
     today = _today_iso_utc()
     industry = sync_cn_industry_fund_flow(days=10, top_n=10)
     mainline = sync_cn_industry_mainline(force=False)

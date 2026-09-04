@@ -196,8 +196,8 @@ describe('S-3 backtest candidate block', () => {
       mainlineAllow: { ready: true, names: new Set(['计算机']), byName: new Map() } as never,
       sectorOutflowBlock: false,
     });
-    expect(md).toContain('S-3 回测口径买入候选（趋势跟随 · 双市场 top5）');
-    const s3Block = md.slice(md.indexOf('S-3 回测口径买入候选'), md.indexOf('A股 卫星仓'));
+    expect(md).toContain('S-3 股票腿买入候选（仅 pick=STOCK · 双市场 top5）');
+    const s3Block = md.slice(md.indexOf('S-3 股票腿买入候选'), md.indexOf('A股 卫星仓'));
     expect(s3Block).toContain('| CN:600001 | 测试A |');
     expect(s3Block).toContain('| HK:00700 | 腾讯控股 |');
     expect(s3Block).toContain('候选池共 19 只');
@@ -281,7 +281,7 @@ describe('S-3 backtest candidate block', () => {
     expect(md).toContain('恐慌冷却期');
     expect(md).toContain('最近恐慌日 2026-08-06');
     expect(md).toContain('冷却至 2026-08-11');
-    const s3Block = md.slice(md.indexOf('S-3 回测口径买入候选'), md.indexOf('A股 卫星仓'));
+    const s3Block = md.slice(md.indexOf('S-3 股票腿买入候选'), md.indexOf('A股 卫星仓'));
     expect(s3Block).not.toContain('| CN:600001 |');
   });
 });

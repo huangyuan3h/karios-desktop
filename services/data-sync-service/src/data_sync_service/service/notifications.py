@@ -126,25 +126,12 @@ def _holding_book(
     symbol: str | None = None,
     sat_ts: set[str] | None = None,
 ) -> str:
-    """Which rulebook a holding is under.
+    """Which rulebook a holding is under — delegates to the single leg truth
+    (``twin_star_daily.holding_book``, OPT-140). Kept as a private alias so
+    call sites and tests don't churn."""
+    from data_sync_service.service.twin_star_daily import holding_book
 
-    Twin-star CN: pick≠STOCK → every A-share is satellite. pick=STOCK → only
-    names in the sat recipe/candidate/paper-open set are satellite; leftover
-    CN stays S-3. HK is never satellite (idle when the core is an ETF).
-    """
-    if mode == "twin_star" and market == "CN":
-        if pick != "STOCK":
-            return "sat"
-        if symbol:
-            from data_sync_service.service.twin_star_daily import ts_from_cn_symbol
-
-            ts = ts_from_cn_symbol(symbol)
-            if ts and sat_ts and ts in sat_ts:
-                return "sat"
-        return "s3"
-    if mode == "twin_star" and pick != "STOCK":
-        return "idle"
-    return "s3"
+    return holding_book(mode, pick, market, symbol=symbol, sat_ts=sat_ts)
 
 
 def _load_health_ctx() -> dict[str, Any]:

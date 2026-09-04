@@ -57,6 +57,13 @@
 | OPT-135 | Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃 | P0 | 1 天 | [x] |
 | OPT-136 | 卫星 Live 对齐冻结 body=3（去掉 −5% overlay） | P0 | 0.5 天 | [x] |
 | OPT-137 | 尾盘 5 分钟线落库（14:30–15:00，baostock 一年回补） | P1 | 0.5 天 | [x] |
+| OPT-138 | 红套件清零（lastfailed 47 + tsc 老错 + 过期测试） | P0 | 0.5–1 天 | [x] |
+| OPT-139 | Scheduler 失败上报统一（try + insert_record 全覆盖） | P0 | 0.5–1 天 | [x] |
+| OPT-140 | 双子星模式口径统一（audit/card/near_stop 不再误报） | P0 | 1 天 | [x] |
+| OPT-141 | Live 习惯口径回测引擎化（same_1430/C1/exit1430 进冻结） | P0 | 2–3 天 | [ ] |
+| OPT-142 | 日历收敛 + API 校验补齐 + Alembic 重号修复 | P1 | 1–2 天 | [ ] |
+| OPT-143 | 历史可重放补强（5min 回填/ST 5%/fail-open 审计） | P1 | 2–3 天 | [ ] |
+| OPT-144 | 外围任务抖动治理（option_iv/news 静默重试降级） | P2 | 0.5–1 天 | [ ] |
 
 ---
 
@@ -3492,3 +3499,263 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 - ❌ 给所有 GET 加 `no-store`（应 `max-age=10` 让 ETag 生效）
 - ❌ 前端 `refetchOnWindowFocus:false` 一刀切（保留但加 jitter）
+
+---
+
+### OPT-138：红套件清零（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（套件红 = 回归不可见；2026-09-04 评估：业务 7 / 工程 6 / 复盘 7.5，短板先补）
+**关联**：系统评估 2026-09-04（`todo.md` P0-5）
+
+#### 背景
+
+- `.pytest_cache/lastfailed` 47 条：`test_watchlist_momentum_v1_1.py` 整文件 + `test_market_regime_*` 5 条 + `test_hk_daily*` 3 条等（2026-09-04 审计数）。
+- 前端 `npx tsc --noEmit` 唯一报错 `PortfolioHealthCard.tsx`（candidates `null` 不可赋 `[] | undefined`），clean tree 复现，预存。
+- `tests/test_webhook_format.py::test_execution_card_renders_sleeve_when_actionable` 失败：期待旧文案"第三资产"，代码已改名"择强单轨"，测试过期。
+
+#### 目标
+
+- 后端全量 `pytest` 绿（含 DB 可用时 `requires_postgres`）；修不了的单测要么修代码要么改断言，不许留红。
+- `test_watchlist_momentum_v1_1.py` 若已废弃则删文件 + 去掉 `pyproject.toml` 的 `--ignore`；若有效则修。
+- `execution_card` 测试按现行"择强单轨"文案更新；`tsc --noEmit` 零报错。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Tests | `services/data-sync-service/tests/test_watchlist_momentum_v1_1.py`、`test_market_regime_*`、`test_hk_daily*`、`test_webhook_format.py` |
+| Config | `services/data-sync-service/pyproject.toml`（`--ignore` 行） |
+| FE | `apps/desktop-ui/src/components/watchlist/PortfolioHealthCard.tsx`（candidates 空值类型） |
+
+#### 验证
+
+- [ ] `pytest --no-cov -q` 全绿；`npx tsc --noEmit` 零输出
+- [ ] `db_rows_baseline.py save → 全量 pytest → check` OK（DB 测试纪律）
+
+#### 反模式
+
+- ❌ `pytest -k "not bad"` 绕过红单测（要修不要跳）
+- ❌ 为过 tsc 加 `as any`（修类型，candidates 允许 `null`）
+
+---
+
+### OPT-139：Scheduler 失败上报统一（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（15/50 job 无 try、21/50 无 insert_record；`twin_star_reminder_job` 自己不写执行记录）
+
+#### 背景
+
+三种形态并存：`close_sync_job`/`index_basic_job`/`daily_sync_job` 无 try 无记录仅 `logger.warning`；`cn_industry_post_close_job` 无 try 有记录；仅 `watchlist_automation_job` 是 try + 双路记录的标准形态。job 挂了无 `sync_job_record` → `job_failed` webhook 不触发 → 手机收不到。
+
+#### 目标
+
+- 新增 `scheduler/_job_guard.py::run_guarded(JOB_ID, fn)`：统一 try/except + `insert_record(success=...)` + 异常打 `logger.exception` 后按原语义返回（不吞 cron 退出码约定）。
+- 交易链优先迁移：`twin_star_reminder_job`、`paper_twin_star_job`、`watchlist_automation_job`（已标准，仅复核）、`close_sync_job`、`backtest_recon_job`、`behavior_audit_job`；其余 15 个无 try 的 job 同批迁。
+- `news_enrich_job` 在 `scheduler/__init__.py:140-145,344-348` 重复注册，留一处。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/_job_guard.py`（**新**） |
+| Scheduler | `scheduler/__init__.py`（去重 + 逐个 job 包 guard） |
+| Scheduler | 无 try 的 15 个 `*_job.py`（`adj_factor/close_sync/cn_industry_post_close/daily_basic/daily_sync/eastmoney_industry/etf_daily/fund_basic/hk_basic/hk_daily/hk_industry/index_basic/index_daily/macro_daily/stock_basic`） |
+| Tests | `tests/test_job_guard.py`（**新**：抛异常→record success=False + job_failed event；成功→success=True） |
+
+#### 验证
+
+- [ ] mock 抛异常的 job 跑完 `sync_job_record` 有 `success=False` 行
+- [ ] `news_enrich_job` 只注册一次（`grep add_job` 计数）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 在 guard 里吞异常返回成功（失败必须 `success=False`）
+- ❌ 顺手改 job 业务逻辑（只包壳不改馅）
+
+---
+
+### OPT-140：双子星模式口径统一（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（`audit_issues` 把卫星票报"买了不该买"是业务口径错，Bark 退订只是止痛）
+
+#### 背景
+
+实盘默认双子星后，单轨 S-3 口径的三处仍在跑：`behavior_audit_job`（18:45）按 S-3 应持把 4 只卫星票报 extra；`execution_card` 推 S-3 门/金字塔/513100；`near_stop` 给卫星票（CN:600540）报 S-3 止损线。2026-09-04 手机实证：14 天 53 推里 18 条属此类噪音/误报。
+
+#### 目标
+
+- 运行模式开关（读现行默认：双子星 clip4 + 习惯 Live）：twin_star 模式下 `behavior_audit` 的 registry 对账只对核心腿（S-3 篮），卫星仓走 `twin_star_daily` 口径，extra/missing 分腿标注，不再把卫星票报"买了不该买"。
+- `execution_card` / `near_stop` 在 twin_star 模式下降级：卡片标题注明"单轨对照·非实盘"，或仅 hub 显示不推 Bark（Bark 侧已退订，本项管 hub + 文案不误导）。
+- hub `BehaviorAuditBanner` 同口径修复（页面上同样误报）。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/reconciliation.py`（`reconcile_registry` 分腿） |
+| Service | `services/data-sync-service/src/data_sync_service/service/notifications.py`（`_twin_star_*` / execution_card 文案） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/behavior_audit_job.py` |
+| FE | `apps/desktop-ui` BehaviorAudit 相关 banner（grep `BehaviorAudit` 定位） |
+| Tests | `tests/test_behavior_audit_twin_star.py`（**新**：卫星票不再进 extra；核心腿仍对账） |
+
+#### 验证
+
+- [ ] 种子 4 只卫星持仓跑 `reconcile_registry`：extra 为空，卫星腿 aligned
+- [ ] hub 横幅不再出现卫星"买了不该买"
+- [ ] pytest + 前端相关单测通过
+
+#### 反模式
+
+- ❌ 直接关掉 behavior_audit（核心腿对账仍要）
+- ❌ 为消误报把阈值调松（分腿，不是放水）
+
+---
+
+### OPT-141：Live 习惯口径回测引擎化（P0）
+
+**状态**：[ ] 待排期
+**优先级**：P0（评估最大业务风险：Live 跑 same_1430/C1/exit1430，成绩单是 next_open 考的）
+**关联**：`trading-improvement-checklist.md`（TIP/V6 口径；策略改动走三窗铁律，`AGENTS.md` Backtest walk-forward）
+
+#### 背景
+
+Live 习惯（当天缺口→14:30 买→C1 3%→第 3 日 14:30 卖）与冻结引擎（T 开盘买/收盘卖）是两套口径，靠文档双轨维持。三年尾盘 5 分钟已入库（2320 万行，P0-4 [done]），引擎化数据条件具备。
+
+#### 目标
+
+- `backtest_engine.py` 或 `state_bucket_track.py` 新增 `fill_mode=same_1430` + `c1_pct` + `exit_hhmm=1430` 三字段（`BacktestConfig` 扩展 + 校验），与 `paper_twin_star` 同语义（bar_5min_1430 > snapshot > daily_close 降级链也要进回测，缺 14:30 价的 session 记 `fillPxSrc` 分布）。
+- `run_walk_forward.py --param fill_mode=same_1430 ...` 重跑三窗 vs 核心；判据不变（任一窗 >5pt 差于核心 → 不进 Live，则改 Live 回冻结）。
+- 结论写进 `docs/backtests/`（PASS 或 REJECT 留档），`SUMMARY.md` 更新"习惯成绩单"。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/backtest_engine.py` / `state_bucket_track.py` |
+| Scripts | `services/data-sync-service/scripts/run_walk_forward.py` |
+| Docs | `docs/backtests/sat-live-caliber-*.md`（**新**）+ `SUMMARY.md` |
+| Tests | 回测口径单测（fill/exit 1430 + 缺价降级） |
+
+#### 验证
+
+- [ ] 三窗输出表 + 判定；`walk_forward_baseline.json` 不动（新口径另存 baseline 文件）
+- [ ] paper `entryPxSrc` 分布与回测 `fillPxSrc` 分布可比（同降级链证据）
+
+#### 反模式
+
+- ❌ 把 14:30 写进冻结 T 开盘引擎（P0-4 明确不做；新口径另起字段）
+- ❌ 单窗好看就切 Live（三窗铁律）
+
+---
+
+### OPT-142：日历收敛 + API 校验补齐 + Alembic 重号修复（P1）
+
+**状态**：[ ] 待排期
+**优先级**：P1
+
+#### 背景
+
+`weekday()` 散落 11 文件 20 处（`notifications.py` 还有 `weekday()<5` 降级循环）；日历真值三文件 491 行。15/30 API 路由无 Pydantic 校验（纯 dict 返回）。Alembic `0020_cn_extra_data.py` + `0020_decision_sessions.py` 重号（以 `0038` 为 head 能跑，但 `history` 分叉难读）。
+
+#### 目标
+
+- 非日历模块的 `weekday()` 收敛到 `trade_calendar_utils`（`count_open_sessions` / `nth_open_session` / `is_open_day`）；`notifications.py` 的降级循环保留但注明何时触发。
+- 15 个无校验路由补 `BaseModel`（请求体优先，返回体按 shared Zod 对齐协议 OPT-009）。
+- `0020` 重号：已 upgrade 过的库不动（revision id 不变），只修 `down_revision` 链为线性 + 注释说明；按 AGENTS 清单同步 `CREATE_SQL` parity 检查。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/notifications.py`、`market_regime.py`、`market_sentiment.py`、`weekly_review.py`、`allocation.py`、`twin_star_intraday.py` |
+| API | 15 个无 `BaseModel` 路由（`dashboard/decision/health/industry_flow/news/notifications/sync/...`） |
+| Alembic | `alembic/versions/0020_*.py`（down_revision 链） |
+| Tests | 日历收敛单测 + API shape 断言 |
+
+#### 验证
+
+- [ ] `grep weekday()` 仅剩 `trade_calendar*` + 显式注释的降级处
+- [ ] `alembic history` 线性无分叉；`alembic current` 不变
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 改 `revision id`（已落库的库会认不出 head）
+- ❌ 一次性给所有返回体加严格 Pydantic（先请求体，返回体只对齐 shared 已有 Zod 的）
+
+---
+
+### OPT-143：历史可重放补强（P1）
+
+**状态**：[ ] 待排期
+**优先级**：P1（决定习惯口径成绩可信度上限）
+
+#### 背景
+
+① 习惯口径历史 14:30 价靠三年尾盘 5 分钟（已入库），但 baostock 只能回填约 1 年、早窗覆盖待查；② 缺 score `fail-open`（`backtest_engine.py:37-39`）、`pool_exit OFF fail-open` 偏乐观；③ ST 5% 涨跌停未建模；④ 258 个 ≥5% 跳空=除权叠加真大跌残留。
+
+#### 目标
+
+- 输出三窗 14:30 价覆盖率表（有真 14:30 bar 的 session 占比/按年）；覆盖率低的窗结论降级标注。
+- fail-open 清单审计：逐条列 fail-open / fail-closed，缺门闸默认改 fail-closed 或量化乐观偏差上界。
+- ST 5% 涨跌停建模（`_board_limit_pct` 补 ST 分支）；除权残留 258 个打标（ Sousa 除权日历 vs 真跳空区分，不删只标）。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/backtest_engine.py`（`_board_limit_pct`、fail-open 点） |
+| Service | `service/state_bucket_track.py`（universe/除权标） |
+| Scripts | 覆盖率统计脚本（**新**，可并入 `run_walk_forward.py --report-coverage`） |
+| Tests | ST 板块限价单测 + 覆盖率断言 |
+
+#### 验证
+
+- [ ] 覆盖率表进实验文档；fail-open 清单进 `strategy-params.md`
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 为提覆盖率拿收盘价冒充 14:30（缺就是缺，标出来）
+- ❌ 删历史跳空数据（打标不删）
+
+---
+
+### OPT-144：外围任务抖动治理（P2 储备）
+
+**状态**：[ ] 储备（P2；OPT-125 后再做）
+**优先级**：P2
+
+#### 背景
+
+近 14 天 27 次 `job_failed` 里 11 次是外围（`option_iv_daily×6`、`news_fetch_job×5`），属数据源抖动非系统故障，每次都推 Bark（现已保留 job_failed 通道，噪音仍在）。
+
+#### 目标
+
+- 外围任务（option_iv / news_fetch / etf_flow / alpha_radar）失败走静默重试 + 日报聚合，不单独推 Bark；仅交易链 job（`TRADING_JOB_TYPES` 12 种）即时推。
+- `insert_record` 加 `severity`（ peripheral vs trading ），`job_failed` webhook 只 emit trading 或 peripheral 連敗≥3。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/sync_job_record.py`（severity + 连败 emit） |
+| Service | `services/data-sync-service/src/data_sync_service/service/notifications.py`（`TRADING_JOB_TYPES` 复用） |
+| Tests | `tests/test_job_failed_severity.py`（**新**） |
+
+#### 验证
+
+- [ ] 外围单次失败无 Bark；连败 3 次有；交易链失败即时有
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把外围失败直接不记录（记录要，日报告聚合）
+- ❌ severity 写死 job 名（走 `TRADING_JOB_TYPES` 名单）

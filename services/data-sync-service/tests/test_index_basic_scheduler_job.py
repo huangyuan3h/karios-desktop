@@ -7,6 +7,15 @@ import pytest
 from data_sync_service.scheduler import index_basic_job
 
 
+@pytest.fixture(autouse=True)
+def _no_real_job_records(monkeypatch: pytest.MonkeyPatch):
+    """OPT-139: index_basic run() records via _job_guard — keep DB-free."""
+    monkeypatch.setattr(
+        "data_sync_service.scheduler._job_guard.insert_record",
+        lambda *a, **k: None,
+    )
+
+
 def _capture_logs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     messages: list[str] = []
 

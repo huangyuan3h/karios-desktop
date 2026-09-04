@@ -6,6 +6,11 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
+from data_sync_service.scheduler._job_guard import (
+    record_failure,
+    record_success,
+    run_guarded,
+)
 from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.post_close_sync import run_post_close_sync
 
@@ -22,7 +27,11 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_close(exchange="SSE", force=False)
+    result = run_guarded(
+        JOB_ID, lambda: sync_close(exchange="SSE", force=False), log=logger
+    )
+    if result is None:
+        return  # exception path already recorded + logged
     if result.get("ok"):
         if result.get("skipped"):
             logger.info("close_sync skipped: %s", result.get("message", ""))
@@ -39,6 +48,8 @@ def run() -> None:
             post.get("indexDaily"),
             post.get("macroDaily"),
         )
+        record_success(JOB_ID)
     else:
         logger.warning("close_sync failed: %s", result.get("error", "unknown"))
+        record_failure(JOB_ID, result.get("error", "unknown"))
 

@@ -172,9 +172,11 @@ def test_third_asset_section_renders_when_active() -> None:
 
 
 def test_third_asset_section_inactive_returns_empty() -> None:
+    # _third_asset_section is a deprecated alias of _pick_strong_section,
+    # which reads portfolio_health.multiAssetSleeve (not third_asset_sleeve).
     with patch(
-        "data_sync_service.service.third_asset_sleeve.build_third_asset_sleeve_for_paper",
-        return_value={"active": False, "action": "NONE"},
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        return_value={"multiAssetSleeve": {"active": False, "action": "NONE"}},
     ) as build_fn:
         out = tb._third_asset_section()
     build_fn.assert_called_once()

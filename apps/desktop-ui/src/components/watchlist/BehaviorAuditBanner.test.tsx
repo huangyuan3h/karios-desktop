@@ -36,6 +36,20 @@ vi.mock('@/lib/queries/behaviorAudit', async () => {
             },
           ],
           missingList: [{ symbol: 'HK:00005', score: 78 }],
+          satExpected: 2,
+          actualSat: 1,
+          satExtra: 1,
+          satMissing: 1,
+          satExtraList: [
+            {
+              symbol: 'CN:600099',
+              name: '卫星一号',
+              costPrice: 20.0,
+              entryDate: '2026-08-06',
+              kind: 'sat_leg',
+            },
+          ],
+          satMissingList: [{ symbol: 'CN:600088' }],
         },
         {
           auditDate: '2026-08-13',
@@ -105,6 +119,17 @@ describe('BehaviorAuditBanner (OPT-106)', () => {
       expect(screen.getAllByText(/该持没买：/).length).toBeGreaterThan(0);
       expect(screen.getByText(/HK:00005/)).toBeTruthy();
       expect(screen.getByText(/HK:02343/)).toBeTruthy();
+    });
+  });
+
+  it('renders satellite leg as info, never 买了不该买 (OPT-140)', async () => {
+    renderBanner();
+    await waitFor(() => {
+      expect(screen.getByText(/卫星腿（引擎账本对照）：实持 1 \/ 引擎应持 2/)).toBeTruthy();
+      expect(screen.getByText(/CN:600099/)).toBeTruthy();
+      expect(screen.getByText(/CN:600088/)).toBeTruthy();
+      // Satellite names must not appear as S-3 violations.
+      expect(screen.queryByText(/CN:600099.*买了不该买/)).toBeNull();
     });
   });
 });
