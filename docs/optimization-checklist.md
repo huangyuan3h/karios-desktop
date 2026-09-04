@@ -43,6 +43,28 @@
 | OPT-041 | Watchlist 港股 (HK) 闸门打通 | P1 | 0.5–1 天 | [x] |
 | OPT-042 | Watchlist ETF 通用化（fund_basic + 全量 ETF） | P1 | 1–2 天 | [x] |
 | OPT-043 | HK 日线 cron 改每日 + yfinance 增量 | P1 | 0.5 天 | [x] |
+| OPT-124 | Tushare 多 token 轮换 + 配额看门狗 | P0 | 0.5–1 天 | [ ] |
+| OPT-125 | DB 连接池 + DB 重试 + 慢查询护栏 | P1 | 1–2 天 | [ ] |
+| OPT-126 | 东财出口探针 + 熔断可视化 | P1 | 1 天 | [ ] |
+| OPT-127 | 前端轮询 jitter + ETag + 后端限流（储备） | P2 | 1 天 | [ ] |
+| OPT-128 | 实盘默认机会双子星 clip4 | P0 | 0.5 天 | [x] |
+| OPT-129 | Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%） | P0 | 1 天 | [x] |
+| OPT-130 | Timeline 拆核心/卫星/窗口标签 | P0 | 1–2 天 | [x] |
+| OPT-131 | 卫星占用真值 + twin_star paper 簿 | P0 | 1–2 天 | [x] |
+| OPT-132 | 卫星 blotter + skip_t1 日表 | P1 | 1 天 | [x] |
+| OPT-133 | 12:30 快照失败可见 + 双子星数据健康 | P0 | 0.5–1 天 | [x] |
+| OPT-134 | twin-star/action Zod 合同 + clip4 字面量 | P0 | 0.5 天 | [x] |
+| OPT-135 | Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃 | P0 | 1 天 | [x] |
+| OPT-136 | 卫星 Live 对齐冻结 body=3（去掉 −5% overlay） | P0 | 0.5 天 | [x] |
+| OPT-137 | 尾盘 5 分钟线落库（14:30–15:00，baostock 一年回补） | P1 | 0.5 天 | [x] |
+| OPT-138 | 红套件清零（lastfailed 47 + tsc 老错 + 过期测试） | P0 | 0.5–1 天 | [x] |
+| OPT-139 | Scheduler 失败上报统一（try + insert_record 全覆盖） | P0 | 0.5–1 天 | [x] |
+| OPT-140 | 双子星模式口径统一（audit/card/near_stop 不再误报） | P0 | 1 天 | [x] |
+| OPT-141 | Live 习惯口径回测引擎化（same_1430/C1/exit1430 进冻结） | P0 | 2–3 天 | [x] |
+| OPT-142 | 日历收敛 + API 校验补齐 + Alembic 重号修复 | P1 | 1–2 天 | [x] |
+| OPT-143 | 历史可重放补强（5min 回填/ST 5%/fail-open 审计） | P1 | 2–3 天 | [x] |
+| OPT-144 | 外围任务抖动治理（option_iv/news 静默重试降级） | P2 | 0.5–1 天 | [x] |
+| OPT-145 | 外购分钟/复权数据入库（2021–2023 尾盘七根 + 对拍） | P1 | 2–3 天 | [ ] |
 
 ---
 
@@ -998,6 +1020,141 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | **OPT-055 / §14 立**：用户 review 后暂缓远程部署项（§13 #1/#2/#3）+ 提级 §14 #1 AI agent 打通 + §12 #8 ego-lite 调研；新建 `docs/integrations/ai-agent-cookbook.md`（目标）|
 | 2026-08-01 | **OPT-055 §14 #1 完成**：AI Agent 集成 cookbook 10 节（4 步启动 + 4 场景 + 错误处理 + 配额监控 + Python/Node client + 上线 checklist + FAQ）；`docs/integrations/ai-agent-cookbook.md` |
 | 2026-08-01 | **OPT-056 触发**：用户 §12 #7 启动 — Docker 一键起 + UPS 自动恢复；§13 longevity 真痛点；范围锁定（Dockefile ×3 + 4 compose 服务 + 5 脚本 + 1 文档 + 1 测试）|
+| 2026-08-31 | **OPT-057 完成**：`stock_dailybasic` 停更 08-07 根因（`sync_daily_basic_for_date` 孤儿函数、无调度写入）→ 新增 `stock_daily_basic_sync`（工作日 17:20）+ `/sync/daily-basic` + health 源（估值市值 staleness 48h）+ UI catalog；补齐 08-10~08-31 缺口 88,677 行；双子星卫星信号恢复最新交易日（无滞后 note）|
+| 2026-08-31 | **OPT-058 完成**：双子星 14:30 决策链路审计——① `_pick()` 盘中回退 t-2 信号 bug（`closes[:-1]` 假设含当日 bar，实际盘中 daily 表只有 t-1）→ `_signal_closes` 显式剔除当日 bar；② 5 只核心腿 ETF 日线停更（全市场 `etf_daily_full` 月频 + tushare 限速失败，GOLD/BOND10 停更 7 天）→ 新增 `sleeve_etf_daily_sync`（工作日 17:25，fund_daily 增量）+ `/sync/sleeve-etfs` + catalog，补齐 08-24~08-31 |
+| 2026-09-01 | **OPT-059 完成**：涨停可成交审计 + 机会双子星定案（v1）——一字板审计 / universe / 机会口径 |
+| 2026-09-01 | **OPT-060 完成**：机会双子星 v2——① 退出日 `satActive` 记账修正（成本入 NAV，aligned 205.9→180.6，虚高 ~25pt）；② 六窗重冻 + holdout partial（−2.7pt vs 核心）；③ past_year/aligned 输核心 → **实盘默认改单轨择强**；④ UI 机会口径（关闸 100% 核心）；⑤ 卫星持仓簿（`openPositions`/`exitsDue`/`coreTargetPct`）|
+| 2026-09-01 | **OPT-123**：机会双子星 v3 固化——strict S-gap + 无仓回核；window-local 三窗全过；实盘信号与回测对齐（禁止 replace 扩池）；口径铁律写入 `state-bucket-algo` 文首 |
+| 2026-09-02 | **机会双子星 v3.1 clip4**：卫星冻结 4 槽 × 套筒 25% = 总资产 12.5%；相对 v3 15×5% 三窗全正（OOS2 +1.8 / train +2.3 / valid +10.3）；引擎 + Watchlist 同口径；`opportunity_twin_star_v3_clip4_frozen.json` |
+| 2026-09-02 | **过去一年三方冻结**：产品窗 2025-08-28~2026-08-28 单轨 +190.6 / 旧双子星 15×5% +190.4（−0.2） / clip4 **+194.9（+4.3）**；滚到今日 clip4 +204.0 vs 单轨 +197.6；DD 均 12.6。`past_year_twin_vs_core_2026-09-02.json`；写入 `pick-strong-track.md` §2.1 |
+| 2026-09-02 | **OPT-128**：实盘默认切 `twin_star` clip4（Settings / 通知 API / 文档）；单轨改为对照。下一阶段计划 `docs/designs/twin-star-ops-phase-2026-09-02.md` |
+| 2026-09-01 | **第八轮审查 — 稳定性**：数据 + 架构 + API 储备调研完成（15 条失败样本归因 + 8 类数据源分级 + 3 SPOF + 储备决策"不扩爬、做深度"）→ `docs/designs/stability-audit-2026-09-01.md` + OPT-124/125/126/127 立项 |
+
+### OPT-060：机会双子星 v2（退出日成本修正 + 默认改单轨）
+
+**状态**：[x] done
+**完成日期**：2026-09-01
+**优先级**：P0（v1 记账 bug → 冻结超额虚高；实盘默认需纠偏）
+
+#### 发现
+
+| # | 问题 | 量级 |
+|---|------|------|
+| 1 | `satPositions>0` 作 active：body 退出日仓已清，往返成本逃逸 | aligned 虚高 ~25pt（205.9→180.6） |
+| 2 | v1「六窗≥核心」不成立 | past_year −11.8pt / aligned −10.1pt |
+| 3 | UI 固定写「核心腿 50%」 | 关闸时应 100% 核心 |
+| 4 | 无卫星持仓簿 | body=3 到期卖无提醒 |
+
+#### 定案 v2
+
+- **引擎**：`satActive = overnight OR exit-at-close`；合成用 `satActive`
+- **冻结**：`core_satellite_frozen_2026-08-31.json` tag=`…-v2-exitday`
+- **实盘默认**：`single_track`；机会双子星 Settings opt-in
+- **UI**：`coreTargetPct`（100 idle / 50 opening|holding）+ 持仓簿
+- **Holdout partial**（08-08~09-01）：核心 +2.7 / 机会 +0.0 / vs_core −2.7pt（只读，未满窗）
+
+#### 验证
+
+- [x] 单测：`test_exit_day_costs_enter_opportunity_nav` + satActive 引擎断言
+- [x] 六窗 + holdout_partial 重跑写入冻结 JSON
+- [x] UI/提醒文案与 `coreTargetPct` / book 对齐
+
+#### 反模式
+
+- ❌ 用隔夜仓位数判断当日是否占用资金（漏退出日）
+- ❌ 在 recent 窗输核心时仍把增强策略设为默认
+
+### OPT-059：涨停可成交审计 + 机会双子星定案（替代旧 50/50）
+
+**状态**：[x] done（v1；数字已被 OPT-060 修正）
+**完成日期**：2026-09-01
+**优先级**：P0（回测执行假设失真 → 实盘收益与回测严重偏离）
+
+#### 审计发现
+
+| # | 问题 | 量级 |
+|---|------|------|
+| 1 | 卫星入场按 T 日开盘价成交，未检查涨停/一字板 | 冻结窗 671 笔中**一字板 24.1% + 涨停开 8.9% = 33% 买不进**；可执行口径（T-1 涨停候选剔除）卫星 aligned 126.31→**25.41%**、OOS2 228.72→111.39%（收益 80%+ 来自买不进的涨停票） |
+| 2 | `_load_rows` 无 universe 过滤 | daily 表 56.8 万行属 ST/BJ/退市（BJ 涨跌幅 30%）混入候选 |
+| 3 | 旧 50/50 混合在可执行口径下稀释核心 | aligned 96.74% < 核心 190.65% |
+| 4 | 卖出端 | body=3 跌停封死仅 0.1%（667 笔 1 笔）→ 可忽略；核心腿 ETF 两年一字板 0~1 次 |
+
+#### 定案：机会双子星（Opportunity Twin-Star）v1 → 见 OPT-060
+
+- **结构**：卫星资金平时 100% 跟核心；开闸可买才切 50%（v2：退出日须 `satActive`）
+- **v1 冻结数字已作废**（退出日成本逃逸）；以 OPT-060 / `…-v2-exitday` 为准
+- **引擎**：`build_sgap_timeline(skip_t1_limit=True)` + universe 过滤 + `opportunity=True`
+
+#### 验证
+
+- [x] T-1 涨停过滤 / universe 修复保留
+- [x] v1「六窗≥核心」声明已被 OPT-060 撤回
+
+#### 反模式
+
+- ❌ 回测按开盘价成交但忽略涨停/一字板
+- ❌ 让卫星收益依赖"买不进的票"的虚高
+- ❌ 固定权重混合拖累主干
+
+### OPT-058：双子星 14:30 决策链路审计（t-1 信号时序 + 核心腿 ETF 数据）
+
+**状态**：[x] done
+**完成日期**：2026-08-31
+**优先级**：P0（双子星 · 今日决策卡 = 每日执行核心，须"最新、正确、逼近回测"）
+
+#### 发现并修复
+
+| # | 问题 | 影响 | 修复 |
+|---|------|------|------|
+| 1 | `_pick()`/`_stock_basket_mom_from_holdings()` 用 `closes[:-1]` 假设 daily 表最后一根是"当日盘中 bar"；**实际盘中无任何进程写 daily** → 盘中（14:30）信号回退到 **t-2**，落后回测一天 | 14:30 决策卡的 pick 可能不是 t-1 信号（mom_compare 排序/MA200 过滤临界时翻转） | `_signal_closes()` 显式剔除当日 bar（`d >= today` 跳过）→ 盘中/盘后统一取 t-1 收盘信号 |
+| 2 | `etf_daily_full` cron = `0 19 1 * *`（**每月 1 次**）且最近两次运行全部 tushare `fund_daily` 限速失败 → GOLD(518880)/BOND10(511260) 停更 2026-08-21 起 7 天 | GOLD/BOND10 的 mom60/MA200 用 7 天前价格，pick 失真；GOLD 修复后 above=False 被正确过滤 | 新增 `sleeve_etf_daily_sync`（工作日 17:25，5 只核心腿 ETF `fund_daily` 增量，0.35s 间隔避限速）+ `/sync/sleeve-etfs` + catalog（order 13）+ `etf_daily_full` 保留月频 |
+| 3 | trail8 盘中判定风险 | 决策卡 14:30 时 trail 不触发（daily 无当日 bar）→ 与回测"当日收盘判、次日执行"一致 ✓（验证后无需修复） | — |
+
+#### 验证
+
+- [x] `_signal_closes`：盘中场景（无当日 bar）信号基准 = t-1 收盘；盘后场景剔除当日 bar 后仍 = t-1 ✓（与回测 `prev_day` 语义逐位一致）
+- [x] 补齐后 5 只 ETF 全部 `max(trade_date)=2026-08-31`；`_pick()` 实测 = OIL mom60 4.98%（GOLD 2.41 ✗MA 被过滤），与决策卡展示一致
+- [x] 测试：`test_multi_asset_signal_freshness.py`（4 例）+ 存量 76 例全绿
+- [x] shared build + UI tsc 干净
+
+#### 反模式
+
+- ❌ 让信号依赖"daily 表最后一根 = 当日"的隐式假设（盘中/盘后/周末语义不同 → 用 `_signal_closes` 显式表达 t-1）
+- ❌ 决策路径依赖月频/超限的全市场同步（核心依赖单独小同步 + 幂等 upsert）
+
+### OPT-057：stock_dailybasic 停更根因修复（双子星卫星数据依赖）
+
+**状态**：[x] done
+**完成日期**：2026-08-31
+**优先级**：P0（双子星 (Twin-Star) 卫星每日依赖 `total_mv` 选低波候选）
+**关联 todo**：[§19 S-3 双子星固化](../todo.md) · [`docs/backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md) §7.8
+
+#### 根因
+
+- `db/stock_dailybasic.py` 的 `sync_daily_basic_for_date` 是**孤儿函数**：全库无调用者，无调度任务写入 → 数据停在 2026-08-07（08-10 审计 P1-3 已标"滞后+无 staleness 监控"，当时判"仅回测用=低优先"，双子星上线后升级为每日实盘依赖）。
+
+#### 修复
+
+| 项 | 内容 |
+|----|------|
+| 调度 | `scheduler/daily_basic_job.py`（工作日 17:20 Asia/Shanghai，紧接 index_basic_sync 17:15）|
+| 同步 | `sync_daily_basic_gap()`：表内 max 日期起逐交易日增量拉 tushare `daily_basic`（幂等 upsert + `sync_job_record`）|
+| API | `POST /sync/daily-basic?end_date=`（UI 立即同步）|
+| 监控 | `health_routes._SOURCES` 新增 `daily_basic` 源（label 估值市值，48h 阈值 + 周末容忍）→ 系统自检横幅可报警 |
+| UI | `SCHEDULER_JOB_CATALOG` 新增 `stock_daily_basic_sync`（indexMacro 组，order 12）|
+| 数据 | 补齐 08-10~08-31 缺口 **88,677 行**（16 个交易日）；卫星信号 asOf 恢复 08-28（T-1 完整交易日），无滞后 note |
+
+#### 验证
+
+- [x] 补齐后 `max(trade_date)=2026-08-31`，08-25~08-31 每日 ~5,545 行
+- [x] `_sat_signal` 实测：asOf 08-28 · gateOpen True · breadth 0.588 · gapCount 111 · 候选 000712.SZ 等（无滞后 note）
+- [x] 后端全量 pytest：165 passed（引擎/混合/提醒/路由/API 无 regression）
+- [x] shared build + UI tsc 干净
+
+#### 反模式
+
+- ❌ 让卫星信号吞掉"信号日回退 + 滞后 note"（保留兜底，数据链路断了也要可见）
+- ❌ 用 `stamp` 而非增量同步补缺口（逐日 tushare 拉取 + ON CONFLICT 幂等，可重跑）
 
 ### OPT-056：Docker 一键起 + UPS 自动恢复（todo §12 #7 / §13 / [Mac mini 时代方案](../designs/mac-mini-deployment.md)）
 
@@ -2175,7 +2332,7 @@ alembic HEAD 基线测试同步。
 
 **状态**：[x]（全 23 项 · 零采纳 · 文档 §7 全记录）
 
-**执行**：`backtest-strategy.md` §7 全清单 20 项候选 + 3 基线，每条 `run_walk_forward
+**执行**：`backtest-strategy.md`（已归档至 `archive/modules-legacy/backtest-strategy-legacy.md`）§7 全清单 20 项候选 + 3 基线，每条 `run_walk_forward
 --param` 三窗 + HK 线。结果：拒收 17 · 中性 4 · 采纳 0。
 
 **新增引擎能力（全部默认禁用，live 常量 0）**：
@@ -2996,3 +3153,655 @@ valid 套筒 DD 13.7% > 基线 5.7% —— 高闲置 × 513100 波动传导，�
 
 **验收**：三窗增量全正（todo §19 铁律）；单测 8 例（R5C CN-first 权重、R5CS 同权、
 闲置吃套筒、双弱整池、R5A 50/50）；后端全量 3506 通过；ruff 干净。
+
+### OPT-122：机会双子星盘中近似信号（12:30 快照 → 14:30 买入 · 2026-09-01）
+
+**状态**：[x] done
+**背景**：实盘执行点是 14:30 模拟收盘价（不是回测的 T 日开盘价）；若用 t-1 信号则"昨天数据"，与 14:30 操作错位。
+
+**改动**：
+- **UI 闸门修正**：机会双子星**没有** S-3 Execution Gate。卫星只认 R-wide（`breadth>0.5`）；核心腿 pick=STOCK 时用 S-3 **选股篮**（Weak/恐慌/熔断 → 0 只可买），不套 ATTACK/DEFEND/`allowNewEntries`。卡片结论条不再写「S-3 闸门关闭 · 不开新仓」（那是单轨择强 overlay）
+- **14:30 时间门控**：卫星候选 14:30（Asia/Shanghai）前不显示（"候选 14:30 后公布（当日近似）"），14:30 后显示当日 `approx`；**2026-09-02 回归**：盘中快照一旦存在就提前揭名单（11:12 漏出 10 只，含 alternates 扩池）→ 改回时刻门控，strict 只买 primary
+- **`twin_star_intraday` service + job**（工作日 12:30）：东财 push2 clist 全市场快照（~3800 行，open/high/low/pre_close 真实值，快照价 = 当日模拟收盘）→ 复用 `_day_features` 重跑 S-gap 筛（gap/amp/低波 1/3/R-wide/涨停剔除，mv 取 t-1 近似，交易日判断用 `trade_calendar`）→ 缓存 `data/twin_star_intraday/{date}.json`
+- **API**：`GET /api/backtest/twin-star/action` 在 14:30 后优先返回当日 `approx` 信号（`asOf=今日`），失败/缺缓存回退 t-1
+- shared `SCHEDULER_JOB_CATALOG` 注册 `twin_star_intraday`（watchlistAutomation 组）
+
+**近似口径**：信号公式与冻结回测完全一致，仅"收盘价"被 12:30 快照价近似（无当日分钟数据可用的前提下，用户实盘即按此价在 14:30 买入）；涨停剔除用快照价判定（盘中已封板 → 放弃）。
+
+**验证**：`test_twin_star_intraday` 5 例（近似信号形状 / 涨停剔除 / breadth / 缓存往返 / 缺快照回退）；真实快照跑通（09-01 breadth 0.586 开闸、34 只缺口、5 只候选）；前端 PortfolioHealthCard 21 例 + watchlist 90 例；ruff / tsc 干净。
+
+### OPT-123：机会双子星 v3 固化（strict + 无仓回核 · 口径铁律入档）
+
+**状态**：[x] done · 2026-09-01  
+**背景**：PS-G50 / 扩池 / 空槽回核实验后，可执行最优仍是已有机会双子星，但文档还写「输给单轨」，实盘信号曾是 replace（先剔涨停再取 1/3）。
+
+**定案**：
+- 配方：`skip_t1_limit` + `pool_mode=strict` + `opportunity` 合成（`satActive` 含退出日）
+- 冻结：`opportunity_twin_star_v3_frozen.json`（window-local 五窗 · 15×10% 对照）
+- **v3.1 clip4（2026-09-02）**：`max_pos=4` `POSITION_PCT=0.25` → 每只总资产 12.5%；Watchlist `SAT_MAX_POS` / `SAT_SLOT_OF_SLEEVE` 锁步；冻结 `opportunity_twin_star_v3_clip4_frozen.json`
+- 真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「纠结的点与口径铁律」+ §3.0
+- 当时实盘默认 `single_track`（opt-in）；**2026-09-02 OPT-128 已翻转**为 `twin_star` clip4
+- 实盘/盘中信号与回测同一套 `select_strict_gap_candidates`（涨停不补仓）
+
+**验证**：`test_state_bucket_track` / `test_twin_star*` / `test_ps_g50_blend` / `test_twin_star_daily`（strict 不 refill） / `twin-star-trade-plan.test.ts`（4×12.5%）
+
+### OPT-128：实盘默认机会双子星 clip4（2026-09-02）
+
+**状态**：[x] done · 2026-09-02  
+**背景**：过去一年三方 clip4 赢单轨与旧 15×5%；用户拍板默认跟最好的那套。
+
+**改动**：
+- `getStrategyMode()` 空/损坏 → `twin_star`；显式 `single_track` 仍可对照
+- Settings 默认徽章改到机会双子星
+- `GET /api/notifications` Query 默认 `twin_star`
+- 文档：`pick-strong-track` / `watchlist` / `state-bucket-algo` / `todo.md`
+
+**验证**：`strategy-settings.test.ts` · `PortfolioHealthCard` 空存储 → 机会双子星文案 · `NotificationHub` 请求 `mode=twin_star` · `test_notifications.test_route_ok`
+
+**下一阶段**（不扫参）：[`docs/designs/twin-star-ops-phase-2026-09-02.md`](../designs/twin-star-ops-phase-2026-09-02.md)
+
+### OPT-129：Watchlist 双子星对齐（仓位/归因/QuickBuy 12.5%）
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`replica-gap.ts` · `PickStrongAlignBanner` · `ReplicaGapCard` · `WatchlistTable` / QuickBuy 默认仓位 · Health reminder 文案  
+**验收**：默认模式下看不到「单轨 100% 硬切」当今日指令；买入预填 12.5% NAV
+
+**落地**：
+- `detectReplicaGaps({ mode: 'twin_star', coreTargetPct })`：开闸 50/50 时 CN 股票是卫星不是硬切偏离；关闸 100% 才把剩余股票当 leftover
+- Watchlist 默认显示「机会双子星日对齐」；回测对照卡标题「双子星 vs 我的账本」
+- 表行买入预填 `SAT_SLOT_NAV_PCT`（12.5）；Health QuickBuy 仍走 trade plan `navPct`
+
+**验证**：`replica-gap.test.ts` · `twin-star-trade-plan.test.ts` · `PortfolioHealthCard.test.tsx`
+
+### OPT-130：Timeline 拆核心/卫星/窗口标签
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`pick_strong_track.py` `coreNav` · `timeline-windows.ts` · `TwinStarNavOverlay` · `BacktestPage` TimelineCard  
+**验收**：能同时看见 twin / 核心 / 卫星 NAV，并标三窗 vs 产品过去一年 vs trailing
+
+**落地**：
+- 混合后 `navSingle` 仍是融合 NAV；新增 `coreNav` / `coreNavReturnPct` 给叠加图
+- 天蓝底 = `satActive`； occupancy 行保留
+- 窗口芯片：滚动过去一年（展示）/ 产品过去一年 frozen（展示）/ OOS2·train·valid（拒收闸）/ holdout（只读）
+
+**验证**：`test_twin_star.py::test_core_nav_survives_opportunity_blend` · `timeline-windows.test.ts` · `twin-star-nav-series.test.ts` · `BacktestPage.test.tsx`
+
+### OPT-131：卫星占用真值 + twin_star paper 簿
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`twin_star_daily.py` `liveHoldings` · `paper_twin_star.py` · `paper_trading.run_update` skip · `paper_twin_star` cron 17:43 · Watchlist 占用文案  
+**验收**：4 槽占用跟 Watchlist 走，引擎 `openPositions` 只对照；卫星入出有独立 `paper_trades source=twin_star`
+
+**落地**：
+- `_core_target_pct` / 提醒「今日卖」用 Watchlist CN 卫星仓，不用引擎回放（引擎可到 15 只旧槽）
+- pick≠STOCK（含 pick 空）→ 全部 CN 持仓算卫星；pick=STOCK → 仅 recipe/候选集合
+- paper 簿独立：最多 4 槽 × 12.5% NAV，body=3 工作日收盘退出；无保护止损 / 金字塔 / 移动止损 / 60 日持有
+- S-3 `run_update` 跳过 `source=twin_star`；工作日 17:43 自管入出
+
+**验证**：`test_twin_star_daily.py`（引擎 15 只不翻核心%、OIL 2 只 live=50%）· `test_paper_twin_star.py`（cap 4 / body_exit / stop_hit / S-3 skip）
+
+### OPT-132：卫星 blotter + skip_t1 日表
+
+**状态**：[x] 2026-09-02 · P1  
+**范围**：`state_bucket_track.py` 日审计字段 + blotter · Timeline 日表 · `SatBlotterCard`  
+**验收**：每日能看到候选数、涨停跳过数、成交槽、空槽回核
+
+**落地**：
+- 引擎日行：`gapCount` / `strictCount` / `skipT1Count` / `filledToday` / `idleSlots`（回核 = 4 − 占用槽）
+- blotter：`fill`（body 出、贡献 pt）/ `skip_t1`（桶内涨停不补）/ `open`（窗末未平）
+- Timeline 表加 候选/跳过/成交/空槽回核；下方 blotter 可筛类型
+
+**验证**：`test_state_bucket_track.py::test_skip_t1_counts_and_does_not_refill` · `BacktestPage.test.tsx`
+
+### OPT-133：12:30 快照失败可见 + 双子星数据健康
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`twin_star_intraday` 健康状态 · 通知 `lane=system` · Watchlist 红条 · `/api/health/datasources` 核心 ETF / dailybasic  
+**验收**：东财 12:30 挂了当天能看见「卫星名单不可用」；GOLD 日线或市值表陈旧会标成双子星依赖，不是泛行情
+
+**落地**：
+- `intraday_snapshot_status`：交易日 12:30 后必须有当日 session 文件；盘中超过 20 分钟算 stale。昨日 lookback 不算成功。节假日/周末不报警
+- `twin_star_intraday` job 失败写入 `sync_job_record`（每天最多一条）；`TRADING_JOB_TYPES` 含盘中快照 / `sleeve_etf_daily_sync` / `stock_daily_basic_sync`
+- 通知 `type=twin_star_snapshot` `lane=system`；14:20 提醒文案不列出 T-1 候选
+- Watchlist：红条 + 隐藏卫星缺口买入；Health `daily_basic` / `twin_star_etf` / `twin_star_intraday` 标签带「双子星」
+- 回测成交仍是 T 开盘，14:30 价不写进引擎
+
+**验证**：`test_twin_star_intraday.py::TestIntradaySnapshotStatus` · `test_notifications.py` snapshot lane · `test_health.py` · `PortfolioHealthCard.test.tsx` · `SystemHealthBanner.test.tsx`
+
+### OPT-134：twin-star/action Zod 合同 + clip4 字面量
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：`packages/shared` `TwinStarActionResponseSchema` · action `clip4` · Watchlist query parse · `SAT_*` 从 shared 取  
+**验收**：后端一旦把槽位改成 10%×10，前端 Zod 拒收，不会默默按错误仓位下 QuickBuy
+
+**落地**：
+- `TWIN_STAR_CLIP4`：`maxPos=4` `slotOfSleeve=0.25` `satSlotNavPct=12.5` `body=3` `protectStopPct=0`
+- `GET/POST /api/backtest/twin-star/*` 带 `clip4` 字面量；`coreTargetPct ∈ {50,100}`
+- `useTwinStarActionQuery` / `refreshTwinStarAction` `parseTwinStarAction`
+- 前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` / replica-gap 文案从 shared 常量来
+
+**验证**：`packages/shared` `twinStar.test.ts` · `contract.test.ts` · `test_twin_star_daily.py::test_clip4_contract_matches_engine` · `test_twin_star_action_endpoint_emits_clip4`
+
+### OPT-135：Watchlist 日流程 + sat/S-3 拆账 + 停用 S-3 recon 交易铃
+
+**状态**：[x] 2026-09-02 · P0  
+**范围**：B2/B3/B5 + A5（占用对照，不重写 S-3 C4 统计脚本）  
+**验收**：pick≠STOCK 时 CN 全部进卫星仓；pick=STOCK 时卫星名不贴金字塔/移动线；Watchlist 看见 14:20→14:30→先核心再卫星；S-3「缺 19 只」不出现在双子星交易面
+
+**落地**：
+- twin_star CN 永不走股票篮应轮出；pick≠STOCK 时 A 股线持仓清空
+- pick=STOCK：recipe/候选集合 = 卫星；剩余 CN = S-3 篮（Health 移动/金字塔只贴剩余）
+- 通知 `_holding_book` 按标的拆账；STOCK 日 leftover 才发金字塔
+- Watchlist「今日顺序」条：14:20 提醒 → 14:30 名单 → ①核心 ②卖卫星 ③缺口买
+- Health / 铃铛不渲染 S-3 recon；占用对照写「C4 占用对照（不是交易铃）」；回测页 C4/recon 标明单轨对照
+- 不做：把 `paper_vs_backtest_report.py` 改成双子星统计 C4（样本仍小；P0-3 等 20 笔仍是 S-3 簿）
+
+**验证**：`PortfolioHealthCard.test.tsx` STOCK-day split · `twin-star-trade-plan.test.ts` day flow · `test_notifications.py::test_twin_star_stock_day_splits_sat_from_s3_leftover`
+
+---
+
+### OPT-136：卫星 Live 对齐冻结 body=3（去掉 −5% overlay）
+
+**状态**：[x] 2026-09-03 · P0  
+**范围**：Watchlist 交易计划 / paper `twin_star` / 通知 / clip4 `protectStopPct=0`  
+**验收**：跌破成本 −5% 不再改成卖、不再发交易铃、paper 不按 stop 平仓；到期日文案是「第 3 个交易日收盘卖」
+
+**落地**：
+- 冻结 S-gap 只有 `held >= 3` 当日 close；`body_protect5` 三窗 REJECT（valid −14.9）
+- `TWIN_STAR_CLIP4.protectStopPct` 0；Zod / Python `clip4` 同步
+- Health 去掉「复制止损」；通知去掉 `sat_stop` / `sat_near_stop`
+
+**验证**：`test_paper_twin_star.py::test_update_closes_body3_not_protect_stop` · `twin-star-trade-plan.test.ts` · `test_notifications.py::test_twin_star_sat_exit_ignores_protect_stop`
+
+---
+
+### OPT-137：尾盘 5 分钟线落库（14:30–15:00）
+
+**状态**：[x] 2026-09-03 · P1  
+**范围**：`bar_5min` 表 + baostock 一年回补 + 工作日 18:40 增量  
+**验收**：只存 14:30–15:00 七根 5 分钟 K；不改 clip4 Live 参数
+
+**数据源实测**：baostock 一年 5min 一次拉齐；tushare `stk_mins` 有权限但 1 次/分钟（突发后 1 次/小时）；东财/akshare 约 6 周；腾讯仅当日 1 分钟。
+
+**落地**：
+- 新表 `bar_5min`（与 `bar_minute` 1 分钟带分开，避免 14:30 冲突）
+- `scripts/backfill_bar_5min.py` 全 A 一年、可续跑
+- job `bar_5min_close` 18:40 只拉当日缺口票 + 开仓 CN
+
+---
+
+## 第八轮审查 — 稳定性（2026-09-01 · 调研完成待排期）
+
+> **真值稿**：[`docs/designs/stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md)（本节为执行栈提炼）。  
+> **样本**：08/29-09/01 15 条失败（14 low / 1 high）均已修复，整体收敛。  
+> **决策**：不扩全量爬取；做深度加固（回落链做实 + 异构付费兜底 + 可观测）。
+
+### OPT-124：Tushare 多 token 轮换 + 配额看门狗（P0）
+
+**状态**：[ ] 待排期  
+**优先级**：P0（单 key 是 EOD 链唯一付费 SPOF；周五 200/min 已实证）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §4/§6
+
+#### 背景
+
+- 单 `TU_SHARE_API_KEY` 单点限流：`fund_daily 200/min` / `index_global 100/day` / `hk_daily 1/min` 共享同一配额，`service/close_sync.py:88` 无多 key 池，周五双 job 即 `频率超限`。
+- `close_sync` 与 `adj_factor_full` 曾同 17:00 触发必撞，现错峰到 18:30 但仍无熔断。
+
+#### 目标
+
+- `config.py` 支持 `TUSHARE_TOKEN` 逗号分隔多 key（向后兼容单 key `TU_SHARE_API_KEY`）
+- `clients/tushare_client.py`（或 `service/tushare_pool.py`）封装 `round_robin + 配额看门狗`：`200/min` 滑动窗口计数，超限自动切 key + `sleep 35s` 退避；`100/day` 达限即降级 Tencent/ak
+- `service/close_sync.py` / `etf_daily.py` / `macro_daily.py` / `hk_daily.py` 改走池化 client，不直调 `ts.pro_api(token)`
+- `GET /api/health/datasources` 暴露 `tushare_quota`（剩余/重置时间）供前端健康横幅
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Config | `services/data-sync-service/src/data_sync_service/config.py` |
+| Client | `services/data-sync-service/src/data_sync_service/clients/tushare_pool.py`（**新**） |
+| Service | `service/close_sync.py` `service/etf_daily.py` `service/macro_daily.py` `service/hk_daily.py` `service/adj_factor.py` |
+| API | `api/health_routes.py` |
+| Tests | `tests/test_tushare_pool.py`（**新**：轮换 / 限流切 key / 100/day 降级） |
+
+#### 验证
+
+- [ ] 单 key `频率超限` 时自动切备 key 重试成功（mock）
+- [ ] `200/min` 滑动窗口内第 201 次触发退避而非裸失败
+- [ ] 未配多 key 时行为与现单 key 完全一致（向后兼容）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把多 key 逻辑散到每个 service 各自 `ts.pro_api(token)`（必须收敛到单一 pool）
+- ❌ 用 `time.sleep 固定 60s` 硬等（用滑动窗口 + 指数退避）
+- ❌ 把 `TUSHARE_TOKEN` 明文打到日志/health 响应
+
+---
+
+### OPT-125：DB 连接池 + DB 重试 + 慢查询护栏（P1）
+
+**状态**：[ ] 待排期  
+**优先级**：P1（`psycopg 无池` + `DB 层无重试` + 仅 `statement_timeout 120s`；前端 herd 易 `too many clients`）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §3
+
+#### 背景
+
+`db/__init__.py:8` 每次 `psycopg.connect(connect_timeout=5, statement_timeout=120s)` 新建 TCP，无 `psycopg_pool` / `pgbouncer`，无 `lock_timeout` / `idle_in_transaction` 回收。前端 `refetchOnWindowFocus` + 多 job 并发易打满 `max_connections=100`；DB 瞬断无重试。
+
+#### 目标
+
+- 引入 `psycopg_pool.ConnectionPool(min 2 / max 20, timeout 10s)` 或 `pgbouncer` sidecar（二选一，倾向 `psycopg_pool` 零运维）
+- `get_connection()` 改为 `pool.getconn() / putconn()`；`check_db()` 走池
+- `statement_timeout 120s` 保留，新增 `lock_timeout 10s` + `idle_in_transaction_session_timeout 60s`（`options` 追加）
+- DB 层 transient（`OperationalError / TimeoutError`）`retry 1×`（指数 0.5s），避免与网络层 `_with_retry` 叠加雪崩
+- Alembic `env.py` 仍 `NullPool`（迁移不占池），`docker-compose.yml` healthcheck 改走 pool
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/__init__.py` |
+| DB | `services/data-sync-service/alembic/env.py` |
+| Compose | `docker-compose.yml` |
+| Service | `services/data-sync-service/src/data_sync_service/service/dashboard.py`（`wait(..., timeout 0.3s)` 处 DB 超时语义） |
+| Tests | `tests/test_db_pool.py`（**新**：池获取/归还/超时；mock 下 transient 重试） |
+
+#### 验证
+
+- [ ] 并发 30 请求不 `too many clients`（mock pool `max 20` 排队而非新建）
+- [ ] `lock_timeout` 超限触发重试 1 次后成功
+- [ ] `alembic upgrade head` 仍 `NullPool` 不走业务池
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把 pool size 设 `100` 对齐 PG max（应 `≤20` 留余量给 pgadmin/migrate）
+- ❌ 在 Alembic 里复用业务池（迁移长事务会占池）
+- ❌ DB 重试与网络 `_with_retry 3×` 无差别叠加（DB 仅 1 次，避免放大）
+
+---
+
+### OPT-126：东财出口探针 + 熔断可视化（P1）
+
+**状态**：[ ] 待排期  
+**优先级**：P1（5 个 job 共用同一出口 IP，ban 时静默 `skipped` 难定位）  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §2.2/§3
+
+#### 背景
+
+`industry_fund_flow` / `top_inst` / `option_iv` / `twin_star` / `minute_capture` / `realtime_quote fallback` 均走 `push2.eastmoney.com / data.eastmoney.com`，已用 `ProxyHandler({})` 直连 + `_EM_BLOCKED 15min latch` + `_PROXY_DEGRADED`（`service/em_push2_http.py` `industry_fund_flow.py:163`），但无探针、无可视化，`cn_industry_post_close_sync` 18:15 前失败仅写 `ok=False` 横幅不预警。
+
+#### 目标
+
+- 新增 `service/em_probe.py`：每 10min 黑盒探测 `push2 / dataapi bkzj / push2his` 各 1 次轻量 GET（`timeout 10s`，`ProxyHandler({})` 直连），`failed streak≥3` 即 `system_events insert (severity=high, dedupe=em_probe:{host})` + `webhook emit em_probe_failed`
+- `health_routes._SOURCES` 新增 `eastmoney_probe` 源（`threshold 20min`），前端 `SystemHealth` 横幅可报警（复用 `health/datasources` 12 类后第 13 类）
+- `em_push2_http.py` 的 `_EM_BLOCKED` 熔断状态暴露到 `GET /api/health/datasources`（`eastmoney_ip_ban_latched` + `cooldown_remaining_s`）
+- `cn_industry_post_close_job` 失败明细进 `sync_job_record.error_message` 已有，前端 `SchedulerHealth` 对 `cn_industry_post_close_sync` 单独标红（`HIGH_JOB_TYPES` 已含）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/em_probe.py`（**新**） |
+| Service | `services/data-sync-service/src/data_sync_service/service/em_push2_http.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/industry_fund_flow.py` |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/em_probe_job.py`（**新**，`Interval 10min`） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/__init__.py` |
+| API | `services/data-sync-service/src/data_sync_service/api/health_routes.py` |
+| Tests | `tests/test_em_probe.py`（**新**：探针失败→high event；熔断可视化） |
+
+#### 验证
+
+- [ ] 本地断网/代理出口封时 10min 内 `system_events high` 出现
+- [ ] `GET /api/health/datasources` 返回 `eastmoney_probe stale:true` + `ban_latched:true`
+- [ ] 探针失败不影响业务 job（隔离线程/超时 10s）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 让探针走代理（必须 `ProxyHandler({})` 直连，与业务同路径）
+- ❌ 探针高频 1min 打东财（10min 已够，避免自触发 ban）
+- ❌ 把探针失败直接标 `success=False` 到业务 `sync_job_record`（探针独立 `em_probe` job_type）
+
+---
+
+### OPT-127：前端轮询 jitter + ETag + 后端限流（P2 储备）
+
+**状态**：[ ] 储备（P2，不占当前 P0/P1；OPT-125 后再做）  
+**优先级**：P2  
+**关联**：[`stability-audit-2026-09-01.md`](../designs/stability-audit-2026-09-01.md) §3
+
+#### 背景
+
+`apps/desktop-ui/src/lib/query-client.ts` `refetchOnWindowFocus:true` + `retry:1`，多标签切回触发 `dashboard/watchlist/notifications` 同时 `Promise.all` 击后端，单 `uvicorn` worker 尾延迟放大；无 `Cache-Control` / `ETag`，无后端 `rate limit`。
+
+#### 目标
+
+- 前端 `refetchInterval` 加 `jitter 0.8-1.2`；`staleTime` 引入 5s 随机；`retryDelay: attempt => 300*2^attempt`
+- 后端 `GET /dashboard/summary` / `GET /market/stocks/trendok` 加 `ETag + 304`（`If-None-Match`）与 `Cache-Control: private, max-age=10`
+- 后端全局 `slowapi` 或 `rate limit 60/min/IP`（对 `trendok` 批量计算 CPU 密集路径）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| FE | `apps/desktop-ui/src/lib/query-client.ts` `lib/queries/intervals.ts` `lib/queries/dashboard.ts` |
+| BE | `services/data-sync-service/src/data_sync_service/api/query_routes.py` `api/market_routes.py` |
+| Tests | `apps/desktop-ui/src/lib/query-client.test.ts`（**新**） |
+
+#### 验证
+
+- [ ] 多标签切回不再同时 N 个 query 同 ms 触发（jitter 证据）
+- [ ] `If-None-Match` 命中返回 304
+- [ ] 限流超限返回 429
+
+#### 反模式
+
+- ❌ 给所有 GET 加 `no-store`（应 `max-age=10` 让 ETag 生效）
+- ❌ 前端 `refetchOnWindowFocus:false` 一刀切（保留但加 jitter）
+
+---
+
+### OPT-138：红套件清零（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（套件红 = 回归不可见；2026-09-04 评估：业务 7 / 工程 6 / 复盘 7.5，短板先补）
+**关联**：系统评估 2026-09-04（`todo.md` P0-5）
+
+#### 背景
+
+- `.pytest_cache/lastfailed` 47 条：`test_watchlist_momentum_v1_1.py` 整文件 + `test_market_regime_*` 5 条 + `test_hk_daily*` 3 条等（2026-09-04 审计数）。
+- 前端 `npx tsc --noEmit` 唯一报错 `PortfolioHealthCard.tsx`（candidates `null` 不可赋 `[] | undefined`），clean tree 复现，预存。
+- `tests/test_webhook_format.py::test_execution_card_renders_sleeve_when_actionable` 失败：期待旧文案"第三资产"，代码已改名"择强单轨"，测试过期。
+
+#### 目标
+
+- 后端全量 `pytest` 绿（含 DB 可用时 `requires_postgres`）；修不了的单测要么修代码要么改断言，不许留红。
+- `test_watchlist_momentum_v1_1.py` 若已废弃则删文件 + 去掉 `pyproject.toml` 的 `--ignore`；若有效则修。
+- `execution_card` 测试按现行"择强单轨"文案更新；`tsc --noEmit` 零报错。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Tests | `services/data-sync-service/tests/test_watchlist_momentum_v1_1.py`、`test_market_regime_*`、`test_hk_daily*`、`test_webhook_format.py` |
+| Config | `services/data-sync-service/pyproject.toml`（`--ignore` 行） |
+| FE | `apps/desktop-ui/src/components/watchlist/PortfolioHealthCard.tsx`（candidates 空值类型） |
+
+#### 验证
+
+- [ ] `pytest --no-cov -q` 全绿；`npx tsc --noEmit` 零输出
+- [ ] `db_rows_baseline.py save → 全量 pytest → check` OK（DB 测试纪律）
+
+#### 反模式
+
+- ❌ `pytest -k "not bad"` 绕过红单测（要修不要跳）
+- ❌ 为过 tsc 加 `as any`（修类型，candidates 允许 `null`）
+
+---
+
+### OPT-139：Scheduler 失败上报统一（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（15/50 job 无 try、21/50 无 insert_record；`twin_star_reminder_job` 自己不写执行记录）
+
+#### 背景
+
+三种形态并存：`close_sync_job`/`index_basic_job`/`daily_sync_job` 无 try 无记录仅 `logger.warning`；`cn_industry_post_close_job` 无 try 有记录；仅 `watchlist_automation_job` 是 try + 双路记录的标准形态。job 挂了无 `sync_job_record` → `job_failed` webhook 不触发 → 手机收不到。
+
+#### 目标
+
+- 新增 `scheduler/_job_guard.py::run_guarded(JOB_ID, fn)`：统一 try/except + `insert_record(success=...)` + 异常打 `logger.exception` 后按原语义返回（不吞 cron 退出码约定）。
+- 交易链优先迁移：`twin_star_reminder_job`、`paper_twin_star_job`、`watchlist_automation_job`（已标准，仅复核）、`close_sync_job`、`backtest_recon_job`、`behavior_audit_job`；其余 15 个无 try 的 job 同批迁。
+- `news_enrich_job` 在 `scheduler/__init__.py:140-145,344-348` 重复注册，留一处。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/_job_guard.py`（**新**） |
+| Scheduler | `scheduler/__init__.py`（去重 + 逐个 job 包 guard） |
+| Scheduler | 无 try 的 15 个 `*_job.py`（`adj_factor/close_sync/cn_industry_post_close/daily_basic/daily_sync/eastmoney_industry/etf_daily/fund_basic/hk_basic/hk_daily/hk_industry/index_basic/index_daily/macro_daily/stock_basic`） |
+| Tests | `tests/test_job_guard.py`（**新**：抛异常→record success=False + job_failed event；成功→success=True） |
+
+#### 验证
+
+- [ ] mock 抛异常的 job 跑完 `sync_job_record` 有 `success=False` 行
+- [ ] `news_enrich_job` 只注册一次（`grep add_job` 计数）
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 在 guard 里吞异常返回成功（失败必须 `success=False`）
+- ❌ 顺手改 job 业务逻辑（只包壳不改馅）
+
+---
+
+### OPT-140：双子星模式口径统一（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（`audit_issues` 把卫星票报"买了不该买"是业务口径错，Bark 退订只是止痛）
+
+#### 背景
+
+实盘默认双子星后，单轨 S-3 口径的三处仍在跑：`behavior_audit_job`（18:45）按 S-3 应持把 4 只卫星票报 extra；`execution_card` 推 S-3 门/金字塔/513100；`near_stop` 给卫星票（CN:600540）报 S-3 止损线。2026-09-04 手机实证：14 天 53 推里 18 条属此类噪音/误报。
+
+#### 目标
+
+- 运行模式开关（读现行默认：双子星 clip4 + 习惯 Live）：twin_star 模式下 `behavior_audit` 的 registry 对账只对核心腿（S-3 篮），卫星仓走 `twin_star_daily` 口径，extra/missing 分腿标注，不再把卫星票报"买了不该买"。
+- `execution_card` / `near_stop` 在 twin_star 模式下降级：卡片标题注明"单轨对照·非实盘"，或仅 hub 显示不推 Bark（Bark 侧已退订，本项管 hub + 文案不误导）。
+- hub `BehaviorAuditBanner` 同口径修复（页面上同样误报）。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/reconciliation.py`（`reconcile_registry` 分腿） |
+| Service | `services/data-sync-service/src/data_sync_service/service/notifications.py`（`_twin_star_*` / execution_card 文案） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/behavior_audit_job.py` |
+| FE | `apps/desktop-ui` BehaviorAudit 相关 banner（grep `BehaviorAudit` 定位） |
+| Tests | `tests/test_behavior_audit_twin_star.py`（**新**：卫星票不再进 extra；核心腿仍对账） |
+
+#### 验证
+
+- [ ] 种子 4 只卫星持仓跑 `reconcile_registry`：extra 为空，卫星腿 aligned
+- [ ] hub 横幅不再出现卫星"买了不该买"
+- [ ] pytest + 前端相关单测通过
+
+#### 反模式
+
+- ❌ 直接关掉 behavior_audit（核心腿对账仍要）
+- ❌ 为消误报把阈值调松（分腿，不是放水）
+
+---
+
+### OPT-141：Live 习惯口径回测引擎化（P0）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P0（评估最大业务风险：Live 跑 same_1430/C1/exit1430，成绩单是 next_open 考的）
+**关联**：`trading-improvement-checklist.md`（TIP/V6 口径；策略改动走三窗铁律，`AGENTS.md` Backtest walk-forward）
+
+#### 背景
+
+Live 习惯（当天缺口→14:30 买→C1 3%→第 3 日 14:30 卖）与冻结引擎（T 开盘买/收盘卖）是两套口径，靠文档双轨维持。三年尾盘 5 分钟已入库（2320 万行，P0-4 [done]），引擎化数据条件具备。
+
+#### 目标
+
+- `backtest_engine.py` 或 `state_bucket_track.py` 新增 `fill_mode=same_1430` + `c1_pct` + `exit_hhmm=1430` 三字段（`BacktestConfig` 扩展 + 校验），与 `paper_twin_star` 同语义（bar_5min_1430 > snapshot > daily_close 降级链也要进回测，缺 14:30 价的 session 记 `fillPxSrc` 分布）。
+- `run_walk_forward.py --param fill_mode=same_1430 ...` 重跑三窗 vs 核心；判据不变（任一窗 >5pt 差于核心 → 不进 Live，则改 Live 回冻结）。
+- 结论写进 `docs/backtests/`（PASS 或 REJECT 留档），`SUMMARY.md` 更新"习惯成绩单"。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/backtest_engine.py` / `state_bucket_track.py` |
+| Scripts | `services/data-sync-service/scripts/run_walk_forward.py` |
+| Docs | `docs/backtests/sat-live-caliber-*.md`（**新**）+ `SUMMARY.md` |
+| Tests | 回测口径单测（fill/exit 1430 + 缺价降级） |
+
+#### 验证
+
+- [ ] 三窗输出表 + 判定；`walk_forward_baseline.json` 不动（新口径另存 baseline 文件）
+- [ ] paper `entryPxSrc` 分布与回测 `fillPxSrc` 分布可比（同降级链证据）
+
+#### 反模式
+
+- ❌ 把 14:30 写进冻结 T 开盘引擎（P0-4 明确不做；新口径另起字段）
+- ❌ 单窗好看就切 Live（三窗铁律）
+
+---
+
+### OPT-142：日历收敛 + API 校验补齐 + Alembic 重号修复（P1）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P1
+
+#### 背景
+
+`weekday()` 散落 11 文件 20 处（`notifications.py` 还有 `weekday()<5` 降级循环）；日历真值三文件 491 行。15/30 API 路由无 Pydantic 校验（纯 dict 返回）。Alembic `0020_cn_extra_data.py` + `0020_decision_sessions.py` 重号（以 `0038` 为 head 能跑，但 `history` 分叉难读）。
+
+#### 目标
+
+- 非日历模块的 `weekday()` 收敛到 `trade_calendar_utils`（`count_open_sessions` / `nth_open_session` / `is_open_day`）；`notifications.py` 的降级循环保留但注明何时触发。
+- 15 个无校验路由补 `BaseModel`（请求体优先，返回体按 shared Zod 对齐协议 OPT-009）。
+- `0020` 重号：已 upgrade 过的库不动（revision id 不变），只修 `down_revision` 链为线性 + 注释说明；按 AGENTS 清单同步 `CREATE_SQL` parity 检查。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/notifications.py`、`market_regime.py`、`market_sentiment.py`、`weekly_review.py`、`allocation.py`、`twin_star_intraday.py` |
+| API | 15 个无 `BaseModel` 路由（`dashboard/decision/health/industry_flow/news/notifications/sync/...`） |
+| Alembic | `alembic/versions/0020_*.py`（down_revision 链） |
+| Tests | 日历收敛单测 + API shape 断言 |
+
+#### 验证
+
+- [ ] `grep weekday()` 仅剩 `trade_calendar*` + 显式注释的降级处
+- [ ] `alembic history` 线性无分叉；`alembic current` 不变
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 改 `revision id`（已落库的库会认不出 head）
+- ❌ 一次性给所有返回体加严格 Pydantic（先请求体，返回体只对齐 shared 已有 Zod 的）
+
+---
+
+### OPT-143：历史可重放补强（P1）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P1（决定习惯口径成绩可信度上限）
+
+#### 背景
+
+① 习惯口径历史 14:30 价靠三年尾盘 5 分钟（已入库），但 baostock 只能回填约 1 年、早窗覆盖待查；② 缺 score `fail-open`（`backtest_engine.py:37-39`）、`pool_exit OFF fail-open` 偏乐观；③ ST 5% 涨跌停未建模；④ 258 个 ≥5% 跳空=除权叠加真大跌残留。
+
+#### 目标
+
+- 输出三窗 14:30 价覆盖率表（有真 14:30 bar 的 session 占比/按年）；覆盖率低的窗结论降级标注。
+- fail-open 清单审计：逐条列 fail-open / fail-closed，缺门闸默认改 fail-closed 或量化乐观偏差上界。
+- ST 5% 涨跌停建模（`_board_limit_pct` 补 ST 分支）；除权残留 258 个打标（ Sousa 除权日历 vs 真跳空区分，不删只标）。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/backtest_engine.py`（`_board_limit_pct`、fail-open 点） |
+| Service | `service/state_bucket_track.py`（universe/除权标） |
+| Scripts | 覆盖率统计脚本（**新**，可并入 `run_walk_forward.py --report-coverage`） |
+| Tests | ST 板块限价单测 + 覆盖率断言 |
+
+#### 验证
+
+- [ ] 覆盖率表进实验文档；fail-open 清单进 `strategy-params.md`
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 为提覆盖率拿收盘价冒充 14:30（缺就是缺，标出来）
+- ❌ 删历史跳空数据（打标不删）
+
+---
+
+### OPT-144：外围任务抖动治理（P2 储备）
+
+**状态**：[x]
+**完成日期**：2026-09-04
+**优先级**：P2
+
+#### 背景
+
+近 14 天 27 次 `job_failed` 里 11 次是外围（`option_iv_daily×6`、`news_fetch_job×5`），属数据源抖动非系统故障，每次都推 Bark（现已保留 job_failed 通道，噪音仍在）。
+
+#### 目标
+
+- 外围任务（option_iv / news_fetch / etf_flow / alpha_radar）失败走静默重试 + 日报聚合，不单独推 Bark；仅交易链 job（`TRADING_JOB_TYPES` 12 种）即时推。
+- `insert_record` 加 `severity`（ peripheral vs trading ），`job_failed` webhook 只 emit trading 或 peripheral 連敗≥3。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/sync_job_record.py`（severity + 连败 emit） |
+| Service | `services/data-sync-service/src/data_sync_service/service/notifications.py`（`TRADING_JOB_TYPES` 复用） |
+| Tests | `tests/test_job_failed_severity.py`（**新**） |
+
+#### 验证
+
+- [ ] 外围单次失败无 Bark；连败 3 次有；交易链失败即时有
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 把外围失败直接不记录（记录要，日报告聚合）
+- ❌ severity 写死 job 名（走 `TRADING_JOB_TYPES` 名单）
+
+---
+
+### OPT-145：外购分钟/复权数据入库（P1）
+
+**状态**：[ ]
+**优先级**：P1
+**关联 todo**：[P0-7 外购数据计划](../todo.md)
+
+#### 背景
+
+用户外购赛博空间 2077 历史数据包（百度网盘）：A 股分钟 K（2000 至今）、基金分钟、A 股复权因子（东财+tushare 双份）、分钟 K（股票/指数/ETF）。磁盘余 99G，全量下不动。用途只有三个：① 习惯配方拉到熊市（2021–2023，重点 2022）回放；② 复权因子抽样对拍；③ 指数/ETF 分钟存盘备用。1 分钟线、30/60 分钟、全天 48 根一律不要（P0-4 既定）。
+
+#### 目标
+
+- A 阶段对拍脚本：2024 年 vendor 5 分钟 vs 库内 `bar_5min`（2320 万行）逐点对拍，输出吻合率；阈值过了才往下走。
+- B 阶段切片入库：只下 2021–2023 三年股票 5 分钟按年包，复用 `import_ext_minute_csv.py --times` 只留尾盘七根（1330,1400,1430,1440,1450,1500 + 1000 研究位按需），CSV 落盘当档案、导完删解压目录。
+- D 阶段复权抽样对拍：vendor 双份因子 vs 库内 `adj_factor`，抽样 most-active 200 只 × 除权除息日，输出差异表，不入库。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Script | `services/data-sync-service/scripts/compare_vendor_minute.py`（**新**，A 阶段对拍，只读） |
+| Script | `services/data-sync-service/scripts/compare_vendor_adj.py`（**新**，D 阶段对拍，只读） |
+| Script | `services/data-sync-service/scripts/import_ext_minute_csv.py`（复用，必要小改需注明） |
+| Tests | 对拍脚本各 1 个单测（mock 数据定行数/吻合率公式） |
+
+#### 验证
+
+- [ ] A：2024 对拍吻合率 ≥99.5%（价差>1 分钱的行占比），否则停（数据质量不过关不往下做）
+- [ ] B：`bar_5min` 新增 2021–2023 三年尾盘七根；`skipNoPrint1430` 覆盖率表更新（三窗扩展到含熊市区间）
+- [ ] D：差异表落 `docs/backtests/` 短档；差异>阈值只报不修（修复权是独立事项）
+- [ ] pytest 通过；磁盘导入期间余量 >20G
+
+#### 反模式
+
+- ❌ 整包下载/全量灌库（99G 装不下 2000 年全 A 分钟）
+- ❌ 1 分钟 / 30 / 60 分钟入库（3 日持有用不上）
+- ❌ 对拍不过就“差不多”入库（质量门是硬的）
+- ❌ 复权差异顺手“修库”（只报不修，另起事项）

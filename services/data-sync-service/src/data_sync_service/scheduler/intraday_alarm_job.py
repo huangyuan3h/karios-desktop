@@ -18,6 +18,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 from data_sync_service.db import paper_trading
 from data_sync_service.db.webhook import emit_event
+from data_sync_service.scheduler._job_guard import (
+    record_failure,
+    record_success,
+    run_guarded,
+)
 from data_sync_service.service.paper_trading import _resolve_ts_code
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
@@ -85,9 +90,16 @@ def check_intraday_drawdowns() -> dict:
 
 
 def run() -> None:
-    try:
-        result = check_intraday_drawdowns()
-        if result.get("alarms"):
-            logger.info("intraday alarm: %s", result)
-    except Exception:  # noqa: BLE001
-        logger.exception("intraday alarm job failed")
+    result = run_guarded(JOB_ID, check_intraday_drawdowns, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+    if result.get("alarms"):
+        logger.info("intraday alarm: %s", result)
+    if result.get("ok", True):
+        record_success(
+            JOB_ID,
+            last_ts_code=f"checked={result.get('checked', 0)} alarms={result.get('alarms', 0)}",
+        )
+    else:
+        logger.warning("intraday alarm quotes failed: %s", result.get("error", "unknown"))
+        record_failure(JOB_ID, result.get("error", "unknown"))

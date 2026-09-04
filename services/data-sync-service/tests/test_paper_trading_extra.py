@@ -34,6 +34,24 @@ def _patch_all(monkeypatch, *, closes=None, registry=None, changes=None, raise_c
     monkeypatch.setattr(wa_db, "list_registry", _registry)
     monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", _closes)
 
+    # run_intake resolves fills via paper_entry_fill (next_open + placeholder);
+    # stub it so intake tests don't touch the real daily table.
+    from data_sync_service.service import paper_entry_fill as fill_mod
+
+    def _fill(ts_code, signal_day, *, signal_close=None):  # noqa: ANN001, ANN003
+        return {
+            "entry_date": "2026-08-10",
+            "entry_price": float(signal_close or 0),
+            "pending_open_fill": True,
+            "signal_snapshot": {
+                "entryMode": "next_open",
+                "signalDate": signal_day,
+                "pendingOpenFill": True,
+            },
+        }
+
+    monkeypatch.setattr(fill_mod, "resolve_next_open_fill", _fill)
+
 
 class TestRunIntake:
     def test_changes_error_recorded(self, monkeypatch) -> None:

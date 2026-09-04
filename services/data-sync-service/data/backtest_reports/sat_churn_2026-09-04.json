@@ -1,0 +1,323 @@
+{
+  "tag": "sat-churn-2026-09-04",
+  "protocol": "window-local empty book; clip4 C1 3% same_1430 fill; body=3; day-3 1430 exit; frozen pick-strong trail8; opp_50. Variant adds ONLY CHURN filter (skip T-1 amount > 4x average). Select on OOS2+train; valid only validates. Score tot+Sharpe+maxDD vs core and vs base. Do not rewrite Live.",
+  "variants": [
+    {
+      "id": "base",
+      "label": "C1 3% (Live, no churn filter)",
+      "churn": null
+    },
+    {
+      "id": "churn4x",
+      "label": "C1 3% + skip T-1 turn>4x",
+      "churn": 4.0
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 17.8,
+        "max_dd": 18.0,
+        "sharpe": 0.72
+      },
+      "variants": {
+        "base": {
+          "label": "C1 3% (Live, no churn filter)",
+          "churn": null,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 177.8,
+            "max_dd": 4.6,
+            "sharpe": 5.63
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 94.1,
+            "max_dd": 16.1,
+            "sharpe": 2.94
+          },
+          "delta_core_pt": 76.3,
+          "delta_core_sharpe": 2.22,
+          "delta_core_dd": -1.9,
+          "fillCount": 288,
+          "skipC1Count": 527,
+          "skipChurnCount": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "churn4x": {
+          "label": "C1 3% + skip T-1 turn>4x",
+          "churn": 4.0,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 174.9,
+            "max_dd": 5.3,
+            "sharpe": 5.52
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 93.1,
+            "max_dd": 15.5,
+            "sharpe": 2.91
+          },
+          "delta_core_pt": 75.3,
+          "delta_core_sharpe": 2.19,
+          "delta_core_dd": -2.5,
+          "fillCount": 288,
+          "skipC1Count": 527,
+          "skipChurnCount": 568,
+          "delta_base_pt": -1.0,
+          "delta_base_sharpe": -0.03,
+          "delta_base_dd": -0.6
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.7,
+        "max_dd": 8.4,
+        "sharpe": 3.01
+      },
+      "variants": {
+        "base": {
+          "label": "C1 3% (Live, no churn filter)",
+          "churn": null,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 47.9,
+            "max_dd": 3.6,
+            "sharpe": 4.43
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 55.2,
+            "max_dd": 5.7,
+            "sharpe": 4.53
+          },
+          "delta_core_pt": 14.5,
+          "delta_core_sharpe": 1.52,
+          "delta_core_dd": -2.7,
+          "fillCount": 132,
+          "skipC1Count": 81,
+          "skipChurnCount": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "churn4x": {
+          "label": "C1 3% + skip T-1 turn>4x",
+          "churn": 4.0,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 52.6,
+            "max_dd": 3.6,
+            "sharpe": 4.8
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 57.6,
+            "max_dd": 5.7,
+            "sharpe": 4.71
+          },
+          "delta_core_pt": 16.9,
+          "delta_core_sharpe": 1.7,
+          "delta_core_dd": -2.7,
+          "fillCount": 132,
+          "skipC1Count": 81,
+          "skipChurnCount": 28,
+          "delta_base_pt": 2.4,
+          "delta_base_sharpe": 0.18,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 139.1,
+        "max_dd": 11.9,
+        "sharpe": 3.37
+      },
+      "variants": {
+        "base": {
+          "label": "C1 3% (Live, no churn filter)",
+          "churn": null,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 10.8,
+            "max_dd": 8.2,
+            "sharpe": 1.52
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 141.8,
+            "max_dd": 11.9,
+            "sharpe": 3.58
+          },
+          "delta_core_pt": 2.7,
+          "delta_core_sharpe": 0.21,
+          "delta_core_dd": 0.0,
+          "fillCount": 60,
+          "skipC1Count": 57,
+          "skipChurnCount": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "churn4x": {
+          "label": "C1 3% + skip T-1 turn>4x",
+          "churn": 4.0,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 12.3,
+            "max_dd": 8.1,
+            "sharpe": 1.76
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 143.3,
+            "max_dd": 11.9,
+            "sharpe": 3.6
+          },
+          "delta_core_pt": 4.2,
+          "delta_core_sharpe": 0.23,
+          "delta_core_dd": 0.0,
+          "fillCount": 59,
+          "skipC1Count": 57,
+          "skipChurnCount": 8,
+          "delta_base_pt": 1.5,
+          "delta_base_sharpe": 0.02,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "past_year": {
+      "core": {
+        "n_days": 257,
+        "total_pct": 181.2,
+        "max_dd": 12.6,
+        "sharpe": 2.43
+      },
+      "variants": {
+        "base": {
+          "label": "C1 3% (Live, no churn filter)",
+          "churn": null,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 60.0,
+            "max_dd": 5.7,
+            "sharpe": 3.19
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 192.9,
+            "max_dd": 12.6,
+            "sharpe": 2.63
+          },
+          "delta_core_pt": 11.7,
+          "delta_core_sharpe": 0.2,
+          "delta_core_dd": 0.0,
+          "fillCount": 204,
+          "skipC1Count": 145,
+          "skipChurnCount": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "churn4x": {
+          "label": "C1 3% + skip T-1 turn>4x",
+          "churn": 4.0,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 66.4,
+            "max_dd": 5.5,
+            "sharpe": 3.49
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 198.7,
+            "max_dd": 12.6,
+            "sharpe": 2.67
+          },
+          "delta_core_pt": 17.5,
+          "delta_core_sharpe": 0.24,
+          "delta_core_dd": 0.0,
+          "fillCount": 203,
+          "skipC1Count": 145,
+          "skipChurnCount": 39,
+          "delta_base_pt": 5.8,
+          "delta_base_sharpe": 0.04,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "variants": {
+        "base": {
+          "label": "C1 3% (Live, no churn filter)",
+          "churn": null,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 52.8,
+            "max_dd": 5.8,
+            "sharpe": 2.81
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 202.7,
+            "max_dd": 12.6,
+            "sharpe": 2.74
+          },
+          "delta_core_pt": 12.1,
+          "delta_core_sharpe": 0.2,
+          "delta_core_dd": 0.0,
+          "fillCount": 192,
+          "skipC1Count": 130,
+          "skipChurnCount": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "churn4x": {
+          "label": "C1 3% + skip T-1 turn>4x",
+          "churn": 4.0,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 55.0,
+            "max_dd": 5.7,
+            "sharpe": 2.9
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 204.9,
+            "max_dd": 12.6,
+            "sharpe": 2.75
+          },
+          "delta_core_pt": 14.3,
+          "delta_core_sharpe": 0.21,
+          "delta_core_dd": 0.0,
+          "fillCount": 191,
+          "skipC1Count": 130,
+          "skipChurnCount": 31,
+          "delta_base_pt": 2.2,
+          "delta_base_sharpe": 0.01,
+          "delta_base_dd": 0.0
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "base": "baseline/beats_core",
+    "churn4x": "PASS/worse_sharpe/beats_core"
+  },
+  "as_of": "2026-09-03T23:33:02+00:00"
+}

@@ -51,6 +51,8 @@ import {
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import { shouldShowInWatchlistTable } from '@/lib/watchlist-table-filter';
+import { useStrategyMode } from '@/lib/strategy-settings';
+import { SAT_SLOT_NAV_PCT } from '@/lib/twin-star-trade-plan';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -235,6 +237,8 @@ export function WatchlistTable({
   catalystBySymbol = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
+  const [strategyMode] = useStrategyMode();
+  const tableBuySuggestPct = strategyMode === 'twin_star' ? SAT_SLOT_NAV_PCT : 5;
 
   const tradingTime = React.useMemo(() => isShanghaiTradingTime(), []);
   const todaySh = React.useMemo(() => getShanghaiTodayIso(), []);
@@ -367,6 +371,7 @@ export function WatchlistTable({
     symbol: string | null;
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
   const [tradeDialog, setTradeDialog] = React.useState<TradeDialogOpenState | null>(null);
+  const [tradeBusy, setTradeBusy] = React.useState(false);
   const queryClient = useQueryClient();
   // T6 (2026-08-20): committing a positionPct edit changes the holdings shape —
   // refresh portfolio-health so the health card + third-asset region update
@@ -389,8 +394,9 @@ export function WatchlistTable({
 
   const handleTradeConfirm = React.useCallback(
     async (values: { price: number; positionPct: number; costPrice?: number }) => {
-      if (!tradeDialog) return;
+      if (!tradeDialog || tradeBusy) return;
       const { kind, item } = tradeDialog;
+      setTradeBusy(true);
       const { price, positionPct, costPrice } = values;
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
@@ -450,11 +456,13 @@ export function WatchlistTable({
         // Trade journal is best-effort; the watchlist is already updated.
       }
       // Always refresh the derived surfaces (trades journal + portfolio health)
-      // — the holdings shape changed either way.
-      void invalidateUserTradesQueries(queryClient);
+      // — the holdings shape changed either way. Close first so the dialog
+      // never sits frozen on network; refresh runs in the background.
       setTradeDialog(null);
+      setTradeBusy(false);
+      void invalidateUserTradesQueries(queryClient);
     },
-    [tradeDialog, queryClient, applyTradeUpdate],
+    [tradeDialog, tradeBusy, queryClient, applyTradeUpdate],
   );
 
   const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {
@@ -904,8 +912,10 @@ export function WatchlistTable({
 
       {tradeDialog ? (
         <TradeActionDialog
+          key={`${tradeDialog.kind}-${tradeDialog.item.symbol}`}
           state={tradeDialog}
-          suggestPct={5}
+          suggestPct={tableBuySuggestPct}
+          busy={tradeBusy}
           onClose={() => setTradeDialog(null)}
           onConfirm={(values) => void handleTradeConfirm(values)}
         />

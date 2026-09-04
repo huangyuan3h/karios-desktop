@@ -29,6 +29,14 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 logger = logging.getLogger(__name__)
 
+
+def is_open_position_pct(raw: Any) -> bool:
+    """True when the registry row is an actual broker holding, not a watch tick."""
+    try:
+        return float(raw) > 0
+    except (TypeError, ValueError):
+        return False
+
 # 2026-08-10 (no-choice UX): the manual trade size that matches the
 # backtested edge. Backtest = 10%/sleeve × 20 = 200% nominal (no-leverage
 # impossible), paper = 5% × 20 = 100%. For a manual book (<=10 positions)
@@ -240,6 +248,17 @@ def _holding_check(
         if rt_reasons:
             out["realtimeWarning"] = True
             out["realtimeAlert"] = "；".join(rt_reasons) + " · 待收盘确认（回测口径）"
+    # P1 near-stop proximity (2% buffer) — conditional order stale warning
+    # distance to line on close (and realtime if available) <2% → flag
+    price_for_proximity = rt_price if rt_price is not None else last_close
+    for label, line in (("止损", out.get("stopLossLine")), ("移动止损", out.get("trailingLine"))):
+        if line and price_for_proximity > 0:
+            dist = (price_for_proximity - float(line)) / price_for_proximity * 100.0
+            if 0 <= dist < 2.0:
+                out["nearStop"] = True
+                out["nearStopLabel"] = label
+                out["nearStopDistancePct"] = round(dist, 2)
+                break
     return out
 
 
@@ -444,7 +463,7 @@ def _build_holdings_block(
         # health card and the watchlist/copy realtime trigger agree. Peak
         # stays close-based; CN line keeps the close-caliber evaluation.
         realtime_by_ts: dict[str, float] = {}
-        if market == "HK" and hold_syms:
+        if hold_syms:
             try:
                 ts_list = [_resolve_holding_ts(s) for s in hold_syms]
                 ts_list = [t for t in ts_list if t]
@@ -456,7 +475,7 @@ def _build_holdings_block(
                         if px and px > 0 and code:
                             realtime_by_ts[code] = px
             except Exception as exc:  # noqa: BLE001
-                logger.warning("portfolio health HK realtime quotes failed: %s", exc)
+                logger.warning("portfolio health %s realtime quotes failed: %s", market, exc)
         if alpha_map is None:
             alpha_map = _alpha_events_for_symbols(hold_syms)
         if l1_map is None:
@@ -470,9 +489,10 @@ def _build_holdings_block(
             # T6 (2026-08-20): the NASDAQ-100 sleeve ETF is NOT an A-share
             # holding — it is a separate "third asset / US" region tracked by
             # the sleeve rules (200d MA), not the CN S-3 exit rules.
+            from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol
             from data_sync_service.service.third_asset_sleeve import is_third_asset_symbol
 
-            if market == "CN" and is_third_asset_symbol(sym):
+            if market == "CN" and (is_third_asset_symbol(sym) or is_multi_asset_symbol(sym)):
                 continue
             payload = r.get("payload") or {}
             pct = payload.get("positionPct", r.get("positionPct"))
@@ -499,6 +519,18 @@ def _build_holdings_block(
                 float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
             )
             check["pyramidAdded"] = sym in pyramid_syms
+            # Satellite body=3 progress on the trade calendar (same counter the
+            # backtest/paper replay uses). Watchlist prefers this over its
+            # local Mon–Fri estimate so exitsDue never drifts on holidays.
+            if market == "CN":
+                try:
+                    from data_sync_service.service.twin_star_daily import sat_body_progress
+
+                    check["satBody"] = sat_body_progress(
+                        str(entry) if entry else None, day
+                    )
+                except Exception:  # noqa: BLE001
+                    check["satBody"] = None
             # 2026-08-12: merge the main table's trend-structure exit signal
             # so the health card and the watchlist table never disagree on
             # whether to exit (S-3 price/time rules stay as-is).
@@ -780,6 +812,7 @@ def build_portfolio_health(
             blocks[m] = _health_block(market=m, day=day)
 
     cn = blocks.get("CN") or _health_block(market="CN", day=day)
+    from data_sync_service.service.multi_asset_sleeve import build_multi_asset_sleeve
     from data_sync_service.service.third_asset_sleeve import (
         build_third_asset_holding,
         build_third_asset_sleeve,
@@ -798,7 +831,7 @@ def build_portfolio_health(
             "ts_code": r.get("ts_code"),
         }
         for r in list_registry()
-        if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
+        if str(r.get("symbol") or "").upper().startswith(("CN:", "HK:", "ETF:"))
     ]
     try:
         third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)
@@ -810,12 +843,55 @@ def build_portfolio_health(
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health third-asset holding failed: %s", exc)
         third_asset_holding = None
+    try:
+        multi_asset_sleeve = build_multi_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health multi-asset sleeve failed: %s", exc)
+        multi_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
+    try:
+        from data_sync_service.service.multi_asset_sleeve import build_pulse_hints
+
+        pulse_hints = build_pulse_hints(day=day)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health pulse hints failed: %s", exc)
+        pulse_hints = []
+    # Multi-asset holdings (GOLD/OIL/BOND) separate from S-3
+    from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol as _is_multi
+
+    multi_holdings = []
+    for h in raw_holdings:
+        sym = str(h.get("symbol") or "").upper()
+        if _is_multi(sym) and is_open_position_pct(h.get("positionPct")):
+            # enrich with market data
+            ts = h.get("ts_code") or sym.replace("ETF:", "") + (".SH" if sym.startswith("ETF:5") else ".SZ")
+            md = {}
+            try:
+                from data_sync_service.service.multi_asset_sleeve import _etf_market_data
+
+                md = _etf_market_data(str(ts))
+            except Exception:
+                md = {}
+            holding = {**h, "marketData": md, "isMulti": True}
+            try:
+                from data_sync_service.service.multi_asset_sleeve import _etf_trail_exit
+
+                trail = _etf_trail_exit({**h, "ts_code": ts}, day=day)
+                if trail is not None:
+                    holding["trailExit"] = True
+                    holding["action"] = trail["action"]
+                    holding["message"] = trail["message"]
+            except Exception:
+                pass
+            multi_holdings.append(holding)
     return {
         "tradeDate": day,
         **cn,
         "hkHealth": blocks.get("HK"),
         "thirdAssetSleeve": third_asset_sleeve,
         "thirdAssetHolding": third_asset_holding,
+        "multiAssetSleeve": multi_asset_sleeve,
+        "multiAssetHoldings": multi_holdings,
+        "pulseHints": pulse_hints,
     }
 
 

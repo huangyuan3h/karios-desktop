@@ -46,6 +46,7 @@ Start dev: `pnpm dev` (from repo root). Backend needs root `.env` with `DATABASE
 4. **改 `docs/modules/*.md` 前**先 grep 代码确认现状；现状脱节就**整篇迁到** `docs/archive/modules-legacy/`，**不要就地矛盾修改**。
 5. **完成 todo 的一条**要标 `[done] YYYY-MM-DD` + 在 `todo.md §10` 补一行，并在 `docs/archive/` 起一份摘要（按 `archive/README.md` 的模板）。
 6. **新建 schemas/API** 不单写 markdown——在 `packages/shared` 加 Zod，跑到 `docs/optimization-checklist.md` 加一条；不在 docs/ 加实现说明文件。
+7. **用户要改交易策略 / 仓位 / 退出 / 篮子只数时**：先读 `docs/backtests/SUMMARY.md` 和对应实验文档，再开口或改代码。细则见下文 **Strategy / parameter changes**。
 
 ### 跨工具约定
 
@@ -125,7 +126,8 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 
 - `index_basic_sync` — weekdays 17:15 Asia/Shanghai (`scheduler/index_basic_job.py`). Independent sync of `index_dailybasic` so `macro_snapshot.market_breadth` is warm without a user clicking "Sync all".
 - `cn_industry_post_close_sync` — weekdays 17:35 Asia/Shanghai (`scheduler/cn_industry_post_close_job.py`). Runs `sync_cn_industry_fund_flow` + `sync_cn_industry_mainline` + `sync_cn_sentiment` after `close_sync` (17:10) and `watchlist_automation` (17:30). Aligns implementation with `docs/modules/industry-flow.md` and `market-sentiment.md` "盘后每日更新".
-- All three job types added to `SYNC_JOB_TYPES` in `api/sync_routes.py` and to `SCHEDULER_JOB_CATALOG` (with new `cnIndustry` / `tvScreener` groups) in `packages/shared/src/schemas/scheduler.ts`.
+- `factor_signals_sync` — weekdays 18:30 Asia/Shanghai (`scheduler/factor_signals_job.py`). Scans the latest open day for `strong_scoop_exhaustion` into `factor_signals` (direction-only; never touches S-3). Manual trigger: `POST /factors/sync`.
+- All job types above are added to `SYNC_JOB_TYPES` in `api/sync_routes.py` and to `SCHEDULER_JOB_CATALOG` (groups `cnIndustry` / `tvScreener` / `factors`) in `packages/shared/src/schemas/scheduler.ts`.
 
 ---
 
@@ -155,6 +157,27 @@ Cross-layer JSON contracts live in [`packages/shared`](packages/shared) as **Zod
 5. Run `pnpm -C packages/shared build` before first `desktop-ui` dev session (or `turbo build --filter=@karios/shared`).
 
 Python does **not** import `@karios/shared` at runtime. Field-name comments in route modules are the drift guard.
+
+---
+
+## Strategy / parameter changes（Agent 必读）
+
+用户问「能不能改策略 / 少买几只 / 加止损 / 赢家拿长一点 / 卫星怎么卖」时，**先查过往实验，再谈改不改**。禁止凭直觉改 Live 参数。
+
+1. **先读** [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)（拒收总表 + 失败模式），再打开对口实验：
+   - 卫星槽/单票 → [`sat-clip-concentration-2026-09-02.md`](docs/backtests/sat-clip-concentration-2026-09-02.md)
+   - 核心 S-3 篮只数 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core-stock-clip-2026-09-03.md)
+   - 卫星退出 / −5% / trail → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat-exit-trail-2026-09-03.md)
+   - 卫星 14:30 / 收盘成交日历 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat-fill-same-close-2026-09-03.md)
+   - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat-entry-c1-2026-09-03.md)
+   - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat-habit-clock-2026-09-03.md)
+   - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat-exit-hhmm-2026-09-03.md)
+   - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
+   - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/state-bucket-algo-2026-08-31.md)
+2. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
+3. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。
+4. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
+5. 改完把结论写进 `docs/backtests/`（PASS 或 REJECT 都留档），不要只停在对话里。
 
 ---
 

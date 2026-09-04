@@ -1,0 +1,210 @@
+{
+  "tag": "opportunity-twin-star-frozen-2026-09-01-v2-exitday",
+  "scheme": "机会双子星 (Opportunity Twin-Star): 择强核心(trail8)为主 + S-gap卫星机会增强(开闸且可买才切); 退出日 satActive 计入成本",
+  "structure": {
+    "core": {
+      "name": "择强单轨 trail8 (E1 定案)",
+      "engine": "pick_strong_grid.build_nav_from_cache: mom60 + MA200 + mom_compare + trail_pct=8.0",
+      "assets": "跨资产 (A/H/金/油/纳/债 + REPO)",
+      "cost": "0 (模型口径)",
+      "ref": "docs/modules/pick-strong-track.md"
+    },
+    "satellite": {
+      "name": "状态分桶 S-gap 优化单态",
+      "state": "S-gap (缺口系 gap>3%)",
+      "factor": "amplitude 低波 33% (bucket_q=3)",
+      "slots": 15,
+      "body": 3,
+      "regime_gate": "R-wide (close>MA20 占比>0.5)",
+      "cost": "COSTS_ROUNDTRIP=0.003 (单边15bp), 滑点0.15%单边",
+      "executability": "T-1 收盘涨停候选剔除 + universe 排除 ST/BJ/退市",
+      "satActive": "overnight hold OR exit-at-close day (costs enter opportunity NAV)"
+    },
+    "combine": "机会口径: 闲置跟核心; satActive 日切 sat_weight=0.5; 退出日必须 active",
+    "superseded": {
+      "tag": "opportunity-twin-star-frozen-2026-09-01",
+      "note": "v1 用 satPositions>0 作 active, 退出日成本逃逸, aligned 虚高 ~25pt (205.9 vs 正确 ~180)"
+    }
+  },
+  "per_window": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "core": {
+        "total_pct": 17.82,
+        "max_dd": 18.0
+      },
+      "sat_exec": {
+        "total_pct": 111.39,
+        "max_dd": 13.7
+      },
+      "opp": {
+        "total_pct": 62.92,
+        "cagr": 62.61,
+        "max_dd": 16.8,
+        "sharpe": 1.98,
+        "vs_core_pt": 45.1,
+        "n_days": 253
+      }
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "core": {
+        "total_pct": 40.66,
+        "max_dd": 8.4
+      },
+      "sat_exec": {
+        "total_pct": 35.33,
+        "max_dd": 7.3
+      },
+      "opp": {
+        "total_pct": 48.55,
+        "cagr": 119.3,
+        "max_dd": 6.1,
+        "sharpe": 3.87,
+        "vs_core_pt": 7.89,
+        "n_days": 127
+      }
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "core": {
+        "total_pct": 139.07,
+        "max_dd": 11.9
+      },
+      "sat_exec": {
+        "total_pct": 10.33,
+        "max_dd": 12.2
+      },
+      "opp": {
+        "total_pct": 141.7,
+        "cagr": 641.55,
+        "max_dd": 11.9,
+        "sharpe": 3.26,
+        "vs_core_pt": 2.63,
+        "n_days": 111
+      }
+    },
+    "past_year": {
+      "start": "2025-08-28",
+      "end": "2026-08-07",
+      "core": {
+        "total_pct": 202.23,
+        "max_dd": 12.6
+      },
+      "sat_exec": {
+        "total_pct": 29.81,
+        "max_dd": 11.5
+      },
+      "opp": {
+        "total_pct": 190.46,
+        "cagr": 210.74,
+        "max_dd": 12.6,
+        "sharpe": 2.62,
+        "vs_core_pt": -11.77,
+        "n_days": 237
+      }
+    },
+    "aligned": {
+      "start": "2025-08-28",
+      "end": "2026-08-28",
+      "core": {
+        "total_pct": 190.65,
+        "max_dd": 12.6
+      },
+      "sat_exec": {
+        "total_pct": 25.41,
+        "max_dd": 11.9
+      },
+      "opp": {
+        "total_pct": 180.58,
+        "cagr": 180.58,
+        "max_dd": 12.6,
+        "sharpe": 2.44,
+        "vs_core_pt": -10.07,
+        "n_days": 252
+      }
+    },
+    "long2y": {
+      "start": "2024-08-01",
+      "end": "2026-08-28",
+      "core": {
+        "total_pct": 199.13,
+        "max_dd": 18.2
+      },
+      "sat_exec": {
+        "total_pct": 151.31,
+        "max_dd": 13.7
+      },
+      "opp": {
+        "total_pct": 267.18,
+        "cagr": 86.92,
+        "max_dd": 16.8,
+        "sharpe": 1.91,
+        "vs_core_pt": 68.05,
+        "n_days": 524
+      }
+    },
+    "holdout_partial": {
+      "start": "2026-08-08",
+      "end": "2026-09-01",
+      "core": {
+        "total_pct": 2.73,
+        "max_dd": 4.0
+      },
+      "sat_exec": {
+        "total_pct": -3.19,
+        "max_dd": 14.5
+      },
+      "opp": {
+        "total_pct": 0.02,
+        "cagr": 0.34,
+        "max_dd": 7.6,
+        "sharpe": 0.99,
+        "vs_core_pt": -2.71,
+        "n_days": 15
+      }
+    }
+  },
+  "verdict": "2026-09-01 v2 exit-day fix: aligned opp 180.58% (vs_core -10.07pt); past_year vs_core -11.77pt. Recent-year windows LOSE TO core → live default=single_track. Opportunity remains optional research/opt-in mode.",
+  "discipline": "选参仅用 OOS2+train; 机会口径为执行层; exit-day satActive 为记账修正非新选参; holdout 只读",
+  "default_live_strategy": "single_track",
+  "holdout": {
+    "window": "2026-08-08~2027-02-08",
+    "status": "PARTIAL",
+    "partial": {
+      "start": "2026-08-08",
+      "end": "2026-09-01",
+      "core": {
+        "total_pct": 2.73,
+        "max_dd": 4.0
+      },
+      "sat_exec": {
+        "total_pct": -3.19,
+        "max_dd": 14.5
+      },
+      "opp": {
+        "total_pct": 0.02,
+        "cagr": 0.34,
+        "max_dd": 7.6,
+        "sharpe": 0.99,
+        "vs_core_pt": -2.71,
+        "n_days": 15
+      }
+    },
+    "note": "Full holdout end 2027-02-08 not reached; partial read-only through today."
+  },
+  "caveats": [
+    "Exit-day satActive required — otherwise round-trip costs escape opportunity NAV",
+    "past_year/aligned may underperform pure core after correct attribution",
+    "Live default prefers single_track when recent windows lose to core",
+    "Satellite book is engine replay (not broker fills); buy/hold/sell still manual",
+    "Core cost=0; sat COSTS_ROUNDTRIP=0.003",
+    "skip_unfillable (T open limit) not default — residual fill risk"
+  ],
+  "status": "FROZEN 2026-09-01 v2 (exit-day satActive) · live default=single_track",
+  "name": "机会双子星",
+  "name_en": "Opportunity Twin-Star"
+}

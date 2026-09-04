@@ -7,11 +7,31 @@ only persists the conversation and the archive.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/decision", tags=["decision"])
+
+
+class SessionCreate(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    title: str | None = Field(default=None, max_length=200)
+    model_profile: str | None = Field(default=None, max_length=100, alias="modelProfile")
+    system_prompt: str | None = Field(default=None, alias="systemPrompt")
+
+
+class SessionUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    system_prompt: str | None = None
+
+
+class MessageAppend(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str = Field(min_length=1)
+    context_snapshot: dict[str, Any] | None = None
 
 
 @router.get("/sessions")
@@ -23,28 +43,23 @@ def list_sessions_endpoint(limit: int = Query(50, ge=1, le=200)) -> dict[str, An
 
 
 @router.post("/sessions")
-def create_session_endpoint(
-    title: str | None = Body(None),
-    model_profile: str | None = Body(None),
-    system_prompt: str | None = Body(None),
-) -> dict[str, Any]:
+def create_session_endpoint(body: SessionCreate) -> dict[str, Any]:
     from data_sync_service.db.decision import create_session
 
     return {"ok": True, "session": create_session(
-        title=title, model_profile=model_profile, system_prompt=system_prompt
+        title=body.title, model_profile=body.model_profile, system_prompt=body.system_prompt
     )}
 
 
 @router.patch("/sessions/{session_id}")
 def update_session_endpoint(
     session_id: int,
-    title: str | None = Body(None, embed=True),
-    system_prompt: str | None = Body(None, embed=True),
+    body: SessionUpdate,
 ) -> dict[str, Any]:
     from data_sync_service.db.decision import update_session_settings
 
     rec = update_session_settings(
-        session_id, title=title, system_prompt=system_prompt
+        session_id, title=body.title, system_prompt=body.system_prompt
     )
     if not rec:
         return {"ok": False, "error": "session not found"}
@@ -61,14 +76,12 @@ def list_messages_endpoint(session_id: int, limit: int = Query(200, ge=1, le=500
 @router.post("/sessions/{session_id}/messages")
 def append_message_endpoint(
     session_id: int,
-    role: str = Body(..., embed=True),
-    content: str = Body(..., embed=True),
-    context_snapshot: dict[str, Any] | None = Body(None, embed=True),
+    body: MessageAppend,
 ) -> dict[str, Any]:
     from data_sync_service.db.decision import append_message
 
     return {"ok": True, "message": append_message(
-        session_id, role=role, content=content, context_snapshot=context_snapshot
+        session_id, role=body.role, content=body.content, context_snapshot=body.context_snapshot
     )}
 
 

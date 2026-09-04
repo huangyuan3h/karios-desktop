@@ -1,0 +1,33 @@
+{
+  "note": "placeholder, full engine needs BacktestData per cluster",
+  "clusters": {
+    "counts": {
+      "amplitude": 8639,
+      "turnover_spike": 977,
+      "other": 469,
+      "neg_mv": 434
+    },
+    "samples": {
+      "amplitude": [
+        "159098.SZ",
+        "159083.SZ",
+        "159058.SZ"
+      ],
+      "turnover_spike": [
+        "002540.SZ",
+        "000016.SZ",
+        "000030.SZ"
+      ],
+      "other": [
+        "00085.HK",
+        "00243.HK",
+        "00400.HK"
+      ],
+      "neg_mv": [
+        "000002.SZ",
+        "000008.SZ",
+        "000011.SZ"
+      ]
+    }
+  }
+}

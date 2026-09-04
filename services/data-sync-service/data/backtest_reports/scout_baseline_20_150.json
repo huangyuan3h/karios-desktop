@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-08-30T20:00:00Z",
+  "tag": "scout-baseline-20260830-pool20-150-amp_q10-10d-breadth0.5",
+  "status": "solidified new baseline (pool expanded 20-80 -> 20-150)",
+  "pool": "20-150",
+  "pool_size": 3794,
+  "signal": {"factor": "amplitude", "quintile": "Q10", "definition": "(high-low)/close bottom 10%"},
+  "gate": {"type": "breadth", "threshold": 0.5, "definition": "20-150池内 close>MA20 占比>0.5"},
+  "execution": {"entry": "next_open", "position_pct": 0.10, "max_positions": 10, "slippage_pct": 0.15, "hold": 10},
+  "windows": {
+    "OOS2": {"total_pnl": 20.5, "daily_avg": 0.0809, "cagr": 20.5, "max_dd": 15.4, "hold_ratio": 80.7},
+    "train": {"total_pnl": 0.9, "daily_avg": 0.0068, "hold_ratio": 61.7},
+    "valid": {"total_pnl": 11.3, "daily_avg": 0.1007, "cagr": 25.4, "max_dd": 2.2, "hold_ratio": 28.6},
+    "past_year": {"total_pnl": 2.4, "daily_avg": 0.0094},
+    "long": {"total_pnl": 29.1, "daily_avg": 0.0229, "cagr": 5.3, "hold_ratio": 26.6}
+  },
+  "note": "Pool 20-80 -> 20-150 +31% stocks, valid +6.0->+11.3 (+88%), long +15.3->+29.1 (+90%). New baseline for factor re-optimization. B's 57 (long 57.9% total over 5y = cagr ~10% per year, not 57% per year) is good for long stability but valid +6.8 < A's +11.3, so A is better baseline for daily."
+}

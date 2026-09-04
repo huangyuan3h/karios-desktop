@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ExecutionChangeListResponseSchema,
   ExecutionSnapshotListResponseSchema,
+  TwinStarActionResponseSchema,
 } from '@karios/shared';
 import { TrendOkResultSchema } from '@karios/shared';
 
@@ -198,5 +199,36 @@ describe('contract: execution chain (/execution/snapshots + /changes vs shared Z
     const mutated = JSON.parse(JSON.stringify(payload)) as typeof payload;
     delete mutated.items[0].field;
     expect(() => ExecutionChangeListResponseSchema.parse(mutated)).toThrow();
+  });
+});
+
+describe('contract: twin-star action (/api/backtest/twin-star/action vs shared Zod)', () => {
+  it('accepts a clip4 payload and rejects S-3 10% sizing', () => {
+    const payload = {
+      ok: true,
+      core: { pick: 'OIL', action: 'HOLD' },
+      sat: {
+        asOf: '2026-09-02',
+        gateOpen: true,
+        candidates: [{ ts: '000712.SZ', amp: 1, gapPct: 5, close: 10 }],
+        coreTargetPct: 50,
+        satTargetPct: 50,
+        book: { liveHeld: 0, liveFreeSlots: 4, engineHeld: 0, body: 3 },
+      },
+      clip4: {
+        maxPos: 4,
+        slotOfSleeve: 0.25,
+        satSlotNavPct: 12.5,
+        body: 3,
+        protectStopPct: 0,
+      },
+    };
+    expect(TwinStarActionResponseSchema.parse(payload).clip4.satSlotNavPct).toBe(12.5);
+    expect(() =>
+      TwinStarActionResponseSchema.parse({
+        ...payload,
+        clip4: { ...payload.clip4, satSlotNavPct: 10, maxPos: 10, slotOfSleeve: 0.1 },
+      }),
+    ).toThrow();
   });
 });

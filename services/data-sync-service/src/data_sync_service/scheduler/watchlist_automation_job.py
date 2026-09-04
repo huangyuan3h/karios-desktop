@@ -24,8 +24,11 @@ def run() -> None:
     try:
         result = run_watchlist_automation(trigger="scheduled", force=False)
         skipped = bool(result.get("skipped"))
-        success = result.get("ok", True) and not skipped
-        err_msg = result.get("skipReason") if skipped else result.get("error")
+        skip_reason = str(result.get("skipReason") or "")
+        # 闸门跳过（非交易日 / close未就绪）不算失败，不推 Bark，watchdog 静默
+        is_gate_skip = skipped and skip_reason in ("not_trading_day", "close_sync_not_ready")
+        success = (result.get("ok", True) and not skipped) or is_gate_skip
+        err_msg = None if is_gate_skip else (result.get("skipReason") if skipped else result.get("error"))
         run_id = result.get("runId") or None
         insert_record(
             JOB_ID,

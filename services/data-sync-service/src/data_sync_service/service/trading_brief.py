@@ -210,19 +210,24 @@ def _recon_section(top: int = 5) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _third_asset_section() -> list[dict[str, Any]]:
-    """T6 (2026-08-19): 513100 idle-cash sleeve hint, evaluated on the PAPER
-    book so the daily briefing stays aligned with the backtest best result."""
-    from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve_for_paper
+def _pick_strong_section() -> list[dict[str, Any]]:
+    """择强单轨 live hint — same source as Watchlist multiAssetSleeve."""
+    from data_sync_service.service.portfolio_health import build_portfolio_health
 
     try:
-        sleeve = build_third_asset_sleeve_for_paper(day=_now().split("T")[0])
+        health = build_portfolio_health(markets=("CN", "HK"))
+        sleeve = health.get("multiAssetSleeve") or {}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("trading_brief third-asset section failed: %s", exc)
+        logger.warning("trading_brief pick-strong section failed: %s", exc)
         return []
-    if not sleeve.get("active"):
+    if not sleeve.get("active") or sleeve.get("action") in (None, "NONE"):
         return []
-    return [{"type": "third_asset", **sleeve}]
+    return [{"type": "pick_strong", **sleeve}]
+
+
+def _third_asset_section() -> list[dict[str, Any]]:
+    """Deprecated alias — keep name for tests; delegates to pick-strong."""
+    return _pick_strong_section()
 
 
 def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
@@ -288,13 +293,17 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
                 f"（现 {a['pnlPct']}% / 线 {a['lineValue']}）"
             )
 
-    third = [s for s in sections if s["type"] == "third_asset"]
+    third = [s for s in sections if s["type"] in ("pick_strong", "third_asset")]
     if third:
         t = third[0]
+        pick_key = (t.get("pick") or {}).get("key") if isinstance(t.get("pick"), dict) else None
+        label = t.get("label") or t.get("action") or pick_key or ""
         lines.append("")
-        lines.append(f"**第三资产套筒（{t.get('label') or t.get('action') or ''}）**")
+        lines.append(f"**择强单轨·对照非实盘（{label}）**")
         lines.append(f"- {t.get('message')}")
         details = []
+        if pick_key:
+            details.append(f"pick {pick_key}")
         if t.get("price") is not None:
             details.append(f"现价 {t['price']}")
         if t.get("ma200") is not None:

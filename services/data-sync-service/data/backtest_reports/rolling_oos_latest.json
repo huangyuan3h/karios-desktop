@@ -1,27 +1,26 @@
 {
- "windowStart": "2026-05-13",
- "windowEnd": "2026-08-11",
+ "windowStart": "2026-06-03",
+ "windowEnd": "2026-09-01",
  "markets": {
   "CN": {
-   "closed": 1,
-   "winRate": 0.0,
-   "avgNetPnlPct": -6.328,
-   "totalNetPnlPct": -0.633,
-   "maxDrawdownPct": 0.633,
+   "closed": 0,
+   "winRate": null,
+   "avgNetPnlPct": null,
+   "totalNetPnlPct": 0.0,
+   "maxDrawdownPct": 0.0,
    "sharpe": null
   },
   "HK": {
-   "closed": 55,
-   "winRate": 0.255,
-   "avgNetPnlPct": -1.54,
-   "totalNetPnlPct": -8.451,
-   "maxDrawdownPct": 19.497,
-   "sharpe": -3.2
+   "closed": 24,
+   "winRate": 0.417,
+   "avgNetPnlPct": 0.34,
+   "totalNetPnlPct": 1.42,
+   "maxDrawdownPct": 2.815,
+   "sharpe": 0.68
   }
  },
  "warning": true,
  "warnings": [
-  "CN: -0.6% dd=0.6% sharpe=None trades=1",
-  "HK: -8.5% dd=19.5% sharpe=-3.2 trades=55"
+  "CN: +0.0% dd=0.0% sharpe=None trades=0"
  ]
 }

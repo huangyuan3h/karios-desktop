@@ -43,7 +43,7 @@ export function ThirdAssetHealthBlock({
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">US</span>
-        第三资产 · 纳指ETF（200日线规则）
+        择强 ETF 腿 · 纳指（历史 T6 回退）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">{holding.asOfDate ?? '—'}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">

@@ -23,6 +23,7 @@ from data_sync_service.service.realtime_quote import (
 )
 from data_sync_service.service.trade_calendar_utils import (
     is_cn_trading_day,
+    is_non_trading_day,
     last_open_date_on_or_before,
     shanghai_today,
 )
@@ -864,7 +865,7 @@ def _is_shanghai_trading_time() -> bool:
     Best-effort CN A-share trading time check in Asia/Shanghai.
     """
     now = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
-    if now.weekday() >= 5:  # 5/6 = weekend
+    if is_non_trading_day(now.date()):  # weekend + holidays (OPT-142)
         return False
     minutes = now.hour * 60 + now.minute
     in_morning = minutes >= 9 * 60 + 30 and minutes <= 11 * 60 + 30

@@ -211,6 +211,22 @@ def sync_index_basic_endpoint() -> dict:
     return sync_index_basic_full()
 
 
+@router.post("/sync/daily-basic")
+def sync_daily_basic_endpoint(end_date: str | None = Query(None)) -> dict:
+    """Incrementally sync stock_dailybasic (total_mv — Twin-Star satellite dep)."""
+    from data_sync_service.db.stock_dailybasic import sync_daily_basic_gap
+
+    return sync_daily_basic_gap(end_date=end_date)
+
+
+@router.post("/sync/sleeve-etfs")
+def sync_sleeve_etfs_endpoint() -> dict:
+    """Incremental daily sync for the 5 Twin-Star core-leg ETFs."""
+    from data_sync_service.service.etf_daily import sync_sleeve_etfs
+
+    return sync_sleeve_etfs()
+
+
 @router.post("/sync/macro-daily")
 def sync_macro_daily_endpoint(force: bool = Query(False, description="Force sync even if already synced today")) -> dict:
     """Trigger full sync of macro/global daily series. Skips if today already succeeded; resumes from failure."""
@@ -308,6 +324,8 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "stock_close_catchup",
     "index_daily_full",
     "index_basic_sync",
+    "stock_daily_basic_sync",
+    "sleeve_etf_daily_sync",
     "macro_daily_full",
     "eastmoney_industry_sync",
     "alpha_radar_pipeline",
@@ -334,6 +352,9 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "candidate_diff",
     "behavior_audit",
     "cn_extra_sync",
+    "paper_twin_star",
+    "bar_5min_close",
+    "factor_signals_sync",
 )
 
 

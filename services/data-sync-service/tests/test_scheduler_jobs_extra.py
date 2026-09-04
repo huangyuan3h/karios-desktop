@@ -11,10 +11,20 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from data_sync_service import scheduler as scheduler_pkg
 
+
+@pytest.fixture(autouse=True)
+def _no_real_job_records(monkeypatch: pytest.MonkeyPatch):
+    """OPT-139: job run()s now leave sync_job_record rows via _job_guard —
+    keep these wiring tests DB-free by stubbing the single record target."""
+    monkeypatch.setattr(
+        "data_sync_service.scheduler._job_guard.insert_record",
+        lambda *a, **k: None,
+    )
+
 MODULES = {
     "adj_factor_job": ("adj_factor_full_sync", "sync_adj_factor_full", "30 18 * * 5"),
     "eastmoney_industry_job": ("eastmoney_industry_sync", "sync_eastmoney_industry_incremental", "0 18 * * 1-5"),
-    "etf_daily_job": ("etf_daily_full_sync", "sync_etf_daily_full", "0 19 1 * *"),
+    "etf_daily_job": ("sleeve_etf_daily_sync", "sync_sleeve_etfs", "25 17 * * 1-5"),
     "fund_basic_job": ("etf_fund_basic_sync", "sync_etf_fund_basic", "0 4 1 * *"),
     "hk_basic_job": ("hk_basic_sync", "sync_hk_basic", "30 3 1 * *"),
     "hk_daily_job": ("hk_daily_full_sync", "sync_hk_daily_full", "30 17 * * *"),
@@ -48,6 +58,11 @@ def test_cron_job_run_logs_ok(monkeypatch: pytest.MonkeyPatch, mod_name: str) ->
 
 @pytest.mark.parametrize("mod_name", sorted(MODULES))
 def test_cron_job_run_logs_skipped(monkeypatch: pytest.MonkeyPatch, mod_name: str) -> None:
+    if mod_name == "etf_daily_job":
+        # run() is the daily sleeve sync — it has no skipped branch; the
+        # monthly full sync's skipped branch is covered by
+        # test_etf_daily_run_full_logs_skipped below.
+        pytest.skip("sleeve run() never skips")
     job = import_module(f"data_sync_service.scheduler.{mod_name}")
     _, svc, _ = MODULES[mod_name]
     if mod_name == "hk_industry_job":
@@ -68,6 +83,21 @@ def test_cron_job_run_logs_failure(monkeypatch: pytest.MonkeyPatch, mod_name: st
     msgs = _capture_logs(monkeypatch, job)
     job.run()
     assert any("failed" in m and "upstream down" in m for m in msgs)
+
+
+def test_etf_daily_full_job_constants_and_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """etf_daily_job.run() is the daily sleeve sync (covered by the generic
+    tests); the monthly full sync lives in run_full() with its own IDs."""
+    from data_sync_service.scheduler import etf_daily_job as job
+
+    assert job.FULL_JOB_ID == "etf_daily_full_sync"
+    assert job.FULL_CRON_EXPRESSION == "0 19 1 * *"
+    monkeypatch.setattr(
+        job, "sync_etf_daily_full", lambda **kw: {"ok": True, "skipped": True}
+    )
+    msgs = _capture_logs(monkeypatch, job)
+    job.run_full()
+    assert any("skipped" in m for m in msgs)
 
 
 def _capture_logs(monkeypatch: pytest.MonkeyPatch, job) -> list[str]:  # noqa: ANN001
@@ -104,7 +134,10 @@ class TestCreateScheduler:
             "macro_daily_full_sync", "watchlist_automation", "intraday_score",
             "eastmoney_industry_sync",
             "hk_industry_sync", "index_basic_sync", "cn_industry_post_close_sync",
-            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "allocation_decide", "backtest_paper_recon",
+            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "paper_twin_star",
+            "allocation_decide", "backtest_paper_recon",
+            "twin_star_reminder", "twin_star_intraday", "timeline_warmup",
+            "stock_daily_basic_sync", "sleeve_etf_daily_sync",
             "news_enrich_job", "research_report_sync",
             "decision_snapshot", "decision_outcome", "decision_action_tracking",
             "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
@@ -118,7 +151,9 @@ class TestCreateScheduler:
             "webhook_delivery",
             "behavior_audit",
             "minute_capture",
+            "bar_5min_close",
             "sleeve_paper_auto",
+            "factor_signals_sync",
         }
         assert ids == expected
 

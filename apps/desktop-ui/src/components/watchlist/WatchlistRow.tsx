@@ -357,6 +357,20 @@ function StopLossCell({
   );
 }
 
+const SCORE_PART_LABELS: Record<string, string> = {
+  ema: 'EMA 趋势连贯',
+  macd: 'MACD 动能稳定',
+  breakout: '突破平滑',
+  rsi: 'RSI 舒适带',
+  volume: '量能一致性',
+  bonus_ema20_slope_5d: 'EMA20 五连升奖励',
+  penalty_intraday_spike: '日内涨幅>6%',
+  penalty_volatility_atr: 'ATR 波动过高',
+  penalty_volume_climax: '量能爆发（VR>3）',
+  penalty_below_ema20: '收盘<EMA20',
+  industry_delta: '行业资金流',
+};
+
 function ScoreCell({
   sym,
   t,
@@ -382,7 +396,7 @@ function ScoreCell({
         <div className="font-mono text-[var(--k-muted)]">{sym}</div>
       </div>
       <div className="text-[var(--k-muted)]">
-        Deterministic formula (CN daily, no LLM). Higher means better short-horizon setup.
+        确定性公式分（A 股日线、无 LLM）· 越高代表短线形态越佳。
       </div>
       <div className="mt-2 space-y-1">
         <div className="flex items-center justify-between">
@@ -390,17 +404,24 @@ function ScoreCell({
           <div className="font-mono">{fmtScore(score)}</div>
         </div>
         {entries.length ? (
-          <div className="mt-2">
+          <div className="mt-2 space-y-1">
             {entries.map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3">
-                <div className="text-[var(--k-muted)]">{k}</div>
+                <div className="text-[var(--k-muted)]">{SCORE_PART_LABELS[k] ?? k}</div>
                 <div className="font-mono">{v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="mt-2 text-[var(--k-muted)]">No breakdown available (insufficient data).</div>
+          <div className="mt-2 text-[var(--k-muted)]">暂无明细（数据不足）。</div>
         )}
+      </div>
+      <div className="mt-3 border-t border-[var(--k-border)] pt-2 text-[11px] leading-relaxed text-[var(--k-muted)]">
+        权重：EMA 40% · MACD 20% · 量能 20% · 突破 10% · RSI 10%
+        <br />
+        加分：EMA20 五连升 +5 · 行业资金流 Top3 +10 / 热点 +5
+        <br />
+        扣分：日内涨幅&gt;6% −20 · ATR 高 −10~30 · 量爆 −15 · 收盘&lt;EMA20 −30 · 低量硬风控封顶 79
       </div>
     </>
   );
@@ -408,9 +429,9 @@ function ScoreCell({
     <button
       type="button"
       className="inline-flex items-center"
-      onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+      onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 520)}
       onMouseLeave={hideTooltip}
-      onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+      onFocus={(e) => showTooltip(e.currentTarget, tip, 520)}
       onBlur={hideTooltip}
       aria-label="Score details"
     >

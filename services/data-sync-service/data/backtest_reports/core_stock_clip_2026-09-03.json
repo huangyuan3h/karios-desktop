@@ -1,0 +1,676 @@
+{
+  "tag": "core-stock-clip-2026-09-03",
+  "protocol": "window-local empty book; frozen clip4 sat (4×25% strict skip_t1); core = pick-strong trail8 over CN+HK S-3 with n×clip overlay; opp_50",
+  "variants": [
+    {
+      "id": "base",
+      "max_positions": 10,
+      "position_pct": 0.1,
+      "pyramid_max_adds": 1,
+      "label": "10×10% S-3 · frozen pyramid"
+    },
+    {
+      "id": "n5_c20",
+      "max_positions": 5,
+      "position_pct": 0.2,
+      "pyramid_max_adds": 0,
+      "label": "5×20% S-3 · no pyramid"
+    },
+    {
+      "id": "n4_c25",
+      "max_positions": 4,
+      "position_pct": 0.25,
+      "pyramid_max_adds": 0,
+      "label": "4×25% S-3 · no pyramid"
+    },
+    {
+      "id": "n3_c33",
+      "max_positions": 3,
+      "position_pct": 0.33,
+      "pyramid_max_adds": 0,
+      "label": "3×33% S-3 · no pyramid"
+    },
+    {
+      "id": "n5_c10",
+      "max_positions": 5,
+      "position_pct": 0.1,
+      "pyramid_max_adds": 0,
+      "label": "5×10% underinvest control"
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "sat": {
+        "n_days": 254,
+        "total_pct": 118.3,
+        "max_dd": 7.2,
+        "sharpe": 3.92
+      },
+      "variants": {
+        "base": {
+          "label": "10×10% S-3 · frozen pyramid",
+          "max_positions": 10,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 1,
+          "core": {
+            "n_days": 254,
+            "total_pct": 17.8,
+            "max_dd": 18.0,
+            "sharpe": 0.72
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 64.7,
+            "max_dd": 16.1,
+            "sharpe": 2.13
+          },
+          "delta_core_pt": 46.9,
+          "stockDayPct": 57.7,
+          "avgStockNames": 12.95,
+          "maxStockNames": 20,
+          "delta_base_pt": 0.0
+        },
+        "n5_c20": {
+          "label": "5×20% S-3 · no pyramid",
+          "max_positions": 5,
+          "position_pct": 0.2,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 254,
+            "total_pct": -18.1,
+            "max_dd": 30.6,
+            "sharpe": -0.65
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 25.6,
+            "max_dd": 18.3,
+            "sharpe": 1.06
+          },
+          "delta_core_pt": 43.7,
+          "stockDayPct": 51.0,
+          "avgStockNames": 6.78,
+          "maxStockNames": 10,
+          "delta_base_pt": -39.1
+        },
+        "n4_c25": {
+          "label": "4×25% S-3 · no pyramid",
+          "max_positions": 4,
+          "position_pct": 0.25,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 254,
+            "total_pct": -13.3,
+            "max_dd": 24.2,
+            "sharpe": -0.47
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 36.1,
+            "max_dd": 15.2,
+            "sharpe": 1.49
+          },
+          "delta_core_pt": 49.4,
+          "stockDayPct": 43.9,
+          "avgStockNames": 5.58,
+          "maxStockNames": 8,
+          "delta_base_pt": -28.6
+        },
+        "n3_c33": {
+          "label": "3×33% S-3 · no pyramid",
+          "max_positions": 3,
+          "position_pct": 0.33,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 254,
+            "total_pct": -12.6,
+            "max_dd": 22.2,
+            "sharpe": -0.44
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 45.0,
+            "max_dd": 13.0,
+            "sharpe": 1.8
+          },
+          "delta_core_pt": 57.6,
+          "stockDayPct": 39.9,
+          "avgStockNames": 4.41,
+          "maxStockNames": 6,
+          "delta_base_pt": -19.7
+        },
+        "n5_c10": {
+          "label": "5×10% underinvest control",
+          "max_positions": 5,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 254,
+            "total_pct": -17.1,
+            "max_dd": 31.1,
+            "sharpe": -0.6
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 26.7,
+            "max_dd": 20.3,
+            "sharpe": 1.09
+          },
+          "delta_core_pt": 43.8,
+          "stockDayPct": 49.8,
+          "avgStockNames": 7.06,
+          "maxStockNames": 10,
+          "delta_base_pt": -38.0
+        }
+      }
+    },
+    "train": {
+      "sat": {
+        "n_days": 128,
+        "total_pct": 38.0,
+        "max_dd": 4.3,
+        "sharpe": 3.28
+      },
+      "variants": {
+        "base": {
+          "label": "10×10% S-3 · frozen pyramid",
+          "max_positions": 10,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 1,
+          "core": {
+            "n_days": 128,
+            "total_pct": 40.7,
+            "max_dd": 8.4,
+            "sharpe": 3.01
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 51.4,
+            "max_dd": 7.8,
+            "sharpe": 4.05
+          },
+          "delta_core_pt": 10.7,
+          "stockDayPct": 24.4,
+          "avgStockNames": 13.06,
+          "maxStockNames": 19,
+          "delta_base_pt": 0.0
+        },
+        "n5_c20": {
+          "label": "5×20% S-3 · no pyramid",
+          "max_positions": 5,
+          "position_pct": 0.2,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 128,
+            "total_pct": 56.3,
+            "max_dd": 6.8,
+            "sharpe": 4.0
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 65.0,
+            "max_dd": 7.3,
+            "sharpe": 5.08
+          },
+          "delta_core_pt": 8.7,
+          "stockDayPct": 23.6,
+          "avgStockNames": 6.43,
+          "maxStockNames": 9,
+          "delta_base_pt": 13.6
+        },
+        "n4_c25": {
+          "label": "4×25% S-3 · no pyramid",
+          "max_positions": 4,
+          "position_pct": 0.25,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 128,
+            "total_pct": 37.1,
+            "max_dd": 6.8,
+            "sharpe": 2.87
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 54.5,
+            "max_dd": 7.3,
+            "sharpe": 4.44
+          },
+          "delta_core_pt": 17.4,
+          "stockDayPct": 23.6,
+          "avgStockNames": 4.97,
+          "maxStockNames": 7,
+          "delta_base_pt": 3.1
+        },
+        "n3_c33": {
+          "label": "3×33% S-3 · no pyramid",
+          "max_positions": 3,
+          "position_pct": 0.33,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 128,
+            "total_pct": 36.5,
+            "max_dd": 6.8,
+            "sharpe": 2.77
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 53.3,
+            "max_dd": 7.3,
+            "sharpe": 4.33
+          },
+          "delta_core_pt": 16.8,
+          "stockDayPct": 25.2,
+          "avgStockNames": 3.59,
+          "maxStockNames": 5,
+          "delta_base_pt": 1.9
+        },
+        "n5_c10": {
+          "label": "5×10% underinvest control",
+          "max_positions": 5,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 128,
+            "total_pct": 55.2,
+            "max_dd": 6.8,
+            "sharpe": 3.92
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 64.4,
+            "max_dd": 7.3,
+            "sharpe": 5.03
+          },
+          "delta_core_pt": 9.2,
+          "stockDayPct": 23.6,
+          "avgStockNames": 7.1,
+          "maxStockNames": 10,
+          "delta_base_pt": 13.0
+        }
+      }
+    },
+    "valid": {
+      "sat": {
+        "n_days": 112,
+        "total_pct": 14.5,
+        "max_dd": 6.2,
+        "sharpe": 1.69
+      },
+      "variants": {
+        "base": {
+          "label": "10×10% S-3 · frozen pyramid",
+          "max_positions": 10,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 1,
+          "core": {
+            "n_days": 112,
+            "total_pct": 139.1,
+            "max_dd": 11.9,
+            "sharpe": 3.37
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 157.2,
+            "max_dd": 11.9,
+            "sharpe": 3.71
+          },
+          "delta_core_pt": 18.1,
+          "stockDayPct": 14.4,
+          "avgStockNames": 7.06,
+          "maxStockNames": 16,
+          "delta_base_pt": 0.0
+        },
+        "n5_c20": {
+          "label": "5×20% S-3 · no pyramid",
+          "max_positions": 5,
+          "position_pct": 0.2,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 112,
+            "total_pct": 149.8,
+            "max_dd": 11.9,
+            "sharpe": 3.45
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 164.7,
+            "max_dd": 11.9,
+            "sharpe": 3.79
+          },
+          "delta_core_pt": 14.9,
+          "stockDayPct": 15.3,
+          "avgStockNames": 3.59,
+          "maxStockNames": 7,
+          "delta_base_pt": 7.5
+        },
+        "n4_c25": {
+          "label": "4×25% S-3 · no pyramid",
+          "max_positions": 4,
+          "position_pct": 0.25,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 112,
+            "total_pct": 158.8,
+            "max_dd": 11.9,
+            "sharpe": 3.49
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 167.9,
+            "max_dd": 11.9,
+            "sharpe": 3.82
+          },
+          "delta_core_pt": 9.1,
+          "stockDayPct": 16.2,
+          "avgStockNames": 2.83,
+          "maxStockNames": 5,
+          "delta_base_pt": 10.7
+        },
+        "n3_c33": {
+          "label": "3×33% S-3 · no pyramid",
+          "max_positions": 3,
+          "position_pct": 0.33,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 112,
+            "total_pct": 163.4,
+            "max_dd": 11.9,
+            "sharpe": 3.55
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 168.6,
+            "max_dd": 11.9,
+            "sharpe": 3.82
+          },
+          "delta_core_pt": 5.2,
+          "stockDayPct": 13.5,
+          "avgStockNames": 2.13,
+          "maxStockNames": 4,
+          "delta_base_pt": 11.4
+        },
+        "n5_c10": {
+          "label": "5×10% underinvest control",
+          "max_positions": 5,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 112,
+            "total_pct": 149.8,
+            "max_dd": 11.9,
+            "sharpe": 3.45
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 164.7,
+            "max_dd": 11.9,
+            "sharpe": 3.79
+          },
+          "delta_core_pt": 14.9,
+          "stockDayPct": 15.3,
+          "avgStockNames": 3.71,
+          "maxStockNames": 8,
+          "delta_base_pt": 7.5
+        }
+      }
+    },
+    "past_year": {
+      "sat": {
+        "n_days": 257,
+        "total_pct": 51.7,
+        "max_dd": 4.7,
+        "sharpe": 2.42
+      },
+      "variants": {
+        "base": {
+          "label": "10×10% S-3 · frozen pyramid",
+          "max_positions": 10,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 1,
+          "core": {
+            "n_days": 257,
+            "total_pct": 181.2,
+            "max_dd": 12.6,
+            "sharpe": 2.43
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 195.9,
+            "max_dd": 12.6,
+            "sharpe": 2.62
+          },
+          "delta_core_pt": 14.7,
+          "stockDayPct": 34.8,
+          "avgStockNames": 11.62,
+          "maxStockNames": 19,
+          "delta_base_pt": 0.0
+        },
+        "n5_c20": {
+          "label": "5×20% S-3 · no pyramid",
+          "max_positions": 5,
+          "position_pct": 0.2,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 257,
+            "total_pct": 229.4,
+            "max_dd": 11.9,
+            "sharpe": 2.68
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 241.3,
+            "max_dd": 11.9,
+            "sharpe": 2.93
+          },
+          "delta_core_pt": 11.9,
+          "stockDayPct": 36.7,
+          "avgStockNames": 5.49,
+          "maxStockNames": 9,
+          "delta_base_pt": 45.4
+        },
+        "n4_c25": {
+          "label": "4×25% S-3 · no pyramid",
+          "max_positions": 4,
+          "position_pct": 0.25,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 257,
+            "total_pct": 217.9,
+            "max_dd": 15.6,
+            "sharpe": 2.44
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 231.9,
+            "max_dd": 11.9,
+            "sharpe": 2.78
+          },
+          "delta_core_pt": 14.0,
+          "stockDayPct": 36.3,
+          "avgStockNames": 4.26,
+          "maxStockNames": 7,
+          "delta_base_pt": 36.0
+        },
+        "n3_c33": {
+          "label": "3×33% S-3 · no pyramid",
+          "max_positions": 3,
+          "position_pct": 0.33,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 257,
+            "total_pct": 349.8,
+            "max_dd": 17.0,
+            "sharpe": 2.96
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 314.5,
+            "max_dd": 14.0,
+            "sharpe": 3.18
+          },
+          "delta_core_pt": -35.3,
+          "stockDayPct": 36.7,
+          "avgStockNames": 3.14,
+          "maxStockNames": 5,
+          "delta_base_pt": 118.6
+        },
+        "n5_c10": {
+          "label": "5×10% underinvest control",
+          "max_positions": 5,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 257,
+            "total_pct": 221.9,
+            "max_dd": 13.4,
+            "sharpe": 2.63
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 238.7,
+            "max_dd": 11.9,
+            "sharpe": 2.91
+          },
+          "delta_core_pt": 16.8,
+          "stockDayPct": 36.3,
+          "avgStockNames": 5.98,
+          "maxStockNames": 10,
+          "delta_base_pt": 42.8
+        }
+      }
+    },
+    "aligned": {
+      "sat": {
+        "n_days": 253,
+        "total_pct": 34.5,
+        "max_dd": 8.7,
+        "sharpe": 1.6
+      },
+      "variants": {
+        "base": {
+          "label": "10×10% S-3 · frozen pyramid",
+          "max_positions": 10,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 1,
+          "core": {
+            "n_days": 253,
+            "total_pct": 190.6,
+            "max_dd": 12.6,
+            "sharpe": 2.54
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 194.9,
+            "max_dd": 12.6,
+            "sharpe": 2.64
+          },
+          "delta_core_pt": 4.3,
+          "stockDayPct": 40.1,
+          "avgStockNames": 11.32,
+          "maxStockNames": 19,
+          "delta_base_pt": 0.0
+        },
+        "n5_c20": {
+          "label": "5×20% S-3 · no pyramid",
+          "max_positions": 5,
+          "position_pct": 0.2,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 253,
+            "total_pct": 208.1,
+            "max_dd": 13.2,
+            "sharpe": 2.56
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 214.2,
+            "max_dd": 11.9,
+            "sharpe": 2.75
+          },
+          "delta_core_pt": 6.1,
+          "stockDayPct": 40.5,
+          "avgStockNames": 5.37,
+          "maxStockNames": 9,
+          "delta_base_pt": 19.3
+        },
+        "n4_c25": {
+          "label": "4×25% S-3 · no pyramid",
+          "max_positions": 4,
+          "position_pct": 0.25,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 253,
+            "total_pct": 212.3,
+            "max_dd": 15.6,
+            "sharpe": 2.42
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 216.7,
+            "max_dd": 11.9,
+            "sharpe": 2.68
+          },
+          "delta_core_pt": 4.4,
+          "stockDayPct": 39.3,
+          "avgStockNames": 4.2,
+          "maxStockNames": 7,
+          "delta_base_pt": 21.8
+        },
+        "n3_c33": {
+          "label": "3×33% S-3 · no pyramid",
+          "max_positions": 3,
+          "position_pct": 0.33,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 253,
+            "total_pct": 365.0,
+            "max_dd": 17.0,
+            "sharpe": 3.04
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 305.8,
+            "max_dd": 14.0,
+            "sharpe": 3.14
+          },
+          "delta_core_pt": -59.2,
+          "stockDayPct": 37.7,
+          "avgStockNames": 3.14,
+          "maxStockNames": 5,
+          "delta_base_pt": 110.9
+        },
+        "n5_c10": {
+          "label": "5×10% underinvest control",
+          "max_positions": 5,
+          "position_pct": 0.1,
+          "pyramid_max_adds": 0,
+          "core": {
+            "n_days": 253,
+            "total_pct": 210.4,
+            "max_dd": 13.4,
+            "sharpe": 2.58
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 216.5,
+            "max_dd": 11.9,
+            "sharpe": 2.77
+          },
+          "delta_core_pt": 6.1,
+          "stockDayPct": 40.5,
+          "avgStockNames": 5.81,
+          "maxStockNames": 10,
+          "delta_base_pt": 21.6
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "base": "baseline",
+    "n5_c20": "REJECT",
+    "n4_c25": "REJECT",
+    "n3_c33": "REJECT",
+    "n5_c10": "REJECT"
+  },
+  "as_of": "2026-09-03T00:30:14+00:00"
+}

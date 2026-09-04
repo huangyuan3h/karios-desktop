@@ -164,7 +164,7 @@ def test_third_asset_section_renders_when_active() -> None:
          "price": 2.239, "ma200": 1.983, "idlePct": 90.0, "asOfDate": "2026-08-18"},
     ]
     md = tb.render_markdown(sections, "action")
-    assert "**第三资产套筒（建议买入 513100）**" in md
+    assert "**择强单轨·对照非实盘（建议买入 513100）**" in md
     assert "闲置资金 90% 且 ETF:513100 在200日线上" in md
     assert "现价 2.239" in md
     assert "MA200 1.983" in md
@@ -172,9 +172,11 @@ def test_third_asset_section_renders_when_active() -> None:
 
 
 def test_third_asset_section_inactive_returns_empty() -> None:
+    # _third_asset_section is a deprecated alias of _pick_strong_section,
+    # which reads portfolio_health.multiAssetSleeve (not third_asset_sleeve).
     with patch(
-        "data_sync_service.service.third_asset_sleeve.build_third_asset_sleeve_for_paper",
-        return_value={"active": False, "action": "NONE"},
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        return_value={"multiAssetSleeve": {"active": False, "action": "NONE"}},
     ) as build_fn:
         out = tb._third_asset_section()
     build_fn.assert_called_once()

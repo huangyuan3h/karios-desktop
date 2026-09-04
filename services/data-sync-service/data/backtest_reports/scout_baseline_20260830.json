@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-08-30T16:00:00Z",
+  "tag": "scout-baseline-20260830-breadth0.55-amp_q10-10d-trail5",
+  "universe": "20-80亿",
+  "universe_filter": {"min_mv": 20, "max_mv": 80, "min_avg_amount": 0},
+  "signal": {"factor": "amplitude", "quintile": "Q10", "definition": "(high-low)/close bottom 10%"},
+  "gate": {"type": "breadth", "threshold": 0.55, "definition": "20-80池内 close>MA20 占比>0.55"},
+  "execution": {"entry": "next_open", "position_pct": 0.10, "max_positions": 10, "slippage_pct": 0.15, "hold": 10, "early": "trail-5", "early_definition": "peak drawdown 5% trailing stop"},
+  "costs": {"roundtrip": 0.003},
+  "windows": {
+    "OOS2": {"total_pnl": 28.5, "daily_avg": 0.1121, "cagr": 28.2, "max_dd": 12.7, "sharpe": 1.04, "hold_ratio": 65.6, "trades": 179, "win_rate": 0.603},
+    "train": {"total_pnl": -3.2, "daily_avg": -0.0251, "cagr": -6.2, "max_dd": 9.3, "sharpe": -0.53, "hold_ratio": 50.4, "trades": 119, "win_rate": 0.408},
+    "valid": {"total_pnl": 7.3, "daily_avg": 0.0652, "cagr": 17.2, "max_dd": 2.6, "sharpe": 1.90, "hold_ratio": 25.8, "trades": 90, "win_rate": 0.438},
+    "past_year": {"total_pnl": 2.4, "daily_avg": 0.0094, "hold_ratio": 51.0},
+    "long": {"total_pnl": 15.3, "daily_avg": 0.012, "hold_ratio": 26.6}
+  },
+  "baseline_daily_avg_valid": 0.0652,
+  "baseline_hold_avg": 47.2,
+  "notes": "tri-window OOS2 +28.5/train -3.2/valid +7.3, valid daily 0.0652% peak under hold<50%. Baseline solidified 2026-08-30."
+}

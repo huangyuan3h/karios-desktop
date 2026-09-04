@@ -72,6 +72,7 @@ CLOSE_REASON_POOL_EXIT = "pool_exit"  # symbol purged from the watchlist registr
 CLOSE_REASON_SWAPPED = "swapped"  # RS rotation: replaced by a stronger candidate
 CLOSE_REASON_TRAILING = "trailing_stop"  # peak pullback <= TRAILING_STOP_PCT
 CLOSE_REASON_SLEEVE_EXIT = "sleeve_exit"  # third-asset sleeve: broke MA200 / A-share buy point (T6, 2026-08-21)
+CLOSE_REASON_BODY_EXIT = "body_exit"  # twin_star satellite: body=3 weekday exit
 CLOSE_REASONS = (
     CLOSE_REASON_MAX_HOLD,
     CLOSE_REASON_STOP_HIT,
@@ -81,6 +82,7 @@ CLOSE_REASONS = (
     CLOSE_REASON_SWAPPED,
     CLOSE_REASON_TRAILING,
     CLOSE_REASON_SLEEVE_EXIT,
+    CLOSE_REASON_BODY_EXIT,
 )
 
 # TIP-011: source attribution (provenance of the BUY/ADD signal).
@@ -89,7 +91,8 @@ SOURCE_ALPHA = "ALPHA"  # originated from Alpha Radar catalyst
 SOURCE_MANUAL = "MANUAL"  # user / external AI agent added
 SOURCE_S3 = "S3"  # S-3 backtest entry rules (paper_s3 intake, G4)
 SOURCE_S3_HK = "S3HK"  # HK parallel line S-3 entry rules (paper_s3 intake, 2026-08-10)
-SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3, SOURCE_S3_HK)
+SOURCE_TWIN_STAR = "twin_star"  # clip4 satellite book (OPT-131); not S-3
+SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3, SOURCE_S3_HK, SOURCE_TWIN_STAR)
 
 # Close thresholds (S-3 backtest params, 2026-08-09 — backtest-strategy.md
 # is the evidence record). Kept module-level so tests can assert against the
@@ -325,6 +328,36 @@ def update_paper_trade_price(
     return _row_to_dict(row) if row else None
 
 
+def patch_paper_entry_fill(
+    *,
+    trade_id: str,
+    entry_price: float,
+    signal_snapshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Patch entry_price + signal_snapshot on an open row (next_open fill-in)."""
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                f"""
+                UPDATE {PAPER_TRADES_TABLE}
+                SET entry_price = %s,
+                    signal_snapshot = %s,
+                    updated_at = now()
+                WHERE id = %s AND status = 'open'
+                RETURNING *
+                """,
+                (
+                    float(entry_price),
+                    Json(signal_snapshot) if signal_snapshot is not None else None,
+                    trade_id,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _row_to_dict(row) if row else None
+
+
 def close_paper_trade(
     *,
     trade_id: str,
@@ -335,6 +368,7 @@ def close_paper_trade(
     close_reason: str,
     gross_pnl_pct: float | None = None,
     costs_pct: float | None = None,
+    signal_snapshot_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Close an open trade. Returns the updated row, or None if not open.
 
@@ -342,6 +376,8 @@ def close_paper_trade(
     ``costs_pct`` record the split so the cost assumption stays auditable.
     Legacy callers (or backfill paths) can omit the two new args — they stay
     NULL, meaning "no cost model" (indistinguishable from costs_pct=0).
+    ``signal_snapshot_extra`` merges into the entry signal_snapshot JSONB
+    (e.g. exit price source); no schema change, omit to leave it untouched.
     """
     if close_reason not in CLOSE_REASONS:
         raise ValueError(f"close_reason must be one of {CLOSE_REASONS} (got {close_reason!r})")
@@ -359,6 +395,10 @@ def close_paper_trade(
                     costs_pct = COALESCE(%s, costs_pct),
                     holding_days = %s,
                     close_reason = %s,
+                    signal_snapshot = CASE
+                        WHEN %s::jsonb IS NULL THEN signal_snapshot
+                        ELSE COALESCE(signal_snapshot, '{{}}'::jsonb) || %s::jsonb
+                    END,
                     updated_at = now()
                 WHERE id = %s AND status = 'open'
                 RETURNING *
@@ -371,6 +411,8 @@ def close_paper_trade(
                     costs_pct,
                     int(holding_days),
                     close_reason,
+                    Json(signal_snapshot_extra) if signal_snapshot_extra else None,
+                    Json(signal_snapshot_extra) if signal_snapshot_extra else None,
                     trade_id,
                 ),
             )
@@ -495,6 +537,7 @@ def _row_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "closeReason": row.get("close_reason"),
         "source": row.get("source"),
         "market": row.get("market") or "CN",
+        "signalSnapshot": row.get("signal_snapshot"),
         "createdAt": ts,
         "updatedAt": _iso_timestamp(row.get("updated_at")),
     }

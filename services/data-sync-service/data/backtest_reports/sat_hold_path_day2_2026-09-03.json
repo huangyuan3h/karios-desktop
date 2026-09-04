@@ -1,0 +1,121 @@
+{
+  "tag": "sat-hold-path-day2-2026-09-03",
+  "protocol": "window-local empty book; frozen clip4 sat (4×25% strict skip_t1 body=3); marks = close / T-open − 1, no costs; d2-red recovery is observation, not a live rule",
+  "savedAt": "2026-09-03T08:49:27.928419+00:00",
+  "windows": {
+    "OOS2": {
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "n": 270,
+      "mean": {
+        "d1": 0.206,
+        "d2": 1.026,
+        "d3": 1.973
+      },
+      "median": {
+        "d1": 0.0,
+        "d2": 0.72,
+        "d3": 0.783
+      },
+      "pctGreen": {
+        "d1": 69.6,
+        "d2": 57.8,
+        "d3": 56.3
+      },
+      "d2Red": {
+        "n": 114,
+        "pctOfFills": 42.2,
+        "recoveredGreen": 29,
+        "pctRecoveredGreen": 25.4,
+        "improved": 64,
+        "pctImproved": 56.1,
+        "meanD3": -2.193,
+        "meanD3Recovered": 2.494,
+        "meanD3StayedRed": -3.792
+      },
+      "hitProtectByD2": {
+        "n": 19,
+        "pctOfFills": 7.0,
+        "d3Green": 3,
+        "pctD3Green": 15.8,
+        "meanD3": -5.334
+      }
+    },
+    "train": {
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "n": 124,
+      "mean": {
+        "d1": 0.204,
+        "d2": 0.999,
+        "d3": 1.526
+      },
+      "median": {
+        "d1": 0.0,
+        "d2": 1.177,
+        "d3": 0.756
+      },
+      "pctGreen": {
+        "d1": 61.3,
+        "d2": 62.9,
+        "d3": 58.9
+      },
+      "d2Red": {
+        "n": 46,
+        "pctOfFills": 37.1,
+        "recoveredGreen": 8,
+        "pctRecoveredGreen": 17.4,
+        "improved": 23,
+        "pctImproved": 50.0,
+        "meanD3": -3.455,
+        "meanD3Recovered": 1.293,
+        "meanD3StayedRed": -4.455
+      },
+      "hitProtectByD2": {
+        "n": 11,
+        "pctOfFills": 8.9,
+        "d3Green": 0,
+        "pctD3Green": 0.0,
+        "meanD3": -6.101
+      }
+    },
+    "valid": {
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "n": 52,
+      "mean": {
+        "d1": 0.019,
+        "d2": 0.7,
+        "d3": 1.282
+      },
+      "median": {
+        "d1": 0.052,
+        "d2": 0.831,
+        "d3": 0.932
+      },
+      "pctGreen": {
+        "d1": 61.5,
+        "d2": 55.8,
+        "d3": 55.8
+      },
+      "d2Red": {
+        "n": 23,
+        "pctOfFills": 44.2,
+        "recoveredGreen": 3,
+        "pctRecoveredGreen": 13.0,
+        "improved": 16,
+        "pctImproved": 69.6,
+        "meanD3": -2.585,
+        "meanD3Recovered": 2.122,
+        "meanD3StayedRed": -3.291
+      },
+      "hitProtectByD2": {
+        "n": 3,
+        "pctOfFills": 5.8,
+        "d3Green": 0,
+        "pctD3Green": 0.0,
+        "meanD3": -5.728
+      }
+    }
+  }
+}

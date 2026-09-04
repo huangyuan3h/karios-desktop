@@ -1,0 +1,688 @@
+{
+  "generatedAt": "2026-08-28T23:49:30.603866+00:00",
+  "strategy": "择强单轨",
+  "baseline": "A0 mom_compare lb60 ma200 hold1 cost0",
+  "windows": {
+    "OOS2": [
+      "2024-08-01",
+      "2025-08-01"
+    ],
+    "train": [
+      "2025-08-01",
+      "2026-02-01"
+    ],
+    "valid": [
+      "2026-03-01",
+      "2026-08-07"
+    ],
+    "past_year": [
+      "2025-08-28",
+      "2026-08-28"
+    ]
+  },
+  "results": {
+    "A0": {
+      "params": {
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A1": {
+      "params": {
+        "id": "A1",
+        "lookback": 40,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 21.08,
+          "maxDdFusedPct": 20.2,
+          "switches": 32,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 22.03,
+          "maxDdFusedPct": 16.4,
+          "switches": 18,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 85.34,
+          "maxDdFusedPct": 28.7,
+          "switches": 7,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 178.51,
+          "maxDdFusedPct": 23.3,
+          "switches": 27,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A2": {
+      "params": {
+        "id": "A2",
+        "lookback": 90,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 20.95,
+          "maxDdFusedPct": 21.0,
+          "switches": 32,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 23.36,
+          "maxDdFusedPct": 9.8,
+          "switches": 14,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": -2.93,
+          "maxDdFusedPct": 33.2,
+          "switches": 5,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 140.4,
+          "maxDdFusedPct": 22.1,
+          "switches": 27,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A3": {
+      "params": {
+        "id": "A3",
+        "lookback": 20,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 70.33,
+          "maxDdFusedPct": 16.0,
+          "switches": 26,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 24.9,
+          "maxDdFusedPct": 15.2,
+          "switches": 16,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 90.89,
+          "maxDdFusedPct": 22.0,
+          "switches": 12,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 143.04,
+          "maxDdFusedPct": 22.0,
+          "switches": 37,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A4": {
+      "params": {
+        "id": "A4",
+        "lookback": 60,
+        "ma": 120,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 39.19,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 98.62,
+          "maxDdFusedPct": 28.3,
+          "switches": 25,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A5": {
+      "params": {
+        "id": "A5",
+        "lookback": 60,
+        "ma": 250,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A6": {
+      "params": {
+        "id": "A6",
+        "lookback": 40,
+        "ma": 120,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 21.08,
+          "maxDdFusedPct": 20.2,
+          "switches": 32,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 22.03,
+          "maxDdFusedPct": 16.4,
+          "switches": 18,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 85.34,
+          "maxDdFusedPct": 28.7,
+          "switches": 7,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 178.51,
+          "maxDdFusedPct": 23.3,
+          "switches": 27,
+          "calendarDays": 253
+        }
+      }
+    },
+    "A7": {
+      "params": {
+        "id": "A7",
+        "lookback": 90,
+        "ma": 120,
+        "min_hold": 1,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 22.55,
+          "maxDdFusedPct": 21.0,
+          "switches": 32,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 23.36,
+          "maxDdFusedPct": 9.8,
+          "switches": 14,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": -2.93,
+          "maxDdFusedPct": 33.2,
+          "switches": 5,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 140.4,
+          "maxDdFusedPct": 22.1,
+          "switches": 27,
+          "calendarDays": 253
+        }
+      }
+    },
+    "B0": {
+      "params": {
+        "id": "B0",
+        "min_hold": 1,
+        "lookback": 60,
+        "ma": 200,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "B1": {
+      "params": {
+        "id": "B1",
+        "min_hold": 3,
+        "lookback": 60,
+        "ma": 200,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 41.31,
+          "maxDdFusedPct": 15.8,
+          "switches": 19,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 27.45,
+          "maxDdFusedPct": 14.0,
+          "switches": 8,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 78.5,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 89.75,
+          "maxDdFusedPct": 28.3,
+          "switches": 20,
+          "calendarDays": 253
+        }
+      }
+    },
+    "B2": {
+      "params": {
+        "id": "B2",
+        "min_hold": 5,
+        "lookback": 60,
+        "ma": 200,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 32.73,
+          "maxDdFusedPct": 15.8,
+          "switches": 16,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 24.13,
+          "maxDdFusedPct": 14.0,
+          "switches": 8,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 86.63,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 66.89,
+          "maxDdFusedPct": 29.6,
+          "switches": 16,
+          "calendarDays": 253
+        }
+      }
+    },
+    "B3": {
+      "params": {
+        "id": "B3",
+        "min_hold": 10,
+        "lookback": 60,
+        "ma": 200,
+        "cost": 0.0,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 61.41,
+          "maxDdFusedPct": 15.8,
+          "switches": 11,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 1.06,
+          "maxDdFusedPct": 23.3,
+          "switches": 7,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 51.41,
+          "maxDdFusedPct": 28.3,
+          "switches": 5,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 96.37,
+          "maxDdFusedPct": 28.3,
+          "switches": 11,
+          "calendarDays": 253
+        }
+      }
+    },
+    "C0": {
+      "params": {
+        "id": "C0",
+        "cost": 0.0,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "C1": {
+      "params": {
+        "id": "C1",
+        "cost": 0.0005,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 15.83,
+          "maxDdFusedPct": 18.1,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 34.98,
+          "maxDdFusedPct": 11.7,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.07,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 91.1,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "C2": {
+      "params": {
+        "id": "C2",
+        "cost": 0.001,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "score": "mom",
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 13.87,
+          "maxDdFusedPct": 18.1,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 34.31,
+          "maxDdFusedPct": 11.7,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 55.6,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 88.64,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "D0": {
+      "params": {
+        "id": "D0",
+        "score": "mom",
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 17.82,
+          "maxDdFusedPct": 18.0,
+          "switches": 34,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 35.66,
+          "maxDdFusedPct": 11.6,
+          "switches": 10,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 56.54,
+          "maxDdFusedPct": 28.3,
+          "switches": 6,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 93.59,
+          "maxDdFusedPct": 28.3,
+          "switches": 26,
+          "calendarDays": 253
+        }
+      }
+    },
+    "D1": {
+      "params": {
+        "id": "D1",
+        "score": "risk_adj",
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0,
+        "top2": false
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 23.73,
+          "maxDdFusedPct": 13.2,
+          "switches": 37,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 16.73,
+          "maxDdFusedPct": 7.5,
+          "switches": 23,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 16.83,
+          "maxDdFusedPct": 31.8,
+          "switches": 17,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 46.32,
+          "maxDdFusedPct": 31.6,
+          "switches": 46,
+          "calendarDays": 253
+        }
+      }
+    },
+    "D2": {
+      "params": {
+        "id": "D2",
+        "score": "mom",
+        "top2": true,
+        "lookback": 60,
+        "ma": 200,
+        "min_hold": 1,
+        "cost": 0.0
+      },
+      "windows": {
+        "OOS2": {
+          "fusedPct": 24.66,
+          "maxDdFusedPct": 8.8,
+          "switches": 55,
+          "calendarDays": 254
+        },
+        "train": {
+          "fusedPct": 30.16,
+          "maxDdFusedPct": 6.5,
+          "switches": 26,
+          "calendarDays": 128
+        },
+        "valid": {
+          "fusedPct": 26.93,
+          "maxDdFusedPct": 12.3,
+          "switches": 15,
+          "calendarDays": 112
+        },
+        "past_year": {
+          "fusedPct": 88.61,
+          "maxDdFusedPct": 14.6,
+          "switches": 53,
+          "calendarDays": 253
+        }
+      }
+    }
+  }
+}

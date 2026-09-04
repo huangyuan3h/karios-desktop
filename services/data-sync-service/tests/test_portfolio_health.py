@@ -490,3 +490,13 @@ def test_weak_regime_uses_fixed_stop_rule_opt105():
         )
     assert out["stopRule"] == "fixed"
     assert out["stopLossLine"] == round(10.0 * 0.95, 3)  # fixed -5%
+
+
+def test_open_position_pct_treats_zero_and_blank_as_closed():
+    assert ph.is_open_position_pct(51.5) is True
+    assert ph.is_open_position_pct(0) is False
+    assert ph.is_open_position_pct(0.0) is False
+    assert ph.is_open_position_pct("0.0") is False
+    assert ph.is_open_position_pct(None) is False
+    assert ph.is_open_position_pct("") is False
+    assert ph.is_open_position_pct("51.5") is True

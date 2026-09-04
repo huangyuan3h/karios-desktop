@@ -6,6 +6,7 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
+from data_sync_service.scheduler._job_guard import record_dict_result, run_guarded
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 
 logger = logging.getLogger(__name__)
@@ -24,12 +25,18 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_adj_factor_full()
-    if result.get("ok"):
-        if result.get("skipped"):
+    result = run_guarded(JOB_ID, sync_adj_factor_full, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+
+    def _ok(r) -> None:
+        if r.get("skipped"):
             logger.info("adj_factor_full_sync skipped: already synced today")
         else:
-            logger.info("adj_factor_full_sync ok: updated=%s", result.get("updated", 0))
-    else:
-        logger.warning("adj_factor_full_sync failed: %s", result.get("error", "unknown"))
+            logger.info("adj_factor_full_sync ok: updated=%s", r.get("updated", 0))
+
+    def _fail(r) -> None:
+        logger.warning("adj_factor_full_sync failed: %s", r.get("error", "unknown"))
+
+    record_dict_result(JOB_ID, result, ok_log=_ok, fail_log=_fail)
 

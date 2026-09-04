@@ -6,6 +6,7 @@ export interface PortfolioHolding {
   name?: string;
   positionPct?: number;
   costPrice?: number;
+  entryDate?: string;
   lastClose?: number;
   lastDate?: string;
   peakPrice?: number;
@@ -44,6 +45,14 @@ export interface PortfolioHolding {
     netInflow5d?: number;
     rank5d?: number;
     total?: number;
+  } | null;
+  /** Satellite body=3 progress on the trade calendar (CN stocks, backend-computed). */
+  satBody?: {
+    heldDays?: number | null;
+    daysLeft?: number | null;
+    exitDue?: string | null;
+    due?: boolean | null;
+    missingEntry?: boolean | null;
   } | null;
 }
 
@@ -154,6 +163,53 @@ export interface PortfolioHealthResponse {
     gateOpen?: boolean;
     note?: string;
   } | null;
+  /** 择强单轨 live pick (mom_compare: STOCK basket ∪ GOLD/OIL/NASDAQ/BOND10). */
+  multiAssetSleeve?: {
+    active?: boolean;
+    action?: 'BUY' | 'ROTATE' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'HOLD' | 'DONT_BUY' | 'NONE';
+    label?: string;
+    message?: string;
+    idlePct?: number;
+    s3BuySetup?: boolean;
+    mode?: string;
+    strategy?: string;
+    pick?: {
+      key?: string;
+      ts?: string;
+      symbol?: string;
+      name?: string;
+      mom60?: number;
+      close?: number;
+      ma200?: number;
+      above_ma200?: boolean;
+      n?: number;
+      all_mom?: Record<string, number>;
+      all_above?: Record<string, boolean>;
+    } | null;
+    etfPick?: {
+      key?: string;
+      symbol?: string;
+      mom60?: number;
+      name?: string;
+    } | null;
+    stockPick?: {
+      key?: string;
+      mom60?: number;
+      n?: number;
+    } | null;
+    holding?: boolean;
+    note?: string;
+  } | null;
+  multiAssetHoldings?: Array<{
+    symbol: string;
+    name?: string | null;
+    positionPct?: number;
+    costPrice?: number | null;
+    entryDate?: string | null;
+    ts_code?: string | null;
+    isMulti?: boolean;
+    marketData?: { close?: number; ma200?: number; above?: boolean; ok?: boolean; n?: number } | null;
+  }> | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

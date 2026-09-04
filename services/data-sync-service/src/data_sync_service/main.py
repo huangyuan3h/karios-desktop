@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-fo
 from .api.alpha_radar_routes import router as alpha_radar_router
 from .api.backtest_routes import router as backtest_router
 from .api.broker_routes import router as broker_router
+from .api.commodity_routes import router as commodity_router
 from .api.dashboard_routes import router as dashboard_router
 from .api.decision_routes import router as decision_router
 
@@ -117,6 +118,7 @@ app.include_router(notifications_router)
 app.include_router(backtest_router)
 app.include_router(decision_router)
 app.include_router(webhook_router)
+app.include_router(commodity_router)
 # OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
 app.include_router(v1_business_router)
 # OPT-047 Phase C: /v1/explain/{symbol}.

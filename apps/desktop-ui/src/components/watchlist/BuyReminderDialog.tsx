@@ -14,6 +14,7 @@ export type BuyReminderDialogState = {
 type BuyReminderDialogProps = {
   state: BuyReminderDialogState;
   suggestPct: number;
+  suggestLabel?: string;
   onClose: () => void;
   onConfirm: (values: { targetPrice: number | null; note: string }) => void;
 };
@@ -23,6 +24,7 @@ const PRICE_RE = /^\d+(\.\d{0,3})?$/;
 export function BuyReminderDialog({
   state,
   suggestPct,
+  suggestLabel = '建议仓位',
   onClose,
   onConfirm,
 }: BuyReminderDialogProps) {
@@ -60,7 +62,7 @@ export function BuyReminderDialog({
           </button>
         </div>
         <div className="mb-3 text-[11px] text-[var(--k-muted)]">
-          {state.name || '—'} · S-3 建议仓位 {suggestPct}%（确认后加入自选，行情/趋势/信号/体检自动盯盘）
+          {state.name || '—'} · {suggestLabel} {suggestPct}%（确认后加入自选，行情/趋势/信号/体检自动盯盘）
         </div>
         <div className="space-y-2">
           <div>

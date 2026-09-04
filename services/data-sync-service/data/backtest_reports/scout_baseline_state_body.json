@@ -1,0 +1,119 @@
+{
+ "tag": "scout-baseline-state-sgap-opt-2026-08-31",
+ "scheme": "状态分桶 (State-Bucket) S-gap 优化单态卫星",
+ "universe": "全A无池 (stock_basic delist_date IS NULL)",
+ "states": {
+  "S-gap": {
+   "signal": "缺口系>3%",
+   "factor": "amplitude 低波33% (bucket_q=3)",
+   "hold": 3,
+   "slots": 15,
+   "status": "R11 逐态寻优定案 (选参 OOS2+train, 样本外验证优)"
+  },
+  "S-limit": {
+   "signal": "涨停系",
+   "factor": "amplitude Q1 (低波尾)",
+   "hold": 3,
+   "status": "可选 (R11: 并入卫星稀释, 默认不含)"
+  },
+  "S-shrink": {
+   "signal": "缩量低波",
+   "factor": "amplitude Q1",
+   "hold": 15,
+   "status": "可选分散腿 (R11 寻优过拟合拒收, 保持原参)"
+  },
+  "S-fresh": {
+   "signal": "次新<250d",
+   "factor": "amplitude Q1",
+   "hold": 15,
+   "status": "R10 实证弃用"
+  }
+ },
+ "regime_gate": "R-wide (close>MA20 占比>0.5 才开仓)",
+ "entry": "next_open, 单边滑点0.15%, 15槽x10%, 卫星独享50%资金 (与择强核心50/50)",
+ "combine": "双子星 (Twin-Star) 卫星腿: 与择强核心 50/50 (R12 冻结)",
+ "results_sgap_opt_standalone": {
+  "OOS2": {
+   "total_pct": 228.72,
+   "cagr": 225.66,
+   "max_dd": 22.1,
+   "sharpe": 3.14
+  },
+  "train": {
+   "total_pct": 100.45,
+   "cagr": 293.15,
+   "max_dd": 7.96,
+   "sharpe": 4.65
+  },
+  "valid": {
+   "total_pct": 58.61,
+   "cagr": 182.32,
+   "max_dd": 5.94,
+   "sharpe": 4.69
+  },
+  "past_year": {
+   "total_pct": 156.44,
+   "cagr": 151.79,
+   "max_dd": 8.2,
+   "sharpe": 4.0
+  },
+  "aligned": {
+   "total_pct": 126.31,
+   "cagr": 125.64,
+   "max_dd": 13.3,
+   "sharpe": 3.31
+  },
+  "long2y": {
+   "total_pct": 364.37,
+   "cagr": 108.97,
+   "max_dd": 22.1,
+   "sharpe": 2.66
+  }
+ },
+ "results_core_satellite_blend50": {
+  "OOS2": {
+   "total_pct": 102.26,
+   "cagr": 101.14,
+   "max_dd": 18.22,
+   "sharpe": 2.88
+  },
+  "train": {
+   "total_pct": 69.5,
+   "cagr": 182.6,
+   "max_dd": 5.16,
+   "sharpe": 5.48
+  },
+  "valid": {
+   "total_pct": 99.39,
+   "cagr": 372.43,
+   "max_dd": 5.99,
+   "sharpe": 4.74
+  },
+  "past_year": {
+   "total_pct": 177.16,
+   "cagr": 171.71,
+   "max_dd": 6.41,
+   "sharpe": 3.98
+  },
+  "aligned": {
+   "total_pct": 164.88,
+   "cagr": 163.98,
+   "max_dd": 8.14,
+   "sharpe": 3.81
+  },
+  "long2y": {
+   "total_pct": 293.17,
+   "cagr": 92.93,
+   "max_dd": 18.22,
+   "sharpe": 2.77
+  }
+ },
+ "superseded": {
+  "tag": "scout-baseline-state-slice2-2026-08-31",
+  "note": "R10 slice2 (S-limit+S-gap 等权切分); R11 证明 S-gap(优化) 单态卫星全窗更优"
+ },
+ "discipline": "选参仅 OOS2+train; S-shrink 寻优 valid 崩盘拒收; corr(卫星,核心) 0.002~0.084",
+ "status": "FROZEN 2026-08-31 v2 (aligned 窗重固化: mv 修复前 132.83/168.39 系数据缺陷值)",
+ "name": "状态分桶",
+ "name_en": "State-Bucket"
+}

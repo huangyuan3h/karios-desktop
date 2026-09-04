@@ -1,0 +1,484 @@
+{
+  "tag": "sat-fill-same-close-2026-09-03",
+  "protocol": "window-local empty book; frozen clip4 sat (4×25% strict skip_t1); fill_mode next_open vs same_close (today gap, today close); frozen pick-strong core; opp_50. Close is a 14:30 proxy; do not rewrite frozen T-open. bar_5min 1430 fill is a later stub.",
+  "variants": [
+    {
+      "id": "next_open",
+      "fill_mode": "next_open",
+      "label": "T-1 S-gap → T open · frozen"
+    },
+    {
+      "id": "same_close",
+      "fill_mode": "same_close",
+      "label": "today S-gap → today close · Live habit proxy"
+    },
+    {
+      "id": "same_1430",
+      "fill_mode": "same_1430",
+      "label": "today S-gap → 14:30 print · Live habit"
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 17.8,
+        "max_dd": 18.0,
+        "sharpe": 0.72
+      },
+      "variants": {
+        "next_open": {
+          "label": "T-1 S-gap → T open · frozen",
+          "fill_mode": "next_open",
+          "sat": {
+            "n_days": 254,
+            "total_pct": 118.3,
+            "max_dd": 7.2,
+            "sharpe": 3.92
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 64.7,
+            "max_dd": 16.1,
+            "sharpe": 2.13
+          },
+          "delta_core_pt": 46.9,
+          "fillCount": 291,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 291
+          },
+          "avg_pos": 2.31,
+          "avg_pos_active": 3.6,
+          "pct_active": 64.2,
+          "avg_sat_invested": 57.7,
+          "delta_base_pt": 0.0
+        },
+        "same_close": {
+          "label": "today S-gap → today close · Live habit proxy",
+          "fill_mode": "same_close",
+          "sat": {
+            "n_days": 254,
+            "total_pct": 174.3,
+            "max_dd": 4.8,
+            "sharpe": 5.93
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 91.5,
+            "max_dd": 15.9,
+            "sharpe": 2.92
+          },
+          "delta_core_pt": 73.7,
+          "fillCount": 296,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 296
+          },
+          "avg_pos": 2.35,
+          "avg_pos_active": 3.57,
+          "pct_active": 65.7,
+          "avg_sat_invested": 58.7,
+          "delta_base_pt": 26.8
+        },
+        "same_1430": {
+          "label": "today S-gap → 14:30 print · Live habit",
+          "fill_mode": "same_1430",
+          "sat": {
+            "n_days": 254,
+            "total_pct": 100.2,
+            "max_dd": 12.3,
+            "sharpe": 3.24
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 64.9,
+            "max_dd": 16.3,
+            "sharpe": 2.16
+          },
+          "delta_core_pt": 47.1,
+          "fillCount": 290,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 290
+          },
+          "avg_pos": 2.3,
+          "avg_pos_active": 3.52,
+          "pct_active": 65.4,
+          "avg_sat_invested": 57.5,
+          "delta_base_pt": 0.2
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.7,
+        "max_dd": 8.4,
+        "sharpe": 3.01
+      },
+      "variants": {
+        "next_open": {
+          "label": "T-1 S-gap → T open · frozen",
+          "fill_mode": "next_open",
+          "sat": {
+            "n_days": 128,
+            "total_pct": 38.0,
+            "max_dd": 4.3,
+            "sharpe": 3.28
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 51.4,
+            "max_dd": 7.8,
+            "sharpe": 4.05
+          },
+          "delta_core_pt": 10.7,
+          "fillCount": 132,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 132
+          },
+          "avg_pos": 2.06,
+          "avg_pos_active": 3.72,
+          "pct_active": 55.5,
+          "avg_sat_invested": 51.6,
+          "delta_base_pt": 0.0
+        },
+        "same_close": {
+          "label": "today S-gap → today close · Live habit proxy",
+          "fill_mode": "same_close",
+          "sat": {
+            "n_days": 128,
+            "total_pct": 53.5,
+            "max_dd": 4.1,
+            "sharpe": 4.84
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 53.6,
+            "max_dd": 6.6,
+            "sharpe": 4.15
+          },
+          "delta_core_pt": 12.9,
+          "fillCount": 132,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 132
+          },
+          "avg_pos": 2.06,
+          "avg_pos_active": 3.67,
+          "pct_active": 56.2,
+          "avg_sat_invested": 51.6,
+          "delta_base_pt": 2.2
+        },
+        "same_1430": {
+          "label": "today S-gap → 14:30 print · Live habit",
+          "fill_mode": "same_1430",
+          "sat": {
+            "n_days": 128,
+            "total_pct": 22.5,
+            "max_dd": 11.4,
+            "sharpe": 1.93
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 37.4,
+            "max_dd": 7.3,
+            "sharpe": 2.96
+          },
+          "delta_core_pt": -3.3,
+          "fillCount": 132,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 132
+          },
+          "avg_pos": 2.06,
+          "avg_pos_active": 3.67,
+          "pct_active": 56.2,
+          "avg_sat_invested": 51.6,
+          "delta_base_pt": -14.0
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 139.1,
+        "max_dd": 11.9,
+        "sharpe": 3.37
+      },
+      "variants": {
+        "next_open": {
+          "label": "T-1 S-gap → T open · frozen",
+          "fill_mode": "next_open",
+          "sat": {
+            "n_days": 112,
+            "total_pct": 14.5,
+            "max_dd": 6.2,
+            "sharpe": 1.69
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 157.2,
+            "max_dd": 11.9,
+            "sharpe": 3.71
+          },
+          "delta_core_pt": 18.1,
+          "fillCount": 56,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 56
+          },
+          "avg_pos": 1.06,
+          "avg_pos_active": 3.61,
+          "pct_active": 29.5,
+          "avg_sat_invested": 26.6,
+          "delta_base_pt": 0.0
+        },
+        "same_close": {
+          "label": "today S-gap → today close · Live habit proxy",
+          "fill_mode": "same_close",
+          "sat": {
+            "n_days": 112,
+            "total_pct": 8.8,
+            "max_dd": 6.7,
+            "sharpe": 1.52
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 139.5,
+            "max_dd": 11.9,
+            "sharpe": 3.55
+          },
+          "delta_core_pt": 0.4,
+          "fillCount": 60,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 60
+          },
+          "avg_pos": 1.14,
+          "avg_pos_active": 3.66,
+          "pct_active": 31.2,
+          "avg_sat_invested": 28.6,
+          "delta_base_pt": -17.7
+        },
+        "same_1430": {
+          "label": "today S-gap → 14:30 print · Live habit",
+          "fill_mode": "same_1430",
+          "sat": {
+            "n_days": 112,
+            "total_pct": -1.4,
+            "max_dd": 10.6,
+            "sharpe": -0.12
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 128.2,
+            "max_dd": 11.9,
+            "sharpe": 3.36
+          },
+          "delta_core_pt": -10.9,
+          "fillCount": 60,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 60
+          },
+          "avg_pos": 1.14,
+          "avg_pos_active": 3.66,
+          "pct_active": 31.2,
+          "avg_sat_invested": 28.6,
+          "delta_base_pt": -29.0
+        }
+      }
+    },
+    "past_year": {
+      "core": {
+        "n_days": 257,
+        "total_pct": 181.2,
+        "max_dd": 12.6,
+        "sharpe": 2.43
+      },
+      "variants": {
+        "next_open": {
+          "label": "T-1 S-gap → T open · frozen",
+          "fill_mode": "next_open",
+          "sat": {
+            "n_days": 257,
+            "total_pct": 51.7,
+            "max_dd": 4.7,
+            "sharpe": 2.42
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 195.9,
+            "max_dd": 12.6,
+            "sharpe": 2.62
+          },
+          "delta_core_pt": 14.7,
+          "fillCount": 200,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 200
+          },
+          "avg_pos": 1.58,
+          "avg_pos_active": 3.63,
+          "pct_active": 43.6,
+          "avg_sat_invested": 39.6,
+          "delta_base_pt": 0.0
+        },
+        "same_close": {
+          "label": "today S-gap → today close · Live habit proxy",
+          "fill_mode": "same_close",
+          "sat": {
+            "n_days": 257,
+            "total_pct": 63.2,
+            "max_dd": 4.5,
+            "sharpe": 3.47
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 187.2,
+            "max_dd": 12.6,
+            "sharpe": 2.57
+          },
+          "delta_core_pt": 6.0,
+          "fillCount": 204,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 204
+          },
+          "avg_pos": 1.62,
+          "avg_pos_active": 3.62,
+          "pct_active": 44.7,
+          "avg_sat_invested": 40.5,
+          "delta_base_pt": -8.7
+        },
+        "same_1430": {
+          "label": "today S-gap → 14:30 print · Live habit",
+          "fill_mode": "same_1430",
+          "sat": {
+            "n_days": 257,
+            "total_pct": 20.3,
+            "max_dd": 11.4,
+            "sharpe": 1.1
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 146.9,
+            "max_dd": 12.6,
+            "sharpe": 2.21
+          },
+          "delta_core_pt": -34.3,
+          "fillCount": 204,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 204
+          },
+          "avg_pos": 1.62,
+          "avg_pos_active": 3.62,
+          "pct_active": 44.7,
+          "avg_sat_invested": 40.5,
+          "delta_base_pt": -49.0
+        }
+      }
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "variants": {
+        "next_open": {
+          "label": "T-1 S-gap → T open · frozen",
+          "fill_mode": "next_open",
+          "sat": {
+            "n_days": 253,
+            "total_pct": 34.5,
+            "max_dd": 8.7,
+            "sharpe": 1.6
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 194.9,
+            "max_dd": 12.6,
+            "sharpe": 2.64
+          },
+          "delta_core_pt": 4.3,
+          "fillCount": 188,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 188
+          },
+          "avg_pos": 1.52,
+          "avg_pos_active": 3.59,
+          "pct_active": 42.3,
+          "avg_sat_invested": 37.9,
+          "delta_base_pt": 0.0
+        },
+        "same_close": {
+          "label": "today S-gap → today close · Live habit proxy",
+          "fill_mode": "same_close",
+          "sat": {
+            "n_days": 253,
+            "total_pct": 58.4,
+            "max_dd": 5.1,
+            "sharpe": 3.3
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 199.3,
+            "max_dd": 12.6,
+            "sharpe": 2.7
+          },
+          "delta_core_pt": 8.7,
+          "fillCount": 192,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 192
+          },
+          "avg_pos": 1.55,
+          "avg_pos_active": 3.56,
+          "pct_active": 43.5,
+          "avg_sat_invested": 38.7,
+          "delta_base_pt": 4.4
+        },
+        "same_1430": {
+          "label": "today S-gap → 14:30 print · Live habit",
+          "fill_mode": "same_1430",
+          "sat": {
+            "n_days": 253,
+            "total_pct": 26.8,
+            "max_dd": 9.6,
+            "sharpe": 1.54
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 167.9,
+            "max_dd": 12.6,
+            "sharpe": 2.43
+          },
+          "delta_core_pt": -22.7,
+          "fillCount": 192,
+          "avgHeldDays": 3.0,
+          "closeReasons": {
+            "body_exit": 192
+          },
+          "avg_pos": 1.55,
+          "avg_pos_active": 3.56,
+          "pct_active": 43.5,
+          "avg_sat_invested": 38.7,
+          "delta_base_pt": -27.0
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "next_open": "baseline",
+    "same_close": "REJECT/beats_core",
+    "same_1430": "REJECT/loses_core"
+  },
+  "as_of": "2026-09-03T12:14:18+00:00"
+}

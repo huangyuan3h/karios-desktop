@@ -25,6 +25,39 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "thresholdMinutes": 24 * 60,
     },
     {
+        "source": "daily_basic",
+        "weekendTolerant": True,
+        "group": "twin_star",
+        "label": "双子星 · 市值 dailybasic",
+        "jobType": "stock_daily_basic_sync",
+        "table": "stock_dailybasic",
+        "tableTsColumn": "trade_date",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        # Keep ts_code list in sync with etf_daily.SLEEVE_ETF_TS_CODES.
+        "source": "twin_star_etf",
+        "weekendTolerant": True,
+        "group": "twin_star",
+        "label": "双子星 · 核心ETF日线",
+        "jobType": "sleeve_etf_daily_sync",
+        "table": "daily",
+        "tableTsColumn": "trade_date",
+        "whereSql": "ts_code IN ('518880.SH','513350.SH','513110.SH','513100.SH','511260.SH')",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "twin_star_intraday",
+        "weekendTolerant": True,
+        "group": "twin_star",
+        "label": "双子星 · 盘中快照",
+        "jobType": "twin_star_intraday",
+        "table": None,
+        "tableTsColumn": None,
+        "resolver": "intraday_snapshot",
+        "thresholdMinutes": 20,
+    },
+    {
         "source": "news",
         "label": "新闻",
         "jobType": "news_fetch_job",
@@ -178,11 +211,14 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def datasource_freshness() -> list[dict[str, Any]]:
     now = datetime.now(UTC)
-    # Weekend (Shanghai) has no new data until Monday's close; relax the
-    # thresholds so the alert does not cry wolf every Saturday/Sunday.
-    weekend_extra_hours = 48 if _is_shanghai_weekend(now) else 0
+    # Non-trading days have no new data until the next close; relax the
+    # thresholds so the alert does not cry wolf on weekends/holidays.
+    weekend_extra_hours = _relax_extra_hours(now)
     sources: list[dict[str, Any]] = []
     for spec in _SOURCES:
+        if spec.get("resolver") == "intraday_snapshot":
+            sources.append(_intraday_snapshot_source(spec))
+            continue
         job_at = _job_last_success(spec["jobType"])
         table_at = _last_table_timestamp(
             spec.get("table"),
@@ -208,6 +244,7 @@ def datasource_freshness() -> list[dict[str, Any]]:
             {
                 "source": spec["source"],
                 "label": spec["label"],
+                "group": spec.get("group"),
                 "lastSyncedAt": candidate,
                 "ageMinutes": age_minutes,
                 "thresholdMinutes": threshold,
@@ -217,12 +254,72 @@ def datasource_freshness() -> list[dict[str, Any]]:
     return sources
 
 
+def _intraday_snapshot_source(spec: dict[str, Any]) -> dict[str, Any]:
+    """East Money session file: stale only after 12:30 on a trading day."""
+    from data_sync_service.service.twin_star_intraday import intraday_snapshot_status
+
+    try:
+        status = intraday_snapshot_status()
+    except Exception:  # noqa: BLE001
+        status = {
+            "ok": True,
+            "snapshotAt": None,
+            "ageSeconds": None,
+        }
+    age_sec = status.get("ageSeconds")
+    return {
+        "source": spec["source"],
+        "label": spec["label"],
+        "group": spec.get("group"),
+        "lastSyncedAt": status.get("snapshotAt"),
+        "ageMinutes": int(age_sec / 60) if isinstance(age_sec, (int, float)) else None,
+        "thresholdMinutes": spec["thresholdMinutes"],
+        "stale": not bool(status.get("ok", True)),
+    }
+
+
 def _is_shanghai_weekend(now: datetime) -> bool:
-    """True when it is a Saturday/Sunday in Asia/Shanghai."""
+    """True on Sat/Sun OR a calendar non-trading day (holiday-aware freshness relax)."""
     from datetime import timedelta, timezone
 
+    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
+
     sh = now.astimezone(timezone(timedelta(hours=8)))
-    return sh.weekday() >= 5
+    if sh.weekday() >= 5:
+        return True
+    return is_non_trading_day(sh.date())
+
+
+def _relax_extra_hours(now: datetime) -> int:
+    """Freshness threshold relaxation for non-trading streaks.
+
+    Weekend Sat+Sun → 48h (legacy behavior). Longer holidays (国庆/春节)
+    scale 24h per consecutive non-trading day, capped at 10 days — one
+    calendar query, computed locally. Falls back to the weekend rule when
+    the calendar is unreadable.
+    """
+    from datetime import timedelta, timezone
+
+    try:
+        from data_sync_service.db.trade_calendar import get_open_dates
+
+        sh = now.astimezone(timezone(timedelta(hours=8))).date()
+        start = sh - timedelta(days=14)
+        opens = set(get_open_dates(exchange="SSE", start_date=start, end_date=sh))
+        if not opens:
+            # Unseeded calendar: legacy Mon–Fri fallback.
+            return 48 if sh.weekday() >= 5 else 0
+        streak = 0
+        d = sh
+        while d not in opens and streak < 10:
+            streak += 1
+            d -= timedelta(days=1)
+        if streak:
+            # Weekend floor stays 48h (legacy); longer holiday streaks scale.
+            return 24 * max(streak, 2)
+    except Exception:  # noqa: BLE001
+        pass
+    return 48 if _is_shanghai_weekend(now) else 0
 
 
 def recent_job_failures(hours: int = 24) -> dict[str, Any]:
@@ -262,6 +359,21 @@ def recent_job_failures(hours: int = 24) -> dict[str, Any]:
 def job_failures_endpoint(hours: int = 24) -> dict[str, Any]:
     """Recent sync job failures (last 24h by default) — surfaced for desktop alerts."""
     return recent_job_failures(hours=hours)
+
+
+@router.get("/system-events")
+def system_events_endpoint(limit: int = 100, include_resolved: bool = False) -> dict[str, Any]:
+    from data_sync_service.db.system_events import list_events
+
+    return {"ok": True, "events": list_events(limit=limit, include_resolved=include_resolved)}
+
+
+@router.post("/system-events/{event_id}/resolve")
+def system_events_resolve(event_id: int) -> dict[str, Any]:
+    from data_sync_service.db.system_events import resolve_event
+
+    ok = resolve_event(event_id)
+    return {"ok": ok}
 
 
 @router.get("/datasources")

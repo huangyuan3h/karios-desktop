@@ -157,7 +157,8 @@ def test_reconcile_registry_extra_kinds(monkeypatch) -> None:
     )
     with patch.object(recon, "simulate", return_value=_fake_run_reg()), \
          patch.object(recon, "BacktestData", return_value=None):
-        out = recon.reconcile_registry("2026-08-07")
+        # single_track locks the legacy all-S-3 behavior (no leg split).
+        out = recon.reconcile_registry("2026-08-07", mode="single_track")
     m = out["markets"]["CN"]
     assert m["expected"] == 1
     assert m["actual"] == 3

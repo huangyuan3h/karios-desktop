@@ -24,10 +24,12 @@
   - 后端 `trading_brief.py` — 每日简报新增 `第三资产套筒` section（paper 书口径）；`execution_card` webhook payload 带 `thirdAssetSleeve`（仅可操作动作）→ `webhook_format.py` Bark 推送渲染；`notifications.py` 聚合通知新增 `third_asset` 项（实盘口径，仅 BUY/SELL 推，**DONT_BUY 不推**）
   - ai-service 决策 agent 的持仓体检输出注入套筒提示
   - 测试：后端 `test_third_asset_sleeve.py` 12 用例 + trading_brief 3 + notifications 3 + webhook_format 2 + 前端 banner 6 用例；全量后端 3459 + 前端 800 通过
-- **已落地 2026-08-21（OPT-119 · 回测/验证层）**：组合 NAV 模拟器 `service/portfolio_nav_sim.py`（闲置吃 513100/GC001，逐日复利，基线=闲置0%）+ `scripts/sleeve_nav_sim.py` 三窗验证 + `GET /api/backtest/sleeve-nav` + 回测页 `SleeveNavCard`。**落地实测三窗（当前引擎口径）：OOS2 +2.8 / train +23.1 / valid +30.4pt 全正**（设计稿探索 +3.1/+15.3/+39.0 为旧引擎口径，方向一致）；注意 valid 套筒 DD 13.7% > 基线 5.7%（高闲置 × 513100 波动传导）——"maxDD 略降"结论在现引擎下不再成立，如实展示。切换语义：当天切出（破线当日转 repo）经实测优于次日切出（valid +30.4 vs +14.0）。
+- **已落地 2026-08-21（OPT-119 · 回测/验证层）**：组合 NAV 模拟器 `service/portfolio_nav_sim.py` + `scripts/sleeve_nav_sim.py` + `GET /api/backtest/sleeve-nav` + 回测页 `SleeveNavCard`。
+- **2026-08-29 P0 修正**：基线改为引擎 `nav_curve`（现金+MTM），不再用固定权重日收益复利。现行三窗增量 **+3.1 / +8.4 / +22.3pt**（基线 47.3/34.1/38.7）；设计稿探索期 +3.1/+15.3/+39.0 与 OPT-119 旧引擎数仅作方向参考。
 - **未落地（待拍板）**：paper 层自动配置（自动买卖 513100 进 paper 书）、`allocation.py` 资金池扩展、`run_walk_forward_dual` 三窗验收、"20d 回撤>10% 硬切出"兜底变体
 - **已落地 2026-08-21（OPT-120 · 执行层）**：paper 书套筒自动配置 `service/sleeve_paper_auto.py`（BUY_513100 开仓 / SELL_TO_REPO·SELL_TO_A_SHARE 平仓，close_reason=`sleeve_exit`，幂等）+ `scheduler/sleeve_paper_job.py`（工作日 18:20）+ `allocation.py` 三元资金池扩展（双市场皆弱时闲置池进套筒，`weights_with_sleeve`）。
-- **已落地 2026-08-21（OPT-121 · dual 联合三窗验收）**：`run_walk_forward_dual.py` 加 R5CS 规则——R5C 选中市场的内部闲置吃套筒（复用 OPT-119 套筒 NAV），三窗 +10.8/+17.0/+30.9pt 全正；顺带修复 R5A/B/C 被无条件 momentum softmax 覆盖的既有 bug（R5C 现在才是真 CN-first）。剩余："20d 回撤>10% 硬切出"变体、R3 规则补实现或废弃。
+- **已落地 2026-08-21（OPT-121 · dual 联合三窗验收）**：`run_walk_forward_dual.py` R5CS。
+  **2026-08-29 引擎 NAV 重跑**：R5CS vs R5C **+3.3 / +8.4 / +13.5pt**（旧 +10.8/+17.0/+30.9 为乐观口径，作废）。
 
 ---
 

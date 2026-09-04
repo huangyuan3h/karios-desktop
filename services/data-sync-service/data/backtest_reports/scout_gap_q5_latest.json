@@ -1,0 +1,89 @@
+{
+  "generated_at": "2026-08-30T09:13:53.628230+00:00",
+  "factor": "gap",
+  "quintile": "Q5",
+  "holds": [
+    5,
+    10
+  ],
+  "results": {
+    "OOS2": {
+      "h5": {
+        "window": "OOS2",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 578,
+        "win_rate": 0.39273356401384085,
+        "avg_net": -0.9657657385284713,
+        "total_pnl": -55.82125968694568,
+        "max_dd": 70.79511712722689,
+        "sharpe": -0.49390759881526164
+      },
+      "h10": {
+        "window": "OOS2",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 270,
+        "win_rate": 0.34444444444444444,
+        "avg_net": 0.7877851432718525,
+        "total_pnl": 21.270198868340007,
+        "max_dd": 41.023220863582175,
+        "sharpe": 0.6577641415438582
+      }
+    },
+    "train": {
+      "h5": {
+        "window": "train",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 299,
+        "win_rate": 0.4816053511705686,
+        "avg_net": 1.4523937425706235,
+        "total_pnl": 43.426572902861636,
+        "max_dd": 19.45188447921162,
+        "sharpe": 1.8401873767339092
+      },
+      "h10": {
+        "window": "train",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 128,
+        "win_rate": 0.328125,
+        "avg_net": -0.6575957953239387,
+        "total_pnl": -8.417226180146415,
+        "max_dd": 26.306684778436228,
+        "sharpe": -0.1072528895875144
+      }
+    },
+    "valid": {
+      "h5": {
+        "window": "valid",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 280,
+        "win_rate": 0.4392857142857143,
+        "avg_net": 0.7238789311054774,
+        "total_pnl": 20.26861007095338,
+        "max_dd": 18.56860084335702,
+        "sharpe": 1.1649239983678952
+      },
+      "h10": {
+        "window": "valid",
+        "factor": "gap",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 129,
+        "win_rate": 0.43410852713178294,
+        "avg_net": -0.41056955398116307,
+        "total_pnl": -5.29634724635701,
+        "max_dd": 26.967884425348572,
+        "sharpe": -0.06968538455233589
+      }
+    }
+  }
+}

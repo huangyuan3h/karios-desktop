@@ -1,0 +1,313 @@
+{
+  "tag": "sat-bucketq-2026-09-04",
+  "protocol": "window-local empty book; clip4 C1 3% same_1430 fill; body=3; day-3 1430 exit; frozen pick-strong trail8; opp_50. Variants differ ONLY in bucket_q (top-1/2 vs top-1/3). Select on OOS2+train; valid only validates. Score tot+Sharpe+maxDD vs core and vs base. Do not rewrite Live.",
+  "variants": [
+    {
+      "id": "bq2",
+      "label": "bucket top-1/2 · wider",
+      "bucket_q": 2
+    },
+    {
+      "id": "bq3",
+      "label": "bucket top-1/3 (Live)",
+      "bucket_q": 3
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 17.8,
+        "max_dd": 18.0,
+        "sharpe": 0.72
+      },
+      "variants": {
+        "bq2": {
+          "label": "bucket top-1/2 · wider",
+          "bucket_q": 2,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 177.6,
+            "max_dd": 5.7,
+            "sharpe": 5.23
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 92.7,
+            "max_dd": 16.6,
+            "sharpe": 2.84
+          },
+          "delta_core_pt": 74.9,
+          "delta_core_sharpe": 2.12,
+          "delta_core_dd": -1.4,
+          "fillCount": 298,
+          "skipC1Count": 917,
+          "delta_base_pt": -1.4,
+          "delta_base_sharpe": -0.1,
+          "delta_base_dd": 0.5
+        },
+        "bq3": {
+          "label": "bucket top-1/3 (Live)",
+          "bucket_q": 3,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 177.8,
+            "max_dd": 4.6,
+            "sharpe": 5.63
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 94.1,
+            "max_dd": 16.1,
+            "sharpe": 2.94
+          },
+          "delta_core_pt": 76.3,
+          "delta_core_sharpe": 2.22,
+          "delta_core_dd": -1.9,
+          "fillCount": 288,
+          "skipC1Count": 527,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.7,
+        "max_dd": 8.4,
+        "sharpe": 3.01
+      },
+      "variants": {
+        "bq2": {
+          "label": "bucket top-1/2 · wider",
+          "bucket_q": 2,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 49.1,
+            "max_dd": 3.6,
+            "sharpe": 4.56
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 52.9,
+            "max_dd": 5.7,
+            "sharpe": 4.12
+          },
+          "delta_core_pt": 12.2,
+          "delta_core_sharpe": 1.11,
+          "delta_core_dd": -2.7,
+          "fillCount": 132,
+          "skipC1Count": 162,
+          "delta_base_pt": -2.3,
+          "delta_base_sharpe": -0.41,
+          "delta_base_dd": 0.0
+        },
+        "bq3": {
+          "label": "bucket top-1/3 (Live)",
+          "bucket_q": 3,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 47.9,
+            "max_dd": 3.6,
+            "sharpe": 4.43
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 55.2,
+            "max_dd": 5.7,
+            "sharpe": 4.53
+          },
+          "delta_core_pt": 14.5,
+          "delta_core_sharpe": 1.52,
+          "delta_core_dd": -2.7,
+          "fillCount": 132,
+          "skipC1Count": 81,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 139.1,
+        "max_dd": 11.9,
+        "sharpe": 3.37
+      },
+      "variants": {
+        "bq2": {
+          "label": "bucket top-1/2 · wider",
+          "bucket_q": 2,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 10.8,
+            "max_dd": 8.2,
+            "sharpe": 1.52
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 141.8,
+            "max_dd": 11.9,
+            "sharpe": 3.58
+          },
+          "delta_core_pt": 2.7,
+          "delta_core_sharpe": 0.21,
+          "delta_core_dd": 0.0,
+          "fillCount": 60,
+          "skipC1Count": 113,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "bq3": {
+          "label": "bucket top-1/3 (Live)",
+          "bucket_q": 3,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 10.8,
+            "max_dd": 8.2,
+            "sharpe": 1.52
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 141.8,
+            "max_dd": 11.9,
+            "sharpe": 3.58
+          },
+          "delta_core_pt": 2.7,
+          "delta_core_sharpe": 0.21,
+          "delta_core_dd": 0.0,
+          "fillCount": 60,
+          "skipC1Count": 57,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "past_year": {
+      "core": {
+        "n_days": 257,
+        "total_pct": 181.2,
+        "max_dd": 12.6,
+        "sharpe": 2.43
+      },
+      "variants": {
+        "bq2": {
+          "label": "bucket top-1/2 · wider",
+          "bucket_q": 2,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 61.2,
+            "max_dd": 5.7,
+            "sharpe": 3.26
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 188.5,
+            "max_dd": 12.6,
+            "sharpe": 2.58
+          },
+          "delta_core_pt": 7.3,
+          "delta_core_sharpe": 0.15,
+          "delta_core_dd": 0.0,
+          "fillCount": 204,
+          "skipC1Count": 294,
+          "delta_base_pt": -4.4,
+          "delta_base_sharpe": -0.05,
+          "delta_base_dd": 0.0
+        },
+        "bq3": {
+          "label": "bucket top-1/3 (Live)",
+          "bucket_q": 3,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 60.0,
+            "max_dd": 5.7,
+            "sharpe": 3.19
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 192.9,
+            "max_dd": 12.6,
+            "sharpe": 2.63
+          },
+          "delta_core_pt": 11.7,
+          "delta_core_sharpe": 0.2,
+          "delta_core_dd": 0.0,
+          "fillCount": 204,
+          "skipC1Count": 145,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "variants": {
+        "bq2": {
+          "label": "bucket top-1/2 · wider",
+          "bucket_q": 2,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 54.0,
+            "max_dd": 5.8,
+            "sharpe": 2.88
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 198.2,
+            "max_dd": 12.6,
+            "sharpe": 2.69
+          },
+          "delta_core_pt": 7.6,
+          "delta_core_sharpe": 0.15,
+          "delta_core_dd": 0.0,
+          "fillCount": 192,
+          "skipC1Count": 268,
+          "delta_base_pt": -4.5,
+          "delta_base_sharpe": -0.05,
+          "delta_base_dd": 0.0
+        },
+        "bq3": {
+          "label": "bucket top-1/3 (Live)",
+          "bucket_q": 3,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 52.8,
+            "max_dd": 5.8,
+            "sharpe": 2.81
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 202.7,
+            "max_dd": 12.6,
+            "sharpe": 2.74
+          },
+          "delta_core_pt": 12.1,
+          "delta_core_sharpe": 0.2,
+          "delta_core_dd": 0.0,
+          "fillCount": 192,
+          "skipC1Count": 130,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "bq2": "PASS/worse_sharpe+worse_dd/beats_core",
+    "bq3": "baseline/beats_core"
+  },
+  "as_of": "2026-09-03T22:44:26+00:00"
+}

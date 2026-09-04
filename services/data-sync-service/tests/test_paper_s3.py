@@ -268,9 +268,22 @@ def test_build_s3_candidates_blocks_held_and_open() -> None:
 
 
 def test_run_intake_s3_inserts_with_s3_source() -> None:
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": 10.6,
+        "pending_open_fill": False,
+        "signal_snapshot": {
+            "entryMode": "next_open",
+            "signalDate": "2026-08-07",
+            "pendingOpenFill": False,
+        },
+    }
     with _patch_day_gates(), patch.object(
         paper_s3, "_lookup_stock_basic", return_value=({"600001.SH": "测试A"}, {})
-    ), patch.object(paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}):
+    ), patch.object(paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}), patch(
+        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+        return_value=fill,
+    ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         inserted: list[dict] = []
 
@@ -286,14 +299,25 @@ def test_run_intake_s3_inserts_with_s3_source() -> None:
     assert row["side"] == "BUY"
     assert row["source"] == "S3"
     assert row["score_at_entry"] == 90.0
-    assert row["entry_price"] == 10.5
+    assert row["entry_date"] == "2026-08-08"
+    assert row["entry_price"] == 10.6
     assert row["sleeve_pct"] == paper_s3.S3_POSITION_PCT
     assert "S-3" in row["why_at_entry"]
+    assert row["signal_snapshot"]["entryMode"] == "next_open"
 
 
 def test_run_intake_s3_idempotent_duplicate() -> None:
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": 10.6,
+        "pending_open_fill": False,
+        "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
+    }
     with _patch_day_gates(), patch.object(
         paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch(
+        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+        return_value=fill,
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         with patch.object(paper_s3, "insert_paper_trade", return_value=None):
@@ -544,11 +568,20 @@ def test_run_intake_s3_zero_allocation_skips_new_positions() -> None:
 
 def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
     """T4: sleeve = 10% * week weight (here 0.4 → 4%)."""
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": 10.6,
+        "pending_open_fill": False,
+        "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
+    }
     with _patch_day_gates(), patch(
         "data_sync_service.service.allocation.week_weights",
         return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.4, "w_hk": 1.0}},
     ), patch.object(
         paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch(
+        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+        return_value=fill,
     ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
@@ -560,6 +593,12 @@ def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
 
 def test_run_intake_s3_sleeve_env_scaled_uptrend_day() -> None:
     """D3: uptrend day → sleeve 10% * 1.25 = 12.5%."""
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": 10.6,
+        "pending_open_fill": False,
+        "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
+    }
     with _patch_day_gates(), patch.object(
         paper_s3, "get_cn_sentiment",
         return_value={"items": [{"riskMode": "hot", "upCount": 300, "downCount": 100,
@@ -568,6 +607,9 @@ def test_run_intake_s3_sleeve_env_scaled_uptrend_day() -> None:
         paper_s3, "_ret5_for", return_value=10.0,
     ), patch.object(
         paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch(
+        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+        return_value=fill,
     ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
@@ -578,6 +620,12 @@ def test_run_intake_s3_sleeve_env_scaled_uptrend_day() -> None:
 
 def test_run_intake_s3_sleeve_env_scaled_fan_day() -> None:
     """D3: fan day → sleeve 10% * 0.75 = 7.5%."""
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": 10.6,
+        "pending_open_fill": False,
+        "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
+    }
     with _patch_day_gates(), patch.object(
         paper_s3, "get_cn_sentiment",
         return_value={"items": [{"riskMode": "normal", "upCount": 100, "downCount": 100,
@@ -586,6 +634,9 @@ def test_run_intake_s3_sleeve_env_scaled_fan_day() -> None:
         paper_s3, "_ret5_for", return_value=-5.0,
     ), patch.object(
         paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch(
+        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+        return_value=fill,
     ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")

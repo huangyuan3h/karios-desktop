@@ -77,19 +77,70 @@ def insert_record(
             )
         conn.commit()
     if not success:
-        # E1 (webhook design §2): job failures become push events (deduped
-        # per job per day). Local import keeps db-layer independence.
+        from data_sync_service.db.system_events import insert_event, severity_for_job
         from data_sync_service.db.webhook import emit_event
 
-        emit_event(
-            "job_failed",
-            {
-                "job_type": job_type,
-                "error": error_message or "unknown error",
-                "last_ts_code": last_ts_code,
-            },
-            dedupe_key=f"job_failed:{job_type}:{datetime.now(UTC).date().isoformat()}",
+        sev = severity_for_job(job_type)
+        dedupe = f"job_failed:{job_type}:{datetime.now(UTC).date().isoformat()}"
+        insert_event(
+            event_type="job_failed",
+            severity=sev,
+            title=f"任务失败 · {job_type}",
+            detail=(error_message or "unknown error")[:500],
+            payload={"job_type": job_type, "error": error_message or "unknown error", "last_ts_code": last_ts_code},
+            dedupe_key=dedupe,
         )
+        # OPT-144: peripheral (low-severity) jobs don't page the phone on a
+        # single failure — every failure is still in system_events + the hub
+        # digest. A 3-streak (or any high-severity failure) emits.
+        streak = consec_failures(job_type) if sev != "high" else 1
+        if sev == "high" or streak >= _PERIPHERAL_STREAK_EMIT:
+            emit_event(
+                "job_failed",
+                {
+                    "job_type": job_type,
+                    "error": error_message or "unknown error",
+                    "last_ts_code": last_ts_code,
+                    "streak": streak,
+                },
+                dedupe_key=dedupe,
+            )
+
+
+_PERIPHERAL_STREAK_EMIT = 3
+
+
+def consec_failures(job_type: str, *, limit: int = 10) -> int:
+    """Trailing consecutive-failure count for job_type (newest first).
+
+    Counts failure rows back to (excluding) the latest success, capped at
+    ``limit``. Used by OPT-144 to page peripheral jobs only on a streak.
+    Never raises (0 on error).
+    """
+    try:
+        ensure_table()
+        lim = max(1, min(int(limit), 30))
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT success FROM {TABLE_NAME}
+                    WHERE job_type = %s
+                    ORDER BY sync_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (job_type, lim),
+                )
+                rows = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return 0
+    streak = 0
+    for r in rows:
+        ok = r[0] if not isinstance(r, dict) else r.get("success")
+        if ok:
+            break
+        streak += 1
+    return streak
 
 
 def get_last_success(job_type: str) -> dict[str, Any] | None:

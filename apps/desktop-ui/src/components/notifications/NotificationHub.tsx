@@ -10,6 +10,7 @@ import {
   type NotificationItem,
 } from '@/lib/queries/notifications';
 import { loadBuyReminders, BUY_REMINDERS_UPDATED_EVENT } from '@/lib/buy-reminders';
+import { groupNotifications, NOTIFICATION_LANE_META } from '@/lib/notification-lanes';
 
 const SEEN_KEY = 'karios_notifications_seen';
 const TOAST_MS = 6000;
@@ -165,9 +166,12 @@ export function NotificationHub() {
       `${r.symbol}${r.targetPrice != null ? ` · 目标价 ${r.targetPrice}` : ''}${r.note ? ` · ${r.note}` : ''}`,
     anchor: 'reminders',
     createdAt: r.createdAt,
+    lane: 'trade',
+    book: 'user',
   }));
 
   const allItems = [...items, ...localItems];
+  const grouped = groupNotifications(allItems);
   const unread = allItems.filter((n) => !seen.has(n.id)).length;
 
   React.useEffect(() => {
@@ -233,10 +237,20 @@ export function NotificationHub() {
             <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
               {allItems.length === 0 ? (
                 <div className="px-2 py-4 text-center text-[11px] text-[var(--k-muted)]">
-                  暂无提醒（买入提醒/接近止损/回测缺票/cron 失败会出现在这里）
+                  暂无提醒（今日交易 / 系统失败 / 策略体检会出现在这里）
                 </div>
               ) : (
-                allItems.map((n) => <NotificationRow key={n.id} n={n} onClick={handleClick} />)
+                grouped.map((g) => (
+                  <div key={g.lane} className="mb-1">
+                    <div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--k-muted)]">
+                      {NOTIFICATION_LANE_META[g.lane].label}
+                      <span className="ml-1 font-normal normal-case">· {NOTIFICATION_LANE_META[g.lane].hint}</span>
+                    </div>
+                    {g.items.map((n) => (
+                      <NotificationRow key={n.id} n={n} onClick={handleClick} />
+                    ))}
+                  </div>
+                ))
               )}
             </div>
           </div>

@@ -21,20 +21,32 @@ export function ThirdAssetSleeveBanner() {
     refetchInterval: 5 * 60_000,
   });
 
-  const sleeve = React.useMemo(
-    () => (q.data as PortfolioHealthResponse | undefined)?.thirdAssetSleeve ?? null,
+  const multi = React.useMemo(
+    () => (q.data as PortfolioHealthResponse | undefined)?.multiAssetSleeve ?? null,
     [q.data],
   );
+  // Prefer multi-asset 择强单轨 only — do not fall back to T6 thirdAsset as「择强」.
+  const sleeve = multi?.active && multi.action !== 'NONE' ? multi : null;
 
   if (!sleeve?.active || !sleeve.action || sleeve.action === 'NONE') {
     return null;
   }
 
+  const pick = (sleeve as unknown as { pick?: { close?: number; ma200?: number; symbol?: string; key?: string; mom60?: number } }).pick;
   const details = [
-    sleeve.price != null ? `现价 ${sleeve.price}` : null,
-    sleeve.ma200 != null ? `MA200 ${sleeve.ma200}` : null,
+    (sleeve as unknown as { price?: number }).price != null
+      ? `现价 ${(sleeve as unknown as { price?: number }).price}`
+      : pick?.close != null
+        ? `现价 ${pick.close}`
+        : null,
+    (sleeve as unknown as { ma200?: number }).ma200 != null
+      ? `MA200 ${(sleeve as unknown as { ma200?: number }).ma200}`
+      : pick?.ma200 != null
+        ? `MA200 ${pick.ma200}`
+        : null,
     sleeve.idlePct != null ? `闲置 ${sleeve.idlePct}%` : null,
-    sleeve.asOfDate ? `asOf ${sleeve.asOfDate}` : null,
+    (sleeve as unknown as { asOfDate?: string }).asOfDate ? `asOf ${(sleeve as unknown as { asOfDate?: string }).asOfDate}` : null,
+    pick?.mom60 != null ? `mom60 ${pick.mom60}%` : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -42,6 +54,9 @@ export function ThirdAssetSleeveBanner() {
   const styles: Record<string, string> = {
     BUY_513100:
       'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200',
+    BUY: 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200',
+    ROTATE: 'border-purple-500/40 bg-purple-500/10 text-purple-800 dark:text-purple-200',
+    HOLD: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
     SELL_TO_A_SHARE:
       'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200',
     SELL_TO_REPO:
@@ -51,15 +66,21 @@ export function ThirdAssetSleeveBanner() {
   };
   const icons: Record<string, string> = {
     BUY_513100: '💼',
+    BUY: '💼',
+    ROTATE: '🔄',
+    HOLD: '✅',
     SELL_TO_A_SHARE: '🔔',
     SELL_TO_REPO: '⚠️',
     DONT_BUY: '⏸',
   };
 
+  const etfLabel = pick?.symbol ?? (sleeve as unknown as { etf?: string }).etf ?? '择强';
+  const titlePrefix = '择强单轨';
+
   return (
     <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles[sleeve.action] ?? styles.DONT_BUY}`}>
       <div className="font-medium">
-        {icons[sleeve.action] ?? '💼'} 第三资产套筒（{sleeve.etf ?? sleeve.tsCode ?? '513100'}）· {sleeve.label ?? sleeve.action}
+        {icons[sleeve.action] ?? '💼'} {titlePrefix}（{etfLabel}）· {sleeve.label ?? sleeve.action}
       </div>
       <div className="mt-1 text-xs opacity-90">{sleeve.message}</div>
       {details ? <div className="mt-1 text-[11px] opacity-70">{details}</div> : null}

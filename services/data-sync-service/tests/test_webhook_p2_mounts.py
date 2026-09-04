@@ -16,6 +16,12 @@ class TestE2PaperChainIssue:
         monkeypatch.setattr(pcw, "insert_record", lambda *a, **k: None)
         monkeypatch.setattr(pcw, "_run_ok", lambda job: False)  # all missing
         monkeypatch.setattr(pcw, "_today", lambda: "2026-08-12")
+        # OPT-144: run_close() is a REAL close-sync (threadpool side effects
+        # write real job records). Stub it — this test covers the watchdog's
+        # missing-chain branch, not close_sync itself.
+        monkeypatch.setattr(
+            "data_sync_service.scheduler.close_sync_job.run", lambda: None
+        )
 
         def fake_emit(event_type, payload, dedupe_key):
             emitted.append({"type": event_type, "payload": payload, "key": dedupe_key})

@@ -42,3 +42,4 @@ src-tauri/target/
 .cursor/
 
 
+data/*

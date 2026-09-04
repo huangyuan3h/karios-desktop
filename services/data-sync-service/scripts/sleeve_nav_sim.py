@@ -10,8 +10,9 @@ Usage:
   PYTHONPATH=src python3 scripts/sleeve_nav_sim.py --min-idle 20
   PYTHONPATH=src python3 scripts/sleeve_nav_sim.py --json /tmp/sleeve.json
 
-Acceptance (todo §19 铁律): all three windows must show delta >= 0
-(design targets OOS2 +3.1 / train +15.3 / valid +39.0pt).
+Acceptance (todo §19 铁律): all three windows must show delta >= 0.
+Baseline must track S-3 engine NAV (2026-08-29 P0-1); design-era
++3.1/+15.3/+39.0pt targets are directional only.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from data_sync_service.service.backtest_engine import (  # noqa: E402
     simulate,
 )
 from data_sync_service.service.portfolio_nav_sim import (  # noqa: E402
+    engine_nav_by_day_from_run,
     load_third_asset_cache,
     simulate_sleeve_nav,
 )
@@ -68,6 +70,7 @@ def main() -> int:
         cfg = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
         data = BacktestData(cfg)
         run = simulate(cfg, data)
+        eng_nav = engine_nav_by_day_from_run(data.calendar, run.nav_curve)
         sim = simulate_sleeve_nav(
             positions_by_day=run.positions_by_day,
             close_by_ts_day=data.close_by_ts_day,
@@ -75,6 +78,7 @@ def main() -> int:
             etf_close_by_day=etf_close,
             repo_rate_by_day=repo_rate,
             min_idle_pct=args.min_idle,
+            engine_nav_by_day=eng_nav,
         )
         s = sim["summary"]
         results[w] = {"window": f"{start}..{end}", **s}
@@ -89,7 +93,7 @@ def main() -> int:
     if failures:
         print(f"⚠ 未通过：{', '.join(failures)} 窗增量为负（三窗无劣化铁律）")
     else:
-        print("✅ 三窗套筒增量全部非负（设计稿目标 OOS2 +3.1 / train +15.3 / valid +39.0pt）")
+        print("✅ 三窗套筒增量全部非负（基线=引擎 NAV；idle 吃 513100/GC001）")
 
     report = {
         "generatedAt": datetime.now(UTC).isoformat(),

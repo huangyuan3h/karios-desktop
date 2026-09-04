@@ -1,0 +1,28 @@
+{
+  "tag": "sat-holdout-2026-09-04",
+  "window": [
+    "2026-08-10",
+    "2026-09-03"
+  ],
+  "rule": "read-only; no tuning on the outcome",
+  "core": {
+    "n_days": 19,
+    "total_pct": -1.5,
+    "max_dd": 4.1,
+    "sharpe": -0.84
+  },
+  "twin": {
+    "n_days": 19,
+    "total_pct": -6.6,
+    "max_dd": 8.7,
+    "sharpe": -4.16
+  },
+  "sat": {
+    "n_days": 19,
+    "total_pct": -11.7,
+    "max_dd": 14.6,
+    "sharpe": -4.63
+  },
+  "fills": 32,
+  "as_of": "2026-09-03T23:05:23+00:00"
+}

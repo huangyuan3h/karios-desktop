@@ -63,14 +63,24 @@ class TestJobFailureEvent:
             cm = conn_mock.return_value.__enter__.return_value
             cm.cursor.return_value.__enter__.return_value.rowcount = 0
             with patch("data_sync_service.db.webhook.emit_event", side_effect=fake_emit):
-                # insert_record calls emit_event only when success=False; the
+                # insert_record calls emit_event only when success=False AND the
+                # job is high-severity (system_events.HIGH_JOB_TYPES); the
                 # SQL layer is replaced by the patched connection above.
-                sync_job_record.insert_record("intraday_alarm", success=False, error_message="boom")
+                # close_sync is high-severity → webhook emitted.
+                sync_job_record.insert_record("close_sync", success=False, error_message="boom")
         assert len(emitted) == 1
         assert emitted[0]["type"] == "job_failed"
-        assert emitted[0]["payload"]["job_type"] == "intraday_alarm"
+        assert emitted[0]["payload"]["job_type"] == "close_sync"
         assert emitted[0]["payload"]["error"] == "boom"
-        assert emitted[0]["key"].startswith(f"job_failed:intraday_alarm:{datetime.now(UTC).date()}")
+        assert emitted[0]["key"].startswith(f"job_failed:close_sync:{datetime.now(UTC).date()}")
+
+    def test_low_severity_failure_emits_nothing(self, monkeypatch) -> None:
+        # intraday_alarm is low-severity: failure is recorded to system_events
+        # but must NOT push a webhook (phone stays quiet for peripheral jobs).
+        with patch("data_sync_service.db.sync_job_record.get_connection"):
+            with patch("data_sync_service.db.webhook.emit_event") as emit_mock:
+                sync_job_record.insert_record("intraday_alarm", success=False, error_message="boom")
+        emit_mock.assert_not_called()
 
     def test_success_emits_nothing(self, monkeypatch) -> None:
         with patch("data_sync_service.db.sync_job_record.get_connection") as conn_mock:

@@ -7,6 +7,7 @@ import os
 
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
 
+from data_sync_service.scheduler._job_guard import record_success, run_guarded
 from data_sync_service.service.alpha_radar_pipeline import run_alpha_radar_ingest
 
 logger = logging.getLogger(__name__)
@@ -29,16 +30,16 @@ def build_trigger():
 
 def run():
     logger.info("[alpha_radar] Starting scheduled RSS ingest...")
-    try:
-        result = run_alpha_radar_ingest(trigger="cron")
-        stats = result.get("ingestStats") or {}
-        logger.info(
-            "[alpha_radar] Ingest complete: "
-            f"stored={stats.get('stored')} "
-            f"new={stats.get('new')} "
-            f"requeued={stats.get('requeued')} "
-            f"unchanged={stats.get('unchanged')} "
-            f"raw_backlog={result.get('rawBacklogCount')}"
-        )
-    except Exception as exc:
-        logger.warning(f"[alpha_radar] Ingest failed: {exc}")
+    result = run_guarded(JOB_ID, lambda: run_alpha_radar_ingest(trigger="cron"), log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+    stats = result.get("ingestStats") or {}
+    logger.info(
+        "[alpha_radar] Ingest complete: "
+        f"stored={stats.get('stored')} "
+        f"new={stats.get('new')} "
+        f"requeued={stats.get('requeued')} "
+        f"unchanged={stats.get('unchanged')} "
+        f"raw_backlog={result.get('rawBacklogCount')}"
+    )
+    record_success(JOB_ID)

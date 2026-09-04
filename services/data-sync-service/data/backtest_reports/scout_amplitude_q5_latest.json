@@ -1,0 +1,89 @@
+{
+  "generated_at": "2026-08-30T09:17:37.086727+00:00",
+  "factor": "amplitude",
+  "quintile": "Q5",
+  "holds": [
+    5,
+    10
+  ],
+  "results": {
+    "OOS2": {
+      "h5": {
+        "window": "OOS2",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 578,
+        "win_rate": 0.3477508650519031,
+        "avg_net": -1.5065530091662052,
+        "total_pnl": -87.0787639298066,
+        "max_dd": 92.54688277261354,
+        "sharpe": -0.22528697310616602
+      },
+      "h10": {
+        "window": "OOS2",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 270,
+        "win_rate": 0.3148148148148148,
+        "avg_net": -3.749977085048174,
+        "total_pnl": -101.2493812963007,
+        "max_dd": 107.74887944683455,
+        "sharpe": 0.53534651982697
+      }
+    },
+    "train": {
+      "h5": {
+        "window": "train",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 299,
+        "win_rate": 0.33444816053511706,
+        "avg_net": -2.288964300479928,
+        "total_pnl": -68.44003258434985,
+        "max_dd": 69.75640931338127,
+        "sharpe": -2.2212073997991517
+      },
+      "h10": {
+        "window": "train",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 130,
+        "win_rate": 0.4153846153846154,
+        "avg_net": 0.6991653238204728,
+        "total_pnl": 9.089149209666147,
+        "max_dd": 29.11124017042906,
+        "sharpe": 0.6160287680456188
+      }
+    },
+    "valid": {
+      "h5": {
+        "window": "valid",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 5,
+        "trades": 280,
+        "win_rate": 0.4857142857142857,
+        "avg_net": 0.5375897627393704,
+        "total_pnl": 15.052513356702379,
+        "max_dd": 37.9961003620309,
+        "sharpe": 0.8224322948486487
+      },
+      "h10": {
+        "window": "valid",
+        "factor": "amplitude",
+        "quintile": "Q5",
+        "hold": 10,
+        "trades": 130,
+        "win_rate": 0.36923076923076925,
+        "avg_net": -2.2286565987467326,
+        "total_pnl": -28.972535783707524,
+        "max_dd": 43.65851516477167,
+        "sharpe": -1.0572504940363672
+      }
+    }
+  }
+}

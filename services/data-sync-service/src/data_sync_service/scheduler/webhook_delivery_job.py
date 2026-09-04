@@ -12,6 +12,7 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
+from data_sync_service.scheduler._job_guard import record_success, run_guarded
 from data_sync_service.service.webhook_delivery import deliver_pending
 
 logger = logging.getLogger(__name__)
@@ -26,14 +27,21 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    try:
-        result = deliver_pending()
-        if result.get("failed") or result.get("blocked"):
-            logger.warning(
-                "webhook delivery: %s ok, %s failed, %s blocked",
-                result.get("delivered"),
-                result.get("failed"),
-                result.get("blocked"),
-            )
-    except Exception:  # noqa: BLE001
-        logger.exception("webhook delivery job failed")
+    result = run_guarded(JOB_ID, deliver_pending, log=logger)
+    if result is None:
+        return  # exception path already recorded + logged
+    if result.get("failed") or result.get("blocked"):
+        logger.warning(
+            "webhook delivery: %s ok, %s failed, %s blocked",
+            result.get("delivered"),
+            result.get("failed"),
+            result.get("blocked"),
+        )
+    record_success(
+        JOB_ID,
+        last_ts_code=(
+            f"delivered={result.get('delivered', 0)} "
+            f"failed={result.get('failed', 0)} "
+            f"blocked={result.get('blocked', 0)}"
+        ),
+    )

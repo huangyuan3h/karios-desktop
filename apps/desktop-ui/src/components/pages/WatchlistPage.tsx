@@ -3,7 +3,10 @@
 import * as React from 'react';
 
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { TodayActionCard } from '@/components/watchlist/TodayActionCard';
 import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
+import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
+import { EtfExecutionLogCard } from '@/components/watchlist/EtfExecutionLogCard';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
@@ -21,6 +24,7 @@ import {
   DEFAULT_CATALYST_MAX_AGE_DAYS,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
+import { useStrategyMode } from '@/lib/strategy-settings';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
 import {
   buildSleeveExposurePct,
@@ -115,6 +119,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     onManualRefreshTrend,
     queryClient,
   } = useWatchlistTrend(symbols, items, persist);
+
+  const [strategyMode] = useStrategyMode();
+  const showSingleTrack = strategyMode !== 'twin_star';
 
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -344,9 +351,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
-        <BehaviorAuditBanner />
-        <ThirdAssetSleeveBanner />
-        {executionGate ? (
+        {showSingleTrack ? <TodayActionCard /> : null}
+        <PickStrongAlignBanner />
+        {showSingleTrack ? <EtfExecutionLogCard /> : null}
+        {showSingleTrack ? (
+        <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
+          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">展开旧提醒（行为对账 / 轮动 / Gate 详情）</summary>
+          <div className="mt-3">
+            <BehaviorAuditBanner />
+            {showSingleTrack ? <ThirdAssetSleeveBanner /> : null}
+          </div>
+        </details>
+      ) : null}
+        {executionGate && showSingleTrack ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
           >
@@ -406,9 +423,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <PortfolioHealthCard onOpenStock={onOpenStock} />
+        <PortfolioHealthCard onOpenStock={onOpenStock} quotes={quotes} trend={trend} />
 
-        <TradingBriefCard />
+        {showSingleTrack ? <TradingBriefCard /> : null}
 
 
         <WatchlistInsightsPanel>
@@ -451,6 +468,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         </section>
 
+        {showSingleTrack ? (
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="text-sm font-medium">Score（0–100）计分说明</div>
           <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
@@ -463,6 +481,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             及加扣分）。
           </div>
         </section>
+      ) : null}
 
         <WatchlistTable
           sortedItems={sortedItems}

@@ -1,29 +1,39 @@
 # Karios 回测实验记录（Backtest Experiments）
 
-> **何时看**：任何新回测实验前（先读纪律 + 已走过的路）、改 S-3 参数前（先查历史结论）、
-> 复盘策略演进时（成功/失败全记录）。
-> **何时不看**：日常运维、代码开发（那些看 todo/optimization-checklist）。
-> **⚠️ 2026-08-15 定稿**：回测探索正式结束（A 股规律已占满 · HK 无强规律 beta 偏多）——
-> 新实验前必读 [`SUMMARY.md`](./SUMMARY.md) 的 48+ 次失败模式，避免重走。
+> **何时看**：任何新回测实验前、复盘策略演进时。**用户要改策略 / 仓位 / 退出时，Agent 先读 [`SUMMARY.md`](./SUMMARY.md) 和本目录实验，再开口。**
+> **终局策略**：**机会双子星 v3.1 clip4**（择强核心 + strict S-gap 4×12.5%）—— [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)。核心腿规则在 [`pick-strong-track.md`](../modules/pick-strong-track.md)。  
+> 本目录记录通往该策略的实验（含拒收）；**新结论必须写清对机会双子星 / 其核心腿的增量**。
 
 ---
 
 ## 本目录是什么
 
-**所有 S-3 策略回测实验的唯一记录中心**——成功 ✅ 与失败 ❌ 都在。失败的记录
-尤其重要：它说明我们**走过哪些路、为什么被拒收**，防止未来重复踩坑或凭感觉
-重开已被三窗证伪的机制。
-
 | 文档 | 内容 | 状态 |
 |------|------|------|
-| [`SUMMARY.md`](./SUMMARY.md) | **回测总结定稿**（为什么结束 · A 股 alpha 定案 · HK 结论 · 下一步方向） | ✅ **必读入口** |
-| [`audit-2026-08-22.md`](./audit-2026-08-22.md) | **代码层审计**（数据前视/幸存者 · 执行可复制性 · 统计过拟合 · 改进四阶段） | ✅ **必读（2026-08-22）** |
-| [`experiments-tip014.md`](./experiments-tip014.md) | **TIP-014 环境感知系列**（neutral_block / entry_style auto / E1 / E2 / HK 线 / 情绪回填） | ✅ 主链固化 · 详细 |
-| [`experiments-d-pool.md`](./experiments-d-pool.md) | **探索池 D1-D8**（环境仓位 D3 ✅ / 持有期 D2 ✅ / score 确认 D4 ❌ / 行业集中 D5 ❌ / 利润护城河 D6 ❌ / 分钟线 D7 / 港股情绪 D8） | ✅ 完结 |
-| [`experiments-defensive.md`](./experiments-defensive.md) | **防守向攻击 23 项**（A1-A7 / B1-B4 / C1-C5 / D1-D4）——全部拒收/中性的完整论证 | ✅ 2026-08-12 完结 |
-| [`experiments-legacy.md`](./experiments-legacy.md) | **历史实验速查**（V6/V7 系列、红绿灯、ATR 止损 OPT-105、熔断 OPT-093、长窗） | ✅ 快照 |
-| [`experiments-planned.md`](./experiments-planned.md) | **信号候选 P1-P26 验证记录**（**已验证 15 项全拒收**：P1-P8 技术形态 + P9/P10 动量 + P11 行业 + P12 + P14 PEAD + P16-ST + P17 组合层 · 剩余 11 项终止探索） | ✅ 完结（2026-08-15） |
-| [`README.md`](./README.md) | 本索引 + 验证纪律 + 报告文件位置 | — |
+| [`SUMMARY.md`](./SUMMARY.md) | **总览（指向择强单轨）** | ✅ **必读入口** |
+| [`../modules/pick-strong-track.md`](../modules/pick-strong-track.md) | **择强单轨策略真值 + 过去一年验证** | ✅ **产品真值** |
+| [`audit-plan-2026-08-29.md`](./audit-plan-2026-08-29.md) | 组合可信度审计计划 | ✅ |
+| [`audit-verdict-2026-08-29.md`](./audit-verdict-2026-08-29.md) | 审计结论（P0 已修） | ✅ |
+| [`pick-strong-hardening-2026-08-29.md`](./pick-strong-hardening-2026-08-29.md) | 择强参数加固网格 · **维持 A0** | ✅ |
+| [`audit-2026-08-22.md`](./audit-2026-08-22.md) | 代码层审计（数据/执行/统计） | ✅ |
+| [`experiments-tip014.md`](./experiments-tip014.md) | TIP-014 环境感知（STOCK 腿） | ✅ |
+| [`experiments-d-pool.md`](./experiments-d-pool.md) | 探索池 D1-D8 | ✅ |
+| [`experiments-defensive.md`](./experiments-defensive.md) | 防守向攻击 23 项 | ✅ |
+| [`experiments-legacy.md`](./experiments-legacy.md) | 历史实验速查 | ✅ |
+| [`experiments-planned.md`](./experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
+| [`s3-gate-pickstrong-optimization-2026-09-01.md`](./s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
+| [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
+| [`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
+| [`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
+| [`sat-hold-path-day2-2026-09-03.md`](./sat-hold-path-day2-2026-09-03.md) | 卫星第 1/2/3 日收盘路径（第 2 天亏了回不回） | ✅ 观察；不改 Live |
+| [`sat-fill-same-close-2026-09-03.md`](./sat-fill-same-close-2026-09-03.md) | 卫星成交：T 开盘 vs 收盘 vs **真 14:30** | ❌ 14:30 相对核心 train/valid 亏；不改 Live |
+| [`sat-entry-c1-2026-09-03.md`](./sat-entry-c1-2026-09-03.md) | 14:30 入场过滤 C1（冲太高不买）/ C2（近涨停） | ❌ 不进 Live；C1 3% 修好夏普/回撤，valid tot 仍 −3.3 |
+| [`sat-habit-clock-2026-09-03.md`](./sat-habit-clock-2026-09-03.md) | 习惯 3 天 vs 4 天 · 13:30–15:00 买点 | ❌ 计数仍 3 天；换分钟无更佳；不改 Live |
+| [`sat-exit-hhmm-2026-09-03.md`](./sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | C1·14:30 卖三窗过核心；**未改 Live** |
+| [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
+| [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | C1 已三窗，未进 Live |
+| [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
+| [`README.md`](./README.md) | 本索引 | — |
 
 ---
 
@@ -56,7 +66,11 @@
 
 | 文件 | 内容 |
 |------|------|
-| `walk_forward_baseline.json` | **正式基线**（S-3 定案口径 · 当前 = D3 后重固化） |
+| `pick_strong_track_past_year.json` | **择强单轨**过去一年（定案 mom_compare） |
+| `past_year_twin_vs_core_2026-09-02.json` | 过去一年三方：单轨 vs 双子星 v3 15×5% vs clip4 |
+| `core_stock_clip_2026-09-03.json` | 核心 S-3 篮集中度三窗（拒收） |
+| `sat_exit_trail_2026-09-03.json` | 卫星退出 body/protect/trail 三窗（拒收） |
+| `walk_forward_baseline.json` | S-3 股票腿 CN 基线（NAV） |
 | `walk_forward_latest.json` | 最近一次三窗结果 |
 | `walk_forward_hk_baseline.json` | HK 并行线基线 |
 | `walk_forward_dual_latest.json` | CN+HK 双线 |
@@ -67,14 +81,19 @@
 | `paper_vs_backtest_latest.json` | C4 paper-vs-backtest 对照 |
 | `index_light_backtest_latest.json` / `trend_exit_latest.json` | 红绿灯 / 趋势退出历史 |
 
-## 当前基线数字（2026-08-15 · D3 固化后 · 审计后口径）
+## 当前基线数字（2026-08-28/29 · NAV + next_open · 审计 P0 后）
 
 | 窗口 | 收益 | 回撤 | 夏普 | 胜率 | 笔数 | 可信度 |
 |------|------|------|------|------|------|--------|
-| OOS2 | +117.2% | 11.7% | 6.63 | 54.4% | 237 | ✅ 可引用（双窗一致） |
-| train | +122.6% | 9.3% | 4.40 | 52.0% | 123 | ✅ 可引用 |
-| valid | +142.2% | 1.8% | 11.05 | 81.8% | 55 | ⚠️ 发现（牛市切片，Wilson 69.7-89.8%，已复用 4 次） |
-| 长窗 2021-08~2026-08 | +333.9% | 45.1% | 2.99 | 38.8% | 1069 | ⚠️ 条件（幸存者+200%杠杆+fail-open） |
-| hold-out 2026-08-08~ | — | — | — | — | 1 | ⏳ 待积累 n≥100 |
+| 择强单轨 past_year trail8 | **+190.7%** | **12.6%** | — | — | — | ✅ **产品口径**（2025-08-28~2026-08-28） |
+| 机会双子星 clip4 同窗 | **+194.9%** | **12.6%** | 2.64 | — | — | **实盘默认**；Δ单轨 +4.3pt；旧 15×5% 该窗 −0.2pt |
+| CN OOS2 | +47.3% | 18.9% | 1.26 | 47.3% | 93 | 股票腿 |
+| CN train | +34.1% | 11.6% | 2.22 | 45.1% | 51 | ✅ 可引用 |
+| CN valid | +38.7% | 10.7% | 2.40 | 75.0% | 16 | ⚠️ underpowered |
+| HK OOS2 | +31.3% | 30.3% | 0.99 | 43.4% | 99 | ⚠ 弱 |
+| HK train | +1.9% | 12.8% | 0.28 | 44.7% | 47 | ⚠ 极弱 |
+| HK valid | +60.7% | 27.8% | 2.10 | 43.2% | 44 | ⚠ 发现 |
+| 套筒增量 | +3.1 / +8.4 / +22.3 | — | — | — | — | ✅ 基线=引擎 NAV |
+| R5CS vs R5C | +3.3 / +8.4 / +13.5 | — | — | — | — | ✅ dual 已复现 |
 
-> 参数真值 → [`modules/strategy-params.md`](../modules/strategy-params.md) §1；历史版本同文件 §3；**引用口径**：可引用 `OOS2/train`，`valid` 仅发现、`长窗` 条件收益，不可作发布依据（见 [`audit-2026-08-22.md`](./audit-2026-08-22.md) §6）。
+> 参数真值 → [`modules/strategy-params.md`](../modules/strategy-params.md)；审计 → [`audit-verdict-2026-08-29.md`](./audit-verdict-2026-08-29.md)。旧 117%/HK270%/算术43.1% **全部封存**。

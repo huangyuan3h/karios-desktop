@@ -6,6 +6,10 @@ import { SystemHealthBanner } from './SystemHealthBanner';
 
 const { fetchSystemHealth } = vi.hoisted(() => ({ fetchSystemHealth: vi.fn() }));
 vi.mock('@/lib/queries/systemHealth', () => ({ fetchSystemHealth }));
+vi.mock('@/lib/queries/systemEvents', () => ({
+  fetchSystemEvents: vi.fn(async () => []),
+  resolveSystemEvent: vi.fn(),
+}));
 
 const HEALTHY = {
   dataSyncOnline: true,
@@ -51,23 +55,33 @@ describe('SystemHealthBanner', () => {
     expect(screen.getByText(/ai-service（决策 Agent）不可达/)).toBeDefined();
   });
 
-  it('lists stale data sources and sync failures as warnings', async () => {
+    it('lists stale data sources and sync failures as warnings', async () => {
     fetchSystemHealth.mockResolvedValue({
       dataSyncOnline: true,
       aiOnline: true,
       datasources: [
         { source: 'market', label: '行情', stale: true, ageMinutes: 30 * 60, thresholdMinutes: 24 * 60, lastSyncedAt: null },
+        {
+          source: 'twin_star_intraday',
+          label: '双子星 · 盘中快照',
+          group: 'twin_star',
+          stale: true,
+          ageMinutes: null,
+          thresholdMinutes: 20,
+          lastSyncedAt: null,
+        },
       ],
       failures: [
         { jobType: 'cn_industry_post_close_sync', syncedAt: '2026-08-07T20:10:00+00:00', failures24h: 3, errorMessage: 'push2his down' },
       ],
       errorCount: 0,
-      warnCount: 2,
+      warnCount: 3,
     });
     renderBanner();
-    expect(await screen.findByText(/0 项异常 · 2 项告警/)).toBeDefined();
-    screen.getByText(/0 项异常 · 2 项告警/).click();
+    expect(await screen.findByText(/0 项异常 · 3 项告警/)).toBeDefined();
+    screen.getByText(/0 项异常 · 3 项告警/).click();
     expect(await screen.findByText(/行情 数据陈旧/)).toBeDefined();
+    expect(screen.getByText(/双子星 · 盘中快照 数据陈旧（无记录 ≥ 阈值 20 分钟）/)).toBeDefined();
     expect(screen.getByText(/同步失败 cn_industry_post_close_sync ×3/)).toBeDefined();
   });
 

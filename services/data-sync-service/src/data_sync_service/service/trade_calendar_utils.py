@@ -26,6 +26,22 @@ def is_cn_trading_day(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> bool | No
     return is_trading_day(exchange, d)
 
 
+def is_non_trading_day(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> bool:
+    """True when d is definitely not an open session (OPT-142 central predicate).
+
+    Calendar-aware: holidays count even on weekdays. Falls back to Mon–Fri
+    when the calendar is unseeded/unreadable (same as the old ``weekday()``
+    scatter, but in exactly one place).
+    """
+    try:
+        flag = is_cn_trading_day(d, exchange=exchange)
+    except Exception:  # noqa: BLE001
+        flag = None
+    if flag is None:
+        return d.weekday() >= 5
+    return not flag
+
+
 def last_open_date_on_or_before(
     d: date,
     *,
@@ -105,6 +121,87 @@ def resolve_effective_as_of(raw: str | None) -> str:
     if last is None:
         return s
     return min(s, last.isoformat())
+
+
+# --- Open-session counting (satellite body days) ---
+
+_MAX_SESSION_SPAN_DAYS = 370
+
+
+def _mon_fri_between(start: date, end: date) -> list[date]:
+    out: list[date] = []
+    cur = start
+    while cur <= end:
+        if cur.weekday() < 5:
+            out.append(cur)
+        cur += timedelta(days=1)
+    return out
+
+
+def _calendar_seeded(exchange: str, probe: date) -> bool:
+    """True when trade_calendar has any row near probe (seeded vs empty table)."""
+    try:
+        if is_trading_day(exchange, probe) is not None:
+            return True
+        start = probe - timedelta(days=120)
+        return bool(get_open_dates(exchange=exchange, start_date=start, end_date=probe))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def open_sessions_between(
+    from_iso: str,
+    to_iso: str,
+    *,
+    exchange: str = DEFAULT_EXCHANGE,
+) -> list[str]:
+    """SSE open-session dates in [from_iso, to_iso] (inclusive, ISO strings).
+
+    Uses trade_calendar; falls back to Mon–Fri when the calendar is not
+    seeded or unreadable. Never raises.
+    """
+    try:
+        start = date.fromisoformat(str(from_iso).strip()[:10])
+        end = date.fromisoformat(str(to_iso).strip()[:10])
+    except (TypeError, ValueError):
+        return []
+    if end < start or (end - start).days > _MAX_SESSION_SPAN_DAYS:
+        return []
+    try:
+        if _calendar_seeded(exchange, end):
+            opens = get_open_dates(exchange=exchange, start_date=start, end_date=end)
+            return [d.isoformat() for d in opens if start <= d <= end]
+    except Exception:  # noqa: BLE001
+        pass
+    return [d.isoformat() for d in _mon_fri_between(start, end)]
+
+
+def count_open_sessions(
+    from_iso: str,
+    to_iso: str,
+    *,
+    exchange: str = DEFAULT_EXCHANGE,
+) -> int:
+    """Count open sessions in [from_iso, to_iso] (body-day counter)."""
+    return len(open_sessions_between(from_iso, to_iso, exchange=exchange))
+
+
+def nth_open_session(
+    from_iso: str,
+    n: int,
+    *,
+    exchange: str = DEFAULT_EXCHANGE,
+) -> str | None:
+    """ISO date of the n-th open session on/after from_iso (1-indexed)."""
+    if n < 1:
+        return None
+    try:
+        start = date.fromisoformat(str(from_iso).strip()[:10])
+    except (TypeError, ValueError):
+        return None
+    end = start + timedelta(days=_MAX_SESSION_SPAN_DAYS)
+    sessions = open_sessions_between(start.isoformat(), end.isoformat(), exchange=exchange)
+    return sessions[n - 1] if len(sessions) >= n else None
 
 
 # --- Market phase (pre-market / open / closed) ---

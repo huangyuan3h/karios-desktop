@@ -47,3 +47,18 @@ export function isEtfWatchlistSymbol(symbol: string): boolean {
   const s = symbol.trim().toUpperCase();
   return s.startsWith('ETF:');
 }
+
+/** Map a tushare ts_code (600352.SH) to the watchlist symbol (CN:600352). */
+export function tsCodeToWatchlistSymbol(tsCode: string): string {
+  const s = tsCode.trim().toUpperCase();
+  if (s.includes(':')) return normalizeWatchlistSymbol(s);
+  const [code, exch] = s.split('.');
+  if (!code) return s;
+  if (exch === 'HK') return `HK:${(code.replace(/^0+/, '') || '0').padStart(5, '0')}`;
+  if (exch === 'SH' || exch === 'SZ') {
+    // 1xxxxx SZ / 5xxxxx SH / 9xxxxx SH ETFs; everything else is an A-share.
+    if (/^[159]/.test(code) && code.length === 6) return `ETF:${code}`;
+    return `CN:${code}`;
+  }
+  return s;
+}

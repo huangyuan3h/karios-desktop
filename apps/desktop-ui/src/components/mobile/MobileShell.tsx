@@ -19,7 +19,6 @@ import {
   Star,
   TrendingUp,
   Wallet,
-  Webhook,
   X,
 } from 'lucide-react';
 
@@ -74,9 +73,6 @@ const MobileJournal = React.lazy(() =>
 const MobileScheduler = React.lazy(() =>
   import('./pages/MobileSchedulerPage').then((m) => ({ default: m.MobileSchedulerPage })),
 );
-const MobileWebhook = React.lazy(() =>
-  import('./pages/MobileWebhookPage').then((m) => ({ default: m.MobileWebhookPage })),
-);
 const MobileSettings = React.lazy(() =>
   import('./pages/MobileSettingsPage').then((m) => ({ default: m.MobileSettingsPage })),
 );
@@ -112,7 +108,6 @@ const MORE_SECTIONS: { label: string; items: PageDef[] }[] = [
     label: '系统',
     items: [
       { id: 'scheduler', label: '任务调度', icon: CalendarClock, Comp: MobileScheduler },
-      { id: 'webhook', label: 'Webhook', icon: Webhook, Comp: MobileWebhook },
       { id: 'settings', label: '设置', icon: Settings, Comp: MobileSettings },
     ],
   },

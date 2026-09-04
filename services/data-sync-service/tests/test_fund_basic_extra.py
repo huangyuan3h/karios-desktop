@@ -106,7 +106,10 @@ def test_map_etf_basic_bad_cells() -> None:
 
 
 def test_sync_skips_same_month(monkeypatch) -> None:
-    _patch(monkeypatch, last_ok={"sync_at": "2026-08-01T00:00:00+00:00"})
+    # Same UTC month as "now" — computed dynamically so the test doesn't
+    # rot when the calendar month rolls over (was hardcoded 2026-08).
+    now = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    _patch(monkeypatch, last_ok={"sync_at": now.isoformat()})
     out = fb.sync_etf_fund_basic()
     assert out["skipped"] is True and "this month" in out["message"]
 

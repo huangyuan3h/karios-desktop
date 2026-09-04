@@ -2,7 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { apiGetJson } from '@/lib/api/client';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import { getShanghaiMinutes, isWeekdayShanghai } from '@/lib/market-hours';
+import {
+  parseTwinStarAction,
+  type TwinStarAction,
+} from '@karios/shared';
 
 export type BacktestSummary = {
   config: {
@@ -383,6 +388,204 @@ export function useCoreAuditQuery(enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'core-audit'],
     queryFn: () => apiGetJson<CoreAudit>('/api/backtest/core-audit'),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export type TimelineRow = {
+  date: string;
+  deployedPct: number;
+  idlePct: number;
+  positions: number;
+  cnPositions: number;
+  hkPositions: number;
+  stockMarket: string;
+  stockSymbols: string[];
+  stockMom: number | null;
+  pick: string | null;
+  pickTs: string | null;
+  navBase: number;
+  navSleeve: number | null;
+  navSingle: number;
+  navMulti: number;
+  navBaseReturnPct: number;
+  navSingleReturnPct: number;
+  navMultiReturnPct: number;
+  /** Core pick-strong NAV (twin_star blend keeps this; navSingle is fused). */
+  coreNav?: number | null;
+  coreNavReturnPct?: number | null;
+  /** twin_star / state_bucket satellite leg */
+  satNav?: number | null;
+  satNavReturnPct?: number | null;
+  satPositions?: number | null;
+  /** Overnight + body-exit occupancy (opportunity blend gate). */
+  satActive?: boolean | null;
+  /** Slots used that day including exits (may exceed satPositions). */
+  satSlots?: number | null;
+  exits?: string[];
+  gapCount?: number | null;
+  strictCount?: number | null;
+  skipT1Count?: number | null;
+  skipC1Count?: number | null;
+  skipC2Count?: number | null;
+  skipC3Count?: number | null;
+  skipChurnCount?: number | null;
+  filledToday?: number | null;
+  idleSlots?: number | null;
+  gateOpen?: boolean | null;
+};
+
+export type SatBlotterKind = 'fill' | 'skip_t1' | 'skip_c1' | 'skip_c2' | 'skip_c3' | 'skip_churn' | 'skip_entry' | 'open';
+
+export type SatBlotterRow = {
+  kind: SatBlotterKind | string;
+  date: string;
+  ts: string;
+  amp?: number | null;
+  ampRank?: number | null;
+  skipT1?: boolean | null;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  exitDue?: string | null;
+  pnlPct?: number | null;
+  contribPct?: number | null;
+  closeReason?: string | null;
+  heldDays?: number | null;
+};
+
+export type TimelineSummary = {
+  fusedPct?: number;
+  corePct?: number;
+  basePct?: number;
+  maxDdFusedPct?: number;
+  satActiveDays?: number;
+  skipT1Count?: number;
+  fillCount?: number;
+};
+
+export type TimelineResponse = {
+  ok: boolean;
+  start: string;
+  end: string;
+  strategy?: string;
+  mode?: string;
+  opportunity?: boolean;
+  satFill?: string;
+  satExit?: string | null;
+  c1Pct?: number | null;
+  trailPct?: number;
+  coreWeight?: number;
+  satWeight?: number;
+  summary?: TimelineSummary;
+  rows: TimelineRow[];
+  blotter?: SatBlotterRow[];
+};
+
+export type TimelineStrategy = 'pick_strong' | 'twin_star' | 'state_bucket';
+
+export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
+  pick_strong: '单轨择强',
+  twin_star: '机会双子星',
+  state_bucket: '状态分桶 S-gap',
+};
+
+export function useTimelineQuery(
+  start: string,
+  end: string,
+  strategy: TimelineStrategy = 'pick_strong',
+  enabled = true,
+  satOpts?: { satFill?: string; satExit?: string | null; c1Pct?: number | null },
+) {
+  const q = new URLSearchParams({ start, end, strategy });
+  if (strategy === 'twin_star' && satOpts) {
+    if (satOpts.satFill) q.set('sat_fill', satOpts.satFill);
+    if (satOpts.satExit) q.set('sat_exit', satOpts.satExit);
+    if (satOpts.c1Pct != null) q.set('c1_pct', String(satOpts.c1Pct));
+  }
+  const keySuffix = strategy === 'twin_star' && satOpts
+    ? [satOpts.satFill ?? '', satOpts.satExit ?? '', satOpts.c1Pct ?? '']
+    : [];
+  return useQuery({
+    queryKey: ['backtest', 'timeline', start, end, strategy, ...keySuffix],
+    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 90_000 }),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export type { TwinStarAction, TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
+
+/** 双子星 (Twin-Star) 今日操作信号: 核心择强目标 + S-gap 卫星闸/候选. */
+export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
+  const mins = getShanghaiMinutes(now);
+  const live = isWeekdayShanghai(now) && mins >= 9 * 60 + 30 && mins <= 15 * 60;
+  if (live) return 60_000;
+  if (mins < 9 * 60 || mins >= 15 * 60) return 5 * 60_000;
+  return 30 * 60_000;
+}
+
+export function useTwinStarActionQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'twin-star', 'action'],
+    queryFn: async () => parseTwinStarAction(
+      await apiGetJson<unknown>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
+    ),
+    staleTime: 15_000,
+    refetchInterval: () => twinStarRefetchIntervalMs(),
+    enabled,
+  });
+}
+
+export async function refreshTwinStarAction(): Promise<TwinStarAction> {
+  return parseTwinStarAction(
+    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 90_000 }),
+  );
+}
+
+export type PickAttrStat = {
+  days: number;
+  pctDays: number;
+  contribAddPct: number;
+  contribGeoPct: number;
+};
+
+export type ReturnAttributionResponse = {
+  ok: boolean;
+  start: string;
+  end: string;
+  note?: string;
+  pickStrong?: {
+    byPick: Record<string, PickAttrStat>;
+    totalDays: number;
+    totalAddPct: number;
+    totalGeoPct: number;
+    timelineFusedPct?: number;
+    byMonth: Array<{ month: string; byPick: Record<string, number>; totalAddPct: number }>;
+    topDays: Array<{ date: string; pick: string; dayRetPct: number }>;
+    stockBreakdown: {
+      stockDays: number;
+      bySymbol: Record<string, { days: number; contribAddPct: number }>;
+    } | null;
+  };
+  userTrades?: {
+    closedCount: number;
+    bySymbol: Record<string, { count: number; sumPnlPct: number; bucket: string }>;
+    byBucket: Record<string, { count: number; sumPnlPct: number }>;
+    insufficient: boolean;
+    note?: string;
+    error?: string;
+  };
+};
+
+export function useReturnAttributionQuery(start: string, end: string, enabled = true) {
+  const q = new URLSearchParams({ start, end, books: 'pick_strong,user' });
+  return useQuery({
+    queryKey: ['backtest', 'return-attribution', start, end],
+    queryFn: () =>
+      apiGetJson<ReturnAttributionResponse>(`/api/backtest/return-attribution?${q.toString()}`, {
+        timeoutMs: 120_000,
+      }),
     staleTime: 5 * 60_000,
     enabled,
   });

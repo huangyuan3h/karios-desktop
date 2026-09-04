@@ -1,0 +1,38 @@
+{
+  "tag": "opportunity-twin-star-v3-clip4-2026-09-02",
+  "baseline_id": "opportunity_twin_star",
+  "baseline_name_zh": "机会双子星",
+  "recipe": {
+    "core": "pick_strong trail8 mom_compare",
+    "satellite": "S-gap bucket_q=3 max_pos=4 body=3 R-wide POSITION_PCT=0.25",
+    "fill": "skip_t1_limit=True pool_mode=strict (no rank refill)",
+    "blend": "opportunity: satActive=false → 100% core; satActive=true (overnight OR body-exit) → core + 0.5*(sat-core)",
+    "live_nav": "each sat name = 25% of sat sleeve = 12.5% of total NAV at 50/50; 4 names fill the sleeve",
+    "protocol": "window-local empty book (same as pick-strong walk-forward)"
+  },
+  "supersedes_clip": {
+    "file": "opportunity_twin_star_v3_frozen.json",
+    "old": "max_pos=15 POSITION_PCT=0.10 (5% NAV, ~12 names when open)",
+    "why": "user too diversified; 10×5% same-clip REJECT; 4×12.5% PASS+ vs 15×5% on OOS2/train/valid"
+  },
+  "not_this": [
+    "cut slots without raising clip (n10_c10 REJECT all three windows)",
+    "PS-G50 static 50/50",
+    "pool_mode=replace or fallback"
+  ],
+  "windows": {
+    "OOS2": { "start": "2024-08-01", "end": "2025-08-01", "core": { "total_pct": 17.8, "sharpe": 0.72, "max_dd": 18.0 }, "sat": { "total_pct": 118.3, "sharpe": 3.92, "max_dd": 7.2 }, "twin": { "total_pct": 64.7, "sharpe": 2.13, "max_dd": 16.1 }, "delta_total_pt": 46.9, "delta_vs_v3_15x10_pt": 1.8 },
+    "train": { "start": "2025-08-01", "end": "2026-02-01", "core": { "total_pct": 40.7, "sharpe": 3.01, "max_dd": 8.4 }, "sat": { "total_pct": 38.0, "sharpe": 3.28, "max_dd": 4.3 }, "twin": { "total_pct": 51.4, "sharpe": 4.05, "max_dd": 7.8 }, "delta_total_pt": 10.7, "delta_vs_v3_15x10_pt": 2.3 },
+    "valid": { "start": "2026-03-01", "end": "2026-08-07", "core": { "total_pct": 139.1, "sharpe": 3.37, "max_dd": 11.9 }, "sat": { "total_pct": 14.5, "sharpe": 1.69, "max_dd": 6.2 }, "twin": { "total_pct": 157.2, "sharpe": 3.71, "max_dd": 11.9 }, "delta_total_pt": 18.1, "delta_vs_v3_15x10_pt": 10.3 },
+    "past_year": { "start": "2025-08-01", "end": "2026-08-07", "core": { "total_pct": 181.2, "sharpe": 2.43, "max_dd": 12.6 }, "sat": { "total_pct": 51.7, "sharpe": 2.42, "max_dd": 4.7 }, "twin": { "total_pct": 195.9, "sharpe": 2.62, "max_dd": 12.6 }, "delta_total_pt": 14.7, "delta_vs_v3_15x10_pt": 4.6 },
+    "aligned": { "start": "2025-08-28", "end": "2026-08-28", "core": { "total_pct": 190.6, "sharpe": 2.54, "max_dd": 12.6 }, "sat": { "total_pct": 34.5, "sharpe": 1.6, "max_dd": 8.7 }, "twin": { "total_pct": 194.9, "sharpe": 2.64, "max_dd": 12.6 }, "delta_total_pt": 4.3, "delta_vs_v3_15x10_pt": 4.5 },
+    "trailing": { "start": "2025-09-02", "end": "2026-09-02", "core": { "total_pct": 197.6, "sharpe": 2.58, "max_dd": 12.6 }, "sat": { "total_pct": 34.7, "sharpe": 1.61, "max_dd": 8.7 }, "twin": { "total_pct": 204.0, "sharpe": 2.69, "max_dd": 12.6 }, "delta_total_pt": 6.4, "delta_vs_v3_15x10_pt": 2.3 }
+  },
+  "past_year_three_way": {
+    "report": "data/backtest_reports/past_year_twin_vs_core_2026-09-02.json",
+    "note": "On product past_year (2025-08-28~2026-08-28) v3 15×5% loses to core by 0.2pt; clip4 wins +4.3pt. Trailing to 2026-09-02 clip4 +6.4pt vs core. DD tied 12.6. Display-only; reject gate remains OOS2/train/valid."
+  },
+  "verdict": "Frozen live clip: 4 slots × 25% sat sleeve (12.5% NAV). Walk-forward 3/3 vs v3 15×10% (all positive). Past-year three-way PASS+ vs core and v3. Live default = twin_star (2026-09-02). Source: sat_clip_concentration_2026-09-02.json n4_c25.",
+  "source_report": "data/backtest_reports/sat_clip_concentration_2026-09-02.json",
+  "reproduce": "PYTHONPATH=src:scripts python3 scripts/compare_sat_clip.py --save-report; PYTHONPATH=src:scripts python3 scripts/compare_past_year_twin.py --save-report"
+}

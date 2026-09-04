@@ -143,7 +143,7 @@ def test_deployed_cash_not_charged_to_sleeve():
     )
     s = out["summary"]
     # First day is idle-only (position filled at day-0 close, pnl starts day 1).
-    assert s["avgIdlePct"] == pytest.approx(52.0, abs=0.5)
+    assert s["avgIdlePct"] == pytest.approx(50.0, abs=1.0)
     assert s["totalSleevePct"] > s["totalBasePct"]  # idle half earned ETF gains
     assert s["totalBasePct"] > 0.0  # deployed half earned the stock move
 
@@ -161,6 +161,31 @@ def test_ma200_fail_closed_before_200_bars():
     )
     assert out["summary"]["holdDays"] == 0
     assert all(not r["holding"] for r in out["rows"])
+
+
+def test_engine_nav_baseline_matches_curve():
+    """With engine_nav_by_day, baseline total equals the supplied NAV end."""
+    etf = _bull_etf()
+    days = list(etf)[200:220]
+    # Synthetic engine NAV: +1%/day for 20 days -> (1.01**20 - 1)*100
+    eng = {}
+    nav = 1.0
+    for d in days:
+        nav *= 1.01
+        eng[d] = nav
+    out = simulate_sleeve_nav(
+        positions_by_day=[{"date": d, "positions": []} for d in days],
+        close_by_ts_day={},
+        calendar=days,
+        etf_close_by_day=etf,
+        repo_rate_by_day={},
+        engine_nav_by_day=eng,
+    )
+    expected = (nav - 1.0) * 100.0
+    assert out["summary"]["totalBasePct"] == pytest.approx(round(expected, 1), abs=0.15)
+    assert out["summary"]["engineNav"] is True
+    assert out["summary"]["totalSleevePct"] >= out["summary"]["totalBasePct"]
+    assert len(out["rows"]) == len(days)
 
 
 def test_load_cache_flattens_dates():

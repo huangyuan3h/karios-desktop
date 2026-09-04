@@ -20,7 +20,7 @@ def test_execution_card_formats_gate_candidates_exits() -> None:
             "exits": [{"symbol": "CN:300628", "name": "亿联网络", "pnlPct": -5.4}],
         },
     )
-    assert out["title"] == "📋 执行卡 2026-08-14"
+    assert out["title"] == "📋 执行卡·单轨对照 2026-08-14"
     assert "不可买·恐慌冷却" in out["body"]
     assert "港股 Weak · 可买（候选 2）" in out["body"]
     assert "华新建材" in out["body"]
@@ -42,7 +42,7 @@ def test_execution_card_renders_sleeve_when_actionable() -> None:
             },
         },
     )
-    assert "第三资产：建议买入 513100" in out["body"]
+    assert "择强单轨：建议买入 513100" in out["body"]
     assert "闲置资金 90% 且 ETF:513100 在200日线上" in out["body"]
     assert "现价 2.239 · MA200 1.983" in out["body"]
 
@@ -55,7 +55,7 @@ def test_execution_card_renders_sleeve_when_actionable() -> None:
             "thirdAssetSleeve": None,
         },
     )
-    assert "第三资产" not in out2["body"]
+    assert "择强单轨" not in out2["body"]
 
     # pyramid trigger rendered when present
     out3 = format_bark(
@@ -133,3 +133,48 @@ def test_job_failed_includes_error_body() -> None:
         "job_failed", {"job_type": "y", "error": "boom", "last_ts_code": "CN:600000"}
     )
     assert "last_ts_code CN:600000" in with_code["body"]
+    # OPT-144: peripheral streak shown when present
+    streak = format_bark(
+        "job_failed", {"job_type": "news_fetch_job", "error": "timeout", "streak": 3}
+    )
+    assert "连败 3 次" in streak["body"]
+
+
+def test_twin_star_reminder_readable() -> None:
+    out = format_bark(
+        "twin_star_reminder",
+        {
+            "title": "机会双子星 · 14:30 操作",
+            "detail": "今日14:30卖 300413.SZ · 核心50%: OIL (HOLD) · 卫星: R-wide 开闸 (breadth 0.6) · 10 只缺口票 · 买 000001.SZ(amp1%)",
+        },
+    )
+    assert "14:30" in out["title"]
+    assert "今日14:30卖 300413.SZ" in out["body"]
+    assert "买 000001.SZ(amp1%)" in out["body"]
+    assert "{" not in out["body"]
+
+
+def test_audit_issues_renders_sat_leg_as_info() -> None:
+    """OPT-140: satellite leg is info (engine-book对照), never 买了不该买."""
+    out = format_bark(
+        "audit_issues",
+        {
+            "day": "2026-09-04",
+            "markets": {
+                "CN": {
+                    "expected": 0,
+                    "actual": 1,
+                    "extra": [],
+                    "missing": [],
+                    "sat": {
+                        "expected": 2,
+                        "actual": 1,
+                        "extra": ["CN:600099"],
+                        "missing": ["CN:600088"],
+                    },
+                },
+            },
+        },
+    )
+    assert "买了不该买" not in out["body"]
+    assert "🛰 卫星腿（引擎应持 2 / 实持 1" in out["body"]

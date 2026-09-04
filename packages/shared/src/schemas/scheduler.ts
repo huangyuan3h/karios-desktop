@@ -103,6 +103,7 @@ export const SchedulerJobGroupSchema = z.enum([
   'watchlistAutomation',
   'alphaRadar',
   'news',
+  'factors',
 ]);
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
 
@@ -308,7 +309,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     10,
     { endpoint: '/sync/index-daily', method: 'POST', label: '立即同步' },
   ),
-  meta(
+meta(
     'index_basic_sync',
     'indexMacro',
     '指数每日指标（市宽）',
@@ -317,8 +318,43 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     '15 17 * * 1-5',
     'cron',
     true,
-    15,
+    11,
     { endpoint: '/sync/index-basic', method: 'POST', label: '立即同步' },
+  ),
+  meta(
+    'sleeve_etf_daily_sync',
+    'indexMacro',
+    '核心腿 ETF 日线（机会双子星）',
+    '增量同步机会双子星核心腿 5 只 ETF（金/油/纳×2/债）日线——mom60/MA200 决策依赖；修复原每月一次 cron 导致 GOLD/BOND10 停更 7+ 天的缺陷。',
+    '工作日 17:25',
+    '25 17 * * 1-5',
+    'cron',
+    true,
+    13,
+    { endpoint: '/sync/sleeve-etfs', method: 'POST', label: '立即同步' },
+  ),
+  meta(
+    'stock_daily_basic_sync',
+    'indexMacro',
+    '个股估值（市值）',
+    '增量同步 stock_dailybasic（total_mv / circ_mv / turnover_rate）——机会双子星卫星 S-gap 低波候选的每日市值依赖；2026-08-07 起曾停更，本任务补齐并每日维护。',
+    '工作日 17:20',
+    '20 17 * * 1-5',
+    'cron',
+    true,
+    12,
+    { endpoint: '/sync/daily-basic', method: 'POST', label: '立即同步' },
+  ),
+  meta(
+    'etf_daily_full_sync',
+    'indexMacro',
+    '全市场 ETF 日线（低频）',
+    '全市场 fund_daily 月频补全（限速 200 次/分钟，非决策路径；决策路径走核心腿 ETF 每日同步）。',
+    '每月 1 日 19:00',
+    '0 19 1 * *',
+    'cron',
+    true,
+    14,
   ),
   meta(
     'macro_daily_full',
@@ -598,6 +634,62 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     true,
      24,
   ),
+  meta(
+    'twin_star_reminder',
+    'watchlistAutomation',
+    '机会双子星 14:30 前提醒',
+    '工作日 14:20 先拉全市场当日行情再推送：核心择强 + 卫星买卖（涨停给出备选），供 14:30 执行。',
+    '工作日 14:20',
+    null,
+    'cron',
+    true,
+     25,
+  ),
+  meta(
+    'twin_star_intraday',
+    'watchlistAutomation',
+    '机会双子星盘中快照',
+    '交易时段每分钟拉全市场行情，把当日快照当作最后一根 K 线筛卫星。15:00 冻结，保留到次日 09:00。',
+    '工作日 09:30–15:00 每分钟',
+    null,
+    'cron',
+    true,
+    26,
+  ),
+  meta(
+    'paper_twin_star',
+    'watchlistAutomation',
+    '机会双子星 paper 簿',
+    '工作日 17:43 写入 clip4 卫星 paper（最多 4 槽 × 12.5% NAV，body=3 收盘卖，无保护止损）。与 S-3 paper 拆开，引擎回放只作对照。',
+    '工作日 17:43',
+    '43 17 * * 1-5',
+    'cron',
+    true,
+    27,
+  ),
+  meta(
+    'bar_5min_close',
+    'cnBasic',
+    'A 股尾盘 5 分钟线',
+    '工作日 18:40 用 baostock 拉取当日 14:30–15:00 的 5 分钟 K（缺口票 + 开仓 CN），供卫星名单漂移研究。一年历史走 backfill_bar_5min.py。',
+    '工作日 18:40',
+    '40 18 * * 1-5',
+    'cron',
+    true,
+    20,
+  ),
+  meta(
+    'factor_signals_sync',
+    'factors',
+    '形态因子日扫',
+    '工作日 18:30 扫描最新交易日强股勺型耗尽顶信号并落库 factor_signals，只作方向判别，不碰 S-3。',
+    '工作日 18:30',
+    '30 18 * * 1-5',
+    'cron',
+    true,
+    1,
+    { endpoint: '/factors/sync', method: 'POST', label: '立即扫描' },
+  ),
 ];
 
 /** Group display order in the UI. */
@@ -612,6 +704,7 @@ export const SCHEDULER_GROUP_ORDER: readonly SchedulerJobGroup[] = [
   'watchlistAutomation',
   'alphaRadar',
   'news',
+  'factors',
 ];
 
 export const SCHEDULER_GROUP_META: Record<
@@ -657,6 +750,10 @@ export const SCHEDULER_GROUP_META: Record<
   news: {
     titleCn: '财经新闻',
     descriptionCn: 'RSS 抓取的财经新闻。',
+  },
+  factors: {
+    titleCn: '形态因子',
+    descriptionCn: '独立于 S-3 的日线形态信号扫描，只作方向判别。',
   },
 };
 

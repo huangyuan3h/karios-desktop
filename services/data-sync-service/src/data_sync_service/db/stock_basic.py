@@ -177,6 +177,22 @@ def fetch_ts_codes_by_market(market: str) -> list[str]:
     return [r[0] for r in rows if r and r[0]]
 
 
+def fetch_names(ts_codes: list[str]) -> dict[str, str]:
+    """Map ts_code → display name. Empty dict if none / table missing."""
+    codes = [str(c).strip() for c in ts_codes if c]
+    if not codes:
+        return {}
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT ts_code, name FROM {TABLE_NAME} "
+                "WHERE ts_code = ANY(%s) AND name IS NOT NULL AND btrim(name) <> ''",
+                (codes,),
+            )
+            return {str(r[0]): str(r[1]) for r in cur.fetchall() if r and r[0] and r[1]}
+
+
 def fetch_all() -> list[dict]:
     """Return all stock_basic rows from DB as list of dicts. Dates as YYYY-MM-DD strings."""
     ensure_table()

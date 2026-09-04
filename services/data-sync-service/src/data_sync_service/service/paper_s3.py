@@ -69,7 +69,7 @@ S3_LIGHT_RED_BLOCK = True
 S3_CIRCUIT_PCT = -25.0
 S3_CIRCUIT_WINDOW_DAYS = 30
 S3_CIRCUIT_MIN_TRADES = 3
-S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%x20)
+S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%×10=100%)
 # 2026-08-11: paper was 5% (conservative); user decision: paper must mirror
 # the backtest exactly, so paper book results are directly comparable to the
 # backtest numbers. position_pct is a pure leverage knob (sharpe-invariant,
@@ -857,6 +857,11 @@ def run_intake_s3(
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 close fetch failed: %s", exc)
 
+    from data_sync_service.service.paper_entry_fill import (
+        merge_entry_snapshot,
+        resolve_next_open_fill,
+    )
+
     for cand in swapped_cands:
         ts = cand["ts_code"]
         px = cand.get("entry_price") or closes.get(ts)
@@ -864,25 +869,34 @@ def run_intake_s3(
             summary["skipped"] += 1
             summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
             continue
+        fill = resolve_next_open_fill(ts, day, signal_close=float(px))
+        if fill is None:
+            summary["skipped"] += 1
+            summary["skippedReasons"]["no-next-open"] = summary["skippedReasons"].get("no-next-open", 0) + 1
+            continue
         name = by_name.get(ts)
         why = (
             f"S-3 swap-in {cand['regime']} score={cand['score']:.0f} rs={cand['rs']:.0%} "
             f"industry={cand['industry']}"
         )
+        snap = merge_entry_snapshot(
+            _signal_snapshot_for(
+                symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+            ),
+            fill,
+        )
         try:
             row = insert_paper_trade(
                 symbol=cand["symbol"],
-                entry_date=day,
+                entry_date=str(fill["entry_date"]),
                 side="BUY",
-                entry_price=px,
+                entry_price=float(fill["entry_price"]),
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
                 sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
-                signal_snapshot=_signal_snapshot_for(
-                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
-                ),
+                signal_snapshot=snap,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
@@ -906,25 +920,34 @@ def run_intake_s3(
             summary["skipped"] += 1
             summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
             continue
+        fill = resolve_next_open_fill(ts, day, signal_close=float(px))
+        if fill is None:
+            summary["skipped"] += 1
+            summary["skippedReasons"]["no-next-open"] = summary["skippedReasons"].get("no-next-open", 0) + 1
+            continue
         name = by_name.get(ts)
         why = (
             f"S-3 {cand['regime']} score={cand['score']:.0f} rs={cand['rs']:.0%} "
             f"industry={cand['industry']}"
         )
+        snap = merge_entry_snapshot(
+            _signal_snapshot_for(
+                symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+            ),
+            fill,
+        )
         try:
             row = insert_paper_trade(
                 symbol=cand["symbol"],
-                entry_date=day,
+                entry_date=str(fill["entry_date"]),
                 side="BUY",
-                entry_price=px,
+                entry_price=float(fill["entry_price"]),
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
                 sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
-                signal_snapshot=_signal_snapshot_for(
-                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
-                ),
+                signal_snapshot=snap,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 insert failed for %s: %s", cand["symbol"], exc)

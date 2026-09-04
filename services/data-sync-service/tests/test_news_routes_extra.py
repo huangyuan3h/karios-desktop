@@ -47,8 +47,9 @@ def test_add_source_auto_id() -> None:
 
 
 def test_add_source_invalid() -> None:
+    # OPT-142: empty name/url is a 422 (Pydantic), not a 200 + error string.
     r = client.post("/api/news/sources", json={"name": "", "url": ""})
-    assert r.json()["error"] == "name and url are required"
+    assert r.status_code == 422
 
 
 def test_patch_source() -> None:

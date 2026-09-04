@@ -339,6 +339,16 @@ export function buildPositionsExecutionMarkdown(
     lines.push('');
   } else {
     const hkBlock = health?.hkHealth ?? null;
+    const pickStrong = health?.multiAssetSleeve;
+    const pickKey = pickStrong?.pick?.key ?? null;
+    if (pickStrong?.active && pickStrong.action && pickStrong.action !== 'NONE') {
+      lines.push(`${heading} 择强单轨（今日真源 · mom_compare）`);
+      lines.push(
+        `- pick **${pickKey ?? 'REPO'}** · ${pickStrong.label ?? pickStrong.action} · ${pickStrong.message ?? ''}`,
+      );
+      lines.push('- note: 产品策略=全资产同权 100% 硬切；下列 S-3 候选仅当 pick=STOCK 时可执行');
+      lines.push('');
+    }
     const cnCands = health?.s3Candidates ?? [];
     const hkCands = hkBlock?.s3Candidates ?? [];
     const cnRegime = String(health?.regime ?? '');
@@ -348,13 +358,13 @@ export function buildPositionsExecutionMarkdown(
     const hkTotal = hkBlock?.s3CandidateTotal;
     const cnTotal = health?.s3CandidateTotal;
     const anyCands = cnCands.length > 0 || hkCands.length > 0;
-    if (anyCands) {
-      lines.push(`${heading} S-3 回测口径买入候选（趋势跟随 · 双市场 top5 · 已去重）`);
+    const stockPickOk = pickKey == null || pickKey === 'STOCK';
+    if (anyCands && stockPickOk) {
+      lines.push(`${heading} S-3 股票腿买入候选（仅 pick=STOCK · 双市场 top5）`);
       lines.push(
-        '- note: 每票仓位=回测口径 10%（suggestedSizePct）；A股=score≥65·RS前50%·主线白名单；港股=regime闸·RS前40%；候选=score降序取前5，跨市场同名已剔除（如A股已持紫金601899则港股02899不推）',
+        '- note: 每票仓位=回测口径 10%（suggestedSizePct）；A股=score≥65·RS前50%·主线白名单；港股=regime闸·RS前40%',
       );
       lines.push('');
-      // CN
       lines.push(`### A股（${cnRegime || '—'}${cnRegime === 'Weak' ? ' · 空仓' : ''}` + '）');
       if (cnCands.length) {
         lines.push(
@@ -377,7 +387,6 @@ export function buildPositionsExecutionMarkdown(
         lines.push('- 无候选（score/RS/闸门未全满足）');
       }
       lines.push('');
-      // HK
       lines.push(`### 港股（${hkRegime || '—'}${hkRegime === 'Weak' ? ' · 空仓' : ''}` + '）');
       if (hkCands.length) {
         lines.push(
@@ -400,8 +409,12 @@ export function buildPositionsExecutionMarkdown(
         lines.push('- 无候选（score≥65 · RS 前40% · 无恐慌冷却）');
       }
       lines.push('');
+    } else if (anyCands && !stockPickOk) {
+      lines.push(`${heading} S-3 股票腿候选（今日不执行）`);
+      lines.push(`- 择强 pick=${pickKey} ≠ STOCK → A股候选 ${cnCands.length} · 港股候选 ${hkCands.length} 仅作参考，**不买入**`);
+      lines.push('');
     } else if (health && (cnRegime || hkRegime)) {
-      lines.push(`${heading} S-3 回测口径买入候选（趋势跟随 · 双市场 top5）`);
+      lines.push(`${heading} S-3 股票腿买入候选`);
       const parts: string[] = [];
       if (cnRegime) parts.push(`A股 ${cnRegime === 'Weak' ? '空仓' : cnRegime}`);
       if (hkRegime) parts.push(`港股 ${hkRegime === 'Weak' ? '空仓' : hkRegime}`);

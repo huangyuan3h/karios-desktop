@@ -5,7 +5,17 @@ import React from 'react';
 import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
+import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
+import { TwinStarNavOverlay } from '@/components/pages/TwinStarNavOverlay';
+import { SatBlotterCard } from '@/components/pages/SatBlotterCard';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import {
+  resolveTimelineWindows,
+  roleBadge,
+  type TimelineWindowId,
+} from '@/lib/timeline-windows';
 
 import {
   GATE_LEVELS,
@@ -16,12 +26,16 @@ import {
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   usePaperVsBacktestQuery,
+  useReturnAttributionQuery,
   useSensitivityQuery,
   useSleeveNavQuery,
+  useTimelineQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
+  type TimelineRow,
 } from '@/lib/queries/backtest';
+import { TWIN_STAR_LIVE_RECIPE, twinStarRecipeLine } from '@/lib/twin-star-trade-plan';
 
 const DEFAULT_PARAMS: BacktestParams = {
   start: '2025-08-01',
@@ -32,12 +46,12 @@ const DEFAULT_PARAMS: BacktestParams = {
   gates: 'full',
   trailingStopPct: -8,
   positionPct: 0.1,
-  maxPositions: 20,
+  maxPositions: 10,
   rsRankMin: 0.5,
   divergingScale: 1,
   targetPnlPct: 100,
   scoreFloor: 0,
-  panicCooldownDays: 3,
+  panicCooldownDays: 2,
   slippagePct: 0.05,
   excludeBoards: '300',
 };
@@ -69,13 +83,14 @@ function tone(v: number | null): string {
 }
 
 const CN_PARAMS = [
-  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%'],
-  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'full'], ['熔断', '-25%'],
+  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%/ATR'],
+  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'full'], ['熔断', '-25%'],
+  ['恐慌冷却', '2d'], ['流动性', '≥0.7亿'],
 ];
 
 const HK_PARAMS = [
   ['score', '65'], ['RS 前', '40%'], ['止损', '-5%'], ['移动', '-12%'],
-  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'regime'],
+  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'regime'],
 ];
 
 function fmtDate(iso?: string | null): string {
@@ -149,6 +164,10 @@ function BaselinePanel({
           <WindowRow key={name} name={name} w={windows[name]} />
         ))}
       </div>
+      <p className="mt-1 text-[10px] leading-tight text-[var(--k-muted)]">
+        收益/夏普/回撤均基于<span className="font-medium">连续净值曲线</span>（每日盯市所有持仓），
+        夏普为真实年化（非平仓日口径）；收益为复利口径。
+      </p>
       {extra}
     </div>
   );
@@ -161,9 +180,9 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        S-3 回测结论（定案口径 · 回测 = source of truth）
+        S-3 股票腿三窗（非产品主策略 · 择强单轨见上方 Timeline）
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          三窗 walk-forward · 长窗 2021-08 起 · 全市场 universe
+          固化 walk_forward_baseline · 仅 STOCK 腿生成器
         </span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
@@ -208,7 +227,8 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
         />
       </div>
       <p className="mt-2 text-[10px] text-[var(--k-muted)]">
-        数字为固化基线（walk_forward_baseline.json）；回测是规则真值，实盘/paper 用同码引擎日终执行。
+        产品真值 = 择强单轨（docs/modules/pick-strong-track.md）。本卡仅为 S-3 股票腿基线；
+        paper/watchlist 股票规则同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
       </p>
     </div>
   );
@@ -296,7 +316,7 @@ function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <TrendingDown className="size-3.5" />
-        T6 · 第三资产套筒（闲置现金 NAV 对比）
+        历史 · 闲置现金套筒 NAV（非定案；定案见上方 Timeline 择强单轨）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {report?.generatedAt ? `报告 ${report.generatedAt.slice(0, 10)}` : ''}
         </span>
@@ -338,9 +358,8 @@ function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
             </table>
           </div>
           <p className="text-[10px] text-[var(--k-muted)]">
-            口径：S-3 持仓之外的闲置现金，513100 站上 200 日线时吃纳指ETF 日收益，破线切 GC001
-            逆回购；逐日复利 NAV，基线=闲置现金 0% 收益。规则真值：docs/designs/third-asset-sleeve.md §2。
-            验证：scripts/sleeve_nav_sim.py（三窗增量全正 = 通过）。
+            口径（2026-08-29）：基线 = S-3 引擎现金+MTM NAV（与 walk_forward 同码）；闲置吃
+            513100（MA200 + trail -8%）或 GC001。验证：scripts/sleeve_nav_sim.py（三窗增量≥0）。
           </p>
         </div>
       ) : (
@@ -402,7 +421,7 @@ function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuer
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-1.5 flex items-center gap-2 text-[12px] font-medium">
         <ShieldAlert className="size-3.5" />
-        回测 vs Paper 对账（每周一自动对账上周五）
+        回测 vs Paper 对账（S-3 单轨对照，不当双子星交易铃）
       </div>
       <div className="flex flex-col gap-1">
         {items.map((r) => {
@@ -438,7 +457,7 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <ShieldAlert className="size-3.5" />
-        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓）
+        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓 · 不当双子星交易铃）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {report?.generatedAt ?? ''} 生成
         </span>
@@ -508,11 +527,663 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
           </div>
           <p className="text-[10px] text-[var(--k-muted)]">
             孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 ·
-            样本 &lt;20 笔不作统计结论（C4 未定案）。
+            样本 &lt;20 笔不作统计结论（C4 未定案）。paper 入场已对齐回测
+            ``next_open``（信号日收盘定价 → 下一交易日开盘成交；开盘未到库时先占位，
+            ``run_update`` 回填）。
           </p>
         </div>
       ) : (
         <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+      )}
+    </div>
+  );
+}
+
+function TimelineCard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
+  const [windowId, setWindowId] = React.useState<TimelineWindowId>('trailing');
+  const selected = windows.find((w) => w.id === windowId) ?? windows[0];
+  const start = selected.start;
+  const end = selected.end;
+  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong' | 'state_bucket'>('twin_star');
+  const isTwin = strategy === 'twin_star';
+  const isSgap = strategy === 'state_bucket';
+  const [habit, setHabit] = React.useState(true);
+  const q = useTimelineQuery(start, end, strategy, true, isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined);
+  const rows = q.data?.rows ?? [];
+  const blotter = q.data?.blotter ?? [];
+  const summary = q.data?.summary;
+  const satActiveDays = rows.filter((r) => r.satActive).length;
+  const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
+  const dist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = r.pick ?? 'REPO';
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const distMarket = rows.reduce<Record<string, number>>((acc, r) => {
+    const sm = r.stockMarket ?? '—';
+    if ((r.pick ?? 'REPO') === 'STOCK') {
+      acc[sm] = (acc[sm] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+  const [showAll, setShowAll] = React.useState(false);
+  const last = rows[rows.length - 1];
+  const pickColor: Record<string, string> = {
+    STOCK: 'bg-red-500',
+    GOLD: 'bg-amber-500',
+    OIL: 'bg-slate-800 dark:bg-slate-200',
+    NASDAQ: 'bg-blue-600',
+    BOND10: 'bg-emerald-600',
+    REPO: 'bg-zinc-300 dark:bg-zinc-700',
+  };
+  const stockBarColor = (r: TimelineRow): string => {
+    if ((r.pick ?? 'REPO') !== 'STOCK') return pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300';
+    const m = r.stockMarket ?? '';
+    if (m === 'A股') return 'bg-red-500';
+    if (m === 'HK') return 'bg-cyan-600';
+    if (m === 'A+H') return 'bg-fuchsia-600';
+    return pickColor.STOCK;
+  };
+  const pickLabel: Record<string, string> = {
+    STOCK: '股票',
+    GOLD: '黄金',
+    OIL: '原油',
+    NASDAQ: '纳指',
+    BOND10: '国债',
+    REPO: '逆回购',
+  };
+  const twinSlotNavPct = TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 50;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <BarChart3 className="size-3.5" />
+        Timeline（
+        {isTwin
+          ? habit ? '机会双子星 · 习惯C1+14:30卖（Live）' : '机会双子星 v3.1 · 与 Watchlist 同源'
+          : isSgap
+            ? '状态分桶 S-gap · 可执行独立腿（涨停可能买不进）'
+            : '择强单轨 · 全资产同权 · 100%'}
+        ）
+        <span className="ml-2 flex overflow-hidden rounded border border-[var(--k-border)] text-[10px]">
+          <button
+            type="button"
+            onClick={() => setStrategy('twin_star')}
+            className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+          >
+            机会双子星
+          </button>
+          <button
+            type="button"
+            onClick={() => setStrategy('pick_strong')}
+            className={cn(
+              'px-2 py-0.5',
+              strategy === 'pick_strong' ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+            )}
+          >
+            单轨择强
+          </button>
+          <button
+            type="button"
+            onClick={() => setStrategy('state_bucket')}
+            className={cn('px-2 py-0.5', isSgap ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+            title="独立 S-gap 腿 · 与双子星卫星同源 · skip_t1_limit 可执行口径"
+          >
+            状态分桶
+          </button>
+        </span>
+        {isTwin ? (
+          <button
+            type="button"
+            onClick={() => setHabit((v) => !v)}
+            title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（sat-exit-hhmm Live配方）；关=冻结T开盘收盘卖"
+            className={cn(
+              'ml-2 rounded border px-1.5 py-0.5 text-[10px]',
+              habit ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
+          </button>
+        ) : null}
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {start} ~ {end} · {rows.length} 交易日 · {selected.label}
+          {last
+            ? isTwin
+              ? ` · 卫星 ${last.satNavReturnPct ?? '—'}% · 机会双子星 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
+              : isSgap
+                ? ` · S-gap ${last.navSingleReturnPct ?? last.satNavReturnPct ?? '—'}% · 仓 ${last.satPositions ?? 0}`
+                : ` · 基线 ${last.navBaseReturnPct}% · 择强 ${last.navSingleReturnPct ?? last.navMultiReturnPct}%`
+            : ''}
+        </span>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-1">
+        {windows.map((w) => (
+          <button
+            key={w.id}
+            type="button"
+            title={`${w.start} ~ ${w.end} · ${w.note}`}
+            onClick={() => setWindowId(w.id)}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px]',
+              windowId === w.id
+                ? 'border-sky-500/50 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+                : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {w.label}
+            <span className="ml-1 opacity-70">{roleBadge(w.role)}</span>
+          </button>
+        ))}
+        <span className="ml-1 text-[10px] text-[var(--k-muted)]">{selected.note}</span>
+      </div>
+      {q.isError ? (
+        <div className="text-xs">
+          <p className="text-red-700">{String(q.error)}</p>
+          <p className="mt-1 text-[var(--k-muted)]">
+            {isSgap
+              ? '后端计算 S-gap 全市场截面（可执行口径），请稍后刷新'
+              : '后端计算需 ~50s（S-3 全市场回放），请稍后刷新或改短周期'}
+          </p>
+          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+            重试
+          </Button>
+        </div>
+      ) : q.isFetching && !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">计算中…（首次约 50s，已加缓存）</p>
+      ) : !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            <div className="flex h-4 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+              {rows.map((r) => {
+                const syms = (r.stockSymbols ?? []).join(',');
+                const exits = (r.exits ?? []).join(',');
+                return (
+                  <div
+                    key={`single-${r.date}`}
+                    className={cn('h-full flex-1', stockBarColor(r))}
+                    title={`${r.date} 核心该买:${r.pick ?? 'REPO'}${r.stockMom != null ? ` 股票mom${r.stockMom}%` : ''} 持仓:${r.stockMarket ?? ''} ${r.deployedPct}% ${syms}${exits ? ` 卖出:${exits}` : ''}${isTwin ? ` · 卫星${r.satActive ? '占用50%' : '闲置→核心100%'}` : ''} 基线${r.navBaseReturnPct}% 合成${r.navSingleReturnPct ?? r.navMultiReturnPct}%`}
+                  />
+                );
+              })}
+            </div>
+            {isTwin ? (
+              <div className="flex h-2 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
+                {rows.map((r) => (
+                  <div
+                    key={`sat-${r.date}`}
+                    className={cn('h-full flex-1', r.satActive ? 'bg-sky-500/80' : 'bg-[var(--k-surface-2)]')}
+                    title={`${r.date} · ${r.satActive ? '卫星占用 · 核心50%/卫星50%' : '卫星闲置 · 核心100%'} · 仓${r.satSlots ?? r.satPositions ?? 0}`}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {isTwin ? <TwinStarNavOverlay rows={rows} /> : null}
+            <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
+              <span>
+                {isTwin
+                  ? '上条=核心择强该买 · 下条=卫星占用（天蓝=50/50，灰=核心100%）'
+                  : '单轨：A股红 / 港股橙 / A+H紫 / 黄金amber / 原油slate / 纳指blue / 国债emerald / 逆回购锌 · 每天一格=当天该买'}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            {ALL_PICKS.map((k) => {
+              const v = dist[k] ?? 0;
+              return (
+                <span key={k} className="flex items-center gap-1">
+                  <span className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')} />
+                  {pickLabel[k] ?? k} {v}天 ({rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                </span>
+              );
+            })}
+            {dist['STOCK'] ? (
+              <>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-red-500" />A股 {distMarket['A股'] ?? 0}天
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-orange-500" />港股 {distMarket['HK'] ?? 0}天
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-sm bg-purple-600" />A+H {distMarket['A+H'] ?? 0}天
+                </span>
+              </>
+            ) : null}
+            <span className="ml-auto text-[10px] text-[var(--k-muted)]">
+              {isTwin
+                ? `机会双子星累计 ${summary?.fusedPct ?? last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% · dd ${summary?.maxDdFusedPct ?? '—'}% · 择强单轨累计 ${summary?.corePct ?? '—'}% · 卫星累计 ${last?.satNavReturnPct ?? '—'}% · 卫星占用 ${satActiveDays}/${rows.length} 日`
+                : isSgap
+                  ? `状态分桶 S-gap 独立腿 · 可执行(skip_t1_limit) · 累计 ${last?.navSingleReturnPct ?? last?.satNavReturnPct ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}%`
+                  : `择强单轨 · mom_compare · pick_strong_track 同源 · 累计 ${last?.navSingleReturnPct ?? last?.navMultiReturnPct ?? '—'}% / 基线 ${last?.navBaseReturnPct ?? '—'}%`}
+            </span>
+          </div>
+          {isTwin ? (
+            <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
+              {twinStarRecipeLine(twinSlotNavPct)} · satActive→50/50 · idle→核心100% · 非 PS-G50 静态对半 · 与 Watchlist「今日下单」同一冻结配方
+            </div>
+          ) : null}
+          <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead className="sticky top-0 bg-[var(--k-surface)]">
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-2 pl-2">日期</th>
+                  <th className="py-1 pr-2">{isTwin ? '核心该买' : '该买'}</th>
+                  <th className="py-1 pr-2">持仓(A/H)</th>
+                  <th className="py-1 pr-2">持有</th>
+                  <th className="py-1 pr-2">卖出</th>
+                  {!isSgap ? <th className="py-1 pr-2">基线NAV%</th> : null}
+                  <th className="py-1 pr-2">
+                    {isTwin ? '机会双子星NAV%' : isSgap ? 'S-gap NAV%' : '择强NAV%'}
+                  </th>
+                  {isTwin ? <th className="py-1 pr-2">核心NAV%</th> : null}
+                  {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(槽)'}</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">候选</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">跳过</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">成交</th> : null}
+                  {isTwin || isSgap ? <th className="py-1 pr-2">空槽回核</th> : null}
+                  {!isSgap ? <th className="py-1 pr-2">超额</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {(showAll ? rows : rows.slice(-30)).map((r) => {
+                  const single = r.navSingleReturnPct ?? r.navMultiReturnPct;
+                  const exits = r.exits ?? [];
+                  const isStock = (r.pick ?? 'REPO') === 'STOCK';
+                  const isSgapPick = (r.pick ?? '') === 'S-GAP';
+                  const pickSym = r.pick === 'GOLD' ? '518880' : r.pick === 'OIL' ? '513350' : r.pick === 'NASDAQ' ? '513110' : r.pick === 'BOND10' ? '511260' : r.pick === 'REPO' ? 'GC001' : r.pick ?? 'REPO';
+                  const syms = isStock
+                    ? ((r.stockSymbols ?? []).join(' ') || '—')
+                    : isSgapPick
+                      ? `${r.satPositions ?? 0}仓`
+                      : `${pickSym} 1票`;
+                  const coreTargetPct = isTwin ? (r.satActive ? 50 : 100) : null;
+                  const satOcc = r.satSlots ?? r.satPositions ?? 0;
+                  return (
+                    <tr key={r.date} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
+                      <td className="py-1 pr-2">
+                        <span className={cn('rounded px-1 py-px text-[10px] text-white', isSgapPick ? 'bg-violet-600' : stockBarColor(r))}>
+                          {r.pick ?? 'REPO'}
+                        </span>
+                      </td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">
+                        {isStock ? (
+                          <>
+                            {r.stockMarket ?? ''} {r.positions}票{' '}
+                            <span className="text-[10px]">
+                              A{r.cnPositions ?? 0}/H{r.hkPositions ?? 0}
+                            </span>
+                          </>
+                        ) : isSgapPick ? (
+                          <>{r.satPositions ?? 0}仓</>
+                        ) : (
+                          <>{pickSym} 1票</>
+                        )}
+                      </td>
+                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]" title={syms}>
+                        {syms}
+                      </td>
+                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300" title={exits.join(' ')}>
+                        {exits.length ? exits.join(' ') : '—'}
+                      </td>
+                      {!isSgap ? (
+                        <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct ?? 0))}>
+                          {(r.navBaseReturnPct ?? 0).toFixed(2)}%
+                        </td>
+                      ) : null}
+                      <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
+                      {isTwin ? (
+                        <td className={cn('py-1 pr-2', tone(r.coreNavReturnPct ?? null))}>
+                          {r.coreNavReturnPct != null ? `${r.coreNavReturnPct.toFixed(2)}%` : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin ? (
+                        <td className="py-1 pr-2">
+                          <span
+                            className={cn(
+                              'rounded px-1 py-px text-[10px]',
+                              coreTargetPct === 50
+                                ? 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
+                                : 'bg-[var(--k-surface-2)] text-[var(--k-muted)]',
+                            )}
+                            title={r.satActive ? 'satActive · 含过夜或当日到期卖' : '卫星闲置 · 全日跟核心'}
+                          >
+                            {coreTargetPct}%
+                          </span>
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className={cn('py-1 pr-2 text-[var(--k-muted)]')}>
+                          {isSgap ? (
+                            <span>{r.satPositions ?? 0}仓</span>
+                          ) : r.satNavReturnPct != null ? (
+                            <>
+                              <span className={cn(tone(r.satNavReturnPct))}>{r.satNavReturnPct.toFixed(2)}%</span>
+                              <span className="text-[10px]">
+                                {' '}
+                                ({satOcc}槽{r.satActive && (r.satPositions ?? 0) === 0 ? '·到期日' : ''})
+                              </span>
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="strict 桶（最低波 1/3）">
+                          {r.gateOpen ? r.strictCount ?? 0 : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td
+                          className={cn('py-1 pr-2', ((r.skipT1Count ?? 0) > 0 || (r.skipC1Count ?? 0) > 0) ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--k-muted)]')}
+                          title={`桶内 T-1 涨停 ${r.skipT1Count ?? 0} · C1 14:30涨超不买 ${r.skipC1Count ?? 0} · strict 不补`}
+                        >
+                          {r.gateOpen ? `T1 ${r.skipT1Count ?? 0} · C1 ${r.skipC1Count ?? 0}` : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="当日新开槽">
+                          {r.gateOpen ? r.filledToday ?? 0 : '—'}
+                        </td>
+                      ) : null}
+                      {isTwin || isSgap ? (
+                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="未占用槽回核心腿">
+                          {r.idleSlots ?? '—'}
+                        </td>
+                      ) : null}
+                      {!isSgap ? (
+                        <td className={cn('py-1 pr-2', tone(single - (r.navBaseReturnPct ?? 0)))}>
+                          {(single - (r.navBaseReturnPct ?? 0)).toFixed(2)}%
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-[var(--k-muted)]">
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
+              {isTwin
+                ? '机会双子星 v3.1 clip4（实盘默认）：择强 mom_compare+trail8 为核心；卫星 S-gap strict/skip_t1 · R-wide · body3 · bq3 · 4槽×套筒25%（总资产12.5%）；satActive 日 50/50，闲置日核心100%（非 PS-G50 静态对半）· 定案 docs/backtests/state-bucket-algo-2026-08-31.md §3.0/§7'
+                : isSgap
+                  ? '状态分桶 S-gap 独立腿（bq3/4槽×25%/body3/R-wide · skip_t1_limit）· 与双子星卫星同源引擎 · 非择强替换件 · docs/backtests/state-bucket-algo-2026-08-31.md'
+                  : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
+              · 卖出=前日有今日无
+            </p>
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60">
+              {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}
+            </button>
+          </div>
+          {isTwin || isSgap ? <SatBlotterCard rows={blotter} /> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PICK_LABELS: Record<string, string> = {
+  STOCK: '股票',
+  GOLD: '黄金',
+  OIL: '原油',
+  NASDAQ: '纳指',
+  BOND10: '国债',
+  REPO: '逆回购',
+  STOCK_CN: 'A股成交',
+  STOCK_HK: '港股成交',
+  OTHER_ETF: '其他ETF',
+  OTHER: '其他',
+};
+
+function ReturnAttributionCard({
+  start,
+  end,
+  onRangeChange,
+}: {
+  start: string;
+  end: string;
+  onRangeChange?: (start: string, end: string) => void;
+}) {
+  const [showStock, setShowStock] = React.useState(false);
+  const q = useReturnAttributionQuery(start, end, true);
+  const ps = q.data?.pickStrong;
+  const ut = q.data?.userTrades;
+  const pickOrder = ['NASDAQ', 'GOLD', 'OIL', 'STOCK', 'BOND10', 'REPO'] as const;
+
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] font-medium">
+        <TrendingDown className="size-3.5 rotate-180" />
+        涨跌归因（择强单轨 · 单侧拆腿）
+        <span className="rounded bg-[var(--k-bg)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
+          明细 · 对照见上方
+        </span>
+        <span className="ml-auto flex items-center gap-2 text-[10px] font-normal text-[var(--k-muted)]">
+          <input
+            type="date"
+            className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
+            value={start}
+            onChange={(e) => onRangeChange?.(e.target.value, end)}
+          />
+          <span>~</span>
+          <input
+            type="date"
+            className="rounded border border-[var(--k-border)] bg-transparent px-1 py-0.5"
+            value={end}
+            onChange={(e) => onRangeChange?.(start, e.target.value)}
+          />
+        </span>
+      </div>
+      <p className="mb-2 text-[10px] text-[var(--k-muted)]">
+        只拆<strong>单轨</strong>各腿：加法贡献 / 几何袖 / 月度 / 极值日。与实盘对照请看上方「归因对照」。已实现成交附在表底仅作参考。
+      </p>
+      {q.isError ? (
+        <div className="text-xs">
+          <p className="text-red-700">{String(q.error)}</p>
+          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+            重试
+          </Button>
+        </div>
+      ) : q.isFetching && !ps ? (
+        <p className="text-xs text-[var(--k-muted)]">计算中…（首次约与 Timeline 同耗时，已共享缓存）</p>
+      ) : !ps ? (
+        <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <StatCard
+              label="择强几何总收益"
+              value={`${ps.totalGeoPct.toFixed(1)}%`}
+              sub={
+                ps.timelineFusedPct != null
+                  ? `Timeline ${ps.timelineFusedPct.toFixed(1)}% · ${ps.totalDays} 日`
+                  : `${ps.totalDays} 日`
+              }
+            />
+            <StatCard label="加法贡献合计" value={`${ps.totalAddPct.toFixed(1)}%`} sub="Σ日收益（非复利）" />
+            <StatCard
+              label="最大贡献腿"
+              value={(() => {
+                const best = pickOrder
+                  .map((k) => [k, ps.byPick[k]?.contribAddPct ?? 0] as const)
+                  .sort((a, b) => b[1] - a[1])[0];
+                return best ? `${PICK_LABELS[best[0]] ?? best[0]} ${best[1] >= 0 ? '+' : ''}${best[1].toFixed(1)}%` : '—';
+              })()}
+              sub="按加法贡献"
+            />
+            <StatCard
+              label="最大拖累腿"
+              value={(() => {
+                const worst = pickOrder
+                  .map((k) => [k, ps.byPick[k]?.contribAddPct ?? 0] as const)
+                  .sort((a, b) => a[1] - b[1])[0];
+                return worst ? `${PICK_LABELS[worst[0]] ?? worst[0]} ${worst[1].toFixed(1)}%` : '—';
+              })()}
+              sub="按加法贡献"
+            />
+          </div>
+
+          <div className="overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead>
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-3">资产</th>
+                  <th className="py-1 pr-3">天数</th>
+                  <th className="py-1 pr-3">占日历%</th>
+                  <th className="py-1 pr-3">加法贡献%</th>
+                  <th className="py-1 pr-3">几何袖%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pickOrder.map((k) => {
+                  const st = ps.byPick[k];
+                  if (!st || st.days === 0) return null;
+                  return (
+                    <tr key={k} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-3">{PICK_LABELS[k] ?? k}</td>
+                      <td className="py-1 pr-3">{st.days}</td>
+                      <td className="py-1 pr-3">{st.pctDays.toFixed(1)}</td>
+                      <td className={cn('py-1 pr-3 font-medium', tone(st.contribAddPct))}>
+                        {st.contribAddPct >= 0 ? '+' : ''}
+                        {st.contribAddPct.toFixed(2)}
+                      </td>
+                      <td className={cn('py-1 pr-3', tone(st.contribGeoPct))}>
+                        {st.contribGeoPct >= 0 ? '+' : ''}
+                        {st.contribGeoPct.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {ps.byMonth.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium">月度加法贡献</div>
+              <div className="overflow-auto">
+                <table className="w-full text-left text-[10px] tabular-nums">
+                  <thead>
+                    <tr className="text-[var(--k-muted)]">
+                      <th className="py-1 pr-2">月</th>
+                      {pickOrder.map((k) => (
+                        <th key={k} className="py-1 pr-2">
+                          {PICK_LABELS[k] ?? k}
+                        </th>
+                      ))}
+                      <th className="py-1 pr-2">合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ps.byMonth.map((m) => (
+                      <tr key={m.month} className="border-t border-[var(--k-border)]/40">
+                        <td className="py-0.5 pr-2">{m.month}</td>
+                        {pickOrder.map((k) => {
+                          const v = m.byPick[k];
+                          return (
+                            <td key={k} className={cn('py-0.5 pr-2', v != null ? tone(v) : '')}>
+                              {v != null ? v.toFixed(1) : '—'}
+                            </td>
+                          );
+                        })}
+                        <td className={cn('py-0.5 pr-2 font-medium', tone(m.totalAddPct))}>
+                          {m.totalAddPct.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {ps.topDays.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium">极值日（|日收益| Top）</div>
+              <ul className="grid gap-0.5 text-[11px] tabular-nums md:grid-cols-2">
+                {ps.topDays.map((d) => (
+                  <li key={d.date} className="flex gap-2 border-t border-[var(--k-border)]/30 py-0.5">
+                    <span className="text-[var(--k-muted)]">{d.date}</span>
+                    <span>{PICK_LABELS[d.pick] ?? d.pick}</span>
+                    <span className={cn('ml-auto font-medium', tone(d.dayRetPct))}>
+                      {d.dayRetPct >= 0 ? '+' : ''}
+                      {d.dayRetPct.toFixed(2)}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {ps.stockBreakdown && Object.keys(ps.stockBreakdown.bySymbol).length > 0 && (
+            <div>
+              <button
+                type="button"
+                className="mb-1 flex items-center gap-1 text-[11px] font-medium"
+                onClick={() => setShowStock((v) => !v)}
+              >
+                <ChevronDown className={cn('size-3 transition-transform', showStock && 'rotate-180')} />
+                STOCK 个股贡献（{ps.stockBreakdown.stockDays} 个股票日 · Top）
+              </button>
+              {showStock && (
+                <table className="w-full text-left text-[11px] tabular-nums">
+                  <thead>
+                    <tr className="text-[10px] text-[var(--k-muted)]">
+                      <th className="py-1 pr-2">标的</th>
+                      <th className="py-1 pr-2">天数</th>
+                      <th className="py-1 pr-2">加法贡献%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(ps.stockBreakdown.bySymbol)
+                      .slice(0, 15)
+                      .map(([sym, st]) => (
+                        <tr key={sym} className="border-t border-[var(--k-border)]/40">
+                          <td className="py-0.5 pr-2">{sym}</td>
+                          <td className="py-0.5 pr-2">{st.days}</td>
+                          <td className={cn('py-0.5 pr-2', tone(st.contribAddPct))}>
+                            {st.contribAddPct >= 0 ? '+' : ''}
+                            {st.contribAddPct.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          <div className="rounded border border-dashed border-[var(--k-border)] p-2">
+            <div className="mb-1 text-[11px] font-medium">我的成交对照（已实现毛盈亏）</div>
+            {!ut || ut.error ? (
+              <p className="text-[10px] text-[var(--k-muted)]">{ut?.error ?? '无成交数据'}</p>
+            ) : ut.insufficient ? (
+              <p className="text-[10px] text-[var(--k-muted)]">
+                窗口内平仓 {ut.closedCount} 笔（不足 3 笔，仅供参考）
+                {ut.closedCount > 0 &&
+                  ' · ' +
+                    Object.entries(ut.byBucket)
+                      .map(([b, s]) => `${PICK_LABELS[b] ?? b} ${s.sumPnlPct >= 0 ? '+' : ''}${s.sumPnlPct.toFixed(1)}%`)
+                      .join(' · ')}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2 text-[11px] tabular-nums">
+                {Object.entries(ut.byBucket).map(([b, s]) => (
+                  <span key={b} className={cn('rounded bg-[var(--k-bg)] px-1.5 py-0.5', tone(s.sumPnlPct))}>
+                    {PICK_LABELS[b] ?? b} ×{s.count} {s.sumPnlPct >= 0 ? '+' : ''}
+                    {s.sumPnlPct.toFixed(1)}%
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -524,6 +1195,19 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
+  const [tab, setTab] = React.useState<'compare' | 'baseline'>('compare');
+  const attrEnd = new Date().toISOString().slice(0, 10);
+  const attrStartDefault = (() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [attrStart, setAttrStart] = React.useState(attrStartDefault);
+  const [attrEndState, setAttrEnd] = React.useState(attrEnd);
+  const onAttrRange = (s: string, e: string) => {
+    setAttrStart(s);
+    setAttrEnd(e);
+  };
 
   const runQ = useBacktestRunQuery(submitted, attempt);
   const sensQ = useSensitivityQuery(DEFAULT_PARAMS.start, DEFAULT_PARAMS.end, gridOn);
@@ -542,13 +1226,24 @@ export function BacktestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {/* 结论区（定案口径） */}
-      <ConclusionBoard overview={overviewQ.data} />
-      <CoreAuditCard q={coreQ} />
-      <SleeveNavCard q={sleeveQ} />
-      <RollingOosCard overview={overviewQ.data} />
-      <ReconStrip reconQ={reconQ} />
-      <PaperVsBacktestCard q={c4Q} />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'compare' | 'baseline')}>
+        <TabsList>
+          <TabsTrigger value="compare">对比</TabsTrigger>
+          <TabsTrigger value="baseline">回测基线</TabsTrigger>
+        </TabsList>
+        <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
+          <CoreAuditCard q={coreQ} />
+          <ReplicaGapCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
+          <ReturnAttributionCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
+          <TimelineCard />
+          <RecentDailyCompareCard />
+          <SleeveNavCard q={sleeveQ} />
+          <PaperVsBacktestCard q={c4Q} />
+          <ReconStrip reconQ={reconQ} />
+        </TabsContent>
+        <TabsContent value="baseline" className="mt-4 flex flex-col gap-4">
+          <ConclusionBoard overview={overviewQ.data} />
+          <RollingOosCard overview={overviewQ.data} />
 
       {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
@@ -1060,6 +1755,8 @@ export function BacktestPage() {
           </div>
         )}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

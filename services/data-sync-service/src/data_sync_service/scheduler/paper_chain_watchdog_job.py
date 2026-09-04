@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 JOB_ID = "paper_chain_watchdog"
 CRON_EXPRESSION = "5 18 * * 1-5"  # weekdays 18:05 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
-CLOSE_JOB = "close_sync"
+CLOSE_JOB = "stock_close_sync"
+CLOSE_JOB_ALIASES = ("stock_close_sync", "close_sync")
 
 
 def build_trigger() -> CronTrigger:
@@ -44,6 +45,7 @@ def _run_ok(job: str) -> bool:
     paper_s3_intake records per-market (paper_s3_intake_CN / _HK) so both
     must be checked. ``get_today_run`` compares in UTC — the close chain runs
     at 09:30-09:45 UTC (17:30-17:45 Beijing), same UTC day as this watchdog.
+    close_sync is stored as stock_close_sync (plus legacy alias close_sync).
     """
     if job == "paper_s3_intake":
         for m in ("CN", "HK"):
@@ -51,6 +53,12 @@ def _run_ok(job: str) -> bool:
             if not (rec or {}).get("success"):
                 return False
         return True
+    if job in CLOSE_JOB_ALIASES or job == CLOSE_JOB:
+        for alias in CLOSE_JOB_ALIASES:
+            rec = get_today_run(alias)
+            if bool((rec or {}).get("success")):
+                return True
+        return False
     rec = get_today_run(job)
     return bool((rec or {}).get("success"))
 
@@ -102,12 +110,21 @@ def run() -> None:
         dedupe_key=f"paper_chain:{day}",
     )
     if not close_ok:
-        insert_record(
-            JOB_ID, success=False,
-            error_message=f"close_sync missing; missing={missing}",
-        )
-        logger.warning("close_sync missing → skipping self-heal for %s", missing)
-        return
+        # self-heal close first (idempotent, catches yesterday→today gap)
+        try:
+            from data_sync_service.scheduler.close_sync_job import run as run_close
+
+            run_close()
+            close_ok = _run_ok(CLOSE_JOB)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_chain self-heal close_sync failed: %s", exc)
+        if not close_ok:
+            insert_record(
+                JOB_ID, success=False,
+                error_message=f"close_sync missing; missing={missing}",
+            )
+            logger.warning("close_sync missing → skipping self-heal for %s", missing)
+            return
 
     for job in list(missing):
         _self_heal(job, day)

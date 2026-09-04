@@ -67,7 +67,7 @@ TV Screener（候选宇宙）
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [x] 2026-08-04 |
 | TIP-012 | 研报 → Alpha 通道（评级/目标价进池） | P1 | ★★★★☆（新供给） | 2–3 天 | [x] 2026-08-05 |
-| TIP-013 | 信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬） | P2 | ★★★★☆（度量闭环） | Phase A 1–2 天 / Phase B 2–3 天 | [ ] |
+| TIP-013 | 信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬） | P2 | ★★★★☆（度量闭环） | Phase A 1–2 天 / Phase B 2–3 天 | [x] 2026-09-04 |
 | TIP-014 | 环境×买入风格适配（电风扇→回调低吸 / 主升→追强龙头） | **P1** | ★★★★★（收益域演进） | Phase 1 2–3 小时 / Phase 2 1 天 | [ ] |
 | V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
@@ -813,7 +813,7 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 - [x] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数） `score/rs/amount` `30d IC -0.12 ICIR -0.42` `≥90 -3.23 vs <70 +0.12` `1y IC -0.02` 无预测力
 - [x] Phase B：≥3 个自研因子入库并跑通同一管道（动量/波动/换手/资金流，ICIR≥0.5才接入） `mom20/vol20/dd60/flow5d` `1y IC -0.04/-0.04/-0.01/-0.04` `ICIR<0.5` 均不达标 `docs/backtests/factor-ic-phaseB-2026-08-22.md`
-- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**
+- [x] 结论落回本条目（2026-09-04）：有效因子清单 + 建议的闸门阈值调整 → **清单：空，无新增，S-3择时为唯一超额源**（Phase A `score/rs/amount` 1y `|IC|<0.04`；Phase B `mom20/vol20/dd60/flow5d` 全 `ICIR<0.5`；Scout R0-IC 仅 `amplitude` 三窗同负但回放 valid −21.8 拒收）
 - [x] full pytest + frontend test 全绿（沿用 27 张表零变化纪律） `test_factor_validation 3/3`
 
 ---
@@ -987,11 +987,9 @@ Week 4+: TIP-008 展示 → TIP-007 动量放开（有数据再开）→ TIP-009
 - 仅 CN 线（HK 无 sentiment 数据，不受影响）
 - 待办：momentum/dip 风格切换仍需更多电风扇样本（见 Phase 3 数据待办）
 
-**Phase 3 — 真实验证**：东财 5 分钟线（已验证可得，330 根/5 天，历史深拉被风控需慢速分页）
-接入后，用真实尾盘价校验 Phase 1 结论；板块特点画像（用户提出）作为延伸维度。
+**Phase 3 — 真实验证**：尾盘 5 分钟线（2026-09-03 接通）。表 `bar_5min` 只存 14:30–15:00；历史一年走 baostock；tushare `stk_mins` 有 10 年但频次 1 次/分钟不适合全市场回补；东财/akshare 约 6 周；腾讯仅当日。接入后用来看 14:30 vs 15:00 名单漂移，不改 clip4 Live。
 
-**数据源备注**：东财 push2his kline 5m 接口可用但会触发风控（Remote end closed /
-502），需限速 + 分页；yfinance 被限流；腾讯/新浪不可用。
+**数据源备注**（2026-09-03 实测）：baostock `frequency=5` 一年一次查询可用；tushare `stk_mins` 权限已开、单次 8000 行、限频严；东财 push2his / akshare 分钟线近窗可用、一年深度不够。
 
 ---
 
