@@ -9,6 +9,7 @@ import {
   allocateSatFundTrims,
   buildTwinStarTradePlan,
   isLiveSatelliteStock,
+  resolveSatBody,
   satBodyProgress,
   satConclusionLine,
   satConditionalLine,
@@ -383,11 +384,10 @@ describe('buildTwinStarTradePlan', () => {
     expect(row?.exitDue).toBe('2026-09-04');
     expect(row?.protectStop).toBeNull();
     expect(row?.side).toBe('HOLD');
-    expect(satConditionalLine(row!)).toBe('芒果超媒 300413.SZ 到期2026-09-04 持有至到期收盘');
+    expect(satConditionalLine(row!)).toBe('芒果超媒 300413.SZ 到期2026-09-04 持有至到期14:30');
   });
 
-  it('sells a live satellite name on the 3rd weekday', () => {
-    const plan = buildTwinStarTradePlan(
+  it('sells a live satellite name on the 3rd weekday', () => {    const plan = buildTwinStarTradePlan(
       base({
         asOfDate: '2026-09-02',
         satCandidates: [],
@@ -428,7 +428,7 @@ describe('buildTwinStarTradePlan', () => {
     const row = plan.holds.find((r) => r.symbol === 'CN:300413');
     expect(row?.side).toBe('HOLD');
     expect(row?.stopBreached).toBe(false);
-    expect(row?.reason).toMatch(/交易日后收盘卖/);
+    expect(row?.reason).toMatch(/交易日后14:30卖/);
   });
 
   it('targets the pick ETF at coreTargetPct of NAV', () => {
@@ -493,5 +493,25 @@ describe('isLiveSatelliteStock / day flow', () => {
     });
     expect(blocked.find((s) => s.id === 'names')?.status).toBe('blocked');
     expect(blocked.find((s) => s.id === 'sat-buy')?.detail).toMatch(/名单不可用/);
+  });
+});
+
+describe('resolveSatBody', () => {
+  it('prefers the backend calendar-aware satBody over the local estimate', () => {
+    expect(
+      resolveSatBody(
+        {
+          entryDate: '2026-09-02',
+          satBody: { heldDays: 2, daysLeft: 1, exitDue: '2026-09-07', due: false, missingEntry: false },
+        },
+        '2026-09-03',
+      ),
+    ).toEqual({ heldDays: 2, daysLeft: 1, exitDue: '2026-09-07', due: false, missingEntry: false });
+  });
+
+  it('falls back to the local Mon–Fri estimate without backend satBody', () => {
+    expect(resolveSatBody({ entryDate: '2026-09-02' }, '2026-09-02')).toEqual(
+      satBodyProgress('2026-09-02', '2026-09-02'),
+    );
   });
 });

@@ -9,8 +9,11 @@ import { MobileButton, MobileCard, MobileField, MobileSection, MobileSheet, Stat
 /** Webhook (mobile) — subscriptions + create + test + delete. §5.2 低频. */
 
 const EVENT_TYPES = [
+  'twin_star_reminder',
   'job_failed',
   'paper_chain_issue',
+  'execution_card',
+  'audit_issues',
   'near_stop',
   'oos_warning',
   'recon_missing',
@@ -18,6 +21,20 @@ const EVENT_TYPES = [
   'intraday_drawdown',
   'test',
 ] as const;
+
+const EVENT_LABELS: Record<string, string> = {
+  twin_star_reminder: '双子星14:30提醒',
+  job_failed: 'cron 失败',
+  paper_chain_issue: 'paper 链断链',
+  execution_card: '执行卡（单轨）',
+  audit_issues: '行为对账（单轨）',
+  near_stop: '接近止损',
+  oos_warning: 'OOS 预警',
+  recon_missing: '对账缺票',
+  candidate_added: '新候选入池',
+  intraday_drawdown: '盘中 -8%',
+  test: '测试事件',
+};
 
 type WebhookSubscription = {
   id: number;
@@ -37,7 +54,7 @@ export function MobileWebhookPage() {
 
   const [creating, setCreating] = React.useState(false);
   const [url, setUrl] = React.useState('');
-  const [selected, setSelected] = React.useState<string[]>(['candidate_added']);
+  const [selected, setSelected] = React.useState<string[]>(['twin_star_reminder']);
   const [secretMsg, setSecretMsg] = React.useState<string | null>(null);
   const [testMsg, setTestMsg] = React.useState<string | null>(null);
 
@@ -118,7 +135,7 @@ export function MobileWebhookPage() {
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {s.eventTypes.map((ev) => (
                     <StatusPill key={ev} tone="neutral">
-                      {ev}
+                      {EVENT_LABELS[ev] ?? ev}
                     </StatusPill>
                   ))}
                 </div>
@@ -160,7 +177,7 @@ export function MobileWebhookPage() {
                       : 'border border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]'
                   }`}
                 >
-                  {ev}
+                  {EVENT_LABELS[ev] ?? ev}
                 </button>
               ))}
             </div>

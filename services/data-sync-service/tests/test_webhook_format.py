@@ -133,3 +133,17 @@ def test_job_failed_includes_error_body() -> None:
         "job_failed", {"job_type": "y", "error": "boom", "last_ts_code": "CN:600000"}
     )
     assert "last_ts_code CN:600000" in with_code["body"]
+
+
+def test_twin_star_reminder_readable() -> None:
+    out = format_bark(
+        "twin_star_reminder",
+        {
+            "title": "机会双子星 · 14:30 操作",
+            "detail": "今日14:30卖 300413.SZ · 核心50%: OIL (HOLD) · 卫星: R-wide 开闸 (breadth 0.6) · 10 只缺口票 · 买 000001.SZ(amp1%)",
+        },
+    )
+    assert "14:30" in out["title"]
+    assert "今日14:30卖 300413.SZ" in out["body"]
+    assert "买 000001.SZ(amp1%)" in out["body"]
+    assert "{" not in out["body"]

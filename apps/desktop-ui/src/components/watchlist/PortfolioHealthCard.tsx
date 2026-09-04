@@ -696,10 +696,10 @@ function SatStockRow({
         {isSell && bought ? <span className="text-[10px] text-[var(--k-muted)]">已记</span> : null}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
-        <span title="S-gap：入场日起第 3 个交易日收盘卖，中途不设止损">已持 {heldLabel}</span>
+        <span title="S-gap：入场日起第 3 个交易日14:30卖，中途不设止损">已持 {heldLabel}</span>
         <span className={isSell ? 'font-semibold text-red-600 dark:text-red-400' : undefined}>
           到期 {dueLabel}
-          {isSell ? ' 收盘卖' : ''}
+          {isSell ? ' 14:30卖' : ''}
         </span>
         {price != null ? <span>现价 {fmtPrice(price)}</span> : null}
         {chgPct != null ? (
@@ -715,7 +715,7 @@ function SatStockRow({
           type="button"
           onClick={() => copyText(satConditionalLine(r))}
           className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
-          title="复制到期日，第 3 个交易日收盘卖"
+          title="复制到期日，第 3 个交易日14:30卖"
         >
           复制到期
         </button>
@@ -759,13 +759,13 @@ function SatSleevePanel({
             type="button"
             onClick={() => copyText(copyAllRows.map(satConditionalLine).join('\n'))}
             className="rounded border border-sky-500/30 bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
-            title="复制全部到期日（第 3 个交易日收盘卖）"
+            title="复制全部到期日（第 3 个交易日14:30卖）"
           >
             复制全部到期
           </button>
         ) : null}
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          {slotPct != null ? `每只总资产 ${slotPct}%` : '每只总资产 按已录入仓位'} · 第3日收盘卖
+          {slotPct != null ? `每只总资产 ${slotPct}%` : '每只总资产 按已录入仓位'} · 第3日14:30卖
         </span>
       </div>
       <div className="mb-1.5 text-[10px] leading-snug text-[var(--k-muted)]">
@@ -1150,6 +1150,7 @@ export function PortfolioHealthCard({
           entryDate: h.entryDate ?? null,
           lastClose: typeof h.lastClose === 'number' ? h.lastClose : null,
           pnlPct: typeof h.pnlPct === 'number' ? h.pnlPct : null,
+          satBody: h.satBody ?? null,
         })),
       asOfDate: data?.tradeDate ?? null,
       coreParkEtfKey: sleeve?.etfPick?.key ?? null,
@@ -1434,7 +1435,7 @@ export function PortfolioHealthCard({
                     : !twinStarQ.data.sat.gateOpen
                       ? 'R-wide 关闸（不开仓）'
                       : afterSatWindow
-                        ? `R-wide 开闸 → 14:30 模拟收盘价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                        ? `R-wide 开闸 → 14:30价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
                         : 'R-wide 开闸 · 候选 14:30 后公布（当日近似）'}
               </span>
             ) : null}

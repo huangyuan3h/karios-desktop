@@ -17,7 +17,7 @@
 
 import { isCnWatchlistSymbol, isEtfWatchlistSymbol, toTsCodeFromSymbol, tsCodeToWatchlistSymbol } from '@/lib/symbols';
 import type { TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
-import { TWIN_STAR_CLIP4 } from '@karios/shared';
+import { TWIN_STAR_CLIP4, TWIN_STAR_HABIT } from '@karios/shared';
 import type { PortfolioCandidate } from '@/lib/queries/portfolioHealth';
 
 export const SAT_MAX_POS = TWIN_STAR_CLIP4.maxPos;
@@ -32,15 +32,19 @@ export const TWIN_STAR_LIVE_RECIPE = {
   core: 'pick_strong mom_compare trail8',
   sat: 'S-gap',
   gate: 'R-wide breadth>0.5',
-  pool: 'strict skip_t1_limit',
+  pool: 'strict skip_t1_limit + C1 14:30/今开>3%不买',
   bucketQ: TWIN_STAR_CLIP4.bucketQ,
   maxPos: SAT_MAX_POS,
   slotOfSleeve: SAT_SLOT_OF_SLEEVE,
   body: TWIN_STAR_CLIP4.body,
+  fillMode: TWIN_STAR_HABIT.fillMode,
+  fillHhmm: TWIN_STAR_HABIT.fillHhmm,
+  c1Pct: TWIN_STAR_HABIT.c1Pct,
+  exitHhmm: TWIN_STAR_HABIT.exitHhmm,
 } as const;
 
 export function twinStarRecipeLine(slotNavPct: number): string {
-  return `口径核 · 核心择强 mom_compare · 卫星 ${TWIN_STAR_LIVE_RECIPE.sat} ${TWIN_STAR_LIVE_RECIPE.pool} · ${TWIN_STAR_LIVE_RECIPE.gate} · 每槽套筒${TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 100}%=总资产${slotNavPct}% · 第${TWIN_STAR_LIVE_RECIPE.body}日收盘卖 · 空篮留最强ETF`;
+  return `口径核 · 核心择强 mom_compare · 卫星 ${TWIN_STAR_LIVE_RECIPE.sat} ${TWIN_STAR_LIVE_RECIPE.pool} · ${TWIN_STAR_LIVE_RECIPE.gate} · 每槽套筒${TWIN_STAR_LIVE_RECIPE.slotOfSleeve * 100}%=总资产${slotNavPct}% · 第${TWIN_STAR_LIVE_RECIPE.body}日14:30卖 · 空篮留最强ETF`;
 }
 
 export function roundNavPct(n: number): number {
@@ -113,6 +117,24 @@ export function satBodyProgress(entryDate: string | null | undefined, asOf: stri
   const exitDue = nthWeekdayInclusive(entryDate, TWIN_STAR_LIVE_RECIPE.body);
   const daysLeft = Math.max(0, TWIN_STAR_LIVE_RECIPE.body - heldDays);
   return { heldDays, daysLeft, exitDue, due: heldDays >= TWIN_STAR_LIVE_RECIPE.body, missingEntry: false };
+}
+
+/** Prefer the backend calendar-aware satBody; fall back to the local Mon–Fri estimate. */
+export function resolveSatBody(
+  holding: Pick<TwinStarLiveStock, 'entryDate' | 'satBody'>,
+  asOf: string | null | undefined,
+): SatBodyProgress {
+  const b = holding.satBody;
+  if (b && (b.heldDays != null || b.exitDue != null || b.missingEntry)) {
+    return {
+      heldDays: b.heldDays ?? null,
+      daysLeft: b.daysLeft ?? null,
+      exitDue: b.exitDue ?? null,
+      due: b.due ?? false,
+      missingEntry: b.missingEntry ?? false,
+    };
+  }
+  return satBodyProgress(holding.entryDate, asOf);
 }
 
 export function satProtectStop(cost: number | null | undefined): number | null {
@@ -283,7 +305,7 @@ export function satConditionalLine(r: TwinStarTradeRow): string {
   const code = toTsCodeFromSymbol(r.symbol) ?? r.symbol;
   const name = r.name && r.name !== code && r.name !== r.symbol ? r.name : '';
   const due = r.exitDue ?? '—';
-  const act = r.side === 'SELL' ? '今日收盘卖' : '持有至到期收盘';
+  const act = r.side === 'SELL' ? '今日14:30卖' : '持有至到期14:30';
   return [name, code, `到期${due}`, act].filter(Boolean).join(' ');
 }
 
@@ -302,6 +324,14 @@ export type TwinStarLiveStock = {
   entryDate?: string | null;
   lastClose?: number | null;
   pnlPct?: number | null;
+  /** Backend calendar-aware body progress (portfolio-health satBody); preferred over local estimate. */
+  satBody?: {
+    heldDays?: number | null;
+    daysLeft?: number | null;
+    exitDue?: string | null;
+    due?: boolean | null;
+    missingEntry?: boolean | null;
+  } | null;
 };
 
 export type TwinStarTradePlanInput = {
@@ -479,7 +509,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     const ts = liveTsCode(h.symbol);
     const id = ts ?? h.symbol;
     const recipeRow = ts ? recipe.find((r) => r.ts === ts) : undefined;
-    const body = satBodyProgress(h.entryDate ?? recipeRow?.entryDate, asOf);
+    const body = resolveSatBody({ entryDate: h.entryDate ?? recipeRow?.entryDate, satBody: h.satBody }, asOf);
     const protectStop = satProtectStop(h.costPrice ?? recipeRow?.entryPrice);
     const lastClose = h.lastClose ?? recipeRow?.close ?? null;
     satMeta.set(id, {
@@ -558,7 +588,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     const ts = liveTsCode(h.symbol);
     const id = ts ?? h.symbol;
     const meta = satMeta.get(id);
-    const body = meta?.body ?? satBodyProgress(h.entryDate, asOf);
+    const body = meta?.body ?? resolveSatBody(h, asOf);
     const protectStop = meta?.protectStop ?? satProtectStop(h.costPrice);
     const overlay = {
       costPrice: h.costPrice ?? meta?.recipe?.entryPrice ?? null,
@@ -580,7 +610,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
         symbol: h.symbol,
         name: label,
         navPct: h.positionPct ?? satSlotNavPct,
-        reason: `卫星到期 · ${overlay.exitDue ?? '今日'} 收盘卖（第${TWIN_STAR_LIVE_RECIPE.body}个交易日）`,
+        reason: `卫星到期 · ${overlay.exitDue ?? '今日'} 14:30卖（第${TWIN_STAR_LIVE_RECIPE.body}个交易日）`,
         purpose: 'sat-exit',
         ...overlay,
       });
@@ -590,9 +620,9 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     if (body.missingEntry) {
       reason = '补录入场日才能算 body3 到期';
     } else if (body.daysLeft === 1) {
-      reason = '明日收盘卖（第3个交易日）';
+      reason = '明日14:30卖（第3个交易日）';
     } else {
-      reason = `${body.daysLeft} 个交易日后收盘卖`;
+      reason = `${body.daysLeft} 个交易日后14:30卖`;
     }
     pushRow(holds, {
       side: 'HOLD',

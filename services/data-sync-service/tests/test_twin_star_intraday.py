@@ -162,6 +162,24 @@ class TestBuildIntradaySat:
         monkeypatch.setattr(m, "fetch_market_snapshot", lambda: {})
         assert m.build_intraday_sat(self.today) is None
 
+    def test_c1_skips_runup_over_3pct_strict_no_refill(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def snap() -> dict:
+            s = _flat_snapshot("2026-08-20")
+            # 600001: 14:30/open-1 = 10.9/10.5-1 = 3.8% > 3% -> C1 skip
+            s["600001.SH"]["close"] = 10.9
+            s["600001.SH"]["high"] = 11.0
+            s["600001.SH"]["low"] = 10.4
+            return s
+
+        monkeypatch.setattr(m, "fetch_market_snapshot", snap)
+        sat = m.build_intraday_sat(self.today)
+        assert sat is not None
+        assert "600001.SH" not in [c["ts"] for c in sat["candidates"]]
+        assert "600001.SH" in [c["ts"] for c in sat["skippedC1"]]
+        assert sat["skippedC1Count"] == 1
+        assert sat["entryFilter"] == "c1_3pct"
+        assert sat["exitHhmm"] == "1430"
+
 
 class TestSessionWindow:
     def test_session_date_before_9am_is_yesterday(self) -> None:

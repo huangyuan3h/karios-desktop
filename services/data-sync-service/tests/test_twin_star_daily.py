@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -117,9 +117,39 @@ class TestSatSignal:
 
 
 class TestLiveSatHoldings:
-    def test_weekdays_inclusive(self) -> None:
-        assert tsd.count_weekdays_inclusive("2026-01-19", "2026-01-21") == 3
-        assert tsd.count_weekdays_inclusive("2026-01-17", "2026-01-19") == 1
+    def test_sessions_inclusive_uses_calendar(self, monkeypatch) -> None:
+        import data_sync_service.service.trade_calendar_utils as tcu
+
+        # Tue 2026-01-20 is a holiday in this fake calendar: Mon->Wed = 2.
+        opens = {"2026-01-19", "2026-01-21"}
+
+        def _fake_is_open(exchange, d):
+            return d.isoformat() in opens
+
+        def _fake_opens(exchange, start_date, end_date):
+            out = []
+            cur = start_date
+            while cur <= end_date:
+                if cur.isoformat() in opens:
+                    out.append(cur)
+                cur += timedelta(days=1)
+            return out
+
+        monkeypatch.setattr(tcu, "is_trading_day", _fake_is_open)
+        monkeypatch.setattr(tcu, "get_open_dates", _fake_opens)
+        assert tsd.count_sessions_inclusive("2026-01-19", "2026-01-21") == 2
+        assert tsd.count_sessions_inclusive("2026-01-17", "2026-01-19") == 1
+
+    def test_sessions_inclusive_falls_back_to_weekdays(self, monkeypatch) -> None:
+        import data_sync_service.service.trade_calendar_utils as tcu
+
+        def _boom(*a, **k):
+            raise RuntimeError("no db")
+
+        monkeypatch.setattr(tcu, "is_trading_day", _boom)
+        monkeypatch.setattr(tcu, "get_open_dates", _boom)
+        assert tsd.count_sessions_inclusive("2026-01-19", "2026-01-21") == 3
+        assert tsd.count_sessions_inclusive("2026-01-17", "2026-01-19") == 1
 
     def test_etf_pick_counts_all_cn(self) -> None:
         health = {
@@ -220,7 +250,7 @@ class TestReminderPayload:
         assert "A.SH" in payload["detail"]
         assert "R-wide 开闸" in payload["detail"]
         assert "核心50%" in payload["detail"]
-        assert "今日卖 000001.SZ" in payload["detail"]
+        assert "今日14:30卖 000001.SZ" in payload["detail"]
         assert "你卫星仓 1/4" in payload["detail"]
         assert "引擎模拟" in payload["detail"]
         assert "持仓簿" not in payload["detail"]
@@ -415,3 +445,20 @@ def test_reminder_hides_t1_names_when_snapshot_failed(monkeypatch: pytest.Monkey
     payload = tsd.build_twin_star_reminder_payload(date(2026, 9, 2))
     assert "快照失败" in payload["detail"]
     assert "000001.SZ" not in payload["detail"]
+
+
+class TestSatBodyProgress:
+    def test_exit_due_is_third_session(self) -> None:
+        # Plain week, no holiday: Wed 2026-09-02 -> 3rd session Fri 2026-09-04.
+        out = tsd.sat_body_progress("2026-09-02", "2026-09-03")
+        assert out["heldDays"] == 2
+        assert out["daysLeft"] == 1
+        assert out["exitDue"] == "2026-09-04"
+        assert out["due"] is False
+        assert out["missingEntry"] is False
+
+    def test_due_and_missing_entry(self) -> None:
+        out = tsd.sat_body_progress("2026-09-02", "2026-09-04")
+        assert out["due"] is True
+        assert out["daysLeft"] == 0
+        assert tsd.sat_body_progress(None, "2026-09-04")["missingEntry"] is True

@@ -368,6 +368,7 @@ def close_paper_trade(
     close_reason: str,
     gross_pnl_pct: float | None = None,
     costs_pct: float | None = None,
+    signal_snapshot_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Close an open trade. Returns the updated row, or None if not open.
 
@@ -375,6 +376,8 @@ def close_paper_trade(
     ``costs_pct`` record the split so the cost assumption stays auditable.
     Legacy callers (or backfill paths) can omit the two new args — they stay
     NULL, meaning "no cost model" (indistinguishable from costs_pct=0).
+    ``signal_snapshot_extra`` merges into the entry signal_snapshot JSONB
+    (e.g. exit price source); no schema change, omit to leave it untouched.
     """
     if close_reason not in CLOSE_REASONS:
         raise ValueError(f"close_reason must be one of {CLOSE_REASONS} (got {close_reason!r})")
@@ -392,6 +395,10 @@ def close_paper_trade(
                     costs_pct = COALESCE(%s, costs_pct),
                     holding_days = %s,
                     close_reason = %s,
+                    signal_snapshot = CASE
+                        WHEN %s::jsonb IS NULL THEN signal_snapshot
+                        ELSE COALESCE(signal_snapshot, '{{}}'::jsonb) || %s::jsonb
+                    END,
                     updated_at = now()
                 WHERE id = %s AND status = 'open'
                 RETURNING *
@@ -404,6 +411,8 @@ def close_paper_trade(
                     costs_pct,
                     int(holding_days),
                     close_reason,
+                    Json(signal_snapshot_extra) if signal_snapshot_extra else None,
+                    Json(signal_snapshot_extra) if signal_snapshot_extra else None,
                     trade_id,
                 ),
             )

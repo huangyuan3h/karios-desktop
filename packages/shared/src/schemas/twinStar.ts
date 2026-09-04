@@ -22,7 +22,27 @@ export const TWIN_STAR_CLIP4 = {
   bucketQ: 3,
 } as const;
 
-export type TwinStarClip4 = typeof TWIN_STAR_CLIP4;
+export const TWIN_STAR_HABIT = {
+  /** Habit calendar: today's S-gap filled at the 14:30 print (not T open). */
+  fillMode: 'same_1430',
+  fillHhmm: '1430',
+  /** C1: skip when 14:30 / today's open - 1 exceeds this (pulse spent). */
+  c1Pct: 0.03,
+  /** Body exit print on day 3 (None = daily close, '1430' = habit sell). */
+  exitHhmm: '1430',
+  body: 3,
+} as const;
+
+export type TwinStarHabit = typeof TWIN_STAR_HABIT;
+
+export const TwinStarHabitSchema = z.object({
+  fillMode: z.literal(TWIN_STAR_HABIT.fillMode),
+  fillHhmm: z.literal(TWIN_STAR_HABIT.fillHhmm),
+  c1Pct: z.literal(TWIN_STAR_HABIT.c1Pct),
+  exitHhmm: z.literal(TWIN_STAR_HABIT.exitHhmm),
+  body: z.literal(TWIN_STAR_HABIT.body),
+});
+export type TwinStarHabitRecipe = z.infer<typeof TwinStarHabitSchema>;
 
 /** Python `clip4` block on the action payload — literals so 10%×10 cannot sneak in. */
 export const TwinStarClip4Schema = z.object({
@@ -50,6 +70,10 @@ export const TwinStarSatCandidateSchema = z.object({
   gapPct: z.number().nullable(),
   close: z.number().nullable(),
   limitLocked: z.boolean().nullable().optional(),
+  /** Habit C1: 14:30 / today's open - 1 in % (None when T-1 fallback). */
+  runUpPct: z.number().nullable().optional(),
+  openPx: z.number().nullable().optional(),
+  skipReason: z.string().nullable().optional(),
 });
 export type TwinStarSatCandidate = z.infer<typeof TwinStarSatCandidateSchema>;
 
@@ -103,6 +127,10 @@ export const TwinStarSatSchema = z.object({
   snapshotStale: z.boolean().nullable().optional(),
   snapshotAgeSec: z.number().nullable().optional(),
   snapshotReason: z.string().nullable().optional(),
+  skippedC1: z.array(TwinStarSatCandidateSchema).nullable().optional(),
+  skippedC1Count: z.number().int().nonnegative().nullable().optional(),
+  entryFilter: z.string().nullable().optional(),
+  exitHhmm: z.string().nullable().optional(),
   coreTargetPct: z.union([
     z.literal(TWIN_STAR_CLIP4.coreIdlePct),
     z.literal(TWIN_STAR_CLIP4.coreSatActivePct),
@@ -122,6 +150,7 @@ export const TwinStarActionResponseSchema = z.object({
   core: TwinStarCoreSchema,
   sat: TwinStarSatSchema,
   clip4: TwinStarClip4Schema,
+  habit: TwinStarHabitSchema.optional(),
 });
 export type TwinStarAction = z.infer<typeof TwinStarActionResponseSchema>;
 

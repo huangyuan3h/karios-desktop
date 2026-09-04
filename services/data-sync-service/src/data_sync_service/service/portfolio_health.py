@@ -519,6 +519,18 @@ def _build_holdings_block(
                 float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
             )
             check["pyramidAdded"] = sym in pyramid_syms
+            # Satellite body=3 progress on the trade calendar (same counter the
+            # backtest/paper replay uses). Watchlist prefers this over its
+            # local Mon–Fri estimate so exitsDue never drifts on holidays.
+            if market == "CN":
+                try:
+                    from data_sync_service.service.twin_star_daily import sat_body_progress
+
+                    check["satBody"] = sat_body_progress(
+                        str(entry) if entry else None, day
+                    )
+                except Exception:  # noqa: BLE001
+                    check["satBody"] = None
             # 2026-08-12: merge the main table's trend-structure exit signal
             # so the health card and the watchlist table never disagree on
             # whether to exit (S-3 price/time rules stay as-is).

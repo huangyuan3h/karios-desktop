@@ -7,12 +7,12 @@ paper_trading_update (17:45). S-3 update skips source=twin_star rows.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 
 from apscheduler.triggers.cron import CronTrigger
 
 from data_sync_service.db.sync_job_record import insert_record
 from data_sync_service.service.paper_twin_star import run_intake_twin_star, run_update_twin_star
+from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,8 @@ def build_trigger() -> CronTrigger:
     return CronTrigger.from_crontab(CRON_EXPRESSION, timezone=TIMEZONE)
 
 
-def _today_iso_utc() -> str:
-    return datetime.now(tz=UTC).date().isoformat()
-
-
 def run() -> None:
-    today = _today_iso_utc()
+    today = shanghai_today_iso()
     try:
         intake = run_intake_twin_star(trade_date=today)
         update = run_update_twin_star(today_iso_s=today)

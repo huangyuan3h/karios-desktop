@@ -73,29 +73,42 @@ def _parse_iso_day(raw: Any) -> date | None:
 
 
 def _count_weekdays_inclusive(start: date, end: date) -> int:
-    if end < start:
-        return 0
-    n = 0
-    cur = start
-    while cur <= end:
-        if cur.weekday() < 5:
-            n += 1
-        cur += timedelta(days=1)
-    return n
+    """SSE open sessions in [start, end] (body-day counter, holiday-aware)."""
+    try:
+        from data_sync_service.service.trade_calendar_utils import count_open_sessions
+
+        return count_open_sessions(start.isoformat(), end.isoformat())
+    except Exception:  # noqa: BLE001
+        if end < start:
+            return 0
+        n = 0
+        cur = start
+        while cur <= end:
+            if cur.weekday() < 5:
+                n += 1
+            cur += timedelta(days=1)
+        return n
 
 
 def _nth_weekday_inclusive(start: date, n: int) -> date | None:
-    if n < 1:
+    """Date of the n-th open session on/after start (1-indexed)."""
+    try:
+        from data_sync_service.service.trade_calendar_utils import nth_open_session
+
+        iso = nth_open_session(start.isoformat(), n)
+        return date.fromisoformat(iso) if iso else None
+    except Exception:  # noqa: BLE001
+        if n < 1:
+            return None
+        seen = 0
+        cur = start
+        for _ in range(40):
+            if cur.weekday() < 5:
+                seen += 1
+                if seen >= n:
+                    return cur
+            cur += timedelta(days=1)
         return None
-    seen = 0
-    cur = start
-    for _ in range(40):
-        if cur.weekday() < 5:
-            seen += 1
-            if seen >= n:
-                return cur
-        cur += timedelta(days=1)
-    return None
 
 
 def _as_float(v: Any) -> float | None:
@@ -169,7 +182,7 @@ def _sat_holding_alerts(
     hold: dict[str, Any],
     as_of: date | None,
 ) -> list[dict[str, Any]]:
-    """Twin-star satellite: body=3 close sell. No protect stop (frozen S-gap)."""
+    """Twin-star satellite: body=3 day-3 14:30 sell. No protect stop (habit)."""
     symbol = str(hold.get("symbol") or "")
     name = str(hold.get("name") or symbol)
     out: list[dict[str, Any]] = []
@@ -184,7 +197,7 @@ def _sat_holding_alerts(
                 type="sat_exit",
                 severity="high",
                 title=f"卫星到期卖 · {name}",
-                detail=f"{symbol} body3 第 {held} 个交易日 · 到期 {due_s or '今日'} 收盘卖",
+                detail=f"{symbol} body3 第 {held} 个交易日 · 到期 {due_s or '今日'} 14:30卖",
                 anchor="holdings",
                 lane="trade",
                 book="sat",
@@ -194,7 +207,7 @@ def _sat_holding_alerts(
                 nid=f"sat-soon:{market}:{symbol}",
                 type="sat_expire_soon",
                 severity="medium",
-                title=f"卫星明日收盘卖 · {name}",
+                title=f"卫星明日14:30卖 · {name}",
                 detail=f"{symbol} 已持 {held}/{SAT_BODY} · 到期 {due_s}",
                 anchor="holdings",
                 lane="trade",

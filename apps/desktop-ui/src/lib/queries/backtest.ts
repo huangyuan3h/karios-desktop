@@ -427,12 +427,16 @@ export type TimelineRow = {
   gapCount?: number | null;
   strictCount?: number | null;
   skipT1Count?: number | null;
+  skipC1Count?: number | null;
+  skipC2Count?: number | null;
+  skipC3Count?: number | null;
+  skipChurnCount?: number | null;
   filledToday?: number | null;
   idleSlots?: number | null;
   gateOpen?: boolean | null;
 };
 
-export type SatBlotterKind = 'fill' | 'skip_t1' | 'open';
+export type SatBlotterKind = 'fill' | 'skip_t1' | 'skip_c1' | 'skip_c2' | 'skip_c3' | 'skip_churn' | 'skip_entry' | 'open';
 
 export type SatBlotterRow = {
   kind: SatBlotterKind | string;
@@ -467,6 +471,9 @@ export type TimelineResponse = {
   strategy?: string;
   mode?: string;
   opportunity?: boolean;
+  satFill?: string;
+  satExit?: string | null;
+  c1Pct?: number | null;
   trailPct?: number;
   coreWeight?: number;
   satWeight?: number;
@@ -488,10 +495,19 @@ export function useTimelineQuery(
   end: string,
   strategy: TimelineStrategy = 'pick_strong',
   enabled = true,
+  satOpts?: { satFill?: string; satExit?: string | null; c1Pct?: number | null },
 ) {
   const q = new URLSearchParams({ start, end, strategy });
+  if (strategy === 'twin_star' && satOpts) {
+    if (satOpts.satFill) q.set('sat_fill', satOpts.satFill);
+    if (satOpts.satExit) q.set('sat_exit', satOpts.satExit);
+    if (satOpts.c1Pct != null) q.set('c1_pct', String(satOpts.c1Pct));
+  }
+  const keySuffix = strategy === 'twin_star' && satOpts
+    ? [satOpts.satFill ?? '', satOpts.satExit ?? '', satOpts.c1Pct ?? '']
+    : [];
   return useQuery({
-    queryKey: ['backtest', 'timeline', start, end, strategy],
+    queryKey: ['backtest', 'timeline', start, end, strategy, ...keySuffix],
     queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 90_000 }),
     staleTime: 5 * 60_000,
     enabled,

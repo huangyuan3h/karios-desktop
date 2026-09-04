@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import pytest
+
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_BODY_EXIT,
     SOURCE_TWIN_STAR,
 )
 from data_sync_service.service import paper_trading as pt_svc
 from data_sync_service.service import paper_twin_star as pts
+
+
+@pytest.fixture(autouse=True)
+def _no_external_io(monkeypatch):
+    """Keep paper unit tests hermetic: session open, no 5min import/fetch."""
+    monkeypatch.setattr(pts, "is_cn_trading_day", lambda d: True)
+    monkeypatch.setattr(pts, "_ensure_5min_today", lambda ts, day: None)
+    monkeypatch.setattr(pts, "_fetch_1430_px_map", lambda ts, day: ({}, {}))
 
 
 def test_intake_caps_at_four_slots(monkeypatch) -> None:
@@ -150,3 +160,104 @@ def test_s3_update_skips_twin_star_rows(monkeypatch) -> None:
 
 def test_sleeve_is_twelve_point_five() -> None:
     assert pts.SLEEVE_PCT == 0.125
+
+
+def test_intake_skips_snapshot_bad_and_non_session(monkeypatch) -> None:
+    monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
+    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+
+    # Stale/missing intraday tape: T-1 fallback list must not be bought.
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {
+            "sat": {
+                "gateOpen": True,
+                "candidates": [{"ts": "000001.SZ", "close": 10}],
+                "snapshotMissing": True,
+                "snapshotReason": "no_session_snapshot",
+            }
+        },
+    )
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 0
+    assert out["skippedReasons"]["snapshot_bad"] == 1
+
+    # SSE holiday: no session, no intake even with an open gate.
+    monkeypatch.setattr(pts, "is_cn_trading_day", lambda d: False)
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {"sat": {"gateOpen": True, "candidates": [{"ts": "000001.SZ", "close": 10}]}},
+    )
+    out = pts.run_intake_twin_star(trade_date="2026-09-03")
+    assert out["inserted"] == 0
+    assert out["skippedReasons"]["non_session"] == 1
+
+
+def test_intake_prefers_bar_1430_and_records_source(monkeypatch) -> None:
+    seen: list[dict] = []
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {
+            "sat": {
+                "gateOpen": True,
+                "candidates": [{"ts": "000001.SZ", "amp": 1, "gapPct": 5, "close": 10.5}],
+            }
+        },
+    )
+    monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
+    monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
+    monkeypatch.setattr(
+        pts, "_fetch_1430_px_map", lambda ts, day: ({"000001.SZ": 10.2}, {"000001.SZ": "bar_5min_1430"})
+    )
+
+    def fake_insert(**kwargs):
+        seen.append(kwargs)
+        return {"id": "x"}
+
+    monkeypatch.setattr(pts, "insert_paper_trade", fake_insert)
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 1
+    assert seen[0]["entry_price"] == 10.2
+    assert seen[0]["signal_snapshot"]["entryPxSrc"] == "bar_5min_1430"
+    assert out["entryPxSrc"] == {"bar_5min_1430": 1}
+
+
+def test_update_records_exit_source_and_hhmm(monkeypatch) -> None:
+    closed: list[dict] = []
+    monkeypatch.setattr(
+        pts,
+        "_open_twin_star",
+        lambda: [
+            {
+                "id": "a",
+                "symbol": "CN:000001",
+                "source": SOURCE_TWIN_STAR,
+                "entryDate": "2026-08-31",
+                "entryPrice": 10.0,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        pts,
+        "fetch_last_ohlcv_batch",
+        lambda ts, days=8: {"000001.SZ": [["2026-09-02", 0, 0, 0, 10.2]]},
+    )
+    monkeypatch.setattr(
+        pts, "_fetch_1430_px_map", lambda ts, day: ({"000001.SZ": 10.1}, {"000001.SZ": "bar_5min_1430"})
+    )
+
+    def fake_close(**kwargs):
+        closed.append(kwargs)
+        return {"id": kwargs["trade_id"]}
+
+    monkeypatch.setattr(pts, "close_paper_trade", fake_close)
+    monkeypatch.setattr(pts, "round_trip_cost_pct", lambda m: 0.0)
+    out = pts.run_update_twin_star(today_iso_s="2026-09-02")
+    assert out["closed"] == 1
+    assert out["exitHhmm"] == pts.HABIT_EXIT_HHMM
+    assert closed[0]["close_price"] == 10.1
+    assert closed[0]["signal_snapshot_extra"] == {"exitPx": 10.1, "exitPxSrc": "bar_5min_1430"}
+    assert out["exitPxSrc"] == {"bar_5min_1430": 1}

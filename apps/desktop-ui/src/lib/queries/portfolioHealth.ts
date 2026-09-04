@@ -46,6 +46,14 @@ export interface PortfolioHolding {
     rank5d?: number;
     total?: number;
   } | null;
+  /** Satellite body=3 progress on the trade calendar (CN stocks, backend-computed). */
+  satBody?: {
+    heldDays?: number | null;
+    daysLeft?: number | null;
+    exitDue?: string | null;
+    due?: boolean | null;
+    missingEntry?: boolean | null;
+  } | null;
 }
 
 export interface PortfolioCandidate {

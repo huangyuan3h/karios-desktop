@@ -220,9 +220,9 @@ beforeEach(() => {
 });
 
 describe('BacktestPage', () => {
-  it('shows opportunity twin-star v3.1 timeline on compare tab', async () => {
+  it('shows opportunity twin-star habit timeline on compare tab', async () => {
     renderPage();
-    expect(await screen.findByText(/机会双子星 v3.1 · 与 Watchlist 同源/)).toBeDefined();
+    expect(await screen.findByText(/机会双子星 · 习惯C1\+14:30卖（Live）/)).toBeDefined();
     expect(await screen.findByText(/核心目标%/)).toBeDefined();
     expect(screen.getByText(/择强单轨累计/)).toBeDefined();
     expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
@@ -240,7 +240,7 @@ describe('BacktestPage', () => {
 
   it('switches timeline query to the OOS2 gate window', async () => {
     renderPage();
-    expect(await screen.findByText(/机会双子星 v3.1 · 与 Watchlist 同源/)).toBeDefined();
+    expect(await screen.findByText(/机会双子星 · 习惯C1\+14:30卖（Live）/)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /三窗 · OOS2/ }));
     expect(
       apiGetJson.mock.calls.some((c: unknown[]) => String(c[0]).includes('start=2024-08-01')),

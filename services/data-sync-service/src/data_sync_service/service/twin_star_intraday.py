@@ -36,6 +36,13 @@ from data_sync_service.service.twin_star_daily import fill_candidate_names
 logger = logging.getLogger(__name__)
 
 TOP_N = MAX_POS
+# Habit recipe (sat-exit-hhmm 2026-09-03): C1 3% + day-3 14:30 sell.
+# Mirrors state_bucket_track replay params: fill_mode=same_1430, fill_hhmm=1430,
+# max_open_to_1430_pct=0.03, exit_hhmm=1430. Frozen T-open engine untouched.
+HABIT_C1_PCT = 0.03
+HABIT_FILL_MODE = "same_1430"
+HABIT_FILL_HHMM = "1430"
+HABIT_EXIT_HHMM = "1430"
 WARMUP_DAYS = 120
 SNAPSHOT_PAGE_SIZE = 200
 SNAPSHOT_MAX_PAGES = 40
@@ -353,13 +360,22 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
             series = per_ts.get(ts)
             idx = date_idx.get(ts, {}).get(today_s, -1)
             close = series[idx]["close"] if idx >= 0 and series else None
+            open_px = series[idx]["open"] if idx >= 0 and series else None
             snap_name = snapshot.get(ts, {}).get("name")
+            run_up = None
+            try:
+                if close and open_px and float(open_px) > 0:
+                    run_up = float(close) / float(open_px) - 1.0
+            except (TypeError, ValueError):
+                run_up = None
             item: dict[str, Any] = {
                 "ts": ts,
                 "amp": round(float(amp) * 100, 2),
                 "gapPct": round(float(gap) * 100, 2),
                 "close": float(close) if close else None,
                 "limitLocked": blocked,
+                "openPx": float(open_px) if open_px else None,
+                "runUpPct": round(run_up * 100, 2) if run_up is not None else None,
             }
             if isinstance(snap_name, str) and snap_name.strip():
                 item["name"] = snap_name.strip()
@@ -367,10 +383,27 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
         return out
 
     snapshot_at = datetime.now(CN_TZ).isoformat(timespec="seconds")
-    candidates = _pack(picks["primary"])
+    raw_candidates = _pack(picks["primary"])
+    # Habit C1 (sat-entry-c1 2026-09-03): skip when 14:30/open-1 > 3%.
+    # Strict pool: no refill from worse ranks; idle notional stays with core.
+    candidates: list[dict[str, Any]] = []
+    skipped_c1: list[dict[str, Any]] = []
+    for row in raw_candidates:
+        run_up = None
+        try:
+            px = row.get("close")
+            op = row.get("openPx")
+            if px and op and float(op) > 0:
+                run_up = float(px) / float(op) - 1.0
+        except (TypeError, ValueError):
+            run_up = None
+        if run_up is not None and run_up > HABIT_C1_PCT:
+            skipped_c1.append({**row, "skipReason": "skip_1430_run"})
+        else:
+            candidates.append(row)
     blocked = _pack(picks["blocked"], blocked=True)
     alternates = _pack(picks["alternates"])
-    fill_candidate_names(candidates, blocked, alternates)
+    fill_candidate_names(candidates, blocked, alternates, skipped_c1)
     return {
         "asOf": today_s,
         "gateOpen": breadth > R_WIDE_THRESHOLD,
@@ -379,6 +412,10 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
         "candidates": candidates,
         "blocked": blocked,
         "alternates": alternates,
+        "skippedC1": skipped_c1,
+        "skippedC1Count": len(skipped_c1),
+        "entryFilter": "c1_3pct",
+        "exitHhmm": HABIT_EXIT_HHMM,
         "approx": True,
         "snapshotAt": snapshot_at,
         "note": None,

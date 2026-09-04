@@ -71,9 +71,9 @@ def twin_star_refresh() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
 
-_timeline_cache: dict[tuple[str, str], dict[str, Any]] = {}
+_timeline_cache: dict[tuple, dict[str, Any]] = {}
 # Engine context for stock-leg attribution (not file-persisted).
-_timeline_engine_cache: dict[tuple[str, str], dict[str, Any]] = {}
+_timeline_engine_cache: dict[tuple, dict[str, Any]] = {}
 TIMELINE_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
 TIMELINE_CACHE_TTL_HOURS = 24
 # Bump when pick / trail logic changes so stale file caches are ignored.
@@ -383,6 +383,18 @@ def backtest_timeline(
             "pick_strong | twin_star (机会双子星) | state_bucket (独立 S-gap 可执行)"
         ),
     ),
+    sat_fill: str = Query(
+        "next_open",
+        description="Satellite fill: next_open (frozen) | same_1430 (habit 14:30).",
+    ),
+    sat_exit: str | None = Query(
+        None,
+        description="Satellite body-exit print: None=daily close (frozen) | 1000 | 1430 (habit).",
+    ),
+    c1_pct: float | None = Query(
+        None,
+        description="Habit C1 filter: skip when 14:30/open-1 exceeds this (e.g. 0.03). Requires sat_fill=same_1430.",
+    ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
 
@@ -392,6 +404,9 @@ def backtest_timeline(
     - strategy=pick_strong: 择强单轨 ``mom_compare`` (equal-asset pool).
     - strategy=twin_star: 机会双子星 — 择强核心 + S-gap 机会增强
       (涨停可能买不进 → 可执行口径；闲置跟核心).
+      Frozen default: sat_fill=next_open, sat_exit=close, c1 unset.
+      Habit对照: sat_fill=same_1430&c1_pct=0.03&sat_exit=1430 reproduces
+      sat-exit-hhmm 2026-09-03 C1+day-3 14:30 sell (beats_core, Live recipe).
     - strategy=state_bucket: 状态分桶 S-gap 独立腿 (同可执行口径，不混合择强).
     """
     from datetime import date as date_type
@@ -407,20 +422,49 @@ def backtest_timeline(
             status_code=400,
             detail=f"unknown strategy={strategy!r}; use pick_strong|twin_star|state_bucket",
         )
-    result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
+    if sat_fill not in ("next_open", "same_1430"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown sat_fill={sat_fill!r}; use next_open|same_1430",
+        )
+    if sat_exit is not None and sat_exit not in ("1000", "1430"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown sat_exit={sat_exit!r}; use 1000|1430",
+        )
+    if c1_pct is not None and sat_fill != "same_1430":
+        raise HTTPException(
+            status_code=400,
+            detail="c1_pct requires sat_fill=same_1430",
+        )
+    result, _engine = _get_or_build_timeline(
+        start,
+        end,
+        strategy=strategy,
+        sat_fill=sat_fill,
+        sat_exit=sat_exit,
+        c1_pct=c1_pct,
+    )
     return result
 
 
 def _get_or_build_timeline(
-    start: str, end: str, *, strategy: str = "pick_strong", need_engine: bool = False
+    start: str,
+    end: str,
+    *,
+    strategy: str = "pick_strong",
+    need_engine: bool = False,
+    sat_fill: str = "next_open",
+    sat_exit: str | None = None,
+    c1_pct: float | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing."""
-    cache_key = (start, end, strategy)
+    cache_key = (start, end, strategy, sat_fill, sat_exit or "", c1_pct or 0)
     cached = _timeline_cache.get(cache_key)
     engine = _timeline_engine_cache.get(cache_key)
     if cached is not None and (not need_engine or engine is not None):
         return cached, engine
-    if cached is None and strategy == "pick_strong":
+    if cached is None and strategy == "pick_strong" and sat_fill == "next_open":
         file_cached = _load_timeline_file(start, end)
         if file_cached is not None and not need_engine:
             _timeline_cache[cache_key] = file_cached
@@ -504,8 +548,17 @@ def _get_or_build_timeline(
             from data_sync_service.service.state_bucket_track import build_sgap_timeline
 
             # 机会双子星: 涨停可能买不进 → T-1 涨停候选剔除 (不假设一字板能成交)
+            # Frozen default: next_open/close. Habit对照 passes
+            # sat_fill=same_1430&c1_pct=0.03&sat_exit=1430 (C1+day-3 14:30).
             sat = build_sgap_timeline(
-                start=start, end=end, skip_t1_limit=True, pool_mode="strict"
+                start=start,
+                end=end,
+                skip_t1_limit=True,
+                pool_mode="strict",
+                fill_mode=sat_fill,
+                fill_hhmm="1430",
+                exit_hhmm=sat_exit,
+                max_open_to_1430_pct=c1_pct,
             )
             built = build_twin_star_timeline(
                 core_rows=result["rows"],
@@ -528,6 +581,9 @@ def _get_or_build_timeline(
                 "satWeight": built.get("satWeight"),
                 "opportunity": built.get("opportunity"),
                 "satSummary": sat.get("summary"),
+                "satFill": sat_fill,
+                "satExit": sat_exit,
+                "c1Pct": c1_pct,
                 "trailPct": built.get("trailPct"),
             }
         _timeline_cache[cache_key] = result

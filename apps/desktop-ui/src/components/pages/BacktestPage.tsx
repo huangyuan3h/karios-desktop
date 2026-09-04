@@ -549,7 +549,8 @@ function TimelineCard() {
   const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong' | 'state_bucket'>('twin_star');
   const isTwin = strategy === 'twin_star';
   const isSgap = strategy === 'state_bucket';
-  const q = useTimelineQuery(start, end, strategy, true);
+  const [habit, setHabit] = React.useState(true);
+  const q = useTimelineQuery(start, end, strategy, true, isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined);
   const rows = q.data?.rows ?? [];
   const blotter = q.data?.blotter ?? [];
   const summary = q.data?.summary;
@@ -600,7 +601,7 @@ function TimelineCard() {
         <BarChart3 className="size-3.5" />
         Timeline（
         {isTwin
-          ? '机会双子星 v3.1 · 与 Watchlist 同源'
+          ? habit ? '机会双子星 · 习惯C1+14:30卖（Live）' : '机会双子星 v3.1 · 与 Watchlist 同源'
           : isSgap
             ? '状态分桶 S-gap · 可执行独立腿（涨停可能买不进）'
             : '择强单轨 · 全资产同权 · 100%'}
@@ -632,6 +633,19 @@ function TimelineCard() {
             状态分桶
           </button>
         </span>
+        {isTwin ? (
+          <button
+            type="button"
+            onClick={() => setHabit((v) => !v)}
+            title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（sat-exit-hhmm Live配方）；关=冻结T开盘收盘卖"
+            className={cn(
+              'ml-2 rounded border px-1.5 py-0.5 text-[10px]',
+              habit ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
+          </button>
+        ) : null}
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last
@@ -866,10 +880,10 @@ function TimelineCard() {
                       ) : null}
                       {isTwin || isSgap ? (
                         <td
-                          className={cn('py-1 pr-2', (r.skipT1Count ?? 0) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--k-muted)]')}
-                          title="桶内 T-1 涨停、strict 不补"
+                          className={cn('py-1 pr-2', ((r.skipT1Count ?? 0) > 0 || (r.skipC1Count ?? 0) > 0) ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--k-muted)]')}
+                          title={`桶内 T-1 涨停 ${r.skipT1Count ?? 0} · C1 14:30涨超不买 ${r.skipC1Count ?? 0} · strict 不补`}
                         >
-                          {r.gateOpen ? r.skipT1Count ?? 0 : '—'}
+                          {r.gateOpen ? `T1 ${r.skipT1Count ?? 0} · C1 ${r.skipC1Count ?? 0}` : '—'}
                         </td>
                       ) : null}
                       {isTwin || isSgap ? (

@@ -6,10 +6,17 @@ import { cn } from '@/lib/utils';
 import type { SatBlotterRow } from '@/lib/queries/backtest';
 
 const KIND_LABEL: Record<string, string> = {
-  fill: '到期成交',
+  fill: '新开成交',
   skip_t1: '涨停跳过',
+  skip_c1: 'C1跳过',
+  skip_c2: 'C2跳过',
+  skip_c3: 'C3跳过',
+  skip_churn: '放量跳过',
+  skip_entry: '其他跳过',
   open: '持仓中',
 };
+
+const KIND_ORDER = ['all', 'fill', 'skip_t1', 'skip_c1', 'skip_c2', 'skip_c3', 'skip_churn', 'skip_entry', 'open'] as const;
 
 function tone(v: number | null | undefined): string {
   if (v == null) return 'text-[var(--k-muted)]';
@@ -21,17 +28,15 @@ export function SatBlotterCard({
 }: {
   rows: SatBlotterRow[];
 }) {
-  const [kind, setKind] = React.useState<'all' | 'fill' | 'skip_t1' | 'open'>('all');
+  const [kind, setKind] = React.useState<(typeof KIND_ORDER)[number]>('all');
   const [showAll, setShowAll] = React.useState(false);
   const filtered = rows.filter((r) => (kind === 'all' ? true : r.kind === kind));
   const visible = showAll ? filtered : filtered.slice(-40);
-  const skipN = rows.filter((r) => r.kind === 'skip_t1').length;
-  const fillN = rows.filter((r) => r.kind === 'fill').length;
-  const openN = rows.filter((r) => r.kind === 'open').length;
+  const countFor = (k: string) => rows.filter((r) => r.kind === k).length;
 
   if (!rows.length) {
     return (
-      <p className="text-[10px] text-[var(--k-muted)]">本窗无卫星成交 / 涨停跳过记录</p>
+      <p className="text-[10px] text-[var(--k-muted)]">本窗无卫星成交 / 跳过记录</p>
     );
   }
 
@@ -39,7 +44,7 @@ export function SatBlotterCard({
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
         <span className="font-medium text-[var(--k-fg)]">卫星 blotter</span>
-        {(['all', 'fill', 'skip_t1', 'open'] as const).map((k) => (
+        {KIND_ORDER.map((k) => (
           <button
             key={k}
             type="button"
@@ -51,11 +56,11 @@ export function SatBlotterCard({
                 : 'border-[var(--k-border)] text-[var(--k-muted)]',
             )}
           >
-            {k === 'all' ? `全部 ${rows.length}` : `${KIND_LABEL[k]} ${k === 'fill' ? fillN : k === 'skip_t1' ? skipN : openN}`}
+            {k === 'all' ? `全部 ${rows.length}` : `${KIND_LABEL[k] ?? k} ${countFor(k)}`}
           </button>
         ))}
         <span className="ml-auto text-[var(--k-muted)]">
-          点开一笔看振幅名次 / 是否 skip_t1 / body 出日 / 卫星腿贡献 pt
+          点开一笔看振幅名次 / 跳过原因（T1·C1·C2·C3·放量） / body 出日 / 卫星腿贡献 pt
         </span>
       </div>
       <div className="max-h-[220px] overflow-auto rounded border border-[var(--k-border)]">

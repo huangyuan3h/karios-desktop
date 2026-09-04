@@ -43,7 +43,14 @@ export function RecentDailyCompareCard() {
   });
   const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong'>('twin_star');
   const isTwin = strategy === 'twin_star';
-  const timelineQ = useTimelineQuery(start, today, strategy, true);
+  const [habit, setHabit] = React.useState(true);
+  const timelineQ = useTimelineQuery(
+    start,
+    today,
+    strategy,
+    true,
+    isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined,
+  );
   const healthQ = useQuery({
     queryKey: ['portfolio-health', 'recent-ops-vs-pick-strong'],
     queryFn: () => fetchPortfolioHealth(),
@@ -176,6 +183,19 @@ export function RecentDailyCompareCard() {
         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-normal text-emerald-800 dark:text-emerald-200">
           {mode}
         </span>
+        {isTwin ? (
+          <button
+            type="button"
+            onClick={() => setHabit((v) => !v)}
+            title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（Live配方）；关=冻结T开盘收盘卖"
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px] font-normal',
+              habit ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
+          </button>
+        ) : null}
         <span className="ml-auto flex items-center gap-1 text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           <Popover>
             <PopoverTrigger asChild>
@@ -282,7 +302,7 @@ export function RecentDailyCompareCard() {
       <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
         <strong>{isTwin ? '机会双子星' : '单轨择优'}</strong> = <code>GET /api/backtest/timeline?strategy={strategy}</code>
         {isTwin
-          ? '（opportunity v3 · satActive→50/50 · idle→核心100% · 与 Watchlist 同源）。'
+          ? `（opportunity v3 · satActive→50/50 · idle→核心100% · 与 Watchlist 同源${habit ? ' · 习惯C1+14:30卖（Live）' : ' · 冻结T开盘收盘卖'}）。`
           : '（pick_strong_track · mom_compare · 100% 硬切）。'}
         <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产 ETF）相对成本的加权收益（bars）。
         「现仓快照」每日行相同——不是历史逐日持仓回放。

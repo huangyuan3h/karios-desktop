@@ -31,6 +31,13 @@ BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = MAX_POS
 SAT_SLOT_NAV_PCT = round(50 * POSITION_PCT, 2)  # clip4: 4 × 12.5% NAV when sleeve is 50/50
 SAT_PROTECT_STOP_PCT = 0.0
+# Habit live recipe (sat-exit-hhmm 2026-09-03 C1+day-3 14:30 sell, beats_core):
+# entry = today's S-gap at 14:30 print, C1 skip 14:30/open-1 > 3% (strict, no refill);
+# exit = day-3 14:30 print. Frozen T-open engine (next_open/close) stays for Timeline truth.
+HABIT_FILL_MODE = "same_1430"
+HABIT_FILL_HHMM = "1430"
+HABIT_C1_PCT = 0.03
+HABIT_EXIT_HHMM = "1430"
 
 # JSON contract: packages/shared TwinStarActionResponseSchema (OPT-134).
 # clip4 literals: maxPos=4 slotOfSleeve=0.25 satSlotNavPct=12.5 body=3 protectStopPct=0
@@ -48,33 +55,47 @@ def clip4_contract() -> dict[str, Any]:
     }
 
 
-def count_weekdays_inclusive(from_iso: str, to_iso: str) -> int:
-    """Mon–Fri count, inclusive. Live proxy for CN sessions (holidays may be ±1)."""
+def habit_contract() -> dict[str, Any]:
+    """Habit live recipe (C1 3% + day-3 14:30 sell). Matches shared TWIN_STAR_HABIT."""
+    return {
+        "fillMode": HABIT_FILL_MODE,
+        "fillHhmm": HABIT_FILL_HHMM,
+        "c1Pct": HABIT_C1_PCT,
+        "exitHhmm": HABIT_EXIT_HHMM,
+        "body": BODY,
+    }
+
+
+def count_sessions_inclusive(from_iso: str, to_iso: str) -> int:
+    """SSE open sessions in [from_iso, to_iso], inclusive (satellite body days).
+
+    Uses trade_calendar with a Mon–Fri fallback when the calendar is not
+    seeded. Replaces the old Mon–Fri proxy that drifted ±1 on holidays.
+    """
     try:
-        start = date.fromisoformat(from_iso)
-        end = date.fromisoformat(to_iso)
-    except (TypeError, ValueError):
+        from data_sync_service.service.trade_calendar_utils import count_open_sessions
+
+        return count_open_sessions(from_iso, to_iso)
+    except Exception:  # noqa: BLE001
         return 0
-    if end < start:
-        return 0
-    n = 0
-    cur = start
-    while cur <= end:
-        if cur.weekday() < 5:
-            n += 1
-        cur += timedelta(days=1)
-    return n
 
 
 def sat_body_progress(
     entry_date: str | None, as_of: str | None, *, body: int = BODY
 ) -> dict[str, Any]:
     if not entry_date or not as_of:
-        return {"heldDays": None, "daysLeft": None, "due": False, "missingEntry": True}
-    held = count_weekdays_inclusive(str(entry_date), str(as_of))
+        return {"heldDays": None, "daysLeft": None, "exitDue": None, "due": False, "missingEntry": True}
+    held = count_sessions_inclusive(str(entry_date), str(as_of))
+    try:
+        from data_sync_service.service.trade_calendar_utils import nth_open_session
+
+        exit_due = nth_open_session(str(entry_date)[:10], body)
+    except Exception:  # noqa: BLE001
+        exit_due = None
     return {
         "heldDays": held,
         "daysLeft": max(0, body - held),
+        "exitDue": exit_due,
         "due": held >= body,
         "missingEntry": False,
     }
@@ -386,6 +407,7 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
                 list(sat.get("candidates") or []),
                 list(sat.get("blocked") or []),
                 list(sat.get("alternates") or []),
+                list(sat.get("skippedC1") or []),
             )
         # Snapshot failure is a live-tape concern; historical `today` in tests
         # must not inherit today's East Money hang.
@@ -430,7 +452,15 @@ def build_twin_star_daily_action(today: date | None = None) -> dict[str, Any]:
         "coreTargetPct": core_pct,
         "satTargetPct": 100 - core_pct,
     }
-    return {"core": core, "sat": sat, "clip4": clip4_contract()}
+    # Habit live recipe defaults: T-1 fallback has no 14:30 print, so C1 is
+    # pending until the intraday snapshot arrives; exit is always day-3 14:30.
+    sat.setdefault("entryFilter", sat.get("entryFilter"))
+    if sat.get("entryFilter") is None and sat.get("skippedC1Count") is None:
+        sat["entryFilter"] = None
+    sat.setdefault("exitHhmm", HABIT_EXIT_HHMM)
+    if sat.get("exitHhmm") is None:
+        sat["exitHhmm"] = HABIT_EXIT_HHMM
+    return {"core": core, "sat": sat, "clip4": clip4_contract(), "habit": habit_contract()}
 
 
 def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any]:
@@ -465,6 +495,10 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
         if blocked:
             swap = alts[0]["ts"] if alts else "—"
             sat_line += f" · 涨停跳过 {blocked[0]['ts']} 换 {swap}"
+        skipped_c1 = sat.get("skippedC1") or []
+        if skipped_c1:
+            sat_line += f" · C1跳过 {len(skipped_c1)} 只(14:30/今开>3%)"
+        sat_line += " · 第3日14:30卖"
     if sat.get("approx"):
         snap = sat.get("snapshotAt") or "盘中快照"
         sat_line += f" · {snap} 当日行情"
@@ -473,7 +507,7 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
     exits = book.get("liveExitsDue") or []
     sell_line = ""
     if exits:
-        sell_line = f"今日卖 {', '.join(e['ts'] for e in exits[:5])} · "
+        sell_line = f"今日14:30卖 {', '.join(e['ts'] for e in exits[:5])} · "
     if live:
         hold_bits = ", ".join(
             f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in live[:3]

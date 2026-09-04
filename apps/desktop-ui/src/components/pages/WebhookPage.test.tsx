@@ -76,7 +76,7 @@ describe('WebhookPage', () => {
     expect(await screen.findByText(/new-secret-hex/)).toBeDefined();
     expect(apiPostJson).toHaveBeenCalledWith('/api/webhook/subscriptions', {
       url: 'http://127.0.0.1:9000/hook',
-      event_types: ['job_failed', 'intraday_drawdown'],
+      event_types: ['twin_star_reminder', 'job_failed'],
     });
   });
 
