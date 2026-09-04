@@ -28,6 +28,7 @@ from data_sync_service.scheduler import (
     decision_snapshot_job,
     eastmoney_industry_job,
     etf_daily_job,
+    factor_signals_job,
     fund_basic_job,
     hk_basic_job,
     hk_daily_job,
@@ -189,6 +190,12 @@ def create_scheduler() -> BackgroundScheduler:
         eastmoney_industry_job.run,
         eastmoney_industry_job.build_trigger(),
         id=eastmoney_industry_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        factor_signals_job.run,
+        factor_signals_job.build_trigger(),
+        id=factor_signals_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

@@ -354,6 +354,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "cn_extra_sync",
     "paper_twin_star",
     "bar_5min_close",
+    "factor_signals_sync",
 )
 
 

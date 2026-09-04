@@ -153,6 +153,7 @@ class TestCreateScheduler:
             "minute_capture",
             "bar_5min_close",
             "sleeve_paper_auto",
+            "factor_signals_sync",
         }
         assert ids == expected
 

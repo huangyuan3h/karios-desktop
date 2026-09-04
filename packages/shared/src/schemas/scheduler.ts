@@ -103,6 +103,7 @@ export const SchedulerJobGroupSchema = z.enum([
   'watchlistAutomation',
   'alphaRadar',
   'news',
+  'factors',
 ]);
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
 
@@ -677,6 +678,18 @@ meta(
     true,
     20,
   ),
+  meta(
+    'factor_signals_sync',
+    'factors',
+    '形态因子日扫',
+    '工作日 18:30 扫描最新交易日强股勺型耗尽顶信号并落库 factor_signals，只作方向判别，不碰 S-3。',
+    '工作日 18:30',
+    '30 18 * * 1-5',
+    'cron',
+    true,
+    1,
+    { endpoint: '/factors/sync', method: 'POST', label: '立即扫描' },
+  ),
 ];
 
 /** Group display order in the UI. */
@@ -691,6 +704,7 @@ export const SCHEDULER_GROUP_ORDER: readonly SchedulerJobGroup[] = [
   'watchlistAutomation',
   'alphaRadar',
   'news',
+  'factors',
 ];
 
 export const SCHEDULER_GROUP_META: Record<
@@ -736,6 +750,10 @@ export const SCHEDULER_GROUP_META: Record<
   news: {
     titleCn: '财经新闻',
     descriptionCn: 'RSS 抓取的财经新闻。',
+  },
+  factors: {
+    titleCn: '形态因子',
+    descriptionCn: '独立于 S-3 的日线形态信号扫描，只作方向判别。',
   },
 };
 
