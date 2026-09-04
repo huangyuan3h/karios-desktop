@@ -279,11 +279,15 @@ def _intraday_snapshot_source(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_shanghai_weekend(now: datetime) -> bool:
-    """True when it is a Saturday/Sunday in Asia/Shanghai."""
+    """True on Sat/Sun OR a calendar non-trading day (holiday-aware freshness relax)."""
     from datetime import timedelta, timezone
 
+    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
+
     sh = now.astimezone(timezone(timedelta(hours=8)))
-    return sh.weekday() >= 5
+    if sh.weekday() >= 5:
+        return True
+    return is_non_trading_day(sh.date())
 
 
 def recent_job_failures(hours: int = 24) -> dict[str, Any]:

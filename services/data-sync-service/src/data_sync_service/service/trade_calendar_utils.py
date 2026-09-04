@@ -26,6 +26,22 @@ def is_cn_trading_day(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> bool | No
     return is_trading_day(exchange, d)
 
 
+def is_non_trading_day(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> bool:
+    """True when d is definitely not an open session (OPT-142 central predicate).
+
+    Calendar-aware: holidays count even on weekdays. Falls back to Mon–Fri
+    when the calendar is unseeded/unreadable (same as the old ``weekday()``
+    scatter, but in exactly one place).
+    """
+    try:
+        flag = is_cn_trading_day(d, exchange=exchange)
+    except Exception:  # noqa: BLE001
+        flag = None
+    if flag is None:
+        return d.weekday() >= 5
+    return not flag
+
+
 def last_open_date_on_or_before(
     d: date,
     *,

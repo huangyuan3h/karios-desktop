@@ -299,7 +299,7 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
         pick_key = (t.get("pick") or {}).get("key") if isinstance(t.get("pick"), dict) else None
         label = t.get("label") or t.get("action") or pick_key or ""
         lines.append("")
-        lines.append(f"**择强单轨（{label}）**")
+        lines.append(f"**择强单轨·对照非实盘（{label}）**")
         lines.append(f"- {t.get('message')}")
         details = []
         if pick_key:

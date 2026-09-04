@@ -164,7 +164,7 @@ def test_third_asset_section_renders_when_active() -> None:
          "price": 2.239, "ma200": 1.983, "idlePct": 90.0, "asOfDate": "2026-08-18"},
     ]
     md = tb.render_markdown(sections, "action")
-    assert "**择强单轨（建议买入 513100）**" in md
+    assert "**择强单轨·对照非实盘（建议买入 513100）**" in md
     assert "闲置资金 90% 且 ETF:513100 在200日线上" in md
     assert "现价 2.239" in md
     assert "MA200 1.983" in md

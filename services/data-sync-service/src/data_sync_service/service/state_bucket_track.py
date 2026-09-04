@@ -369,8 +369,15 @@ def _audit_blotter_row(
     contrib_pct: float | None = None,
     close_reason: str | None = None,
     held_days: int | None = None,
+    entry_px_src: str | None = None,
+    exit_px_src: str | None = None,
 ) -> dict[str, Any]:
-    """One sat blotter line: a fill/open, or a T-1 limit-up skip in the strict bucket."""
+    """One sat blotter line: a fill/open, or a T-1 limit-up skip in the strict bucket.
+
+    OPT-141: fill/open rows carry the price provenance (entryPxSrc/exitPxSrc)
+    so the backtest fill-source distribution is comparable with the paper
+    book's entryPxSrc/exitPxSrc counters.
+    """
     return {
         "kind": kind,
         "date": date,
@@ -385,6 +392,8 @@ def _audit_blotter_row(
         "contribPct": None if contrib_pct is None else round(float(contrib_pct), 2),
         "closeReason": close_reason,
         "heldDays": held_days,
+        "entryPxSrc": entry_px_src,
+        "exitPxSrc": exit_px_src,
     }
 
 
@@ -597,10 +606,12 @@ def replay_sgap_from_context(
         for ts, reason in to_close:
             p = positions.pop(ts)
             cc = close_by_ts.get(ts, {}).get(day)
+            exit_src = "close"
             if reason == "body_exit" and exit_hhmm:
                 intra = _intraday_px(ctx, ts, day, exit_hhmm)
                 if intra is not None:
                     cc = intra
+                    exit_src = f"bar_{exit_hhmm}"
             trade_ret = (cc / p["entry_price"] - 1) if cc and p["entry_price"] else 0.0
             if cc and p["entry_price"]:
                 realized += (trade_ret - COSTS_ROUNDTRIP) * clip
@@ -624,6 +635,8 @@ def replay_sgap_from_context(
                     else 0.0,
                     close_reason=reason,
                     held_days=held,
+                    entry_px_src=p.get("entry_px_src"),
+                    exit_px_src=exit_src,
                 )
             )
         gap_count = 0
@@ -633,6 +646,7 @@ def replay_sgap_from_context(
         skip_c2_count = 0
         skip_c3_count = 0
         skip_churn_count = 0
+        no_print_1430 = 0
         filled_today = 0
         gate_open = False
         if r_wide and day > start and day in idx_by_day and idx_by_day[day] > 0:
@@ -751,10 +765,18 @@ def replay_sgap_from_context(
                 bar = series[di]
                 if fill_mode == FILL_SAME_1430:
                     px = _intraday_px(ctx, ts, day, fill_hhmm)
+                    entry_src = f"bar_{fill_hhmm}"
+                    if not px or px <= 0:
+                        # OPT-143: missing intraday print → no fill (conservative).
+                        # Counted here (not a blotter row) so coverage gaps are visible.
+                        no_print_1430 += 1
+                        continue
                 elif fill_mode == FILL_SAME_CLOSE:
                     px = bar.get("close")
+                    entry_src = "close"
                 else:
                     px = bar.get("open")
+                    entry_src = "open"
                 if px and px > 0:
                     if skip_unfillable or fill_mode == FILL_SAME_1430:
                         pc = bar.get("pre_close")
@@ -773,6 +795,7 @@ def replay_sgap_from_context(
                     positions[ts] = {
                         "entry_date": day,
                         "entry_price": px,
+                        "entry_px_src": entry_src,
                         "peak": px,
                         "amp": feat.get("amp"),
                         "amp_rank": ranked.index(ts) + 1,
@@ -804,6 +827,7 @@ def replay_sgap_from_context(
                 "skipC2Count": skip_c2_count,
                 "skipC3Count": skip_c3_count,
                 "skipChurnCount": skip_churn_count,
+                "skipNoPrint1430": no_print_1430,
                 "filledToday": filled_today,
                 "idleSlots": idle_slots,
                 "gateOpen": gate_open,
@@ -858,6 +882,8 @@ def replay_sgap_from_context(
                 contrib_pct=None if trade_ret is None else trade_ret * clip * 100,
                 close_reason="open",
                 held_days=held,
+                entry_px_src=p.get("entry_px_src"),
+                exit_px_src=None,
             )
         )
     final_nav = 1.0 + realized
@@ -879,6 +905,8 @@ def replay_sgap_from_context(
     fill_n = sum(1 for b in blotter if b.get("kind") == "fill")
     close_reasons: dict[str, int] = {}
     held_days: list[int] = []
+    fill_src_entry: dict[str, int] = {}
+    fill_src_exit: dict[str, int] = {}
     for b in blotter:
         if b.get("kind") != "fill":
             continue
@@ -887,6 +915,10 @@ def replay_sgap_from_context(
         hd = b.get("heldDays")
         if hd is not None:
             held_days.append(int(hd))
+        es = str(b.get("entryPxSrc") or "unknown")
+        fill_src_entry[es] = fill_src_entry.get(es, 0) + 1
+        xs = str(b.get("exitPxSrc") or "unknown")
+        fill_src_exit[xs] = fill_src_exit.get(xs, 0) + 1
     return {
         "rows": rows,
         "openPositions": open_positions,
@@ -902,6 +934,8 @@ def replay_sgap_from_context(
             "fillCount": fill_n,
             "closeReasons": close_reasons,
             "avgHeldDays": round(sum(held_days) / len(held_days), 2) if held_days else 0.0,
+            "fillSrc": {"entry": fill_src_entry, "exit": fill_src_exit},
+            "skipNoPrint1430": sum(int(r.get("skipNoPrint1430") or 0) for r in rows),
         },
         "pool_mode": pool_mode,
         "position_pct": clip,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from data_sync_service.db.news import (
     count_by_enrichment_status,
@@ -20,6 +21,18 @@ from data_sync_service.service.news import add_default_sources, fetch_all_source
 router = APIRouter(prefix="/api/news", tags=["news"])
 
 
+class NewsSourceCreate(BaseModel):
+    id: str | None = Field(default=None, max_length=16)
+    name: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2048)
+    enabled: bool = True
+
+
+class NewsSourcePatch(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    enabled: bool | None = None
+
+
 @router.get("/sources")
 def list_sources(enabled_only: bool = False):
     ensure_tables()
@@ -27,26 +40,19 @@ def list_sources(enabled_only: bool = False):
 
 
 @router.post("/sources")
-def add_source(body: dict):
+def add_source(body: NewsSourceCreate):
     ensure_tables()
     import uuid
 
-    sid = body.get("id") or str(uuid.uuid4())[:8]
-    name = body.get("name", "")
-    url = body.get("url", "")
-    enabled = body.get("enabled", True)
-    if not name or not url:
-        return {"error": "name and url are required"}
-    src = create_source(source_id=sid, name=name, url=url, enabled=enabled)
+    sid = body.id or str(uuid.uuid4())[:8]
+    src = create_source(source_id=sid, name=body.name, url=body.url, enabled=body.enabled)
     return {"source": src}
 
 
 @router.patch("/sources/{source_id}")
-def patch_source(source_id: str, body: dict):
+def patch_source(source_id: str, body: NewsSourcePatch):
     ensure_tables()
-    name = body.get("name")
-    enabled = body.get("enabled")
-    src = update_source(source_id=source_id, name=name, enabled=enabled)
+    src = update_source(source_id=source_id, name=body.name, enabled=body.enabled)
     if not src:
         return {"error": "source not found"}
     return {"source": src}

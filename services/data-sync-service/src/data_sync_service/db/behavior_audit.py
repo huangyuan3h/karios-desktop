@@ -57,80 +57,47 @@ def insert_audit(
 ) -> dict[str, Any]:
     """Upsert one day+market audit (idempotent on re-run)."""
     ensure_table()
-    sat_payload = (
-        sat_expected,
-        sat_actual,
-        sat_extra,
-        sat_missing,
-        json.dumps(sat_extra_list or [], ensure_ascii=False),
-        json.dumps(sat_missing_list or [], ensure_ascii=False),
-    )
     with get_connection() as conn:
         with conn.cursor() as cur:
-            try:
-                cur.execute(
-                    f"""
-                    INSERT INTO {TABLE_NAME}
-                    (audit_date, market, expected, actual, extra, missing, extra_list, missing_list,
-                     sat_expected, sat_actual, sat_extra, sat_missing, sat_extra_list, sat_missing_list)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (audit_date, market) DO UPDATE SET
-                        expected = EXCLUDED.expected,
-                        actual = EXCLUDED.actual,
-                        extra = EXCLUDED.extra,
-                        missing = EXCLUDED.missing,
-                        extra_list = EXCLUDED.extra_list,
-                        missing_list = EXCLUDED.missing_list,
-                        sat_expected = EXCLUDED.sat_expected,
-                        sat_actual = EXCLUDED.sat_actual,
-                        sat_extra = EXCLUDED.sat_extra,
-                        sat_missing = EXCLUDED.sat_missing,
-                        sat_extra_list = EXCLUDED.sat_extra_list,
-                        sat_missing_list = EXCLUDED.sat_missing_list,
-                        created_at = now()
-                    RETURNING id
-                    """,
-                    (
-                        audit_date,
-                        market,
-                        expected,
-                        actual,
-                        extra,
-                        missing,
-                        json.dumps(extra_list or [], ensure_ascii=False),
-                        json.dumps(missing_list or [], ensure_ascii=False),
-                        *sat_payload,
-                    ),
-                )
-            except Exception:  # noqa: BLE001
-                # Pre-0040 DBs (migration not run yet): persist core leg only.
-                conn.rollback()
-                cur.execute(
-                    f"""
-                    INSERT INTO {TABLE_NAME}
-                    (audit_date, market, expected, actual, extra, missing, extra_list, missing_list)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (audit_date, market) DO UPDATE SET
-                        expected = EXCLUDED.expected,
-                        actual = EXCLUDED.actual,
-                        extra = EXCLUDED.extra,
-                        missing = EXCLUDED.missing,
-                        extra_list = EXCLUDED.extra_list,
-                        missing_list = EXCLUDED.missing_list,
-                        created_at = now()
-                    RETURNING id
-                    """,
-                    (
-                        audit_date,
-                        market,
-                        expected,
-                        actual,
-                        extra,
-                        missing,
-                        json.dumps(extra_list or [], ensure_ascii=False),
-                        json.dumps(missing_list or [], ensure_ascii=False),
-                    ),
-                )
+            cur.execute(
+                f"""
+                INSERT INTO {TABLE_NAME}
+                (audit_date, market, expected, actual, extra, missing, extra_list, missing_list,
+                 sat_expected, sat_actual, sat_extra, sat_missing, sat_extra_list, sat_missing_list)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (audit_date, market) DO UPDATE SET
+                    expected = EXCLUDED.expected,
+                    actual = EXCLUDED.actual,
+                    extra = EXCLUDED.extra,
+                    missing = EXCLUDED.missing,
+                    extra_list = EXCLUDED.extra_list,
+                    missing_list = EXCLUDED.missing_list,
+                    sat_expected = EXCLUDED.sat_expected,
+                    sat_actual = EXCLUDED.sat_actual,
+                    sat_extra = EXCLUDED.sat_extra,
+                    sat_missing = EXCLUDED.sat_missing,
+                    sat_extra_list = EXCLUDED.sat_extra_list,
+                    sat_missing_list = EXCLUDED.sat_missing_list,
+                    created_at = now()
+                RETURNING id
+                """,
+                (
+                    audit_date,
+                    market,
+                    expected,
+                    actual,
+                    extra,
+                    missing,
+                    json.dumps(extra_list or [], ensure_ascii=False),
+                    json.dumps(missing_list or [], ensure_ascii=False),
+                    sat_expected,
+                    sat_actual,
+                    sat_extra,
+                    sat_missing,
+                    json.dumps(sat_extra_list or [], ensure_ascii=False),
+                    json.dumps(sat_missing_list or [], ensure_ascii=False),
+                ),
+            )
             row = cur.fetchone()
     return {"id": row[0] if row else None}
 
@@ -140,34 +107,19 @@ def latest_audit(limit: int = 2) -> list[dict[str, Any]]:
     ensure_table()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            try:
-                cur.execute(
-                    f"""
-                    SELECT audit_date, market, expected, actual, extra, missing,
-                           extra_list, missing_list,
-                           sat_expected, sat_actual, sat_extra, sat_missing,
-                           sat_extra_list, sat_missing_list
-                    FROM {TABLE_NAME}
-                    ORDER BY audit_date DESC, market
-                    LIMIT %s
-                    """,
-                    (limit,),
-                )
-                rows = cur.fetchall()
-            except Exception:  # noqa: BLE001
-                # Pre-0040 DBs (migration not run yet): legacy columns only.
-                conn.rollback()
-                cur.execute(
-                    f"""
-                    SELECT audit_date, market, expected, actual, extra, missing,
-                           extra_list, missing_list
-                    FROM {TABLE_NAME}
-                    ORDER BY audit_date DESC, market
-                    LIMIT %s
-                    """,
-                    (limit,),
-                )
-                rows = [( *r, 0, 0, 0, 0, None, None) for r in cur.fetchall()]
+            cur.execute(
+                f"""
+                SELECT audit_date, market, expected, actual, extra, missing,
+                       extra_list, missing_list,
+                       sat_expected, sat_actual, sat_extra, sat_missing,
+                       sat_extra_list, sat_missing_list
+                FROM {TABLE_NAME}
+                ORDER BY audit_date DESC, market
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
         def _load(v: str | None) -> list[dict[str, Any]]:

@@ -210,7 +210,9 @@ def in_live_tape_window(now: datetime | None = None) -> bool:
         now = now.replace(tzinfo=CN_TZ)
     else:
         now = now.astimezone(CN_TZ)
-    if now.weekday() >= 5:
+    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
+
+    if is_non_trading_day(now.date()):
         return False
     mins = now.hour * 60 + now.minute
     return LIVE_TAPE_START_MIN <= mins <= LIVE_TAPE_END_MIN

@@ -151,6 +151,8 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
         extra = []
         if p.get("last_ts_code"):
             extra.append(f"last_ts_code {p.get('last_ts_code')}")
+        if p.get("streak") and int(p.get("streak") or 0) >= 2:
+            extra.append(f"连败 {p.get('streak')} 次（外围任务连败才推）")
         return {
             "title": f"🔧 任务失败 {job}",
             "body": _lines(str(error), *extra) or "见控制台",

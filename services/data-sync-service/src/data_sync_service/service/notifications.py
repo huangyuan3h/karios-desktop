@@ -81,6 +81,8 @@ def _count_weekdays_inclusive(start: date, end: date) -> int:
     except Exception:  # noqa: BLE001
         if end < start:
             return 0
+        # Intentional Mon–Fri fallback (OPT-142): only reached when the
+        # trading calendar is unreadable; keep the scatter HERE, nowhere else.
         n = 0
         cur = start
         while cur <= end:
@@ -498,13 +500,14 @@ def _twin_star_snapshot_alert(mode: str = "single_track") -> list[dict[str, Any]
     if mode != "twin_star":
         return []
     try:
+        from data_sync_service.service.trade_calendar_utils import is_non_trading_day
         from data_sync_service.service.twin_star_intraday import (
             intraday_snapshot_status,
             now_cn,
         )
 
         now = now_cn()
-        if now.weekday() >= 5:
+        if is_non_trading_day(now.date()):
             return []
         status = intraday_snapshot_status(now=now)
         if status.get("ok"):
@@ -533,6 +536,7 @@ def _twin_star_notification(mode: str = "single_track") -> list[dict[str, Any]]:
     """双子星 14:30 前提醒 — only when the live strategy is twin_star."""
     if mode != "twin_star":
         return []
+    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
     from data_sync_service.service.twin_star_daily import (
         build_twin_star_reminder_payload,
         now_cn,
@@ -540,7 +544,7 @@ def _twin_star_notification(mode: str = "single_track") -> list[dict[str, Any]]:
 
     try:
         now = now_cn()
-        if now.weekday() >= 5:
+        if is_non_trading_day(now.date()):
             return []
         payload = build_twin_star_reminder_payload(date.today())
         detail = payload.get("detail") or ""

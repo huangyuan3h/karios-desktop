@@ -1,7 +1,9 @@
 """Add CN extra data tables: financial/holder/margin/moneyflow/hk_hold.
 
-Revision ID: 0020_cn_extra_data
-Revises: 0019_research_reports
+Revision ID: 0020_cn_extra_data (kept stable — stamped DBs key on this, NOT
+the filename; the file was renamed from 0020_cn_extra_data.py to 0035b_ on
+2026-09-04 (OPT-142) to fix the duplicate 0020 file number).
+Revises: 0035_stock_forecast
 Create Date: 2026-08-23
 
 Quarterly: cn_financial (fina_indicator), cn_holder_number

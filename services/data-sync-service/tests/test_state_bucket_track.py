@@ -367,6 +367,68 @@ class TestBuildSgapTimeline:
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         assert r["exit_hhmm"] == "1430"
 
+    def test_fill_src_records_bar_provenance(self, monkeypatch) -> None:
+        """OPT-141: blotter carries entryPxSrc/exitPxSrc; summary aggregates."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        px_exit = round(float(per_ts["A.SH"][22]["close"]) * 1.02, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry, dates[22]: px_exit}}},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+            exit_hhmm="1430",
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["entryPxSrc"] == "bar_1430"
+        assert fill_blot[0]["exitPxSrc"] == "bar_1430"
+        assert r["summary"]["fillSrc"] == {
+            "entry": {"bar_1430": 1},
+            "exit": {"bar_1430": 1},
+        }
+
+    def test_fill_src_exit_falls_back_to_close(self, monkeypatch) -> None:
+        """OPT-141: missing exit print falls back to close — RECORDED, not silent."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        monkeypatch.setattr(
+            sbt,
+            "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry}}},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+            exit_hhmm="1430",
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["entryPxSrc"] == "bar_1430"
+        assert fill_blot[0]["exitPxSrc"] == "close"
+        assert r["summary"]["fillSrc"]["exit"] == {"close": 1}
+
+    def test_missing_entry_print_counted_not_silent(self, monkeypatch) -> None:
+        """OPT-143: pool names without a 1430 print are counted (coverage gap)."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        # No 1430 prints at all: entry day has a gap candidate but no fill.
+        r = sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+        )
+        assert r["summary"]["fillCount"] == 0
+        assert r["summary"]["skipNoPrint1430"] >= 1
+
     def test_c1_skips_when_1430_ran_past_open(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()
         _patch_loaders(monkeypatch, dates, per_ts, mv)

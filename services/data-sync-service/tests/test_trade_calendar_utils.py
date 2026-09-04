@@ -141,3 +141,31 @@ def test_previous_open_date_none_when_no_earlier(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(tcu, "get_open_dates", lambda **_: [date(2026, 6, 22)])
     prev = tcu.previous_open_date(date(2026, 6, 22))
     assert prev is None
+
+
+# --- is_non_trading_day (OPT-142 central predicate) ---
+
+
+def test_is_non_trading_day_weekend_without_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tcu, "is_trading_day", lambda exchange, d: None)
+    assert tcu.is_non_trading_day(date(2026, 9, 5)) is True  # Saturday
+    assert tcu.is_non_trading_day(date(2026, 9, 7)) is False  # Monday
+
+
+def test_is_non_trading_day_holiday_weekday(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Weekday the calendar marks closed (holiday) counts as non-trading.
+    monkeypatch.setattr(tcu, "is_trading_day", lambda exchange, d: False)
+    assert tcu.is_non_trading_day(date(2026, 9, 7)) is True
+
+
+def test_is_non_trading_day_open_weekday(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tcu, "is_trading_day", lambda exchange, d: True)
+    assert tcu.is_non_trading_day(date(2026, 9, 5)) is False  # Sat session edge
+
+
+def test_is_non_trading_day_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(exchange, d):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(tcu, "is_trading_day", boom)
+    assert tcu.is_non_trading_day(date(2026, 9, 7)) is False  # Mon–Fri fallback

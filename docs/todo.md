@@ -127,10 +127,10 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | 工程 6 | 红套件清零（lastfailed 47 + tsc + 过期测试）[done] 2026-09-04 | OPT-138 P0 | pytest 全绿 + tsc 零报错 |
 | 工程 6 | Scheduler 上报统一（交易链先行）[done] 2026-09-04 | OPT-139 P0 | 失败必留 record，提醒 job 不再静默挂 |
 | 业务 5 | 模式口径（audit 不再报卫星"买了不该买"）[done] 2026-09-04 | OPT-140 P0 | 卫星票 extra 为空 + hub 横幅修复 |
-| 业务 6 | Live 习惯口径进冻结引擎重跑三窗 | OPT-141 P0 | 三窗表 + PASS/REJECT 留档，不过就改 Live |
-| 工程 6-7 | 日历收敛 + API 校验 + Alembic 重号 | OPT-142 P1 | weekday 只剩真值处 + history 线性 |
-| 复盘 5 | 历史可重放（覆盖率表 + fail-open 审计 + ST 5%） | OPT-143 P1 | 覆盖率表 + 清单进 strategy-params |
-| — | 外围任务抖动（option_iv/news） | OPT-144 P2 | 外围失败不即时推 Bark |
+| 业务 6 | Live 习惯口径进冻结引擎重跑三窗[done] 2026-09-04 | OPT-141 P0 | 三窗表 + PASS/REJECT 留档，不过就改 Live |
+| 工程 6-7 | 日历收敛 + API 校验 + Alembic 重号[done] 2026-09-04 | OPT-142 P1 | weekday 只剩真值处 + history 线性 |
+| 复盘 5 | 历史可重放（覆盖率表 + fail-open 审计 + ST 5%）[done] 2026-09-04 | OPT-143 P1 | 覆盖率表 + 清单进 strategy-params |
+| — | 外围任务抖动（option_iv/news）[done] 2026-09-04 | OPT-144 P2 | 外围失败不即时推 Bark |
 
 顺序：138 → 139 → 140 → 141 → 142/143 → 144。一次一 OPT，不扩 scope。
 

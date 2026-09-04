@@ -90,16 +90,57 @@ def insert_record(
             payload={"job_type": job_type, "error": error_message or "unknown error", "last_ts_code": last_ts_code},
             dedupe_key=dedupe,
         )
-        if sev == "high":
+        # OPT-144: peripheral (low-severity) jobs don't page the phone on a
+        # single failure — every failure is still in system_events + the hub
+        # digest. A 3-streak (or any high-severity failure) emits.
+        streak = consec_failures(job_type) if sev != "high" else 1
+        if sev == "high" or streak >= _PERIPHERAL_STREAK_EMIT:
             emit_event(
                 "job_failed",
                 {
                     "job_type": job_type,
                     "error": error_message or "unknown error",
                     "last_ts_code": last_ts_code,
+                    "streak": streak,
                 },
                 dedupe_key=dedupe,
             )
+
+
+_PERIPHERAL_STREAK_EMIT = 3
+
+
+def consec_failures(job_type: str, *, limit: int = 10) -> int:
+    """Trailing consecutive-failure count for job_type (newest first).
+
+    Counts failure rows back to (excluding) the latest success, capped at
+    ``limit``. Used by OPT-144 to page peripheral jobs only on a streak.
+    Never raises (0 on error).
+    """
+    try:
+        ensure_table()
+        lim = max(1, min(int(limit), 30))
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT success FROM {TABLE_NAME}
+                    WHERE job_type = %s
+                    ORDER BY sync_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (job_type, lim),
+                )
+                rows = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return 0
+    streak = 0
+    for r in rows:
+        ok = r[0] if not isinstance(r, dict) else r.get("success")
+        if ok:
+            break
+        streak += 1
+    return streak
 
 
 def get_last_success(job_type: str) -> dict[str, Any] | None:

@@ -28,6 +28,7 @@ from data_sync_service.service.realtime_quote import (
     fetch_realtime_quotes,
     fetch_realtime_quotes_batched,
 )
+from data_sync_service.service.trade_calendar_utils import is_non_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ def _is_shanghai_trading_time_at(now: datetime) -> bool:
     """
     Best-effort CN A-share trading time check in Asia/Shanghai.
     """
-    if now.weekday() >= 5:
+    if is_non_trading_day(now.date()):
         return False
     minutes = now.hour * 60 + now.minute
     in_morning = minutes >= 9 * 60 + 30 and minutes <= 11 * 60 + 30
@@ -129,7 +130,7 @@ def _is_shanghai_sync_window_at(now: datetime) -> bool:
     Sync window: trading hours + lunch break + after-hours until 20:00.
     Realtime quotes remain available after market close.
     """
-    if now.weekday() >= 5:
+    if is_non_trading_day(now.date()):
         return False
     minutes = now.hour * 60 + now.minute
     in_trading = _is_shanghai_trading_time_at(now)

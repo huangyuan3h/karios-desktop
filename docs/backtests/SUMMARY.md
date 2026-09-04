@@ -40,6 +40,7 @@
 | 卫星 14:30 入场过滤 C1/C2 | 4 变体 | C1 3% 相对无过滤 PASS+（tot/sr/dd）；vs 核心 valid tot −3.3，**不进 Live** | 见 [sat-entry-c1](sat-entry-c1-2026-09-03.md) |
 | 卫星习惯 3 天 vs 4 天 / 下午买点 | 7 变体 | 计数仍 3 天；body=4 占槽；13:30–15:00 无更佳分钟 | 见 [sat-habit-clock](sat-habit-clock-2026-09-03.md) |
 | 卫星 C1 + 第 3 日 10:00/14:30 卖 | 3 变体 | C1·14:30 卖三窗 tot/sr/dd 过核心；**Live 已切 habit（2026-09-03 全量跟进）** | 见 [sat-exit-hhmm](sat-exit-hhmm-2026-09-03.md) |
+| 卫星习惯口径冻结成绩单 OPT-141 | 1 口径×三窗 | **PASS+/beats_core**：OOS2 +76.3/+2.22/−1.9 · train +14.5/+1.53/−2.7 · valid +2.7/+0.21/0（09-03 逐数复现）；入场 100% 真 14:30 bar，出场 ~5% 收盘回退（已记血统） | 见 [sat-live-caliber](sat-live-caliber-2026-09-04.md) |
 | 卫星习惯排名 H1（无前视键） | 2 变体 | **2 全部拒收**：gap升序 OOS2 −96pt；\|14:30/今开−1\|升序 valid +14.4 但 OOS2 −21.5（过拟合陷阱，拒） | 见 [sat-rank-hhmm](sat-rank-hhmm-2026-09-04.md) |
 | 卫星习惯 C1 网格 H2（2/3/4/5%） | 3 变体 | **C1=3% 维持**：2% 打平（train −4.0/sr−0.27，不换）；4% 走弱；5% train −5.8 拒收 | 见 [sat-c1-grid](sat-c1-grid-2026-09-04.md) |
 | 卫星习惯 bucket_q H3（1/2 vs 1/3） | 1 变体 | **1/3 维持**：1/2 选参窗 tot/sr 全弱（train −2.3/sr−0.41），valid 无差 | 见 [sat-bucketq](sat-bucketq-2026-09-04.md) |

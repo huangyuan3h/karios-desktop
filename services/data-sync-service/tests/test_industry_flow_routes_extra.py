@@ -27,7 +27,7 @@ class TestFundFlow:
             return {"ok": True}
 
         monkeypatch.setattr(ifr, "sync_cn_industry_fund_flow", fake)
-        assert ifr.market_cn_industry_fund_flow_sync({})["ok"] is True
+        assert ifr.market_cn_industry_fund_flow_sync(ifr.IndustryFundFlowSyncRequest())["ok"] is True
         assert seen == {"days": 10, "top_n": 10, "force": False}
 
     def test_sync_custom(self, monkeypatch) -> None:
@@ -38,13 +38,13 @@ class TestFundFlow:
             return {"ok": True}
 
         monkeypatch.setattr(ifr, "sync_cn_industry_fund_flow", fake)
-        ifr.market_cn_industry_fund_flow_sync({"days": 5, "topN": 20, "force": True})
+        ifr.market_cn_industry_fund_flow_sync(ifr.IndustryFundFlowSyncRequest(days=5, topN=20, force=True))
         assert seen == {"days": 5, "top_n": 20, "force": True}
 
     def test_sync_error(self, monkeypatch) -> None:
         monkeypatch.setattr(ifr, "sync_cn_industry_fund_flow", lambda days, top_n, force: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            ifr.market_cn_industry_fund_flow_sync({"force": True})
+            ifr.market_cn_industry_fund_flow_sync(ifr.IndustryFundFlowSyncRequest(force=True))
         assert exc.value.status_code == 500
 
 
@@ -67,7 +67,7 @@ class TestMainline:
             return {"ok": True}
 
         monkeypatch.setattr(ifr, "sync_cn_industry_mainline", fake)
-        ifr.market_cn_industry_mainline_sync({"asOfDate": "2026-08-07", "force": True})
+        ifr.market_cn_industry_mainline_sync(ifr.IndustryMainlineSyncRequest(asOfDate="2026-08-07", force=True))
         assert seen == {"as_of_date": "2026-08-07", "force": True}
 
     def test_sync_empty_payload(self, monkeypatch) -> None:
@@ -78,11 +78,11 @@ class TestMainline:
             return {"ok": True}
 
         monkeypatch.setattr(ifr, "sync_cn_industry_mainline", fake)
-        ifr.market_cn_industry_mainline_sync({})
+        ifr.market_cn_industry_mainline_sync(ifr.IndustryMainlineSyncRequest())
         assert seen == {"as_of_date": None, "force": False}
 
     def test_sync_error(self, monkeypatch) -> None:
         monkeypatch.setattr(ifr, "sync_cn_industry_mainline", lambda as_of_date, force: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            ifr.market_cn_industry_mainline_sync({})
+            ifr.market_cn_industry_mainline_sync(ifr.IndustryMainlineSyncRequest())
         assert exc.value.status_code == 500

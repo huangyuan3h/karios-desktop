@@ -271,3 +271,18 @@ valid **+60.7%**/DD27.8/2.10/44笔 — train 极弱，**HK 不作高置信收益
   （`detect_scoop` + `strong_scoop_exhaustion`）；日频扫描全市场，信号落库待接。
 - **定位**：首个 ≥80% 置信度形态——后续形态（箱体/双底/杯柄/旗形/三角/突破）按同法独立验证，
   形态因子库持续扩展，但**不回写 S-3**；形态因子只做方向判别，多因子叠加决策。
+
+## 8. fail-open 清单（缺数时的默认方向 · OPT-143 审计 2026-09-04）
+
+> 原则：回测与实盘同向（缺数不关仓、缺闸门不拦单），唯一的非对称是卫星出场
+> 14:30 缺 bar 回退收盘（已记血统、可量化）。下表逐条 verified against code。
+
+| # | 位置 | 缺什么 | 默认方向 | 回测/live 是否同向 |
+|---|------|--------|---------|-------------------|
+| 1 | S-3 `pool_exit`（`backtest_engine.py:34`） | 无 registry 历史 | OFF（不关仓） | ✅ 同向：paper registry 读失败同样永不 pool_exit（`paper_trading.py:352`） |
+| 2 | S-3 `score_floor`（`backtest_engine.py:39`） | 当日无 score | 不触发 floor 平仓 | ✅ 同向：HK 无 score 定义同样 fail-open（`paper_trading.py:600`） |
+| 3 | S-3 情绪/资金流闸门（`backtest_engine.py:1504/2457`） | 情绪数据 2026-01-05 前无、资金流 2025-12-15 前无 | 闸门当不存在（多做交易） | ✅ 同向（当时 live 也没这个闸门）；方向=回测偏多做，OOS2 早段偏乐观，已知 |
+| 4 | 卫星入场 14:30（`state_bucket_track`） | 当日缺 14:30 bar | 不买（fail-closed，保守） | ✅ 同向：paper 当日缺价先占位、次日补真 open（`paper_entry_fill`）；计数 `skipNoPrint1430` |
+| 5 | 卫星出场 14:30（`state_bucket_track`） | 第 3 日缺 14:30 bar | 回退收盘（记 `exitPxSrc=close`） | ⚠️ 非对称：paper 缺价用 daily_close 兜底同逻辑，但回测回退量级 ~5%（三窗 28/480），偏向低估 14:30 边，[血统表](backtests/sat-live-caliber-2026-09-04.md §3) |
+| 6 | ST 5% 涨跌停 | daily 无 ST 标记 | **不建模（评估后无影响）**：两引擎 universe 上游已剔 ST/BJ/退市（`state_bucket_track:54`、S-3 `exclude_st` P16），ST 票进不了池；仅剩"持有中戴帽"极小概率事件，出场按次日开盘（不过度拟合 corner） | ✅ 无需改 |
+| 7 | 除权跳空残留 | qfq 后仍有 258 个 ≥5% 跳空 | 按真波动处理（2026-08-11 已定论：除权叠加真实大跌，正常） | ✅ 无需改；CN 增量 `qfq=raw` 口径不变 |

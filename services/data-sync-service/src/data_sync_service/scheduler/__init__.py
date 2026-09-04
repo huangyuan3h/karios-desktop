@@ -489,7 +489,9 @@ def catchup_missed_eod_chain() -> None:
     except Exception:  # noqa: BLE001
         logger.warning("startup self-heal: close check failed", exc_info=True)
 
-    if now.weekday() >= 5:
+    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
+
+    if is_non_trading_day(now.date()):
         return
     close_ok = bool((get_today_run("stock_close_sync") or {}).get("success"))
     # warm close_ok from cross-day heal: if we just caught up latest_open,

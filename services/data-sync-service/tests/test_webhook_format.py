@@ -133,6 +133,11 @@ def test_job_failed_includes_error_body() -> None:
         "job_failed", {"job_type": "y", "error": "boom", "last_ts_code": "CN:600000"}
     )
     assert "last_ts_code CN:600000" in with_code["body"]
+    # OPT-144: peripheral streak shown when present
+    streak = format_bark(
+        "job_failed", {"job_type": "news_fetch_job", "error": "timeout", "streak": 3}
+    )
+    assert "连败 3 次" in streak["body"]
 
 
 def test_twin_star_reminder_readable() -> None:

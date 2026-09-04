@@ -160,6 +160,11 @@ def _coverage(ctx: dict, hhmm: str) -> tuple[int, int]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--save-report", action="store_true")
+    ap.add_argument(
+        "--report-name",
+        default="sat_exit_hhmm_2026-09-03.json",
+        help="Report filename under data/backtest_reports (OPT-141 reruns use sat_live_caliber_*.json).",
+    )
     args = ap.parse_args()
 
     print("C1 3% body-exit: close vs 10:00 vs 14:30\n")
@@ -222,12 +227,15 @@ def main() -> int:
                 "delta_core_dd": delta_core_dd,
                 "fillCount": summary.get("fillCount"),
                 "avgHeldDays": summary.get("avgHeldDays"),
+                "fillSrc": summary.get("fillSrc"),
+                "skipNoPrint1430": summary.get("skipNoPrint1430", 0),
                 **occ,
             }
             print(
                 f"  {var['id']:<12} twin {_fmt(twin_m)}  "
                 f"Δcore tot {delta_core:+.1f} sr {delta_core_sr:+.2f} dd {delta_core_dd:+.1f}  "
-                f"sat {_fmt(sat_m)}  fills {summary.get('fillCount')}",
+                f"sat {_fmt(sat_m)}  fills {summary.get('fillCount')}  "
+                f"fillSrc {summary.get('fillSrc')}",
                 flush=True,
             )
         assert core_m is not None
@@ -295,11 +303,12 @@ def main() -> int:
         )
 
     payload = {
-        "tag": "sat-exit-hhmm-2026-09-03",
+        "tag": args.report_name.removesuffix(".json"),
         "protocol": (
             "window-local empty book; clip4 C1 3% same_1430 fill; body=3; "
             "exit close vs 1000 vs 1430; frozen pick-strong trail8; opp_50. "
-            "Score tot+Sharpe+maxDD vs core. Do not rewrite Live."
+            "Score tot+Sharpe+maxDD vs core. Do not rewrite Live. "
+            "fillSrc records backtest price provenance per fill."
         ),
         "variants": VARIANTS,
         "windows": results,
@@ -308,7 +317,7 @@ def main() -> int:
     }
     if args.save_report:
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path = REPORT_DIR / "sat_exit_hhmm_2026-09-03.json"
+        path = REPORT_DIR / args.report_name
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         print(f"\nsaved {path}")
     return 0
