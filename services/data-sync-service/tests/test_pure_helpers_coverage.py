@@ -49,3 +49,21 @@ def test_allocation_week_start():
     assert week_start_for("2026-09-04") == "2026-08-31"  # Friday -> Monday
     assert week_start_for("2026-08-31") == "2026-08-31"  # Monday itself
     assert week_start_for("2026-09-06") == "2026-08-31"  # Sunday same week
+
+
+def test_gap_rank_selectors():
+    from data_sync_service.service.state_bucket_track import (
+        select_live_gap_picks,
+        select_strict_gap_candidates,
+    )
+
+    items = [(f"ts{i}", float(i), 0.05) for i in range(9)]  # amp ascending
+    locked = {"ts1", "ts7"}
+    strict = select_strict_gap_candidates(items, locked, bucket_q=3, top_n=4)
+    assert [t for t, _, _ in strict] == ["ts0", "ts2"]  # top third minus locked
+    assert select_strict_gap_candidates([], locked) == []
+    live = select_live_gap_picks(items, locked, bucket_q=3, top_n=4)
+    assert [t for t, _, _ in live["primary"]] == ["ts0", "ts2"]
+    assert [t for t, _, _ in live["blocked"]] == ["ts1"]
+    assert [t for t, _, _ in live["alternates"]] == ["ts3", "ts4", "ts5", "ts6"]
+    assert select_live_gap_picks([], locked) == {"primary": [], "blocked": [], "alternates": []}
