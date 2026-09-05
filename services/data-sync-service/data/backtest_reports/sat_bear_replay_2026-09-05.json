@@ -1,0 +1,126 @@
+{
+  "tag": "sat-bear-replay-2026-09-05",
+  "rule": "read-only diagnostic; no Live changes whatever it shows",
+  "recipe": "C1 3% + same_1430 + body=3 + day-3 1430 sell, strict, 4x12.5%, opp_50",
+  "basis": "gross (cost=0), same as sat-live-caliber; slippage as per-fill jitter budget",
+  "windows": {
+    "2021": {
+      "core": {
+        "n_days": 255,
+        "total_pct": 14.4,
+        "max_dd": 22.8,
+        "sharpe": 0.66
+      },
+      "twin": {
+        "n_days": 255,
+        "total_pct": 40.3,
+        "max_dd": 22.6,
+        "sharpe": 1.94
+      },
+      "sat": {
+        "n_days": 255,
+        "total_pct": 115.8,
+        "max_dd": 6.0,
+        "sharpe": 5.19
+      },
+      "delta_core_pt": 25.9,
+      "delta_core_sharpe": 1.28,
+      "delta_core_dd": -0.2,
+      "fills": 238,
+      "skipC1": 201,
+      "skipNoPrint1430": 0,
+      "fillSrc": {
+        "entry": {
+          "bar_1430": 238
+        },
+        "exit": {
+          "bar_1430": 234,
+          "close": 4
+        }
+      },
+      "jitter_base_drag_pt": 6.0,
+      "jitter_stress_drag_pt": 17.9,
+      "delta_after_base_pt": 19.9,
+      "delta_after_stress_pt": 8.0
+    },
+    "2022": {
+      "core": {
+        "n_days": 252,
+        "total_pct": -14.2,
+        "max_dd": 35.6,
+        "sharpe": -0.5
+      },
+      "twin": {
+        "n_days": 252,
+        "total_pct": 4.3,
+        "max_dd": 21.7,
+        "sharpe": 0.3
+      },
+      "sat": {
+        "n_days": 252,
+        "total_pct": 37.3,
+        "max_dd": 11.9,
+        "sharpe": 1.81
+      },
+      "delta_core_pt": 18.5,
+      "delta_core_sharpe": 0.8,
+      "delta_core_dd": -13.9,
+      "fills": 231,
+      "skipC1": 201,
+      "skipNoPrint1430": 0,
+      "fillSrc": {
+        "entry": {
+          "bar_1430": 231
+        },
+        "exit": {
+          "bar_1430": 224,
+          "close": 7
+        }
+      },
+      "jitter_base_drag_pt": 5.8,
+      "jitter_stress_drag_pt": 17.3,
+      "delta_after_base_pt": 12.7,
+      "delta_after_stress_pt": 1.2
+    },
+    "2023": {
+      "core": {
+        "n_days": 252,
+        "total_pct": -14.7,
+        "max_dd": 23.6,
+        "sharpe": -0.88
+      },
+      "twin": {
+        "n_days": 252,
+        "total_pct": 6.4,
+        "max_dd": 15.0,
+        "sharpe": 0.46
+      },
+      "sat": {
+        "n_days": 252,
+        "total_pct": 51.9,
+        "max_dd": 8.6,
+        "sharpe": 2.79
+      },
+      "delta_core_pt": 21.1,
+      "delta_core_sharpe": 1.34,
+      "delta_core_dd": -8.6,
+      "fills": 186,
+      "skipC1": 116,
+      "skipNoPrint1430": 0,
+      "fillSrc": {
+        "entry": {
+          "bar_1430": 186
+        },
+        "exit": {
+          "bar_1430": 182,
+          "close": 4
+        }
+      },
+      "jitter_base_drag_pt": 4.7,
+      "jitter_stress_drag_pt": 13.9,
+      "delta_after_base_pt": 16.4,
+      "delta_after_stress_pt": 7.2
+    }
+  },
+  "as_of": "2026-09-05T01:19:08+00:00"
+}

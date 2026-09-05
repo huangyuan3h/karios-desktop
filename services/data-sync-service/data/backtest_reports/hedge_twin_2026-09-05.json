@@ -1,0 +1,236 @@
+{
+  "tag": "hedge-twin-v02-2026-09-05",
+  "variant": "primary_roster",
+  "protocol": "window-local books; frozen pick-strong trail8 core; frozen habit sat (C1 same_1430 body3 exit1430 strict clip4) opp_50; short sleeve v0.2 (shortable-restricted strict scoop, next-open, tgt/stop/20d, 0.6% + 8% borrow, 3%/name max10, idle->core). Survivor/qfq conventions identical both sides; verdict on DELTA.",
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 17.8,
+        "max_dd": 18.0,
+        "sharpe": 0.72
+      },
+      "habit": {
+        "n_days": 254,
+        "total_pct": 94.3,
+        "max_dd": 16.1,
+        "sharpe": 2.95
+      },
+      "hedge": {
+        "n_days": 254,
+        "total_pct": 6634.6,
+        "max_dd": 11.7,
+        "sharpe": 11.59
+      },
+      "short_diag": {
+        "signals": 7771,
+        "shorted": 994,
+        "skipMargin": 2157,
+        "skipFull": 25663,
+        "skipDup": 418,
+        "skipNoOpen": 0,
+        "skipExpire": 3993,
+        "skipNoBorrow": 0,
+        "exitTarget": 53,
+        "exitStop": 921,
+        "exitDue": 10,
+        "limitEntry": 261,
+        "limitExit": 359,
+        "borrowPaid": 0.0251,
+        "mvMedianYi": 84.8,
+        "avgDeployed": 0.2095
+      },
+      "fill_P_profit": 89.1,
+      "d_hedge_habit_tot": 6540.3,
+      "d_hedge_habit_sr": 8.64,
+      "d_hedge_habit_dd": -4.4,
+      "d_hedge_core_tot": 6616.8,
+      "d_hedge_core_sr": 10.87,
+      "d_hedge_core_dd": -6.3
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.7,
+        "max_dd": 8.4,
+        "sharpe": 3.01
+      },
+      "habit": {
+        "n_days": 128,
+        "total_pct": 56.3,
+        "max_dd": 5.6,
+        "sharpe": 4.62
+      },
+      "hedge": {
+        "n_days": 128,
+        "total_pct": 1277.4,
+        "max_dd": 2.7,
+        "sharpe": 17.49
+      },
+      "short_diag": {
+        "signals": 4255,
+        "shorted": 667,
+        "skipMargin": 1189,
+        "skipFull": 14742,
+        "skipDup": 471,
+        "skipNoOpen": 0,
+        "skipExpire": 1902,
+        "skipNoBorrow": 0,
+        "exitTarget": 32,
+        "exitStop": 619,
+        "exitDue": 6,
+        "limitEntry": 114,
+        "limitExit": 187,
+        "borrowPaid": 0.0176,
+        "mvMedianYi": 157.1,
+        "avgDeployed": 0.2948
+      },
+      "fill_P_profit": 84.0,
+      "d_hedge_habit_tot": 1221.1,
+      "d_hedge_habit_sr": 12.87,
+      "d_hedge_habit_dd": -2.9,
+      "d_hedge_core_tot": 1236.7,
+      "d_hedge_core_sr": 14.48,
+      "d_hedge_core_dd": -5.7
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 139.1,
+        "max_dd": 11.9,
+        "sharpe": 3.37
+      },
+      "habit": {
+        "n_days": 112,
+        "total_pct": 141.8,
+        "max_dd": 11.9,
+        "sharpe": 3.58
+      },
+      "hedge": {
+        "n_days": 112,
+        "total_pct": 1474.5,
+        "max_dd": 5.2,
+        "sharpe": 12.03
+      },
+      "short_diag": {
+        "signals": 1930,
+        "shorted": 589,
+        "skipMargin": 635,
+        "skipFull": 4679,
+        "skipDup": 372,
+        "skipNoOpen": 0,
+        "skipExpire": 334,
+        "skipNoBorrow": 0,
+        "exitTarget": 50,
+        "exitStop": 538,
+        "exitDue": 1,
+        "limitEntry": 153,
+        "limitExit": 225,
+        "borrowPaid": 0.0133,
+        "mvMedianYi": 168.3,
+        "avgDeployed": 0.2202
+      },
+      "fill_P_profit": 87.3,
+      "d_hedge_habit_tot": 1332.7,
+      "d_hedge_habit_sr": 8.45,
+      "d_hedge_habit_dd": -6.7,
+      "d_hedge_core_tot": 1335.4,
+      "d_hedge_core_sr": 8.66,
+      "d_hedge_core_dd": -6.7
+    },
+    "Y2023": {
+      "core": {
+        "n_days": 252,
+        "total_pct": -14.7,
+        "max_dd": 23.6,
+        "sharpe": -0.88
+      },
+      "habit": {
+        "n_days": 252,
+        "total_pct": 7.8,
+        "max_dd": 15.0,
+        "sharpe": 0.54
+      },
+      "hedge": {
+        "n_days": 252,
+        "total_pct": 1783.1,
+        "max_dd": 3.3,
+        "sharpe": 12.43
+      },
+      "short_diag": {
+        "signals": 3661,
+        "shorted": 836,
+        "skipMargin": 1915,
+        "skipFull": 6199,
+        "skipDup": 331,
+        "skipNoOpen": 0,
+        "skipExpire": 579,
+        "skipNoBorrow": 0,
+        "exitTarget": 30,
+        "exitStop": 791,
+        "exitDue": 9,
+        "limitEntry": 203,
+        "limitExit": 253,
+        "borrowPaid": 0.0214,
+        "mvMedianYi": 120.8,
+        "avgDeployed": 0.1765
+      },
+      "fill_P_profit": 87.0,
+      "d_hedge_habit_tot": 1775.3,
+      "d_hedge_habit_sr": 11.89,
+      "d_hedge_habit_dd": -11.7,
+      "d_hedge_core_tot": 1797.8,
+      "d_hedge_core_sr": 13.31,
+      "d_hedge_core_dd": -20.3
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 190.6,
+        "max_dd": 12.6,
+        "sharpe": 2.54
+      },
+      "habit": {
+        "n_days": 253,
+        "total_pct": 204.1,
+        "max_dd": 12.6,
+        "sharpe": 2.75
+      },
+      "hedge": {
+        "n_days": 253,
+        "total_pct": 21758.2,
+        "max_dd": 5.6,
+        "sharpe": 13.77
+      },
+      "short_diag": {
+        "signals": 5492,
+        "shorted": 1248,
+        "skipMargin": 1564,
+        "skipFull": 16171,
+        "skipDup": 819,
+        "skipNoOpen": 0,
+        "skipExpire": 1861,
+        "skipNoBorrow": 0,
+        "exitTarget": 86,
+        "exitStop": 1156,
+        "exitDue": 6,
+        "limitEntry": 285,
+        "limitExit": 443,
+        "borrowPaid": 0.0309,
+        "mvMedianYi": 169.0,
+        "avgDeployed": 0.2472
+      },
+      "fill_P_profit": 86.6,
+      "d_hedge_habit_tot": 21554.1,
+      "d_hedge_habit_sr": 11.02,
+      "d_hedge_habit_dd": -7.0,
+      "d_hedge_core_tot": 21567.6,
+      "d_hedge_core_sr": 11.23,
+      "d_hedge_core_dd": -7.0
+    }
+  },
+  "verdicts": {
+    "hedge": "PASS+/beats_core/valid_buf_ok=True"
+  },
+  "as_of": "2026-09-05T12:41:24+00:00"
+}

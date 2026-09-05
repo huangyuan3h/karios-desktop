@@ -1,0 +1,1225 @@
+{
+  "tag": "vendor-adj-compare-2026-09-05",
+  "rule": "report only, no fixes",
+  "finding": "vendor hou-file is a hou-PRICE series (mislabeled factor); vendor qian is hou/hou_latest with broken ancient history",
+  "sample": 200,
+  "return_pairs": 171568,
+  "level_relerr_median_pct": 0.0,
+  "level_relerr_p90_pct": 0.0,
+  "level_relerr_p99_pct": 0.0,
+  "level_n": 171761,
+  "ret_absdiff_median_bps": 139.0,
+  "ret_absdiff_p90_bps": 474.7,
+  "ret_relerr_median_pct": 100.0,
+  "ret_relerr_p90_pct": 100.0,
+  "ret_relerr_p99_pct": 100.0,
+  "qian_self_median_pct": 0.0,
+  "qian_self_p90_pct": 0.0,
+  "exdiv_continuous": 698,
+  "exdiv_checked": 769,
+  "qian_neg_rows": 0,
+  "qian_bad_rows": 0,
+  "per_stock": [
+    {
+      "ts": "511360.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300059.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600519.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601127.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300308.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603019.SH",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601138.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000063.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600030.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000977.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300502.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "513180.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688981.SH",
+      "common_days": 885,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002594.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603259.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000858.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601318.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000625.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300339.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002475.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601899.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002085.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002456.SZ",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "301236.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600900.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600418.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688256.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300418.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600036.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300033.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002230.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600839.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000158.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601012.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002156.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300274.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000333.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002371.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300394.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600733.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300364.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601398.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688041.SH",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601288.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002241.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000938.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600171.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "511380.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000725.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000100.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603986.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000628.SZ",
+      "common_days": 880,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "001696.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002130.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600150.SH",
+      "common_days": 877,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601162.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601857.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000568.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601888.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000002.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000651.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000099.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601919.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002261.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002281.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000066.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600584.SH",
+      "common_days": 886,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002463.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002384.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000001.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601360.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600276.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688008.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300085.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002583.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300760.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002600.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600938.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603993.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600887.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600536.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002625.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603501.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600895.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688012.SH",
+      "common_days": 882,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600048.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601668.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002466.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601985.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600050.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300735.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "512480.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601727.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "518880.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002050.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300015.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002049.SZ",
+      "common_days": 880,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688111.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000988.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600611.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300803.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300476.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600309.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002129.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300014.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601600.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601688.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002714.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600941.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002415.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "511130.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600809.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601166.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300058.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601088.SH",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300377.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300474.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601099.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002607.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300459.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002459.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "688525.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002312.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600919.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002460.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600438.SH",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601136.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000338.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300496.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300077.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601933.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603799.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601601.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002229.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300757.SZ",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603083.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600028.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600570.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002555.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601328.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300124.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600031.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601881.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600460.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300045.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600690.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601988.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300624.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000021.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002797.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000564.SZ",
+      "common_days": 889,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601766.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002400.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601878.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300073.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603005.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002273.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000617.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300068.SZ",
+      "common_days": 885,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601901.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600157.SH",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300458.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300024.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300290.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300002.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601225.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "001979.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300133.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600111.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601689.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300017.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601728.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "605117.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300782.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300184.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601939.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002131.SZ",
+      "common_days": 887,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "601788.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600745.SH",
+      "common_days": 888,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600988.SH",
+      "common_days": 889,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300315.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300122.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "302132.SZ",
+      "common_days": 881,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000630.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "000062.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600522.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300641.SZ",
+      "common_days": 886,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002423.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300563.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600580.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300896.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600489.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002402.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "603000.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300623.SZ",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "600686.SH",
+      "common_days": 891,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300442.SZ",
+      "common_days": 885,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "002142.SZ",
+      "common_days": 890,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "513100.SH",
+      "common_days": 0,
+      "qian_neg": 0,
+      "qian_bad": 0
+    },
+    {
+      "ts": "300346.SZ",
+      "common_days": 883,
+      "qian_neg": 0,
+      "qian_bad": 0
+    }
+  ],
+  "as_of": "2026-09-05T07:02:01+00:00"
+}

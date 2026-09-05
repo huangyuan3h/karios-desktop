@@ -208,6 +208,7 @@ def build_nav_from_cache(
     etf_peak = 0.0
     trail_exits = 0
     nav_map = {}
+    pick_map: dict[str, str] = {}
     stock_day_n: list[int] = []
     if calendar:
         nav_map[calendar[0]] = 1.0
@@ -366,6 +367,7 @@ def build_nav_from_cache(
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
         nav_map[day] = nav
+        pick_map[day] = hold_pick or "REPO"
 
     n_loop = max(1, len(calendar) - 1)
     return {
@@ -375,6 +377,7 @@ def build_nav_from_cache(
         "trailExits": trail_exits,
         "calendarDays": len(calendar),
         "nav": nav_map,
+        "pick_map": pick_map,
         "stockDayPct": round(100.0 * len(stock_day_n) / n_loop, 1),
         "avgStockNames": round(sum(stock_day_n) / len(stock_day_n), 2) if stock_day_n else 0.0,
         "maxStockNames": max(stock_day_n) if stock_day_n else 0,

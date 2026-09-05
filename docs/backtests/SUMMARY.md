@@ -50,6 +50,11 @@
 | 卫星习惯 C3 下跌过滤 S2（风险排除） | 2 变体 | **不进 Live**：诊断两窗同向最差（<−3% 档 OOS2 −4.27%），但组合层面冗余（跳 564/fills−1，twin −0.3pt）——桶+槽位已吸收 | 见 [sat-c3-fade](sat-c3-fade-2026-09-04.md) |
 | 卫星习惯 holdout 审计 S1（只读） | 19 sessions/32 fills | twin−core Δ **−5.1** ≈ 样本内第 7 百分位（p5 −5.53），分布内坏月份；**不调参**；方差才是真风险 | 见 [sat-holdout](sat-holdout-2026-09-04.md) |
 | 卫星习惯 CHURN 过滤 S4（风险排除） | 1 变体（六维诊断筛一） | **不进 Live，记候选**：train +2.4/valid +1.5，但 OOS2 −1.0/sr−0.03（PASS/worse）；余下五维（板块/市值/年限/大盘高开/breadth）死在诊断 | 见 [sat-churn](sat-churn-2026-09-04.md) |
+| 卫星习惯耗尽否决 E-veto（形态做减法） | 1 诊断（OOS2+train，valid 未碰） | **REJECT/方向证伪**：耗尽候选两窗反倒更好（OOS2 +0.91pp/train +1.34pp），覆盖仅 2.4%；20 天顶否决 3 天脉冲 horizon 错配，关闭方向不补网格 | 见 [sat-exhaust-veto-2026-09-05](sat-exhaust-veto-2026-09-05.md) |
+| 卫星核心门控 C-gate（听大哥的） | 1 诊断（OOS2+train，valid 未碰） | **REJECT/双窗打架**：STOCK 桶 −3.27↔+0.14 翻面，无一桶双窗一致最差；REPO 触发 <1% 与 R-wide 共线；核心×卫星交互 regime-不稳定，关闭方向 | 见 [sat-core-gate-2026-09-05](sat-core-gate-2026-09-05.md) |
+| S-3 入场耗尽否决（核心动刀） | 1 诊断（OOS2+train，valid 未碰） | **REJECT/零覆盖**：冻结 S-3 实现交易 0/93、0/51 命中（S-3 钓趋势早期，ret60 中位 ~5%，与末期派发顶不交集）；否决=基线，关闭方向 | 见 [s3-exhaust-veto-2026-09-05](s3-exhaust-veto-2026-09-05.md) |
+| 对冲双子星 v0.2（全新算法 · 做空耗尽顶） | 三窗+2023+产品窗+严格有券敏感性 | **PASS+（样本内折扣版）**：vs 习惯 Δ+6540/+1221/+1333，sr全升dd全降，2023熊 +1783；敏感性 Δ+1023/+666/+508；绝对值禁入仓位决策，待 paper-shorts ≥20 笔前瞻 | 见 [hedge-twin-2026-09-05](hedge-twin-2026-09-05.md) |
+| 对冲双子星 v0.2 修正（成交语义） | 同上（限价成交重算） | **REJECT/实现证伪**：正确语义下 strict 65.3%/+0.92%（门 85–93% 未过），最差 −236%，23% 亏超 5%；冻结 89% 表系 naive-touch 幻影；附带 `factor_signals` 港股误标（OPT-146）+ strategy-params §7 联动暂停 | 同上 §1–§2 |
 | 大盘风格 vs 卫星 G1（理解层） | 趋势×波动分组 | up 三窗全赚，choppy 次之，down 被 R-wide 拦（19 天开 1 天）；波动率非稳定亏钱因子；**无新规则** | 见 [sat-regime](sat-regime-2026-09-04.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
@@ -91,6 +96,7 @@ NAV 重固化：OOS2 **+31.3%** / train **+1.9%** / valid **+60.7%** —— trai
 ## 5. 文档地图
 
 - **策略真值** → `modules/pick-strong-track.md`
+- **基础规律与不变量（新想法先自查）** → [`first-principles-2026-09-05.md`](./first-principles-2026-09-05.md)
 - 参数（股票腿）→ `modules/strategy-params.md`
 - 实验全记录 → `experiments-*.md`
 - 审计 → `audit-verdict-2026-08-29.md`

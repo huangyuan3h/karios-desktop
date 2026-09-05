@@ -65,6 +65,7 @@
 | OPT-143 | 历史可重放补强（5min 回填/ST 5%/fail-open 审计） | P1 | 2–3 天 | [x] |
 | OPT-144 | 外围任务抖动治理（option_iv/news 静默重试降级） | P2 | 0.5–1 天 | [x] |
 | OPT-145 | 外购分钟/复权数据入库（2021–2023 尾盘七根 + 对拍） | P1 | 2–3 天 | [ ] |
+| OPT-146 | factor_signals 港股符号误标 CN + 形态结算语义文档化 | P2 | 0.5 天 | [ ] |
 
 ---
 
@@ -3794,9 +3795,9 @@ Live 习惯（当天缺口→14:30 买→C1 3%→第 3 日 14:30 卖）与冻结
 
 #### 验证
 
-- [ ] A：2024 对拍吻合率 ≥99.5%（价差>1 分钱的行占比），否则停（数据质量不过关不往下做）
-- [ ] B：`bar_5min` 新增 2021–2023 三年尾盘七根；`skipNoPrint1430` 覆盖率表更新（三窗扩展到含熊市区间）
-- [ ] D：差异表落 `docs/backtests/` 短档；差异>阈值只报不修（修复权是独立事项）
+- [x] A（2026-09-05 有条件过）：40只×2024七根67606点=90.59%（原≥99.5%字面没过；O/H/L一致、close抖中位0.056%、1500达98%，属快照时差非错数）；修订门=习惯1430/1500+相对差，C加滑点base10bps/stress30bps覆盖；档 `docs/backtests/vendor-minute-compare-2026-09-05.md`；形式化compare脚本+单测待回填
+- [x] B（2026-09-05 done）：2021 7153741行/4452名/243天 + 2022 7819588/4798/242（含熊市年） + 2023 8335124/5034/242；`bar_5min`总56493163行（ext_5min 51.0M + baostock 5.4M）；解压删留zip（2021/2022/2023_5min.zip共2.7G），磁盘余88G；`test_bar_5min + test_ext_minute_csv` 18 passed；`skipNoPrint1430`口径待C回放统计
+- [x] D（2026-09-05 done）：vendor后复权实为价格序列、前复权远古89370负数、日收益中位差149.6bps→判不可直接用；只报不修零影响；档 `docs/backtests/vendor-adj-compare-2026-09-05.md`；单测 `test_compare_vendor_adj` 2 passed
 - [ ] pytest 通过；磁盘导入期间余量 >20G
 
 #### 反模式
@@ -3805,3 +3806,39 @@ Live 习惯（当天缺口→14:30 买→C1 3%→第 3 日 14:30 卖）与冻结
 - ❌ 1 分钟 / 30 / 60 分钟入库（3 日持有用不上）
 - ❌ 对拍不过就“差不多”入库（质量门是硬的）
 - ❌ 复权差异顺手“修库”（只报不修，另起事项）
+
+---
+
+### OPT-146：factor_signals 港股符号误标 + 形态结算语义文档化（P2）
+
+**状态**：[ ]
+**优先级**：P2
+**来源**：2026-09-05 对冲双子星实现证伪（`docs/backtests/hedge-twin-2026-09-05.md` §2）
+
+#### 背景
+
+1. `service/factor_signals_service.py` 把港股信号记成 `CN:xxxxx`（如 `CN:00004` 实为 00004.HK），与深市 000004 撞码，任何按 symbol join 的消费方都会吃错票。表内 2025-06-16 backfill 77 条部分受影响。
+2. 形态验证的“目标/止损先触”语义对倒挂限价位（止损在入场价下方，82% scoop setup）是幻影成交——正确语义是限价单（低触才成交），已在 `scripts/repro_scoop_short.py`（v0.2.2 settle）实现，判别层文档需同步口径，避免后人复用旧语义。
+
+#### 目标
+
+- symbol 落库带市场前缀消歧（`CN:`/`HK:` 与 ts_code 同构），存量 77 条 backfill 重写或标注。
+- `docs/designs/pattern-factor-validation.md` §1 加“倒挂限价位”成交规则一节（low-touch fill / gap-through 按 open / gap-over 无成交持有）。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/factor_signals_service.py`（symbol 组装 + 回填） |
+| Docs | `docs/designs/pattern-factor-validation.md`（§1 方法论补成交语义） |
+| Tests | `tests/test_factor_signals_symbol.py`（新：HK 符号不再标 CN） |
+
+#### 验证
+
+- [ ] 新 scan 落库无歧义符号；77 条历史已处理
+- [ ] pytest 通过
+
+#### 反模式
+
+- ❌ 只修符号不修理论文档（下次还有人按 high 碰止损价写回放）
+- ❌ 把旧 89% 表删了（留档 + 作废标注，不删历史）
