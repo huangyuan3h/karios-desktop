@@ -8,6 +8,8 @@ now excludes today's bar explicitly.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from data_sync_service.service import multi_asset_sleeve as mas
 
 
@@ -73,13 +75,14 @@ class TestSleeveEtfSync:
 
         class _Settings:
             tu_share_api_key = "TEST_KEY"
+            tushare_tokens = ("TEST_KEY",)
 
         def _upsert(df) -> int:
             state["upserted"] += len(df)
             return len(df)
 
         monkeypatch.setattr(ed, "get_settings", lambda: _Settings())
-        monkeypatch.setattr(ed, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: _Pro())}))
+        monkeypatch.setattr(ed, "get_pool", lambda: SimpleNamespace(pro=lambda: _Pro()))
         monkeypatch.setattr(ed, "upsert_from_dataframe", _upsert)
         monkeypatch.setattr(ed, "get_last_trade_date", lambda ts: __import__("datetime").date(2026, 8, 21))
         monkeypatch.setattr(ed, "_sync_end_date", lambda ts: "20260831")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -11,6 +12,7 @@ from data_sync_service.service import etf_daily as ed
 
 class _Settings:
     tu_share_api_key = "TEST_KEY"
+    tushare_tokens = ("TEST_KEY",)
 
 
 class _Pro:
@@ -27,7 +29,7 @@ class _Pro:
 def _patch(monkeypatch, pro=None, ts_codes=None, last=None, run=None):
     state = {"upserted": 0}
     monkeypatch.setattr(ed, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(ed, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: pro)}))
+    monkeypatch.setattr(ed, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(ed, "get_today_run", lambda jt: run)
     monkeypatch.setattr(ed, "_fetch_etf_ts_codes", lambda: ts_codes or [])
     monkeypatch.setattr(ed, "get_last_trade_date", lambda code: last)
@@ -82,7 +84,7 @@ def test_sync_resume_unknown_code_restarts(monkeypatch) -> None:
 
 def test_sync_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch, run=None, ts_codes=["510300.SH"])
-    monkeypatch.setattr(ed, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(ed, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = ed.sync_etf_daily_full()
     assert out["ok"] is False and "API_KEY" in out["error"]
 
@@ -173,7 +175,7 @@ def test_sync_single_requires_code(monkeypatch) -> None:
 
 def test_sync_single_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch)
-    monkeypatch.setattr(ed, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(ed, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = ed.sync_etf_daily_for_ts_code("510300.sh")
     assert out["ok"] is False and "API_KEY" in out["error"]
 
@@ -207,7 +209,7 @@ def test_sync_single_no_upsert_no_cache_clear(monkeypatch) -> None:
             return pd.DataFrame()
 
     monkeypatch.setattr(ed, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(ed, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: P6())}))
+    monkeypatch.setattr(ed, "get_pool", lambda: SimpleNamespace(pro=lambda: P6()))
     monkeypatch.setattr(ed, "get_last_trade_date", lambda code: date(2026, 8, 6))
     monkeypatch.setattr(ed, "upsert_from_dataframe", lambda df: 0)
     out = ed.sync_etf_daily_for_ts_code("510300.SH")
@@ -220,7 +222,7 @@ def test_sync_single_failure(monkeypatch) -> None:
             raise ValueError("bad data")
 
     monkeypatch.setattr(ed, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(ed, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: P7())}))
+    monkeypatch.setattr(ed, "get_pool", lambda: SimpleNamespace(pro=lambda: P7()))
     monkeypatch.setattr(ed, "get_last_trade_date", lambda code: date(2026, 8, 6))
     out = ed.sync_etf_daily_for_ts_code("510300.SH")
     assert out["ok"] is False and out["error"] == "bad data"

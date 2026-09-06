@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import tushare as ts
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.daily import get_last_adj_factor_date, update_adj_factor_from_dataframe
 from data_sync_service.db.stock_basic import fetch_ts_codes
@@ -60,10 +60,10 @@ def sync_adj_factor_full() -> dict[str, Any]:
             pass
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
     end_date = _sync_end_date(ts_codes[0] if ts_codes else "")
     total_rows = 0
     last_successful_ts_code: str | None = None

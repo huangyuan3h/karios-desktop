@@ -28,8 +28,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
-import tushare as ts  # type: ignore[import-not-found]
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
 from data_sync_service.db.stock_basic import fetch_ts_codes_by_market
@@ -241,7 +241,7 @@ def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
     if not code:
         return {"ok": False, "error": "ts_code is required"}
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     last_date = get_last_trade_date(code)
@@ -254,7 +254,7 @@ def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
         return {"ok": True, "updated": 0, "skipped": True, "ts_code": code}
 
     try:
-        pro = ts.pro_api(settings.tu_share_api_key)
+        pro = get_pool().pro()
         df: pd.DataFrame = pro.hk_daily(
             ts_code=code,
             start_date=start_date,

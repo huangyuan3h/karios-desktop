@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -12,6 +13,7 @@ from data_sync_service.service import close_sync as cs
 
 class _Settings:
     tu_share_api_key = "TEST_KEY"
+    tushare_tokens = ("TEST_KEY",)
 
 
 class _Pro:
@@ -44,7 +46,7 @@ def _patch(monkeypatch, pro=None, today_run=None, last_ok=None, open_flag=True,
     if pro is None:
         pro = _Pro()
     monkeypatch.setattr(cs, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(cs, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: pro)}))
+    monkeypatch.setattr(cs, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(cs, "get_today_run", lambda jt: today_run)
     monkeypatch.setattr(cs, "get_last_success", lambda jt: last_ok)
     monkeypatch.setattr(cs, "is_trading_day", lambda exc, d: open_flag)
@@ -230,7 +232,7 @@ def test_sync_close_too_early(monkeypatch) -> None:
 
 def test_sync_close_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch, open_flag=True)
-    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     monkeypatch.setattr(cs, "_cn_today", lambda: date(2026, 8, 8))
     monkeypatch.setattr(cs, "_cn_now", lambda: datetime(2026, 8, 8, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
     out = cs.sync_close()

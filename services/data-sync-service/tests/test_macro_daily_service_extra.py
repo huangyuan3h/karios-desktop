@@ -18,25 +18,28 @@ class TestHelpers:
         assert md._date_to_yyyymmdd(date(2026, 8, 7)) == "20260807"
 
     def test_tushare_pro_raises(self, monkeypatch) -> None:
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key=""))
+        def _no_pool():
+            raise RuntimeError("TU_SHARE_API_KEY is not set")
+
+        monkeypatch.setattr(md, "get_pool", _no_pool)
         with pytest.raises(RuntimeError, match="TU_SHARE_API_KEY"):
             md._tushare_pro()
         assert md.try_tushare_pro() is None
 
     def test_tushare_pro_ok(self, monkeypatch) -> None:
         pro = Mock()
-        seen = {}
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="k"))
-        monkeypatch.setattr(md.ts, "set_token", lambda k: seen.update(k=k))
-        monkeypatch.setattr(md.ts, "pro_api", lambda k: pro)
+        pool = Mock()
+        pool.pro.return_value = pro
+        monkeypatch.setattr(md, "get_pool", lambda: pool)
         assert md._tushare_pro() is pro
         assert md.try_tushare_pro() is pro
-        assert seen == {"k": "k"}
+        pool.pro.assert_called()
 
     def test_try_tushare_pro_fail(self, monkeypatch) -> None:
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="k"))
-        monkeypatch.setattr(md.ts, "set_token", lambda k: None)
-        monkeypatch.setattr(md.ts, "pro_api", lambda k: (_ for _ in ()).throw(RuntimeError("x")))
+        def _boom():
+            raise RuntimeError("x")
+
+        monkeypatch.setattr(md, "get_pool", _boom)
         assert md.try_tushare_pro() is None
 
     def test_normalize_us(self) -> None:
@@ -282,12 +285,12 @@ class TestSyncFull:
 
     def test_no_api_key(self, monkeypatch) -> None:
         monkeypatch.setattr(md, "get_today_run", lambda job: None)
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key=""))
+        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
         assert md.sync_macro_daily_full() == {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     def _happy(self, monkeypatch, *, fail=None, last_ts=None):
         monkeypatch.setattr(md, "get_today_run", lambda job: {"success": False, "last_ts_code": last_ts})
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
         monkeypatch.setattr(md, "_paged_index_global", lambda pro, code, s, e: _ok_df())
         monkeypatch.setattr(md, "_paged_fut_daily", lambda pro, code, s, e: _ok_df())

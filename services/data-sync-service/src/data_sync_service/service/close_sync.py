@@ -8,8 +8,8 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd  # type: ignore[import-not-found]
-import tushare as ts  # type: ignore[import-not-found]
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.daily import count_rows_for_trade_date, update_adj_factor_from_dataframe
 from data_sync_service.db.daily import upsert_from_dataframe as upsert_daily
@@ -260,12 +260,12 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
         end_date = today - timedelta(days=1)
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         out2 = {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
         if trade_cal_auto is not None:
             out2["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
         return out2
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
 
     trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=end_date)
     if not trade_dates:

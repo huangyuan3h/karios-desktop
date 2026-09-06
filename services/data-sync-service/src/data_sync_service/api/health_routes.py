@@ -379,8 +379,13 @@ def system_events_resolve(event_id: int) -> dict[str, Any]:
 @router.get("/datasources")
 def datasources_endpoint() -> dict[str, Any]:
     """Per-source data freshness for Copy All header (TIP-013)."""
+    from data_sync_service.clients.tushare_pool import pool_snapshot
+
     return {
         "ok": True,
         "generatedAt": datetime.now(UTC).isoformat(),
         "sources": datasource_freshness(),
+        # OPT-124: tushare multi-token quota (remaining/reset) for the
+        # frontend health banner. Best-effort: never fails the endpoint.
+        "tushare_quota": pool_snapshot(),
     }

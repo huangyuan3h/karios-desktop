@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pandas as pd
@@ -23,21 +24,21 @@ class TestTushareSyncOne:
         assert hd._tushare_sync_one("") == {"ok": False, "error": "ts_code is required"}
 
     def test_no_key(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key=""))
+        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
         assert hd._tushare_sync_one("00700.HK")["error"] == "TU_SHARE_API_KEY is not set"
 
     def test_up_to_date(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: date.today())
         out = hd._tushare_sync_one("00700.HK")
         assert out["skipped"] is True and out["updated"] == 0
 
     def test_backfill(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: None)
         pro = Mock()
         pro.hk_daily.return_value = pd.DataFrame([{"trade_date": "20260807", "close": 1.0}])
-        monkeypatch.setattr(hd.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hd, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(hd, "upsert_from_dataframe", lambda df: 1)
         out = hd._tushare_sync_one("00700.HK")
         assert out["ok"] is True and out["updated"] == 1 and out["source"] == "tushare"
@@ -45,21 +46,21 @@ class TestTushareSyncOne:
         assert pro.hk_daily.call_args.kwargs["ts_code"] == "00700.HK"
 
     def test_incremental(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: date(2026, 8, 6))
         pro = Mock()
         pro.hk_daily.return_value = pd.DataFrame()
-        monkeypatch.setattr(hd.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hd, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         out = hd._tushare_sync_one("00700.HK")
         assert out["ok"] is True and out["updated"] == 0
         assert pro.hk_daily.call_args.kwargs["start_date"] == "20260807"
 
     def test_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: None)
         pro = Mock()
         pro.hk_daily.side_effect = RuntimeError("boom")
-        monkeypatch.setattr(hd.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hd, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         out = hd._tushare_sync_one("00700.HK")
         assert out["ok"] is False and out["error"] == "boom"
 

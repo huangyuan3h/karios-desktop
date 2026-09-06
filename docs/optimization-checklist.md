@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
 > 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-146`（重号见文末）。
-> **正文只留 5 条未完成 + 3 条冬眠**；已完成 103 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> **正文只留 4 条未完成 + 3 条冬眠**；已完成 104 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,48 +18,9 @@
 
 ---
 
-## 未完成（5 条）
+## 未完成（4 条）
 
-### OPT-124：Tushare 多 token 轮换 + 配额看门狗（P0）
-
-**状态**：[ ] 待排期  
-**优先级**：P0（单 key 是 EOD 链唯一付费 SPOF；周五 200/min 已实证）  
-**关联**：[`stability-audit-2026-09-01.md`(./designs/stability-audit-2026-09-01.md) §4/§6
-
-#### 背景
-
-- 单 `TU_SHARE_API_KEY` 单点限流：`fund_daily 200/min` / `index_global 100/day` / `hk_daily 1/min` 共享同一配额，`service/close_sync.py:88` 无多 key 池，周五双 job 即 `频率超限`。
-- `close_sync` 与 `adj_factor_full` 曾同 17:00 触发必撞，现错峰到 18:30 但仍无熔断。
-
-#### 目标
-
-- `config.py` 支持 `TUSHARE_TOKEN` 逗号分隔多 key（向后兼容单 key `TU_SHARE_API_KEY`）
-- `clients/tushare_client.py`（或 `service/tushare_pool.py`）封装 `round_robin + 配额看门狗`：`200/min` 滑动窗口计数，超限自动切 key + `sleep 35s` 退避；`100/day` 达限即降级 Tencent/ak
-- `service/close_sync.py` / `etf_daily.py` / `macro_daily.py` / `hk_daily.py` 改走池化 client，不直调 `ts.pro_api(token)`
-- `GET /api/health/datasources` 暴露 `tushare_quota`（剩余/重置时间）供前端健康横幅
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Config | `services/data-sync-service/src/data_sync_service/config.py` |
-| Client | `services/data-sync-service/src/data_sync_service/clients/tushare_pool.py`（**新**） |
-| Service | `service/close_sync.py` `service/etf_daily.py` `service/macro_daily.py` `service/hk_daily.py` `service/adj_factor.py` |
-| API | `api/health_routes.py` |
-| Tests | `tests/test_tushare_pool.py`（**新**：轮换 / 限流切 key / 100/day 降级） |
-
-#### 验证
-
-- [ ] 单 key `频率超限` 时自动切备 key 重试成功（mock）
-- [ ] `200/min` 滑动窗口内第 201 次触发退避而非裸失败
-- [ ] 未配多 key 时行为与现单 key 完全一致（向后兼容）
-- [ ] pytest 通过
-
-#### 反模式
-
-- ❌ 把多 key 逻辑散到每个 service 各自 `ts.pro_api(token)`（必须收敛到单一 pool）
-- ❌ 用 `time.sleep 固定 60s` 硬等（用滑动窗口 + 指数退避）
-- ❌ 把 `TUSHARE_TOKEN` 明文打到日志/health 响应
+| OPT-124 | [x] 2026-09-06 · 多 token 轮换 + 配额看门狗 | [2026-09-06-opt-124-tushare-pool.md](archive/2026-09-06-opt-124-tushare-pool.md) |
 
 ---
 
@@ -293,6 +254,7 @@
 | 2026-09-04 | 141 | 习惯口径引擎化 | [2026-09-04-opt-141-live-caliber.md](archive/2026-09-04-opt-141-live-caliber.md) |
 | 2026-09-04 | 142 | 日历收敛 + Alembic | [2026-09-04-opt-142-calendar-api-migration.md](archive/2026-09-04-opt-142-calendar-api-migration.md) |
 | 2026-09-04 | 143–144 | 可重放补强 / 外围抖动 | [2026-09-04-opt-143-144-replay-quiet.md](archive/2026-09-04-opt-143-144-replay-quiet.md) |
+| 2026-09-06 | 124 | 多 token 轮换 + 配额看门狗 | [2026-09-06-opt-124-tushare-pool.md](archive/2026-09-06-opt-124-tushare-pool.md) |
 
 > **历史重号说明**：OPT-057/058/060 在正文出现过两次（不同日期不同内容），OPT-059 的归档文件与正文条目主题不同。
 > 一律不重编号，以"日期+标题"区分：057 = 08-01 TV Capture / 08-31 dailybasic 停更；058 = 08-02 漏斗 / 08-31 双子星 14:30 审计；

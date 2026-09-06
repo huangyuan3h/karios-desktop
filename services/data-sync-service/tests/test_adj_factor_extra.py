@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -11,6 +12,7 @@ from data_sync_service.service import adj_factor as af
 
 class _Settings:
     tu_share_api_key = "TEST_KEY"
+    tushare_tokens = ("TEST_KEY",)
 
 
 class _Pro:
@@ -27,7 +29,7 @@ def _patch(monkeypatch, pro=None, ts_codes=None, last=None, run=None):
     if pro is None:
         pro = _Pro()
     monkeypatch.setattr(af, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(af, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: pro)}))
+    monkeypatch.setattr(af, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(af, "get_today_run", lambda jt: run)
     monkeypatch.setattr(af, "fetch_ts_codes", lambda: ts_codes or [])
     monkeypatch.setattr(af, "get_last_adj_factor_date", lambda code: last)
@@ -75,7 +77,7 @@ def test_sync_resume_unknown_marker_restarts(monkeypatch) -> None:
 
 def test_sync_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch, ts_codes=["600000.SH"])
-    monkeypatch.setattr(af, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(af, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = af.sync_adj_factor_full()
     assert out["ok"] is False and "API_KEY" in out["error"]
 

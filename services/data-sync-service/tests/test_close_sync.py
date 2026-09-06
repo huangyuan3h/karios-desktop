@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -71,8 +72,8 @@ def test_non_trading_day_catchup_when_stale(monkeypatch: pytest.MonkeyPatch) -> 
     )
     monkeypatch.setattr(cs, "count_rows_for_trade_date", lambda _d: 5000)
     monkeypatch.setattr(cs, "get_open_dates", lambda **_: trade_dates)
-    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
-    monkeypatch.setattr(cs.ts, "pro_api", lambda _k: object())
+    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tushare_tokens": ("k",)})())
+    monkeypatch.setattr(cs, "get_pool", lambda: SimpleNamespace(pro=lambda: object()))
     monkeypatch.setattr(cs, "_fetch_paged_daily", lambda pro, td: synced.append(td) or 100)
     monkeypatch.setattr(cs, "_fetch_paged_adj_factor", lambda pro, td: 50)
     monkeypatch.setattr(cs, "insert_record", lambda *a, **k: None)
@@ -102,8 +103,8 @@ def test_non_trading_day_force_heals_missing_db_rows(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(cs, "count_rows_for_trade_date", lambda _d: 0)
     monkeypatch.setattr(cs, "get_open_dates", lambda **_: [friday])
-    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
-    monkeypatch.setattr(cs.ts, "pro_api", lambda _k: object())
+    monkeypatch.setattr(cs, "get_settings", lambda: type("S", (), {"tushare_tokens": ("k",)})())
+    monkeypatch.setattr(cs, "get_pool", lambda: SimpleNamespace(pro=lambda: object()))
     monkeypatch.setattr(cs, "_fetch_paged_daily", lambda pro, td: synced.append(td) or 100)
     monkeypatch.setattr(cs, "_fetch_paged_adj_factor", lambda pro, td: 50)
     monkeypatch.setattr(cs, "insert_record", lambda *a, **k: None)

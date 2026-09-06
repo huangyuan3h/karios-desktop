@@ -37,7 +37,10 @@ def test_normalize_fx_daily_df_keeps_required_cols() -> None:
 
 
 def test_try_tushare_pro_no_api_key(monkeypatch) -> None:
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    def _no_pool():
+        raise RuntimeError("TU_SHARE_API_KEY is not set")
+
+    monkeypatch.setattr(md, "get_pool", _no_pool)
     assert md.try_tushare_pro() is None
 
 
@@ -63,7 +66,7 @@ def test_sync_macro_daily_skips_when_already_synced(monkeypatch) -> None:
 def test_sync_macro_daily_missing_api_key(monkeypatch) -> None:
     monkeypatch.setattr(md, "get_today_run", lambda job: None)
     monkeypatch.setattr(
-        md, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})()
+        md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "", "tushare_tokens": ()})()
     )
     out = md.sync_macro_daily_full()
     assert out["ok"] is False
@@ -76,7 +79,7 @@ def test_sync_macro_daily_full_driver(monkeypatch) -> None:
     monkeypatch.setattr(
         md,
         "get_settings",
-        lambda: type("S", (), {"tu_share_api_key": "x"})(),
+        lambda: type("S", (), {"tu_share_api_key": "x", "tushare_tokens": ("x",)})(),
     )
     monkeypatch.setattr(md, "_tushare_pro", lambda: object())
     monkeypatch.setattr(
@@ -94,7 +97,7 @@ def test_sync_macro_daily_full_driver(monkeypatch) -> None:
 def test_sync_macro_daily_one_series_upserts(monkeypatch) -> None:
     """IXIC path: last date old → fetch paged → upsert."""
     monkeypatch.setattr(md, "get_today_run", lambda job: None)
-    settings = type("S", (), {"tu_share_api_key": "x"})()
+    settings = type("S", (), {"tu_share_api_key": "x", "tushare_tokens": ("x",)})()
     monkeypatch.setattr(md, "get_settings", lambda: settings)
     monkeypatch.setattr(md, "_tushare_pro", lambda: object())
 
@@ -114,13 +117,26 @@ import sys  # noqa: E402
 
 
 def test_tushare_pro_and_try(monkeypatch) -> None:
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "KEY"})())
-    monkeypatch.setattr(md.ts, "set_token", lambda t: None)
-    monkeypatch.setattr(md.ts, "pro_api", lambda k: ("pro", k))
-    assert md._tushare_pro() == ("pro", "KEY")
-    assert md.try_tushare_pro() == ("pro", "KEY")
+    """Both helpers go through the pool (OPT-124); pool raises when unconfigured."""
+    from types import SimpleNamespace
 
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    import data_sync_service.config as config_mod
+    from data_sync_service.clients.tushare_pool import PooledPro, reset_pool
+
+    monkeypatch.setattr(
+        config_mod, "get_settings", lambda: SimpleNamespace(tushare_tokens=("KEY",))
+    )
+    reset_pool()
+    try:
+        assert isinstance(md._tushare_pro(), PooledPro)
+        assert isinstance(md.try_tushare_pro(), PooledPro)
+    finally:
+        reset_pool()
+
+    def _no_pool():
+        raise RuntimeError("TU_SHARE_API_KEY is not set")
+
+    monkeypatch.setattr(md, "get_pool", _no_pool)
     try:
         md._tushare_pro()
         raise AssertionError()
@@ -228,14 +244,14 @@ def test_sync_macro_daily_full_skip(monkeypatch) -> None:
 
 def test_sync_macro_daily_full_no_key(monkeypatch) -> None:
     monkeypatch.setattr(md, "get_today_run", lambda job: None)
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "", "tushare_tokens": ()})())
     out = md.sync_macro_daily_full()
     assert out["ok"] is False and "API_KEY" in out["error"]
 
 
 def test_sync_macro_daily_full_success(monkeypatch) -> None:
     monkeypatch.setattr(md, "get_today_run", lambda job: None)
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "K"})())
+    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "K", "tushare_tokens": ("K",)})())
     monkeypatch.setattr(md, "_tushare_pro", lambda: object())
     monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
     monkeypatch.setattr(md, "_today_yyyymmdd", lambda: "20260807")
@@ -261,7 +277,7 @@ def test_sync_macro_daily_full_success(monkeypatch) -> None:
 
 def test_sync_macro_daily_full_resume_and_failure(monkeypatch) -> None:
     monkeypatch.setattr(md, "get_today_run", lambda job: {"success": False, "last_ts_code": md.SID_DJI})
-    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "K"})())
+    monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": "K", "tushare_tokens": ("K",)})())
     monkeypatch.setattr(md, "_tushare_pro", lambda: object())
     monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
     monkeypatch.setattr(md, "_today_yyyymmdd", lambda: "20260807")

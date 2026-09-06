@@ -28,6 +28,10 @@ class Settings:
     db_password: str
     db_name: str
     tu_share_api_key: str
+    # OPT-124: pooled tushare tokens. New TUSHARE_TOKEN (comma-separated)
+    # wins; legacy single TU_SHARE_API_KEY falls back to a 1-key pool so
+    # unconfigured-multi-key behaviour is identical to before.
+    tushare_tokens: tuple[str, ...]
     ai_service_base_url: str
     # OPT-045: OpenAI 兼容 /v1/* + AI 助手可发现性
     karios_api_version: str
@@ -44,6 +48,14 @@ def get_settings() -> Settings:
     db_password = os.getenv("DB_PASSWORD", "admin123")
     db_name = os.getenv("DB_NAME", "karios-desktop")
     tu_share_api_key = os.getenv("TU_SHARE_API_KEY", "")
+
+    # OPT-124: multi-token rotation. TUSHARE_TOKEN="keyA,keyB" enables the
+    # pool; otherwise the legacy single key behaves as a 1-key pool.
+    tushare_token_raw = os.getenv("TUSHARE_TOKEN", "").strip()
+    if tushare_token_raw:
+        tushare_tokens = tuple(k for k in (c.strip() for c in tushare_token_raw.split(",")) if k)
+    else:
+        tushare_tokens = (tu_share_api_key,) if tu_share_api_key.strip() else ()
     ai_service_base_url = os.getenv("AI_SERVICE_BASE_URL", "http://127.0.0.1:4310").rstrip("/")
 
     database_url = os.getenv("DATABASE_URL")
@@ -63,6 +75,7 @@ def get_settings() -> Settings:
         db_password=db_password,
         db_name=db_name,
         tu_share_api_key=tu_share_api_key,
+        tushare_tokens=tushare_tokens,
         ai_service_base_url=ai_service_base_url,
         karios_api_version=karios_api_version,
         karios_api_keys=karios_api_keys,

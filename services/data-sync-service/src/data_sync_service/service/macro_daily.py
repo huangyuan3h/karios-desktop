@@ -8,8 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
-import tushare as ts  # type: ignore[import-not-found]
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.macro_daily import get_last_trade_date, upsert_from_dataframe
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
@@ -54,21 +54,16 @@ def _date_to_yyyymmdd(d: date) -> str:
 
 
 def _tushare_pro() -> Any:
-    settings = get_settings()
-    if not settings.tu_share_api_key:
-        raise RuntimeError("TU_SHARE_API_KEY is not set")
-    ts.set_token(settings.tu_share_api_key)
-    return ts.pro_api(settings.tu_share_api_key)
+    # OPT-124: pooled client (multi-token round-robin + quota watchdog).
+    # get_pool() raises RuntimeError("TU_SHARE_API_KEY is not set") when no
+    # token is configured — same contract as before.
+    return get_pool().pro()
 
 
 def try_tushare_pro() -> Any | None:
     """Return pro API client or None if token missing (non-raising)."""
-    settings = get_settings()
-    if not settings.tu_share_api_key:
-        return None
     try:
-        ts.set_token(settings.tu_share_api_key)
-        return ts.pro_api(settings.tu_share_api_key)
+        return get_pool().pro()
     except Exception:
         return None
 
@@ -379,7 +374,7 @@ def sync_macro_daily_full() -> dict[str, Any]:
             pass
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     pro = _tushare_pro()
