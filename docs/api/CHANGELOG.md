@@ -2,7 +2,7 @@
 
 > 机器可读：`GET /v1/changelog?since=X`。本文档是**人类可读**版本。  
 > 每次接口变更（MAJOR / MINOR / PATCH）由 `scripts/bump-api-version.sh` 追加。  
-> 详细规则：[`docs/designs/api-contract.md`](../../designs/api-contract.md)
+> 详细规则：[`docs/designs/api-contract.md`(../designs/api-contract.md)
 
 ---
 

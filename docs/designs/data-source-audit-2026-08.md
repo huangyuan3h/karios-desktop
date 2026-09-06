@@ -1,6 +1,6 @@
 # Data Source Audit · 2026-08 · 决策
 
-> **关联 todo**：[§3 收益 P0](../todo.md) · [§6 数据源 P1](../todo.md) · [§12 实施清单 #4](../todo.md)
+> **关联 todo**：[§3 收益 P0](../archive/2026-08-27-todo-full-snapshot.md) · [§6 数据源 P1](../archive/2026-08-27-todo-full-snapshot.md) · [§12 实施清单 #4](../archive/2026-08-27-todo-full-snapshot.md)
 > **决议日**：2026-08-01
 > **下次轻审**：2026-12-01（3 个月后；不要超过 6 个月）
 
@@ -20,7 +20,7 @@
 | **聚宽 JQData** | ❌ 不引 | 无不可替代覆盖 |
 | **Wind mini** | ❌ 不引 | 25× 贵，无 ROI |
 | **Choice / iFinD** | ❌ 不引 | 同上 |
-| **自建爬虫 (ego-lite)** | 🔄 P2 调研 | todo §12 #8 |
+| **自建爬虫 (ego-lite)** | 🔄 P2 调研 | [todo §12 #8](../archive/2026-08-27-todo-full-snapshot.md) |
 
 **总成本**：200/年（Tushare Pro） + $0（其他全是免费 / 自建）。
 **结论**：卫星仓场景下，**当前源矩阵是 ROI 最优解**。不要跟风买 Wind。
@@ -160,7 +160,7 @@
 | 数据质量 | 自控（**0 校验** = 高风险）|
 | ROI | **短期负**：0 成本但维护累；**长期可能正**：去 Chrome 依赖 |
 
-**结论**：🔄 **P2 调研**（todo §12 #8）。先调研 ego-lite，**确认能替代 Chrome TV 抓取再做**；否则不碰。
+**结论**：🔄 **P2 调研**（[todo §12 #8](../archive/2026-08-27-todo-full-snapshot.md)）。先调研 ego-lite，**确认能替代 Chrome TV 抓取再做**；否则不碰。
 
 ---
 
@@ -178,8 +178,8 @@
 
 | 行动 | 优先级 | 工时 | 关联 todo |
 |------|--------|------|----------|
-| ego-lite 调研（替代 Chrome TV 抓取）| P2 | 2-3 天 | §12 #8 |
-| akshare 包版本锁定（防 API 突然改）| P3 | 0.5 天 | §12 #8 |
+| ego-lite 调研（替代 Chrome TV 抓取）| P2 | 2-3 天 | [§12 #8](../archive/2026-08-27-todo-full-snapshot.md) |
+| akshare 包版本锁定（防 API 突然改）| P3 | 0.5 天 | [§12 #8](../archive/2026-08-27-todo-full-snapshot.md) |
 | 每个源加 health check 脚本 | P2 | 0.5 天 | OPT-050 |
 | 半年一次轻审 | — | 1 小时 | — |
 

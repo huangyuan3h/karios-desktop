@@ -1,8 +1,8 @@
 # 卫星仓一阶段：尾盘买点 · 第 2 天路径 · 入场过滤（2026-09-03）
 
-> **状态**：C1/C2 已三窗，结论在 [`sat-entry-c1-2026-09-03.md`](../backtests/sat-entry-c1-2026-09-03.md)。**未拍板进 Live**。
+> **状态**：C1/C2 已三窗，结论在 [`sat-entry-c1-2026-09-03.md`](../backtests/sat/sat-entry-c1-2026-09-03.md)。**未拍板进 Live**。
 > **产品冻结**：机会双子星 v3.1 clip4（4×12.5% · body=3 收盘卖 · 无 −5% · `skip_t1_limit` + strict）。
-> **关联**：[SUMMARY](../backtests/SUMMARY.md) · [clip4 讨论](../backtests/clip4-ops-decisions-2026-09-03.md) · [卫星退出拒收](../backtests/sat-exit-trail-2026-09-03.md) · [成交日历拒收](../backtests/sat-fill-same-close-2026-09-03.md) · [C1 三窗](../backtests/sat-entry-c1-2026-09-03.md) · [状态分桶真值](../backtests/state-bucket-algo-2026-08-31.md)
+> **关联**：[SUMMARY](../backtests/SUMMARY.md) · [clip4 讨论](../backtests/clip4-ops-decisions-2026-09-03.md) · [卫星退出拒收](../backtests/sat/sat-exit-trail-2026-09-03.md) · [成交日历拒收](../backtests/sat/sat-fill-same-close-2026-09-03.md) · [C1 三窗](../backtests/sat/sat-entry-c1-2026-09-03.md) · [状态分桶真值](../backtests/core/state-bucket-algo-2026-08-31.md)
 > **还需要谁拍板**：若接受 valid 总收益低于核心 3.3pt、换更好夏普/回撤，才能把 C1 3% 写进 Live 14:30 清单。冻结 9:30 仍不动。
 
 ---
@@ -55,7 +55,7 @@ Live 卫星：约 **当天 14:30** 按当日近似缺口筛，拿 **3 个交易�
 - 第 1 / 2 / 3 日相对成本的收益分布
 - **第 2 天收盘仍亏的票，第 3 天有多少拉回来**
 
-**2026-09-03 已跑**：[sat-hold-path-day2-2026-09-03.md](../backtests/sat-hold-path-day2-2026-09-03.md)。三窗均值 d1 < d2 < d3；d2 仍亏的成交第 3 天翻红只有 13–25%，约一半减亏。不据此改卖出规则。
+**2026-09-03 已跑**：[sat-hold-path-day2-2026-09-03.md](../backtests/sat/sat-hold-path-day2-2026-09-03.md)。三窗均值 d1 < d2 < d3；d2 仍亏的成交第 3 天翻红只有 13–25%，约一半减亏。不据此改卖出规则。
 
 ### C. 入场过滤（本阶段真正要回答的）
 
@@ -121,8 +121,8 @@ Live 卫星：约 **当天 14:30** 按当日近似缺口筛，拿 **3 个交易�
 ## 5. 建议顺序
 
 ```text
-现在     B **已做观察** [sat-hold-path-day2](../backtests/sat-hold-path-day2-2026-09-03.md)：均值走到第 3 天；d2 亏的多数第 3 天不翻红
-现在     成交日历 **已做三窗** [sat-fill-same-close](../backtests/sat-fill-same-close-2026-09-03.md)：当日收盘代理 vs 冻结 T 开盘，valid −17.7 **REJECT 当改写**
+现在     B **已做观察** [sat-hold-path-day2](../backtests/sat/sat-hold-path-day2-2026-09-03.md)：均值走到第 3 天；d2 亏的多数第 3 天不翻红
+现在     成交日历 **已做三窗** [sat-fill-same-close](../backtests/sat/sat-fill-same-close-2026-09-03.md)：当日收盘代理 vs 冻结 T 开盘，valid −17.7 **REJECT 当改写**
 并行     等 bar_5min 一年回补结束（可 resume）
 回补完   A 表：14:30 vs 15:00 溢价 / 封板 / 名单重叠；可选 `same_1430` 观察（不预期翻过冻结 5pt）
 然后     C1/C2 观察表 → 用户拍板 → 三窗 vs clip4

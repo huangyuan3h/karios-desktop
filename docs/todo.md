@@ -5,27 +5,36 @@
 
 ## 0. 优先级（不可漂移）
 
-| 1 收益 | §22 机会双子星（核心+卫星）§8 回测可分析 |
-| 2 API/AI | §3 |
-| 3 工程部署 | §4 |
-| 4 数据源 | §5 |
+| 1 收益 | 机会双子星（核心+卫星）+ 回测可分析 |
+| 2 API/AI | 外部打通 |
+| 3 工程部署 | 稳定性 |
+| 4 数据源 | 质量与覆盖 |
+
+> 给普通人的一页纸（2026-09-06 · 2 分钟版）：
+> Karios 管的是家里钱中**博收益的那部分（卫星仓）**，每天告诉你买什么、卖什么、买多少。
+> 现在用的策略叫**机会双子星**：**核心**（全市场当时最强的资产，股票/金/油/纳指/债之间每天只拿最强那个）+
+> **卫星**（A 股有缺口的强势股，只拿 3 天，每天 14:30 买卖，最多 4 只×12.5%）。
+> 过去一年回测 **+194.9%**（光核心是 +190.6%，卫星多赚 4.3pt），最大回撤 12.6%。
+> 风险实话：卫星按月算 40% 的月份跑输核心，约 7% 的月份亏超 5 个点——所以**不对月考核**，看长窗。
+> 实盘 paper 验证攒到 20 笔平仓才算数（现在 3/20），验证完之前**不调任何策略参数**。
+> 下一步：把双子星在 Watchlist 里跑顺（P0-0/P0-4）；想深挖看 [回测 SUMMARY](./backtests/SUMMARY.md)，想动手先读仓库根 `AGENTS.md`。
 
 ## 1. 状态看板
 
 | 域 | 状态 |
 |----|------|
-| §19 S-3 | ✅ 封闭（STOCK 腿生成器；pick=STOCK 才进篮） |
-| §22 / 机会双子星 | 🟢 **P0 主线** 实盘默认 = [机会双子星 v3.1 clip4](./backtests/state-bucket-algo-2026-08-31.md)（4×12.5%）+ **习惯 Live：C1 3% + 第3日14:30卖**；核心腿 [择强单轨](./modules/pick-strong-track.md) past_year **+190.6%** · clip4 **+194.9%** / DD12.6 |
-| §8 回测 | 🟡 运营阶段 B2–B5/A5 日流程已落地（OPT-135）；S-3 C4 统计仍等 20 笔 |
-| §4/5/6 | 按需 OPT（124–127 稳定性），不改策略 |
+| S-3 选股 | ✅ 封闭（STOCK 腿生成器；pick=STOCK 才进篮） |
+| 机会双子星 | 🟢 **P0 主线** 实盘默认 = [机会双子星 v3.1 clip4](backtests/core/state-bucket-algo-2026-08-31.md)（4×12.5%）+ **习惯 Live：C1 3% + 第3日14:30卖**；核心腿 [择强单轨](./modules/pick-strong-track.md)（过去一年对照数见 [state-bucket §3.0](backtests/core/state-bucket-algo-2026-08-31.md)） |
+| 回测对照 | 🟡 运营阶段 B2–B5/A5 日流程已落地（OPT-135）；S-3 C4 统计仍等 20 笔 |
+| 工程/数据源 | 按需 OPT（124–126 稳定性，127 已冬眠），不改策略 |
 
 ## 当前方向（默认 clip4 之后）
 
 - **P0：把机会双子星跑成产品**——不扫新卫星参。三线并行：[工程 / 业务对齐 / 回测可分析](./designs/twin-star-ops-phase-2026-09-02.md)
 - 卫星 **成交日历要对齐习惯，不能拿冻结 9:30 当 14:30**（P0-4）——优化目标是「我 14:30 买还能不能赚」，不是贴近 9:30 回测
-- 卫星 **14:30 入场过滤**：C1 3% 已三窗（tot/sr/dd）[sat-entry-c1](./backtests/sat-entry-c1-2026-09-03.md) — 相对无过滤 PASS+；单配收盘卖时 vs 核心 valid tot −3.3，**配第3日14:30卖后三窗全过核心，已进 Live（习惯）**
+- 卫星 **14:30 入场过滤**：C1 3% 已三窗（tot/sr/dd）[sat-entry-c1](backtests/sat/sat-entry-c1-2026-09-03.md) — 相对无过滤 PASS+；单配收盘卖时 vs 核心 valid tot −3.3，**配第3日14:30卖后三窗全过核心，已进 Live（习惯）**
 - 冻结对照：`skip_t1`+strict、4×12.5%、body=3 收盘卖（无 −5%）、S-3 篮 10×10%、回测=T 开盘、past_year 不当拒收闸；**Live 习惯：C1 3% + 第3日14:30卖**
-- 改策略前先读 [回测 SUMMARY](./backtests/SUMMARY.md) 与 [2026-09-03 讨论](./backtests/clip4-ops-decisions-2026-09-03.md)（Agent 规则在 `AGENTS.md`）
+- 改策略走仓库根 `AGENTS.md` → Strategy / parameter changes（主流程；总表见 SUMMARY）
 - 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
 - 脉冲天平仍观察层；Watchlist 占用对照已是双子星 C4-lite（你卫星仓 vs 引擎模拟）；S-3 统计 C4 仍等 20 笔平仓
 
@@ -79,7 +88,7 @@
 
 **大白话**：优化目标 = 在**你真实的买法**（当天缺口、约 14:30 买、C1 过滤、第 3 日 14:30 卖）上，三窗不过拟合地找还能不能比纯核心赚。冻结 clip4 的 9:30 边是另一套策略，当对照，不当你的成绩单。
 
-已测（收盘代理）：[sat-fill-same-close-2026-09-03.md](./backtests/sat-fill-same-close-2026-09-03.md) — 相对冻结 T 开盘 valid −17.7，**拒收当改写 9:30 引擎**。习惯日历要另开实验室，主判据 twin vs **核心**（任一窗 >5pt 差于核心或明显过拟合 → 不进 Live）。
+已测（收盘代理）：[sat-fill-same-close-2026-09-03.md](backtests/sat/sat-fill-same-close-2026-09-03.md) — 相对冻结 T 开盘 valid −17.7，**拒收当改写 9:30 引擎**。习惯日历要另开实验室，主判据 twin vs **核心**（任一窗 >5pt 差于核心或明显过拟合 → 不进 Live）。
 
 ### 导入什么（机器 36GB / 盘余 136GB / 库已 5.6GB）
 
@@ -104,18 +113,18 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 ### 回测顺序
 
 1. `same_1430` **[done] 2026-09-03**：当天缺口 + 14:30 成交。相对核心 train/valid 亏，不进 Live。
-2. **C1/C2 [done] 2026-09-03**：[sat-entry-c1](./backtests/sat-entry-c1-2026-09-03.md)。C1 3% 相对无过滤 tot/sr/dd 全过；单配收盘卖时 vs 核心 valid 总收益 −3.3，**已随 habit（C1+14:30卖）进 Live**。不重开 −5% / trail / 砍 4 槽。
-3. **3 天 vs 4 天 / 下午买点 [done] 2026-09-03**：[sat-habit-clock](./backtests/sat-habit-clock-2026-09-03.md)。计数仍 body=3；body=4 占槽；13:30–15:00 无更佳分钟。
-4. **C1 + 第 3 日卖点 [done] 2026-09-03**：[sat-exit-hhmm](./backtests/sat-exit-hhmm-2026-09-03.md)。14:30 卖三窗 tot/sr/dd 过核心；10:00 不如它。**Live 已切 habit（2026-09-03 拍板全量跟进）**：Watchlist/paper `C1 3% + 第3日14:30卖`，冻结 T 开盘 Timeline 默认不动，习惯对照走 `sat_fill=same_1430&c1_pct=0.03&sat_exit=1430`。
-5. **习惯排名 H1 [done] 2026-09-04**：[sat-rank-hhmm](./backtests/sat-rank-hhmm-2026-09-04.md)。无前视键（gap升序 / |14:30/今开−1|升序）2 变体全拒：gap OOS2 −96pt 永不重开；|runup| valid +14.4 但 OOS2 −21.5（过拟合陷阱）。Live 排名不动；R-wide 全天收盘闸记 H1-followup。
-6. **习惯 C1 网格 H2 [done] 2026-09-04**：[sat-c1-grid](./backtests/sat-c1-grid-2026-09-04.md)。C1=3% 站在平顶上：2% 打平但 train 降（不换）；4% 走弱；5% train −5.8 拒收。**Live 保持 3%**。
-7. **习惯 bucket_q H3 [done] 2026-09-04**：[sat-bucketq](./backtests/sat-bucketq-2026-09-04.md)。top-1/2 选参窗 tot/sr 全弱于 1/3（train −2.3/sr−0.41），valid 无差。**Live 保持 1/3**，4 槽不动。
-8. **习惯 R-wide 闸 H4 [done] 2026-09-04**：[sat-rwide](./backtests/sat-rwide-2026-09-04.md)。0.5 三窗一致最优；0.4 valid −17.9；0.6 valid +13.4 但选参窗崩（拒）。**Live 保持 0.5，打磨收工**——等 paper 20 笔 C4 实证。
-9. **习惯 C3 下跌过滤 S2 [done] 2026-09-04**：[sat-c3-fade](./backtests/sat-c3-fade-2026-09-04.md)。诊断两窗同向（<−3% 档最差），组合层面冗余（跳 564/fills−1）。**不进 Live**；周二/C2 方向死在诊断。
-10. **习惯 holdout 审计 S1 [done] 2026-09-04**：[sat-holdout](./backtests/sat-holdout-2026-09-04.md)。19 sessions Δ −5.1 ≈ 第 7 百分位坏月份（p5 −5.53），分布内。**不调参**；真风险是方差（~7% 月份 −5pt），不对月考核卫星。
-11. **习惯 CHURN 过滤 S4 [done] 2026-09-04**：[sat-churn](./backtests/sat-churn-2026-09-04.md)。六维诊断（换手/板块/市值/年限/大盘高开/breadth）只活一个：T-1 放量>4x 不追，train +2.4/valid +1.5 但 OOS2 −1.0 → PASS/worse。**不进 Live，记候选**（待 holdout 满 60 sessions 或 paper 20 笔重验）。
-12. **大盘风格 vs 卫星 G1 [done] 2026-09-04**：[sat-regime](./backtests/sat-regime-2026-09-04.md)。up 三窗全赚最稳，choppy 次之，down 被 R-wide 拦；波动率非稳定因子。**无新规则**。
-13. **第 3 日条件单 D3（用户规则）[done] 2026-09-04**：[sat-exit-d3trail](./backtests/sat-exit-d3trail-2026-09-04.md)。盘中高点回落 2% 卖否则 14:30，三窗 REJECT/total（OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 63%）。**回吐≠反转，不进 Live**；1%/3% 网格不补（机制证伪）。
+2. **C1/C2 [done] 2026-09-03**：[sat-entry-c1](backtests/sat/sat-entry-c1-2026-09-03.md)。C1 3% 相对无过滤 tot/sr/dd 全过；单配收盘卖时 vs 核心 valid 总收益 −3.3，**已随 habit（C1+14:30卖）进 Live**。不重开 −5% / trail / 砍 4 槽。
+3. **3 天 vs 4 天 / 下午买点 [done] 2026-09-03**：[sat-habit-clock](backtests/sat/sat-habit-clock-2026-09-03.md)。计数仍 body=3；body=4 占槽；13:30–15:00 无更佳分钟。
+4. **C1 + 第 3 日卖点 [done] 2026-09-03**：[sat-exit-hhmm](backtests/sat/sat-exit-hhmm-2026-09-03.md)。14:30 卖三窗 tot/sr/dd 过核心；10:00 不如它。**Live 已切 habit（2026-09-03 拍板全量跟进）**：Watchlist/paper `C1 3% + 第3日14:30卖`，冻结 T 开盘 Timeline 默认不动，习惯对照走 `sat_fill=same_1430&c1_pct=0.03&sat_exit=1430`。
+5. **习惯排名 H1 [done] 2026-09-04**：[sat-rank-hhmm](backtests/sat/sat-rank-hhmm-2026-09-04.md)。无前视键（gap升序 / |14:30/今开−1|升序）2 变体全拒：gap OOS2 −96pt 永不重开；|runup| valid +14.4 但 OOS2 −21.5（过拟合陷阱）。Live 排名不动；R-wide 全天收盘闸记 H1-followup。
+6. **习惯 C1 网格 H2 [done] 2026-09-04**：[sat-c1-grid](backtests/sat/sat-c1-grid-2026-09-04.md)。C1=3% 站在平顶上：2% 打平但 train 降（不换）；4% 走弱；5% train −5.8 拒收。**Live 保持 3%**。
+7. **习惯 bucket_q H3 [done] 2026-09-04**：[sat-bucketq](backtests/sat/sat-bucketq-2026-09-04.md)。top-1/2 选参窗 tot/sr 全弱于 1/3（train −2.3/sr−0.41），valid 无差。**Live 保持 1/3**，4 槽不动。
+8. **习惯 R-wide 闸 H4 [done] 2026-09-04**：[sat-rwide](backtests/sat/sat-rwide-2026-09-04.md)。0.5 三窗一致最优；0.4 valid −17.9；0.6 valid +13.4 但选参窗崩（拒）。**Live 保持 0.5，打磨收工**——等 paper 20 笔 C4 实证。
+9. **习惯 C3 下跌过滤 S2 [done] 2026-09-04**：[sat-c3-fade](backtests/sat/sat-c3-fade-2026-09-04.md)。诊断两窗同向（<−3% 档最差），组合层面冗余（跳 564/fills−1）。**不进 Live**；周二/C2 方向死在诊断。
+10. **习惯 holdout 审计 S1 [done] 2026-09-04**：[sat-holdout](backtests/sat/sat-holdout-2026-09-04.md)。19 sessions Δ −5.1 ≈ 第 7 百分位坏月份（p5 −5.53），分布内。**不调参**；真风险是方差（~7% 月份 −5pt），不对月考核卫星。
+11. **习惯 CHURN 过滤 S4 [done] 2026-09-04**：[sat-churn](backtests/sat/sat-churn-2026-09-04.md)。六维诊断（换手/板块/市值/年限/大盘高开/breadth）只活一个：T-1 放量>4x 不追，train +2.4/valid +1.5 但 OOS2 −1.0 → PASS/worse。**不进 Live，记候选**（待 holdout 满 60 sessions 或 paper 20 笔重验）。
+12. **大盘风格 vs 卫星 G1 [done] 2026-09-04**：[sat-regime](backtests/sat/sat-regime-2026-09-04.md)。up 三窗全赚最稳，choppy 次之，down 被 R-wide 拦；波动率非稳定因子。**无新规则**。
+13. **第 3 日条件单 D3（用户规则）[done] 2026-09-04**：[sat-exit-d3trail](backtests/sat/sat-exit-d3trail-2026-09-04.md)。盘中高点回落 2% 卖否则 14:30，三窗 REJECT/total（OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 63%）。**回吐≠反转，不进 Live**；1%/3% 网格不补（机制证伪）。
 
 **不做**：1/30/60 分钟入库；全天 K；把 14:30 写进冻结 T 开盘；停等 baostock job；单窗好看就改 Live。
 
@@ -210,6 +219,43 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
+## P0-8 砖块结论（2026-09-06 立 · 实验楼规律提取）[done] 2026-09-06
+
+**大白话**：50+ 实验盖了一幢楼，现在从楼里拆砖块——跨实验成立的规律，沉进 first-principles。
+真值档：[`backtests/first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md)（只增不改）。
+**纪律**：纯读档 + 只读脚本，不跑新回测（M5/M6 只读已有 `backtest_reports`）；任何新参数想法仍走三窗 walk-forward。一次一 milestone。
+
+| # | 里程碑 | 产出 | 验收 | 状态 |
+|---|--------|------|------|------|
+| M1 | [done] 2026-09-06 死因分类学：~90 拒收变体标七类（截右尾 20%/共线 19%/方向 19%/单窗 17%/砍宽 11%/样本 8%/覆盖 7%）+ 死因×时代交叉表 + 5 条元结论 | first-principles §三 | 表 + 交叉表 + 用法（预注册前先答"最可能死在哪类"） | [done] 2026-09-06 |
+| M2 | 正例归纳：18 存活案例 × 5 特征（F5 18/18 > F2/F4 17/18 > F1 14/18 > F3 12/18）；产出 S1–S5：机制先行律 / 回测采纳必要条件 / 慢变量门豁免（修正 §一.3）/ 结构参数走平台 / 二值开关走诊断 | first-principles §四 | 特征矩阵 + 频率计数 + 反例（熔断/V7.0-02）有交代 | [done] 2026-09-06 |
+| M3 | 结构覆盖矩阵：8 维 × 7 结构逐格取证；完备度分级（全吸收：动量/资金流/事件已测/行业/持仓；部分吸收：波动·形态·市场状态·候选级 CHURN；子项级未验证 P13/P15/P16/P18-P26）；4 个作用域反例（跨域套用必死）；查矩阵三问 | first-principles §五"结构吸收律"转正 | 矩阵表 + 分级 + 反例 + 用法 | [done] 2026-09-06 |
+| M4 | 参数平台表：20 定案参数邻域汇编；四形状（宽平台 6 / 单峰 5 / 悬崖 5 / 结构选择 5+1）+ 五纪律：尖峰=拒收、悬崖只站安全侧（防守类全是悬崖=死因#1）、单峰高stakes重点防腐 | first-principles §六"参数平台律" | 证据表 + 形状分类 + 纪律 | [done] 2026-09-06 |
+| M5+M6 | 指纹表：报告只有窗口聚合、无逐笔，改从已发表文档/报告汇编。卫星 +2.95/+1.81/+0.96%/笔·67/56/59%·~1.1笔/天（验算）；S-3 48/44/67%；对冲反面指纹 65.3%/+0.92%/−236%尾；右尾top-x%与月度绝对序列[待补]（冻结配置只读重跑+--dump-fills，不选参） | `backtests/leg-fingerprints-2026-09-06.md` + first-principles §一.4 引用 | 表 + 待补清单（方法已定） | [done] 2026-09-06 |
+
+**不做**：新回测、新参数、重开已 REJECT。
+
+---
+
+## P0-9 文档轨（2026-09-06 立 · agent 友好 + 每文件一职责）[done] 2026-09-06
+
+**大白话**：文档现在"找得到但不好读"——两大 checklist 3844+1024 行只增不减，同一数字 5 处互抄。
+目标：每文件一职责、都不太长；agent 按任务 3–5 个文件读完开工；普通人看一页纸能 follow。
+**纪律**：不动 modules 正文（另行批准）；不动 archive/；一次一条；每条验收 = 行数 + 引用收敛。
+
+| # | 动作 | 验收 | 状态 |
+|---|------|------|------|
+| D0 | backtests 按策略分文件夹（core/sat/s3/factors/vendor/hedge，索引层留根）+ 全库链接重定向 | 死链 0 + 孤儿 0 + git 历史保留 | [done] 2026-09-06 |
+| D1 | 拆 optimization-checklist：已完成 OPT 按天归档，正文只留 5 条未完成 + 索引 | 归档 13 新档 + 045/075/127 冬眠档 + 覆盖率 100% + 死链孤儿 0 | [done] 2026-09-06（3844→299 行；A 方案两次：045/075 + 127 冬眠） |
+| D2 | 拆 trading-improvement-checklist：8 个主题归档 + TIP-014 正名压缩 | 1024→115 行 + 死链 0 | [done] 2026-09-06 |
+| D3 | 数字单一源：clip4→state-bucket-algo，S-3 基线→strategy-params，三窗→backtests/README；其余只引用 | [done] 2026-09-06（190.6 定数：报告 product 窗 core=190.6，Δ4.3 自洽；190.7 只剩冻结实验档+注释。规则定为"一致+出处"而非掏空表格：定义单点，引用处数字保留但必带指针） |
+| D4 | 改策略路由清单统一：AGENTS 为主源（+自查步骤+调参查找），其余四处改指 | 四处收录一致 + 死链 0 | [done] 2026-09-06 |
+| D5 | todo §1 顶部加普通人一页纸（策略/收益/风险/下一步）+ §0/§1 去旧§号 | 普通人 2 分钟能复述 | [done] 2026-09-06 |
+
+**不做**：watchlist 拆分（modules 正文，另批）；新写规划类 md。
+
+---
+
 ## 实施清单（剩余 P0/P1 各一行）
 
 | # | 动作 | 预期 |
@@ -218,6 +264,9 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | 2b | Tunnel 端到端 `brew install cloudflared` | 远程前提 P1 |
 
 ## 沉淀（近 5 条，余见 archive/README）
+
+| 2026-09-06 | P0-9 文档轨 D0–D5（backtests 分夹/checklist 双拆/数字单一源/路由统一/一页纸） | `archive/2026-09-06-docs-p09-agent-friendly.md` |
+| 2026-09-06 | P0-8 砖块结论 M1–M6（死因分类/存活律/吸收矩阵/平台表/指纹表） | `archive/2026-09-06-brick-laws-m1-m6.md` |
 
 | 2026-08-27 | 形态三噪音+回踩MA20弱edge归档 | `backtests/bollinger|macd|kdj|uptrend-pullback` |
 | 2026-08-27 | SuperTrend/Fib/PA 分流结论 | `backtests/indicator-supertrend-fibonacci-priceaction-notes.md` |

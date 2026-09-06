@@ -84,7 +84,7 @@ holdout 2026-08-08 ~ 至今      → HOLDOUT （n<100 仅观察，满足才动 l
 - 硬件：`Mac MPS` 优先，`batch` 适中，`60×20` 序列单卡可跑；`uv` 管 `torch` `mps` 版
 - 复现：`seed 42`，`torch deterministic`，`uv.lock` 锁版
 
-**不过拟合纪律**（与 `todo §19` 同口径）：
+**不过拟合纪律**（与三窗铁律同口径，见 [backtests/README](../backtests/README.md)）：
 - `train` 上 `AUC>0.58` 但 `valid AUC<0.53` → 拒
 - 三窗中任一窗 `paper语义` 回测 `vs S-3 diff < +5pt` 或有窗劣化 → 拒（沿用 S-3 `>5pt` 票决）
 - `valid` 调参，`OOS2` 只打分不选型
@@ -147,5 +147,5 @@ uv add --dev pytest ruff
 
 - **数据天花板**：行业资金流仅 `121日` 历史，`OOS2` 无此特征 → 特征集对 `OOS2` 保持可得子集
 - **算力**：`250万×60×20` 全量 `TCN` 约 `1-2h/MPS`，先 `2023起` 子集验证再全量
-- **过拟合**：`S-3` `17.7%` 年化已是强基线，`ML` 大概率 `±5pt` 内平台期——接受，按 `§19` 不破纪律
+- **过拟合**：`S-3` `17.7%` 年化已是强基线，`ML` 大概率 `±5pt` 内平台期——接受，按三窗铁律（[backtests/README](../backtests/README.md)）不破纪律
 - **可解释**：`pred` 需可追溯到 `量价/RS` 因子，`evaluate` 打 `SHAP/IC` 附表

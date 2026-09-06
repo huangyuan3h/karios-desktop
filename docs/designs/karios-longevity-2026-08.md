@@ -1,6 +1,6 @@
 # Karios Longevity · 系统长期生命力 · 2026-08
 
-> **关联 todo**：[`docs/todo.md §2 形态决策` / `§4 工程与部署` / `§13 Longevity（新建）`](../../todo.md)
+> **关联 todo**：[`docs/todo.md §2 形态决策` / `§4 工程与部署` / `§13 Longevity（新建）`(../archive/2026-08-27-todo-full-snapshot.md)
 > **上下文**：[`db-direction-2026-08.md`](./db-direction-2026-08.md)（DB 维度）+ [`cloud-deployment-options.md`](./cloud-deployment-options.md)（架构总决策）+ [`freelancer-architecture.md`](./freelancer-architecture.md)（Tunnel + /v1/*）
 > **未来方案**：[`mac-mini-deployment.md`](./mac-mini-deployment.md)（2026-08-01 立 · 用户拿到 Mac mini 那天的整体部署方案）
 > **决议日**：2026-08-01
@@ -109,22 +109,22 @@
 | 阶段 | 触发 | 行动 |
 |------|------|------|
 | **现在** | 当前 | 本地 PG + Tunnel + 3 副本备份（[`db-direction-2026-08.md`](./db-direction-2026-08.md) §4）|
-| **阶段 2（半年内）** | 满足任一：换电脑 ≥1 次 / 想给朋友账号 / 想远程写盘后 crash 后 5 分钟内恢复 | 加 Neon 只读副本分担外部流量（[`db-direction-2026-08.md` §3.6](./db-direction-2026-08.md)）+ Docker 一键起（§12 #7）|
+| **阶段 2（半年内）** | 满足任一：换电脑 ≥1 次 / 想给朋友账号 / 想远程写盘后 crash 后 5 分钟内恢复 | 加 Neon 只读副本分担外部流量（[`db-direction-2026-08.md` §3.6](./db-direction-2026-08.md)）+ Docker 一键起（[§12 #7](../archive/2026-08-27-todo-full-snapshot.md)）|
 | **阶段 3（1-2 年）** | 满足任一：Mac 退役 / 你不想天天维护 / 想真公开 demo | FastAPI 上 Cloud Run / Vercel Functions + Neon 主库；Tunnel 退化为 fallback |
 
 **关键约束**：每次演进**保留本地 PG 备份 dump**（3 副本策略不变）—— 即使全上云，回退路径仍是 1 天内可执行。
 
 ---
 
-## 3. 行动清单（按 §12 排序）
+## 3. 行动清单（按 [§12](../archive/2026-08-27-todo-full-snapshot.md) 排序）
 
 | # | 行动 | 工时 | 解决的痛点 |
 |---|------|------|-----------|
-| **§12 #7** | Docker 一键起 + UPS 自动恢复脚本 | 1-2 天 | **痛点 1**（换电脑从 3 天 → 2 小时）|
-| **§13 #1（新）**| Neon 只读副本 + 定时 sync | 1 天 | **痛点 1 + 2**（数据独立于 Mac）|
-| **§13 #2（新）**| Tailscale Funnel 兜底（替代 CF 域名）| 0.5 天 | **痛点 3**（CF 账号挂时远程访问不停）|
-| **§12 #11** | Tauri 形态迁移 | 1 天 | **痛点 1**（不再依赖 Next.js dev 模式）|
-| **§13 #3（新）**| 临时 VM fallback（Hetzner €4/月，按月开）| 0.5 天 | **痛点 3**（Mac 长期关机时启用）|
+| **[§12 #7](../archive/2026-08-27-todo-full-snapshot.md)** | Docker 一键起 + UPS 自动恢复脚本 | 1-2 天 | **痛点 1**（换电脑从 3 天 → 2 小时）|
+| **[§13 #1](../archive/2026-08-27-todo-full-snapshot.md)（新）**| Neon 只读副本 + 定时 sync | 1 天 | **痛点 1 + 2**（数据独立于 Mac）|
+| **[§13 #2](../archive/2026-08-27-todo-full-snapshot.md)（新）**| Tailscale Funnel 兜底（替代 CF 域名）| 0.5 天 | **痛点 3**（CF 账号挂时远程访问不停）|
+| **[§12 #11](../archive/2026-08-27-todo-full-snapshot.md)** | Tauri 形态迁移 | 1 天 | **痛点 1**（不再依赖 Next.js dev 模式）|
+| **[§13 #3](../archive/2026-08-27-todo-full-snapshot.md)（新）**| 临时 VM fallback（Hetzner €4/月，按月开）| 0.5 天 | **痛点 3**（Mac 长期关机时启用）|
 
 ---
 
@@ -132,9 +132,9 @@
 
 | 反例 | 不做的理由 |
 |------|-----------|
-| 我 Mac 还能跑 5 年没坏 | §13 #1-3 都不急，§12 #7 仍建议做（保险）|
-| 我没朋友要访问 | §13 #2-3 不需要 |
-| 我愿意天天维护 | §13 #3 不需要；但**§12 #7 仍建议**——你挂了时**自己**也要快速恢复 |
+| 我 Mac 还能跑 5 年没坏 | [§13 #1](../archive/2026-08-27-todo-full-snapshot.md)-3 都不急，[§12 #7](../archive/2026-08-27-todo-full-snapshot.md) 仍建议做（保险）|
+| 我没朋友要访问 | [§13 #2](../archive/2026-08-27-todo-full-snapshot.md)-3 不需要 |
+| 我愿意天天维护 | [§13 #3](../archive/2026-08-27-todo-full-snapshot.md) 不需要；但**[§12 #7](../archive/2026-08-27-todo-full-snapshot.md) 仍建议**——你挂了时**自己**也要快速恢复 |
 | 收益真起来要退休了 | 此时应**全上云**——不是因为方便，是因为**没人在家维护**了 |
 
 ---
@@ -143,10 +143,10 @@
 
 | 日期 | 触发 | 必读 |
 |------|------|------|
-| **2026-12-01** | §12 #7 完成时 | 评估是否做 §13 #1（Neon 只读副本）|
+| **2026-12-01** | [§12 #7](../archive/2026-08-27-todo-full-snapshot.md) 完成时 | 评估是否做 [§13 #1](../archive/2026-08-27-todo-full-snapshot.md)（Neon 只读副本）|
 | **2027-02-01** | 半年期强制 | 本文件 + [`db-direction-2026-08.md`](./db-direction-2026-08.md) + [`cloud-deployment-options.md`](./cloud-deployment-options.md) |
-| **任何时点** | Mac 物理故障 / 你决定换电脑 | §12 #7 必须已完成；§13 #1 必须已完成 |
-| **任何时点** | CF 账号被封 | §13 #2 启用 |
+| **任何时点** | Mac 物理故障 / 你决定换电脑 | [§12 #7](../archive/2026-08-27-todo-full-snapshot.md) 必须已完成；[§13 #1](../archive/2026-08-27-todo-full-snapshot.md) 必须已完成 |
+| **任何时点** | CF 账号被封 | [§13 #2](../archive/2026-08-27-todo-full-snapshot.md) 启用 |
 
 ---
 
@@ -158,12 +158,12 @@
 
 | 项 | 旧优先级 | 新优先级 | 触发 |
 |----|----------|----------|------|
-| §13 #1 Neon 只读副本 | 半年内 | **暂缓** | 用户主动降级 |
-| §13 #2 Tailscale Funnel fallback | 0.5 天 | **暂缓** | 同上 |
-| §13 #3 临时 VM fallback | 0.5 天 | **暂缓** | 同上 |
-| §12 #7 Docker 一键起 | 1-2 天 | **保留** | 痛点 1（换电脑）**不依赖云**，仍可独立推进 |
-| §14 #1 AI agent 打通 cookbook | — | **🔥 立即做** | 用户提级 |
-| §12 #8 ego-lite 调研 | 2-3 天 | **🔥 立即做** | 用户提级（Chrome 替代）|
+| [§13 #1](../archive/2026-08-27-todo-full-snapshot.md) Neon 只读副本 | 半年内 | **暂缓** | 用户主动降级 |
+| [§13 #2](../archive/2026-08-27-todo-full-snapshot.md) Tailscale Funnel fallback | 0.5 天 | **暂缓** | 同上 |
+| [§13 #3](../archive/2026-08-27-todo-full-snapshot.md) 临时 VM fallback | 0.5 天 | **暂缓** | 同上 |
+| [§12 #7](../archive/2026-08-27-todo-full-snapshot.md) Docker 一键起 | 1-2 天 | **保留** | 痛点 1（换电脑）**不依赖云**，仍可独立推进 |
+| [§14 #1](../archive/2026-08-27-todo-full-snapshot.md) AI agent 打通 cookbook | — | **🔥 立即做** | 用户提级 |
+| [§12 #8](../archive/2026-08-27-todo-full-snapshot.md) ego-lite 调研 | 2-3 天 | **🔥 立即做** | 用户提级（Chrome 替代）|
 
 > **保留痛点真值**：本文档不改结论——3 痛点仍是真的痛点，§3 行动清单仍有效。只是**当前阶段优先级降级**，不代表放弃。
 >

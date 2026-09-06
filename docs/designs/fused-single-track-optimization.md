@@ -44,7 +44,7 @@
 | 择强规则 | `rank_nasdaq_first` | 关（单轨纯max） | `off / rank≤1 / rank≤0` | 纳指默认 | 用 `multi_asset_sleeve._pick:73` 的Nasdaq-first变体 |
 | 闲置阈值 | `MIN_IDLE_PCT` | 20(袖)/0(单轨) | 0/10/20 | 降低抖动 | 单轨固定0 |
 | 成本 | `COST` | 0.05%单边 | 0.05/0.10 | GC001拥挤时 | 不外推 |
-| S-3侧 | `score/RS/gates` | 65/0.5/full | **冻结** | 已封闭 | §19 禁动 |
+| S-3侧 | `score/RS/gates` | 65/0.5/full | **冻结** | 已封闭 | [§19](../archive/2026-08-27-todo-full-snapshot.md) 禁动 |
 | 跨市场 | `HK weight` | 单轨未含HK | `A only / R5c / 50-50` | HK并行线纳入 | HK trailing -12 已固化 |
 
 > 红线：**不动S-3**；只动多资产择强与单轨优先级。网格≤20组合，避免组合爆炸。

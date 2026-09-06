@@ -1,7 +1,7 @@
 # 择强单轨加固实验（2026-08-29）
 
 > **目标**：在不过拟合前提下，质疑并验证现行 `mom60×MA200` 是否真是「我们能想到的最佳」。  
-> **策略真值**：[`modules/pick-strong-track.md`](../modules/pick-strong-track.md)  
+> **策略真值**：[`modules/pick-strong-track.md`](../../modules/pick-strong-track.md)  
 > **硬约束**：全资产同权（`mom_compare`）；**冻结 S-3**；三窗铁律 + holdout 只读；网格 ≤20 组合。
 
 ---

@@ -33,7 +33,7 @@
 
 **过去一年（2025-08-01~2026-08-07）参考（2026-08-22 realism 固化：100%现金≤1.0 + 0.7亿流动性 + 交易日历 + D3 环境仓位）**：10% 名义（现金约束后有效 ≤100%）
 **过去一年 66.6% / DD8.4 / 夏普6.39 / 83笔 / win45.8% avg7.79%**（`PYTHONPATH=src:scripts python3 /tmp/past_year2.py` 实测 2026-08-22；⚠️ 此为**旧算术口径**（夏普虚高、total 简单加总），2026-08-28 改连续 NAV 口径后需重跑「过去一年」窗口方可对照，当前三窗以 §3 NAV 基线为准）；
-三窗（NAV 口径 · 2026-08-28 重固化）：**OOS2 +47.3% / DD18.9 / 夏普1.26 / 93笔 · train +34.1% / DD11.6 / 夏普2.22 / 51笔 · valid +38.7% / DD10.7 / 夏普2.40 / 16笔** n⚠️（见 §3 基线 `s3-baseline-20260828-nav`）；
+三窗（NAV 口径 · 2026-08-28 重固化，见 §3 基线 `s3-baseline-20260828-nav`）；
 （2026-08-15 口径 OOS2 117.2/122.6/142.2% 为 `200%杠杆` 未约束，`valid n55` 峰值，已封存 `walk_forward_baseline_20260815_D3.json` `6d8280`；再往前 92.6/103.1 作废）
 **完整周期长窗（2021-08~2026-08）待重跑**（原 +333.9%/DD45.1 为 `survivor+200%` 条件，需 `as_of` survivor 修正后重固化；`long_price_only` 与 `long_full` 将分段披露）
 
@@ -63,7 +63,7 @@ OOS2 **+31.3%**/DD30.3/夏普0.99/99笔 · train **+1.9%**/DD12.8/0.28/47笔 ·
 valid **+60.7%**/DD27.8/2.10/44笔 — train 极弱，**HK 不作高置信收益叙事**。
 
 **套筒 / 联合（2026-08-29 · 引擎 NAV，修 P0 后）**：
-- CN 闲置套筒增量 **+3.1 / +8.4 / +22.3pt**（基线=引擎 47.3/34.1/38.7）
+- CN 闲置套筒增量 **+3.1 / +8.4 / +22.3pt**（基线见 §3）
 - R5CS vs R5C **+3.3 / +8.4 / +13.5pt**
 
 <details><summary>历史：HK trailing 扫描（2026-08-13 · 旧算术口径 · 仅作档案）</summary>
@@ -90,10 +90,9 @@ valid **+60.7%**/DD27.8/2.10/44笔 — train 极弱，**HK 不作高置信收益
 1. **观察信号**（触发复核）：季度例行复核；或出现——回撤超预期（paper 实跑 DD 显著偏离
    回测 5%/10% 口径）、超额转负、胜率跌破 35%、候选池结构变化（scores 分布漂移）
 2. **提参 → 双窗验证**：候选参数必须训练窗 + 验证窗 + OOS2 三窗跑完，
-   双窗一致改善才采纳（todo §19 反模式：单窗好看=过拟合）。
-   **工具**：`scripts/run_walk_forward.py`（三窗固定切分 OOS2/train/valid，S-3 基线
-   固化在 `data/backtest_reports/walk_forward_baseline.json`，`--param k=v` 覆盖跑
-   对比，>5pt 劣化自动拒收；`--save-baseline` 重固化基线）
+   双窗一致改善才采纳（三窗铁律：单窗好看=过拟合，见 [backtests/README 验证纪律](../backtests/README.md)）。
+  **工具与基线**：见仓库根 `AGENTS.md` → Backtest walk-forward（命令 + 基线文件 + 验收口径）；窗口切分与 holdout 纪律见 [backtests/README 验证纪律](../backtests/README.md)。
+  三窗对比，>5pt 劣化自动拒收；`--save-baseline` 重固化基线。
 3. **用户拍板**：数据表交用户，用户签字式拍板（对话确认）
 4. **固化**：改代码常量（`db/paper_trading.py` / `service/paper_s3.py`）+ 本文件版本历史 + 测试
 5. **生效观察**：paper 实跑对照（C4：≥20 笔样本）确认，回归预期则回滚
@@ -284,6 +283,6 @@ valid **+60.7%**/DD27.8/2.10/44笔 — train 极弱，**HK 不作高置信收益
 | 2 | S-3 `score_floor`（`backtest_engine.py:39`） | 当日无 score | 不触发 floor 平仓 | ✅ 同向：HK 无 score 定义同样 fail-open（`paper_trading.py:600`） |
 | 3 | S-3 情绪/资金流闸门（`backtest_engine.py:1504/2457`） | 情绪数据 2026-01-05 前无、资金流 2025-12-15 前无 | 闸门当不存在（多做交易） | ✅ 同向（当时 live 也没这个闸门）；方向=回测偏多做，OOS2 早段偏乐观，已知 |
 | 4 | 卫星入场 14:30（`state_bucket_track`） | 当日缺 14:30 bar | 不买（fail-closed，保守） | ✅ 同向：paper 当日缺价先占位、次日补真 open（`paper_entry_fill`）；计数 `skipNoPrint1430` |
-| 5 | 卫星出场 14:30（`state_bucket_track`） | 第 3 日缺 14:30 bar | 回退收盘（记 `exitPxSrc=close`） | ⚠️ 非对称：paper 缺价用 daily_close 兜底同逻辑，但回测回退量级 ~5%（三窗 28/480），偏向低估 14:30 边，[血统表](backtests/sat-live-caliber-2026-09-04.md §3) |
+| 5 | 卫星出场 14:30（`state_bucket_track`） | 第 3 日缺 14:30 bar | 回退收盘（记 `exitPxSrc=close`） | ⚠️ 非对称：paper 缺价用 daily_close 兜底同逻辑，但回测回退量级 ~5%（三窗 28/480），偏向低估 14:30 边，[血统表](../backtests/sat/sat-live-caliber-2026-09-04.md) §3 |
 | 6 | ST 5% 涨跌停 | daily 无 ST 标记 | **不建模（评估后无影响）**：两引擎 universe 上游已剔 ST/BJ/退市（`state_bucket_track:54`、S-3 `exclude_st` P16），ST 票进不了池；仅剩"持有中戴帽"极小概率事件，出场按次日开盘（不过度拟合 corner） | ✅ 无需改 |
 | 7 | 除权跳空残留 | qfq 后仍有 258 个 ≥5% 跳空 | 按真波动处理（2026-08-11 已定论：除权叠加真实大跌，正常） | ✅ 无需改；CN 增量 `qfq=raw` 口径不变 |

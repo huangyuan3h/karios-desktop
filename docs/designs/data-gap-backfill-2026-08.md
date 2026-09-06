@@ -1,6 +1,6 @@
 # 数据缺口 · 补法选项 · 2026-08-14
 
-> **关联 todo**：[§8 回测](../todo.md) · [TIP-014](../trading-improvement-checklist.md) · [§6 数据源](../todo.md)
+> **关联 todo**：[§8 回测](../archive/2026-08-27-todo-full-snapshot.md) · [TIP-014](../trading-improvement-checklist.md) · [§6 数据源](../archive/2026-08-27-todo-full-snapshot.md)
 > **状态**：研究中（用户拍板前不动手买付费接口）
 > **背景**：TIP-014 环境感知（neutral_block / entry_style auto / D2 持有期）在 valid 窗验证 +15.3pt，
 > 但 OOS2/train 窗（2024-08~2025-12）**没有情绪/资金流数据** → 环境感知无法回放老窗口。
@@ -117,10 +117,10 @@ Step 3: 主线评分重算 + 三窗完整复核（资金流补上后）
 
 ## 4. 相关既有结论（不推翻，供参考）
 
-- 2026-08-11 todo §6：**"行业资金流历史 = 数据天花板（不补）"** — 当时的结论基于
+- 2026-08-11 [todo §6](../archive/2026-08-27-todo-full-snapshot.md)：**"行业资金流历史 = 数据天花板（不补）"** — 当时的结论基于
   "免费源都没有"；**付费选项一直存在**（moneyflow_ind ¥500），当时拍板不买。
   本文档重新把付费选项摆上台面，由用户重新拍板。
-- 2026-08-11 todo §19：**"500 元 tushare 积分唯一增量 = OOS2 反事实验证（且聚合口径
+- 2026-08-11 [todo §19](../archive/2026-08-27-todo-full-snapshot.md)：**"500 元 tushare 积分唯一增量 = OOS2 反事实验证（且聚合口径
   有拼接断层）——待长窗结果拍板"** — 长窗已验证（2026-08-14，5 年零劣化），
   "待长窗结果拍板"的前提已满足。
 - 8/1 data-source-audit：**"卫星仓场景下当前源矩阵是 ROI 最优解，不要跟风买 Wind"** —

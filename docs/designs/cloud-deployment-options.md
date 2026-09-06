@@ -1,6 +1,6 @@
 # Cloud Deployment Options — 评估与决策
 
-> **关联 todo**：[§2 形态决策](../todo.md) · [§4 工程与部署](../todo.md) · [§5 数据源](../todo.md) · [§13 Longevity](../todo.md)
+> **关联 todo**：[§2 形态决策](../archive/2026-08-27-todo-full-snapshot.md) · [§4 工程与部署](../archive/2026-08-27-todo-full-snapshot.md) · [§5 数据源](../archive/2026-08-27-todo-full-snapshot.md) · [§13 Longevity](../archive/2026-08-27-todo-full-snapshot.md)
 > **结论**：**不上云**。改为「Mac 当 homelab + Cloudflare Tunnel 暴露 + AI 助手在本地主动推送」的本地优先架构。
 > **决议日**：2026-08-01
 >

@@ -155,7 +155,7 @@ empty `windows` map.
 ```
 
 `/v1/version` reports the **running** value. `/v1/changelog` lists every
-recorded change. See [`docs/designs/api-contract.md`](../../docs/designs/api-contract.md)
+recorded change. See [`docs/designs/api-contract.md`(../designs/api-contract.md)
 for the full MAJOR / MINOR / PATCH semantics.
 
 ---
@@ -167,7 +167,7 @@ for the full MAJOR / MINOR / PATCH semantics.
 | Field-level schemas + types | `GET /v1/schema` (or `/openapi.json`) |
 | Human-readable field guide | [`docs/api/discovery.md`](./discovery.md), [`business.md`](./business.md), [`explain.md`](./explain.md) |
 | Error codes + recovery hints | [`docs/api/errors.md`](./errors.md) + `GET /v1/errors` |
-| API contract + versioning rules | [`docs/designs/api-contract.md`](../../docs/designs/api-contract.md) |
+| API contract + versioning rules | [`docs/designs/api-contract.md`(../designs/api-contract.md) |
 | Released changes | [`docs/api/CHANGELOG.md`](./CHANGELOG.md) + `GET /v1/changelog` |
 
 ---

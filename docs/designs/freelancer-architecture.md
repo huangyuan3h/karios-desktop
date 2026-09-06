@@ -1,6 +1,6 @@
 # Freelancer Architecture — 「自由人」系统架构
 
-> **关联 todo**：[§2 形态](../todo.md) · [§3 API](../todo.md) · [§4 工程](../todo.md) · [§8 回测](../todo.md)  
+> **关联 todo**：[§2 形态](../archive/2026-08-27-todo-full-snapshot.md) · [§3 API](../archive/2026-08-27-todo-full-snapshot.md) · [§4 工程](../archive/2026-08-27-todo-full-snapshot.md) · [§8 回测](../archive/2026-08-27-todo-full-snapshot.md)  
 > **配套**：[`cloud-deployment-options.md`](./cloud-deployment-options.md)（不上云 = Tunnel 暴露）  
 > **决议日**：2026-08-01
 
@@ -151,7 +151,7 @@
 
 ## 实施清单（按 ROI 排序）
 
-> 详细 ROI 表见 [`docs/todo.md §12`](../todo.md)，本节是子集。
+> 详细 ROI 表见 [`docs/todo.md §12`](../archive/2026-08-27-todo-full-snapshot.md)，本节是子集。
 
 | # | 动作 | 工时 | ROI |
 |---|------|------|-----|
@@ -273,9 +273,9 @@ GET  /v1/alpha-radar/recent      → 近期 Alpha S 候选
 
 ## 与 todo.md 的关系
 
-本文档是 **§2 / §3 / §4 / §8 跨领域的合并视角**。具体每条 todo 仍在 `todo.md` 维护；本文档只在「自由人视角」下讨论优先级和联动。落地时：
+本文档是 **[§2 / §3 / §4 / §8](../archive/2026-08-27-todo-full-snapshot.md) 跨领域的合并视角**。具体每条 todo 仍在 `todo.md` 维护；本文档只在「自由人视角」下讨论优先级和联动。落地时：
 
-- 先读 `todo.md §12 实施清单（按 ROI）` 找当前要做的 1 条（**只做 Karios 部分**）
+- 先读 [`todo.md` §12 实施清单（按 ROI）](../archive/2026-08-27-todo-full-snapshot.md)找当前要做的 1 条（**只做 Karios 部分**）
 - 回本文档看「上下文」（homelab 假设、`/v1/*` 接口约定、AI 助手那边的对接契约）
 - 实现 → 勾 OPT/TIP → 标 todo `[done]` → 摘要进 `docs/archive/`
 

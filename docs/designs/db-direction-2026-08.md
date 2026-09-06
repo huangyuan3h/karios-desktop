@@ -1,6 +1,6 @@
 # DB 走向决策 · 2026-08
 
-> **关联 todo**：[`docs/todo.md §4 工程与部署 P0` / `§12 实施清单 #10`](../../todo.md)（"DB 走向决策文档 · 关掉'要不要上云'的反复讨论"）
+> **关联 todo**：[`docs/todo.md §4 工程与部署 P0` / `§12 实施清单 #10`(../archive/2026-08-27-todo-full-snapshot.md)（"DB 走向决策文档 · 关掉'要不要上云'的反复讨论"）
 > **上下文**：[`cloud-deployment-options.md`](./cloud-deployment-options.md)（已说"DB 完全本地"——本文档**只**拉出 DB 维度的细节决策）
 > **决议日**：2026-08-01
 > **下次复审**：2027-02-01（半年期；或满足"触发条件"任一即重开）
@@ -38,7 +38,7 @@
 
 - `cloud-deployment-options.md` 写了"DB 完全本地 Postgres"
 - `freelancer-architecture.md` 提到"评估 Vercel + Neon"作为触发条件
-- **`docs/todo.md §4` / `§6` / `§11` / `§12 #9` 多处出现"要不要上云 DB"的讨论**
+- **`docs/todo.md §4` / `§6` / `§11` / `§12 #9`（旧编号，见[归档快照](../archive/2026-08-27-todo-full-snapshot.md)）多处出现"要不要上云 DB"的讨论**
 
 每次新需求来（比如"AI 助手迁到云端"、"要给朋友开账号"、"Mac 备份做烦了"），就要**重读两份文档 + 自己拼**——讨论成本高。本文档目的：
 
@@ -272,7 +272,7 @@ cp "$BACKUP_DIR/karios-$TS.dump" "$HOME/Library/Mobile Documents/com~apple~Cloud
 | Postgres 大版本升级（14 → 17）破坏 schema | 低 | 升级失败 | 先在备份 dump 上 dry-run upgrade；新 macOS 用户级 PG 16 默认 |
 | 同机进程 OOM | 极低（Mac 16GB+） | 进程被杀 | Postgres 不参与前端热路径，独立进程；监控 `pg_stat_activity` 长查询 |
 | **Tunnel 失效 ≠ DB 暴露**（核心论据）| — | — | **架构解耦**：Tunnel 只代理 HTTP，DB 永远在 127.0.0.1；Tunnel 挂 = 你看不到 ≠ 数据失 |
-| macOS 系统更新强制重启 | 中（每年 4-6 次） | 服务停 5-10min | UPS 撑过 + 重启脚本（`§12 #7` Docker 一键 起 中处理）|
+| macOS 系统更新强制重启 | 中（每年 4-6 次） | 服务停 5-10min | UPS 撑过 + 重启脚本（`[§12 #7](../archive/2026-08-27-todo-full-snapshot.md)` Docker 一键 起 中处理）|
 | 你忘了改 .env 密码本地默认 `admin123` | 中 | 本地安全姿态下降 | 改 .env；密码 16+ 字符 |
 
 ---
@@ -288,7 +288,7 @@ cp "$BACKUP_DIR/karios-$TS.dump" "$HOME/Library/Mobile Documents/com~apple~Cloud
 | **你的 Karios ROI 起来后，月成本从隐性视角看真不算事** | §3.6 双轨方案变首选——本地 + Neon 只读副本 |
 | **你真要给朋友 / 家人 / 公开 demo** | §3.7 Tailscale Funnel + CF Access 邀请制；不上 Neon |
 | **盘前 `/v1/explain` 你不再用本地，AI 助手全走云** | 那本地 PG 5ms 延迟优势消失；§3.6 双轨合理 |
-| **你想做多区域 / 跨设备实时同步** | 单机 PG 天生不行；此时不是"DB 上云"问题，是"产品形态变了"——重开 todo §2 |
+| **你想做多区域 / 跨设备实时同步** | 单机 PG 天生不行；此时不是"DB 上云"问题，是"产品形态变了"——重开 [todo §2](../archive/2026-08-27-todo-full-snapshot.md) |
 | **macOS 14/15 PG 14 被 EOL** | 升级 PG 14 → 17；不涉及 DB 走向 |
 
 ---

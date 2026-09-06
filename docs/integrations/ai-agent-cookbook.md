@@ -1,8 +1,8 @@
 # AI Agent 集成 Cookbook · 与 Karios `/v1/*` 打通
 
-> **关联 todo**：[`docs/todo.md §14 AI Agent 打通 + Chrome 替代`](../../todo.md)（用户 2026-08-01 立）
-> **配套**：[`docs/api/openapi.md`](../../api/openapi.md)（机器可读 schema）+ [`docs/api/discovery.md`](../../api/discovery.md) / [`business.md`](../../api/business.md) / [`explain.md`](../../api/explain.md) / [`errors.md`](../../api/errors.md)
-> **契约**：[`docs/designs/api-contract.md`](../../designs/api-contract.md)（versioning + 4 stable endpoints）
+> **关联 todo**：[`docs/todo.md §14 AI Agent 打通 + Chrome 替代`(../todo.md)（用户 2026-08-01 立）
+> **配套**：[`docs/api/openapi.md`(../api/openapi.md)（机器可读 schema）+ [`docs/api/discovery.md`(../api/discovery.md) / [`business.md`(../api/business.md) / [`explain.md`(../api/explain.md) / [`errors.md`(../api/errors.md)
+> **契约**：[`docs/designs/api-contract.md`(../designs/api-contract.md)（versioning + 4 stable endpoints）
 > **写作日**：2026-08-01
 
 ---
@@ -36,7 +36,7 @@
 | 项 | 要求 | 备注 |
 |----|------|------|
 | **Karios endpoint** | `https://karios.{your-domain}` 或 `http://127.0.0.1:4310`（开发）| 由 Karios 部署方提供 |
-| **API Key** | `Bearer <key>` | 1 个 key 通常够；多 AI 助手场景用多 key 隔离（[`openapi.md §5`](../../api/openapi.md)） |
+| **API Key** | `Bearer <key>` | 1 个 key 通常够；多 AI 助手场景用多 key 隔离（[`openapi.md §5`(../api/openapi.md)） |
 | **OpenAPI client** | `openapi-generator` / `openapi-typescript` / 手写 | 见 §7 例子 |
 | **Python ≥ 3.10** / **Node ≥ 18** | 推荐 | 见 §7 |
 
@@ -425,7 +425,7 @@ export class KariosClient {
 
 - [ ] 跑完 §2 启动 4 步
 - [ ] Python / Node client 单元测试覆盖 4 个核心 endpoint
-- [ ] 配额 profile 配置（参考 [`openapi.md §5.3`](../../api/openapi.md) `external-ai:sk-XXX:60:1000:10000`）
+- [ ] 配额 profile 配置（参考 [`openapi.md §5.3`(../api/openapi.md) `external-ai:sk-XXX:60:1000:10000`）
 - [ ] 429 retry + backoff 已实现（§4.2）
 - [ ] 5xx 不崩（§4.5）
 - [ ] quota watchdog 启动（§5.1）
@@ -535,7 +535,7 @@ A：能——2026-08-12 起 webhook 事件订阅已上线（§9）：订阅 `job
 HMAC 签名推送，失败自动退避重试。AI agent 仍以 pull（/v1/*）为主，webhook 补"发生时"语义。
 
 **Q：API Key 怎么申请？**
-A：Karios 端管理员在 `.env` 加 `KARIOS_API_KEYS="label:secret:rpm:rph:rpd"`（参考 [`openapi.md §4.1`](../../api/openapi.md)）。
+A：Karios 端管理员在 `.env` 加 `KARIOS_API_KEYS="label:secret:rpm:rph:rpd"`（参考 [`openapi.md §4.1`(../api/openapi.md)）。
 
 **Q：能多 agent 共享一个 key 吗？**
 A：能，但**不建议**——一个 agent 429 会让另一个 agent 也 429。建议每个 agent 一个 key（`agent-a:sk-x:30:500:5000`、`agent-b:sk-y:30:500:5000`）。

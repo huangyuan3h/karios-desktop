@@ -13,7 +13,7 @@
 
 Watchlist Health「S-3 篮最多 10 只」操作太重。pick=STOCK 时核心套筒 50% NAV 按 10×10% 切，合成约 5% NAV/只；买清单 UX 已收成 top 5，引擎仍按 10 只等权。问题是：引擎能不能真的改成 5/4/3 只、单票加大，让人买得完？
 
-对照课：卫星 clip [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) — **只砍槽不加大单票 = REJECT**；4×12.5% PASS+。本网格用同一公平原则测核心腿。
+对照课：卫星 clip [`sat-clip-concentration-2026-09-02.md`](../sat/sat-clip-concentration-2026-09-02.md) — **只砍槽不加大单票 = REJECT**；4×12.5% PASS+。本网格用同一公平原则测核心腿。
 
 ## 1. 变体
 

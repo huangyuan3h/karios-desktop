@@ -5,8 +5,8 @@
 
 **三窗原文**：
 
-- 核心篮集中：[`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md)
-- 卫星退出：[`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md)
+- 核心篮集中：[`core-stock-clip-2026-09-03.md`](core/core-stock-clip-2026-09-03.md)
+- 卫星退出：[`sat-exit-trail-2026-09-03.md`](sat/sat-exit-trail-2026-09-03.md)
 
 Live 对齐：OPT-136（Watchlist / paper `twin_star` / 通知 / `protectStopPct=0`）。
 
@@ -67,13 +67,13 @@ Watchlist「已持 n/3 / 到期日收盘卖」按这个数。paper 17:43 用当�
 
 不要把 14:30 成交价写进回测当开盘价（`docs/designs/twin-star-ops-phase-2026-09-02.md` E 线不做）。
 
-**2026-09-03 已测当日收盘代理 + 真 14:30**：[sat-fill-same-close-2026-09-03.md](./sat-fill-same-close-2026-09-03.md)。相对冻结 T 开盘 REJECT。习惯 14:30 vs 核心 train/valid 亏。
+**2026-09-03 已测当日收盘代理 + 真 14:30**：[sat-fill-same-close-2026-09-03.md](sat/sat-fill-same-close-2026-09-03.md)。相对冻结 T 开盘 REJECT。习惯 14:30 vs 核心 train/valid 亏。
 
-**C1 入场过滤**：[sat-entry-c1-2026-09-03.md](./sat-entry-c1-2026-09-03.md)。14:30/今开 >3% 不买：相对无过滤 tot/sr/dd 全过；vs 核心夏普、回撤已好，valid 总收益仍 −3.3（收盘卖口径）。**配上第 3 日 14:30 卖后三窗全过核心，已随 habit 进 Live。**
+**C1 入场过滤**：[sat-entry-c1-2026-09-03.md](sat/sat-entry-c1-2026-09-03.md)。14:30/今开 >3% 不买：相对无过滤 tot/sr/dd 全过；vs 核心夏普、回撤已好，valid 总收益仍 −3.3（收盘卖口径）。**配上第 3 日 14:30 卖后三窗全过核心，已随 habit 进 Live。**
 
-**3 天 vs 4 天 / 买点**：[sat-habit-clock-2026-09-03.md](./sat-habit-clock-2026-09-03.md)。计数仍是入场日 = 第 1 天（周一 14:30 → 周三收盘）。多拿一晚是占槽；13:30–15:00 没有更佳分钟。
+**3 天 vs 4 天 / 买点**：[sat-habit-clock-2026-09-03.md](sat/sat-habit-clock-2026-09-03.md)。计数仍是入场日 = 第 1 天（周一 14:30 → 周三收盘）。多拿一晚是占槽；13:30–15:00 没有更佳分钟。
 
-**C1 + 第 3 日卖点**：[sat-exit-hhmm-2026-09-03.md](./sat-exit-hhmm-2026-09-03.md)。第 3 日 **14:30 卖** 优于收盘和 10:00，习惯配方三窗 tot/sr/dd 过核心。**Live / paper 已切 habit（2026-09-03 全量跟进）**：C1 3% + 第 3 日 14:30 卖；冻结 T 开盘收盘卖保留为 Timeline 对照。
+**C1 + 第 3 日卖点**：[sat-exit-hhmm-2026-09-03.md](sat/sat-exit-hhmm-2026-09-03.md)。第 3 日 **14:30 卖** 优于收盘和 10:00，习惯配方三窗 tot/sr/dd 过核心。**Live / paper 已切 habit（2026-09-03 全量跟进）**：C1 3% + 第 3 日 14:30 卖；冻结 T 开盘收盘卖保留为 Timeline 对照。
 
 ---
 

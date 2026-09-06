@@ -8,11 +8,11 @@
 
 | 模块 | 定位 | 核心功能 |
 |------|------|----------|
-| [Screener](./screener.md) | 数据入口 | 同步 TradingView 筛选器结果 |
-| [Industry Flow](./industry-flow.md) | 板块分析 | 追踪行业资金流向，识别热点板块 |
+| [Screener](../archive/modules-legacy/screener.md) | 数据入口 | 同步 TradingView 筛选器结果 |
+| [Industry Flow](../archive/modules-legacy/industry-flow.md) | 板块分析 | 追踪行业资金流向，识别热点板块 |
 | [Watchlist](./watchlist.md) | 操作中心 | 管理关注股票，提供技术分析和交易建议 |
-| [Market Sentiment](./market-sentiment.md) | 仓位管理 | 市场情绪分析，红绿灯信号，仓位建议 |
-| [News Brief](./news-brief.md) | 信息获取 | 财经新闻聚合与 AI 摘要 |
+| [Market Sentiment](../archive/modules-legacy/market-sentiment.md) | 仓位管理 | 市场情绪分析，红绿灯信号，仓位建议 |
+| [News Brief](../archive/modules-legacy/news-brief.md) | 信息获取 | 财经新闻聚合与 AI 摘要 |
 
 ---
 

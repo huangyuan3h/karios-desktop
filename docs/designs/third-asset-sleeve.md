@@ -1,7 +1,7 @@
 # T6 · 第三资产套筒（闲置资金低相关资产）· 设计稿
 
 > 状态：**提示已落地（2026-08-19）· 自动配置/paper 层仍待拍板**
-> 关联：strategy-params §6（R5 资金分配）· todo §8（回测）· watchlist 提示功能已上线
+> 关联：strategy-params §6（R5 资金分配）· [todo §8（回测）](../archive/2026-08-27-todo-full-snapshot.md)· watchlist 提示功能已上线
 > 数据：tushare 拉取 2024-08-01~2026-08-07（9 个候选 ETF + GC001 逆回购实际利率），缓存 `services/data-sync-service/data/third_asset_cache.json`
 
 ## 0. 一句话结论
@@ -58,7 +58,7 @@
 
 - 模拟模型：**策略空仓日（现金>0）**，闲置现金吃该资产当日收益；已部署部分照常吃策略 mark-to-market pnl；逐日复利 NAV。基线 = 闲置现金 0%。
 - 三窗：OOS2 2024-08-01~2025-08-01（弱市年）/ train 2025-08-01~2026-02-01 / valid 2026-03-01~2026-08-07。
-- 判定铁律：三窗无劣化（todo §19 同款）；单窗好看 = 过拟合拒收。
+- 判定铁律：三窗无劣化（三窗铁律同款，见 [backtests/README](../backtests/README.md)）；单窗好看 = 过拟合拒收。
 
 ## 3. 结果全景（成功 + 失败全记录）
 

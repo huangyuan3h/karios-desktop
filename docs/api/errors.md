@@ -1,7 +1,7 @@
 # 错误码字典（人类可读）
 
 > 机器可读版本：`GET /v1/errors`。本文档是**人类可读对照**。  
-> 详细规则：[`docs/designs/api-contract.md`](../../designs/api-contract.md)
+> 详细规则：[`docs/designs/api-contract.md`(../designs/api-contract.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # Cloudflare Tunnel · Karios `/v1/*` 对外暴露
 
-> **关联 todo**：[§4 工程与部署](../todo.md) · [§12 实施清单 #2](../todo.md)
+> **关联 todo**：[§4 工程与部署](../archive/2026-08-27-todo-full-snapshot.md) · [§12 实施清单 #2](../archive/2026-08-27-todo-full-snapshot.md)
 > **配套设计**：[`cloud-deployment-options.md`](./cloud-deployment-options.md) · [`freelancer-architecture.md`](./freelancer-architecture.md)
 > **决议日**：2026-08-01
 

@@ -1,8 +1,20 @@
 # Karios 回测实验记录（Backtest Experiments）
 
 > **何时看**：任何新回测实验前、复盘策略演进时。**用户要改策略 / 仓位 / 退出时，Agent 先读 [`SUMMARY.md`](./SUMMARY.md) 和本目录实验，再开口。**
-> **终局策略**：**机会双子星 v3.1 clip4**（择强核心 + strict S-gap 4×12.5%）—— [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md)。核心腿规则在 [`pick-strong-track.md`](../modules/pick-strong-track.md)。  
+> **终局策略**：**机会双子星 v3.1 clip4**（择强核心 + strict S-gap 4×12.5%）—— [`state-bucket-algo-2026-08-31.md`](core/state-bucket-algo-2026-08-31.md)。核心腿规则在 [`pick-strong-track.md`](../modules/pick-strong-track.md)。  
 > 本目录记录通往该策略的实验（含拒收）；**新结论必须写清对机会双子星 / 其核心腿的增量**。
+>
+> **改策略流程**：走仓库根 `AGENTS.md` → Strategy / parameter changes（主源，含调参查找）。
+> 本目录只管实验导航 + 验证纪律。
+> **SUMMARY 标题注**：「指向择强单轨」是历史名；终局 = 机会双子星，核心腿 = 择强单轨（单轨现为对照）。
+>
+> **编码速查**：`P*` → `experiments-planned.md`（信号池 P1-P26）· `D*` → `experiments-d-pool.md`（D1-D8）
+> · `A*/B*/C*` → `experiments-defensive.md`（防守 23 项）· `C1` → `sat-entry-c1` · `H1/H2/H3/H4` → rank/c1-grid/bucketq/rwide
+> · `S1/S2/S4` → holdout/c3-fade/churn · `G1` → `sat-regime` · `D3` → `sat-exit-d3trail` · `rw*` → `sat-rwide`。
+>
+> **目录结构**（2026-09-06 按策略分文件夹 · 根只留索引与真值）：
+> `core/` 择强核心+套筒（9）· `sat/` 卫星习惯 09-02~09-05（22）· `s3/` S-3 早期档案防守/信号池（11）
+> · `factors/` 因子与形态（10）· `hedge/` 对冲楼（1）· `vendor/` 外购数据对拍（2）。
 
 ---
 
@@ -14,30 +26,70 @@
 | [`../modules/pick-strong-track.md`](../modules/pick-strong-track.md) | **择强单轨策略真值 + 过去一年验证** | ✅ **产品真值** |
 | [`audit-plan-2026-08-29.md`](./audit-plan-2026-08-29.md) | 组合可信度审计计划 | ✅ |
 | [`audit-verdict-2026-08-29.md`](./audit-verdict-2026-08-29.md) | 审计结论（P0 已修） | ✅ |
-| [`pick-strong-hardening-2026-08-29.md`](./pick-strong-hardening-2026-08-29.md) | 择强参数加固网格 · **维持 A0** | ✅ |
+| [`pick-strong-hardening-2026-08-29.md`](core/pick-strong-hardening-2026-08-29.md) | 择强参数加固网格 · **维持 A0** | ✅ |
 | [`audit-2026-08-22.md`](./audit-2026-08-22.md) | 代码层审计（数据/执行/统计） | ✅ |
-| [`experiments-tip014.md`](./experiments-tip014.md) | TIP-014 环境感知（STOCK 腿） | ✅ |
-| [`experiments-d-pool.md`](./experiments-d-pool.md) | 探索池 D1-D8 | ✅ |
-| [`experiments-defensive.md`](./experiments-defensive.md) | 防守向攻击 23 项 | ✅ |
-| [`experiments-legacy.md`](./experiments-legacy.md) | 历史实验速查 | ✅ |
-| [`experiments-planned.md`](./experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
-| [`s3-gate-pickstrong-optimization-2026-09-01.md`](./s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
-| [`sat-clip-concentration-2026-09-02.md`](./sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
-| [`core-stock-clip-2026-09-03.md`](./core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
-| [`sat-exit-trail-2026-09-03.md`](./sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
-| [`sat-hold-path-day2-2026-09-03.md`](./sat-hold-path-day2-2026-09-03.md) | 卫星第 1/2/3 日收盘路径（第 2 天亏了回不回） | ✅ 观察；不改 Live |
-| [`sat-fill-same-close-2026-09-03.md`](./sat-fill-same-close-2026-09-03.md) | 卫星成交：T 开盘 vs 收盘 vs **真 14:30** | ❌ 14:30 相对核心 train/valid 亏；不改 Live |
-| [`sat-entry-c1-2026-09-03.md`](./sat-entry-c1-2026-09-03.md) | 14:30 入场过滤 C1（冲太高不买）/ C2（近涨停） | ❌ 不进 Live；C1 3% 修好夏普/回撤，valid tot 仍 −3.3 |
-| [`sat-habit-clock-2026-09-03.md`](./sat-habit-clock-2026-09-03.md) | 习惯 3 天 vs 4 天 · 13:30–15:00 买点 | ❌ 计数仍 3 天；换分钟无更佳；不改 Live |
-| [`sat-exit-hhmm-2026-09-03.md`](./sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | C1·14:30 卖三窗过核心；**未改 Live** |
+| [`experiments-tip014.md`](s3/experiments-tip014.md) | TIP-014 环境感知（STOCK 腿） | ✅ |
+| [`experiments-d-pool.md`](s3/experiments-d-pool.md) | 探索池 D1-D8 | ✅ |
+| [`experiments-defensive.md`](s3/experiments-defensive.md) | 防守向攻击 23 项 | ✅ |
+| [`experiments-legacy.md`](s3/experiments-legacy.md) | 历史实验速查 | ✅ |
+| [`experiments-planned.md`](s3/experiments-planned.md) | 信号池 P1-P26（全拒收） | ✅ |
+| [`s3-gate-pickstrong-optimization-2026-09-01.md`](core/s3-gate-pickstrong-optimization-2026-09-01.md) | S-3 gate 在择强内的松闸优化（10变体三窗拒收归档） | ✅ 拒收 |
+| [`sat-clip-concentration-2026-09-02.md`](sat/sat-clip-concentration-2026-09-02.md) | 卫星单票 5%→10%/12.5%/16.5% NAV（**4 只×12.5% 冻结**） | ✅ 冻结 |
+| [`core-stock-clip-2026-09-03.md`](core/core-stock-clip-2026-09-03.md) | 核心 S-3 篮 10 只→5/4/3（加大单票） | ❌ 拒收（OOS2） |
+| [`sat-exit-trail-2026-09-03.md`](sat/sat-exit-trail-2026-09-03.md) | 卫星 body=3 vs −5% vs body 后 trail 5/8% | ❌ 拒收 |
+| [`sat-hold-path-day2-2026-09-03.md`](sat/sat-hold-path-day2-2026-09-03.md) | 卫星第 1/2/3 日收盘路径（第 2 天亏了回不回） | ✅ 观察；不改 Live |
+| [`sat-fill-same-close-2026-09-03.md`](sat/sat-fill-same-close-2026-09-03.md) | 卫星成交：T 开盘 vs 收盘 vs **真 14:30** | ❌ 14:30 相对核心 train/valid 亏；不改 Live |
+| [`sat-entry-c1-2026-09-03.md`](sat/sat-entry-c1-2026-09-03.md) | 14:30 入场过滤 C1（冲太高不买）/ C2（近涨停） | ❌ 不进 Live；C1 3% 修好夏普/回撤，valid tot 仍 −3.3 |
+| [`sat-habit-clock-2026-09-03.md`](sat/sat-habit-clock-2026-09-03.md) | 习惯 3 天 vs 4 天 · 13:30–15:00 买点 | ❌ 计数仍 3 天；换分钟无更佳；不改 Live |
+| [`sat-exit-hhmm-2026-09-03.md`](sat/sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | C1·14:30 卖三窗过核心；**未改 Live** |
 | [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
 | [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | C1 已三窗，未进 Live |
-| [`state-bucket-algo-2026-08-31.md`](./state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
+| [`state-bucket-algo-2026-08-31.md`](core/state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
+
+### 09-04 → 09-06 增补（习惯 Live 打磨 + 规律提取 · 明细只看 SUMMARY §1）
+
+| 文档 | 内容 | 状态 |
+|------|------|------|
+| [`sat-rank-hhmm-2026-09-04.md`](sat/sat-rank-hhmm-2026-09-04.md) | 习惯排名 H1：无前视键（gap/‖runup‖升序） | ❌ 全拒（gap OOS2 −96 永不重开） |
+| [`sat-c1-grid-2026-09-04.md`](sat/sat-c1-grid-2026-09-04.md) | 习惯 C1 网格 H2（2/3/4/5%） | ✅ C1=3% 维持（平顶） |
+| [`sat-bucketq-2026-09-04.md`](sat/sat-bucketq-2026-09-04.md) | 习惯桶 H3（1/2 vs 1/3） | ✅ 1/3 维持 |
+| [`sat-rwide-2026-09-04.md`](sat/sat-rwide-2026-09-04.md) | 习惯 R-wide 闸 H4（0.4/0.5/0.6） | ✅ 0.5 维持（单峰） |
+| [`sat-c3-fade-2026-09-04.md`](sat/sat-c3-fade-2026-09-04.md) | 习惯 C3 下跌过滤 S2 | ❌ 组合冗余，不进 Live |
+| [`sat-holdout-2026-09-04.md`](sat/sat-holdout-2026-09-04.md) | 习惯 holdout 审计 S1（只读） | ✅ 不调参；方差是真风险 |
+| [`sat-churn-2026-09-04.md`](sat/sat-churn-2026-09-04.md) | 习惯 CHURN 过滤 S4 | ❌ 不进 Live，记候选 |
+| [`sat-list-drift-2026-09-04.md`](sat/sat-list-drift-2026-09-04.md) | 卫星名单漂移诊断（振幅 vs 14:30-proxy） | ✅ 无超额，不改 Live |
+| [`sat-regime-2026-09-04.md`](sat/sat-regime-2026-09-04.md) | 大盘风格 vs 卫星 G1（理解层） | ✅ 无新规则 |
+| [`sat-exit-d3trail-2026-09-04.md`](sat/sat-exit-d3trail-2026-09-04.md) | 第 3 日条件单 D3（高点−2%） | ❌ 机制证伪，不补网格 |
+| [`sat-live-caliber-2026-09-04.md`](sat/sat-live-caliber-2026-09-04.md) | 习惯口径冻结成绩单 OPT-141 | ✅ PASS+/beats_core |
+| [`sat-exhaust-veto-2026-09-05.md`](sat/sat-exhaust-veto-2026-09-05.md) | 卫星耗尽否决 E-veto | ❌ 方向证伪（horizon 错配） |
+| [`sat-core-gate-2026-09-05.md`](sat/sat-core-gate-2026-09-05.md) | 卫星核心门控 C-gate | ❌ 双窗打架 |
+| [`s3-exhaust-veto-2026-09-05.md`](core/s3-exhaust-veto-2026-09-05.md) | S-3 入场耗尽否决 | ❌ 零覆盖 |
+| [`hedge-twin-2026-09-05.md`](hedge/hedge-twin-2026-09-05.md) | 对冲双子星 v0.2（做空耗尽顶） | ❌ 实现证伪（幻影成交） |
+| [`sat-bear-replay-2026-09-05.md`](sat/sat-bear-replay-2026-09-05.md) | 习惯配方熊市回放 2021–2023 | ✅ PASS，不调 Live |
+| [`sat-weight-6040-2026-09-05.md`](sat/sat-weight-6040-2026-09-05.md) | 卫星权重 60/40（预注册见 designs） | ❌ 薄增益，不进 Live |
+| [`sleeve-exit-hard20-2026-09-04.md`](core/sleeve-exit-hard20-2026-09-04.md) | 套筒 20d −10% 硬切 | ❌ 单窗亮，不进 Live |
+| [`scoop-exhaustion-oos-check-2026-09-04.md`](factors/scoop-exhaustion-oos-check-2026-09-04.md) | 形态独立验证首跑 | ✅ 目录核查，不进 S-3 |
+| [`vendor-minute-compare-2026-09-05.md`](vendor/vendor-minute-compare-2026-09-05.md) · [`vendor-adj-compare-2026-09-05.md`](vendor/vendor-adj-compare-2026-09-05.md) | 外购分钟/复权对拍 | ✅ 有条件过 / 只报不修 |
+| [`first-principles-2026-09-05.md`](./first-principles-2026-09-05.md) | 基础规律与不变量（新想法先自查） | ✅ §一–§六 |
+| [`leg-fingerprints-2026-09-06.md`](./leg-fingerprints-2026-09-06.md) | 各腿指纹表（胜率×单笔×周转×右尾×方差） | ✅ 右尾/月度待补 |
+
+### 早期与专题（结论已定 · 有事才翻）
+
+| 文档 | 内容 |
+|------|------|
+| [`score-threshold-2026-08-22.md`](s3/score-threshold-2026-08-22.md) | score 65 维持（70/75 持平，80+ 拒收） |
+| [`style-experiments-2026-08-22.md`](s3/style-experiments-2026-08-22.md) | 趋势/均值/小盘三风格（三窗 S-3 最佳） |
+| [`tip014-dip-retry-2026-08-22.md`](s3/tip014-dip-retry-2026-08-22.md) | dip/momentum 重试明细 |
+| [`sleeve-exit-study.md`](core/sleeve-exit-study.md) | 套筒退出研究（MA200 增量） |
+| [`factor-ic-2026-08-22.md`](factors/factor-ic-2026-08-22.md) · [`factor-ic-phaseB-2026-08-22.md`](factors/factor-ic-phaseB-2026-08-22.md) | TIP-013 因子清单（空，无新增） |
+| [`bollinger-trend-study.md`](factors/bollinger-trend-study.md) · [`macd-trend-study.md`](factors/macd-trend-study.md) · [`kdj-trend-study.md`](factors/kdj-trend-study.md) · [`uptrend-pullback-study.md`](factors/uptrend-pullback-study.md) · [`support-resistance-box-study.md`](factors/support-resistance-box-study.md) · [`long-consolidation-breakout-study.md`](factors/long-consolidation-breakout-study.md) · [`indicator-supertrend-fibonacci-priceaction-notes.md`](factors/indicator-supertrend-fibonacci-priceaction-notes.md) | 形态三噪音 + 指标分流（已归档，不重开） |
+| [`performance-log.md`](s3/performance-log.md) | 性能日志 |
+| [`small-agile-plan-2026-08.md`](s3/small-agile-plan-2026-08.md) | 小步快跑计划（历史） |
 
 ---
 
-## 验证纪律（三窗铁律 · todo §19 · 2026-08-22 审计后）
+## 验证纪律（三窗铁律 · 2026-08-22 审计后）
 
 > 任何参数/机制改动必须过 **三窗 walk-forward + hold-out**：单窗好看 = 过拟合，拒收。
 
@@ -81,19 +133,14 @@
 | `paper_vs_backtest_latest.json` | C4 paper-vs-backtest 对照 |
 | `index_light_backtest_latest.json` / `trend_exit_latest.json` | 红绿灯 / 趋势退出历史 |
 
-## 当前基线数字（2026-08-28/29 · NAV + next_open · 审计 P0 后）
+## 当前基线数字（只收录指针 · 定义见真值源）
 
-| 窗口 | 收益 | 回撤 | 夏普 | 胜率 | 笔数 | 可信度 |
-|------|------|------|------|------|------|--------|
-| 择强单轨 past_year trail8 | **+190.7%** | **12.6%** | — | — | — | ✅ **产品口径**（2025-08-28~2026-08-28） |
-| 机会双子星 clip4 同窗 | **+194.9%** | **12.6%** | 2.64 | — | — | **实盘默认**；Δ单轨 +4.3pt；旧 15×5% 该窗 −0.2pt |
-| CN OOS2 | +47.3% | 18.9% | 1.26 | 47.3% | 93 | 股票腿 |
-| CN train | +34.1% | 11.6% | 2.22 | 45.1% | 51 | ✅ 可引用 |
-| CN valid | +38.7% | 10.7% | 2.40 | 75.0% | 16 | ⚠️ underpowered |
-| HK OOS2 | +31.3% | 30.3% | 0.99 | 43.4% | 99 | ⚠ 弱 |
-| HK train | +1.9% | 12.8% | 0.28 | 44.7% | 47 | ⚠ 极弱 |
-| HK valid | +60.7% | 27.8% | 2.10 | 43.2% | 44 | ⚠ 发现 |
-| 套筒增量 | +3.1 / +8.4 / +22.3 | — | — | — | — | ✅ 基线=引擎 NAV |
-| R5CS vs R5C | +3.3 / +8.4 / +13.5 | — | — | — | — | ✅ dual 已复现 |
+| 口径 | 去哪看 |
+|------|--------|
+| 终局成绩单（单轨 past_year / clip4 / Δ / 滚动窗） | [`core/state-bucket-algo-2026-08-31.md`](./core/state-bucket-algo-2026-08-31.md) §3.0（产品窗对照表 + 报告链） |
+| S-3 CN 基线（OOS2/train/valid + DD/夏普/笔数） | [`../modules/strategy-params.md`](../modules/strategy-params.md) §3（`s3-baseline-20260828-nav`） |
+| 套筒增量（idle 套利三窗 delta） | 同上 §1（sleeve 行） |
+| R5CS 联合（dual 三窗） | [`../modules/strategy-params.md`](../modules/strategy-params.md) §4 版本历史（R5CS 行） |
+| HK 线（train 极弱 · 不作独立叙事） | `walk_forward_hk_baseline.json`（报告）；结论见 `SUMMARY.md` §3 |
 
 > 参数真值 → [`modules/strategy-params.md`](../modules/strategy-params.md)；审计 → [`audit-verdict-2026-08-29.md`](./audit-verdict-2026-08-29.md)。旧 117%/HK270%/算术43.1% **全部封存**。

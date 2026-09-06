@@ -11,7 +11,7 @@
 
 ## 0. 为什么测
 
-一阶段 B：[sat-entry-filter-phase1](../designs/sat-entry-filter-phase1-2026-09-03.md)。问题是「第 2 天亏了，第 3 天回不回」——用来理解 3 日脉冲，**不是**新的卖出规则。Live 成交仍是约 14:30；本表是回测 T 开盘路径。
+一阶段 B：[sat-entry-filter-phase1](../../designs/sat-entry-filter-phase1-2026-09-03.md)。问题是「第 2 天亏了，第 3 天回不回」——用来理解 3 日脉冲，**不是**新的卖出规则。Live 成交仍是约 14:30；本表是回测 T 开盘路径。
 
 ---
 

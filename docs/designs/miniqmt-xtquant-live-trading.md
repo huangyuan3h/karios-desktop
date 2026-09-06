@@ -137,7 +137,7 @@ xtquant 灵活，风控要靠自己，至少加：
 | 关联项 | 说明 |
 |--------|------|
 | [`l3-l4-evolution-roadmap.md`](./l3-l4-evolution-roadmap.md) | 本稿是 **L4-P1 券商研究**的调研方向；L4 红线「人永远在环、先沙箱后小额」与本稿验收/风控清单一致 |
-| todo.md §16 | 升级方向的 todo 侧指针（未拍板前不产生 todo 条目） |
+| [todo.md §16](../archive/2026-08-27-todo-full-snapshot.md) | 升级方向的 todo 侧指针（未拍板前不产生 todo 条目） |
 | 决策 Agent / Execution Gate | Karios 的决策输出（action card）→ 人工确认 → 本方案执行管道；「半自动下单 L4-P2」落地时以本稿为执行侧基础 |
 
 > **拍板问题**：是否按此方向推进 L4-P1？（需要先确认：选哪家券商、资金门槛是否接受、Mac + 云电脑架构是否接受）

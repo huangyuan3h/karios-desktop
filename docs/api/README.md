@@ -96,7 +96,7 @@ MINOR  ↑  新增 endpoint / 新增可选字段              →  AI 助手可�
 PATCH  ↑  修描述 / 修默认值 / 加错误码（不删旧的）   →  AI 助手不需要动作
 ```
 
-完整规则见 [`../../docs/designs/api-contract.md`](../../docs/designs/api-contract.md)。
+完整规则见 [`../../docs/designs/api-contract.md`(../designs/api-contract.md)。
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **决议日**：2026-08-01
 > **触发条件**：用户获得一台长期开机的 Mac mini（或同等小型 Mac 设备）
-> **关联 todo**：[`docs/todo.md` §13 Longevity · §12 #7 Docker](../../todo.md)
+> **关联 todo**：[`docs/todo.md` §13 Longevity · §12 #7 Docker(../archive/2026-08-27-todo-full-snapshot.md)
 > **关联设计稿**：[`docs/designs/karios-longevity-2026-08.md`](./karios-longevity-2026-08.md)（系统级痛点真值）
 >
 > **本文档目标**：把"长期稳定部署"的目标、决策、架构、触发条件、迁移步骤写清楚——当用户拿到 Mac mini 那一天，按本文档执行即可。
@@ -20,7 +20,7 @@
 | **自动启动** | macOS LaunchAgent → `docker compose up -d` |
 | **断电保护** | UPS + nut/apcupsd → `pmset shutdown` |
 | **远程访问** | Cloudflare Tunnel（OPT-048 已通） |
-| **远程访问兜底** | Tailscale Funnel（§13 #2，暂缓） |
+| **远程访问兜底** | Tailscale Funnel（[§13 #2](../archive/2026-08-27-todo-full-snapshot.md)，暂缓） |
 | **代码更新** | `git pull` + `scripts/docker-up.sh --rebuild` |
 | **数据备份** | pg_dump cron（OPT-053 已设计）→ 本地 3 副本 + 异地 iCloud Drive |
 
@@ -306,7 +306,7 @@ brew install nut
 | **Mac mini 物理损坏** | 你访问不到 | 新 Mac：git clone + pg_restore 备份 → 4 小时 |
 | **PG 数据损坏** | 启动报错 | pg_dump 备份 restore → 1 小时 |
 | **Docker image 坏** | container 起不来 | `docker compose pull` + rebuild → 30 分钟 |
-| **Cloudflare 账号被封** | 域名 502 | 启 Tailscale Funnel（§13 #2）→ 1 小时 |
+| **Cloudflare 账号被封** | 域名 502 | 启 Tailscale Funnel（[§13 #2](../archive/2026-08-27-todo-full-snapshot.md)）→ 1 小时 |
 | **UPS 失灵** | 意外断电 | LaunchAgent 重启后跑 `docker compose up -d` → 5 分钟 |
 | **网络断** | 远程访问失败 | 修网络 → Tunnel 自动恢复 |
 | **代码有 bug** | Karios 行为异常 | `git checkout` + `scripts/docker-up.sh --rebuild` |

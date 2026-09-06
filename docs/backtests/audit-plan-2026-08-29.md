@@ -16,7 +16,7 @@
 > [`archive/2026-08-22-audit-phase0-realism.md`](../archive/2026-08-22-audit-phase0-realism.md) ·
 > [`modules/strategy-params.md`](../modules/strategy-params.md) ·
 > [`designs/third-asset-sleeve.md`](../designs/third-asset-sleeve.md) ·
-> [`gold-oil-nasdaq-balance.md`](./gold-oil-nasdaq-balance.md)
+> [`gold-oil-nasdaq-balance.md`](core/gold-oil-nasdaq-balance.md)
 
 ---
 

@@ -404,7 +404,7 @@ Last automation: {time} ({trigger}) | −N screener +X alpha +Y | funnel … | f
 
 ## 用户使用笔记（2026-08-01 老婆反馈 · 已落实）
 
-> 真实使用者（老婆）亲自使用后的反馈；对应 todo §15。全部已落实，记录在此防回归。
+> 真实使用者（老婆）亲自使用后的反馈；对应归档快照 [`2026-08-27-todo-full-snapshot.md`](../archive/2026-08-27-todo-full-snapshot.md) §15。全部已落实，记录在此防回归。
 
 | # | 反馈 | 落实 |
 |---|------|------|

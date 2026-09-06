@@ -2,7 +2,7 @@
 
 > **状态**：实施完成（2026-08-04），追踪在 [`optimization-checklist.md` OPT-061](../optimization-checklist.md)；落地摘要见 [`archive/2026-08-04-opt-061-db-backup-migrate.md`](../archive/2026-08-04-opt-061-db-backup-migrate.md)
 >
-> **背景**：2026-08-02 审查 todo §13 Longevity 时发现 OPT-053 已立"备份 3 副本策略"但**仓库里零脚本**——`换电脑也能跑`（OPT-056 已解决代码侧）还差**数据侧**。本文档拍板：
+> **背景**：2026-08-02 审查 todo [§13 Longevity](../archive/2026-08-27-todo-full-snapshot.md) 时发现 OPT-053 已立"备份 3 副本策略"但**仓库里零脚本**——`换电脑也能跑`（OPT-056 已解决代码侧）还差**数据侧**。本文档拍板：
 >   1. 备份触发与本地/iCloud 副本规则
 >   2. 跨机迁移包（migrate tarball）的形态
 >   3. 休眠场景下的兜底机制
@@ -56,7 +56,7 @@ launchd **没有** "系统唤醒后立即跑错过的 job" 这个能力——App
 |------|------|------|
 | 格式 | `pg_dump -Fc -Z 9 --no-owner --no-acl` | compressed custom format；体积压缩比 ~7x（1.7 GB → 245 MB）；parallel restore 支持 |
 | 保留 | 本地 30 天 / iCloud 14 天 | iCloud 5 GB 免费档够存 ~20 份；本地给"恢复演练"用 |
-| 异地副本 | `~/Library/Mobile Documents/com~apple~CloudDocs/Karios/backups/postgres/` | iCloud Drive 客户端自己处理同步，**Mac 睡眠时也在跑**（这是 §13 Longevity 在不上云方案下唯一能用的"异地"） |
+| 异地副本 | `~/Library/Mobile Documents/com~apple~CloudDocs/Karios/backups/postgres/` | iCloud Drive 客户端自己处理同步，**Mac 睡眠时也在跑**（这是 [§13 Longevity](../archive/2026-08-27-todo-full-snapshot.md) 在不上云方案下唯一能用的"异地"） |
 | 校验 | 每次 dump 后跑 `pg_restore --list` | TOC parse 失败 → dump 标记 `.corrupt` + exit 非零 → launchd 留下错误日志 |
 | 容器识别 | 自动找"image=postgres + ports 暴露 $PG_PORT"的那个 | 不硬编码（dev `postgres-db` vs compose `karios-postgres`）；可手动 `KARIOS_PG_CONTAINER=` 覆盖 |
 | 跳过逻辑 | 上次 dump < 25h → exit 0 | cron 安静的代价：脚本本身的 stdio 输出仍是 "skip ..."，方便排错 |
@@ -159,8 +159,8 @@ pnpm install
 ## 4. 不做（避免 YAGNI）
 
 - ❌ **加密 dump** — 数据已含个人交易记录，但 iCloud Drive 是 Apple E2E 加密的；用户本地有 pg_dump 备份的 copy 已是明文；再加一层加密徒增复杂度。
-- ❌ **Wal archiving / PITR** — §13 Longevity 用户原话"保证系统长期有生命力"，不是"保证任意时刻可回滚到秒级"；24h 数据窗口足够。
-- ❌ **自动上传到 S3 / 异地云** — §13 #1 Neon 副本暂缓（用户 review）；本地 iCloud 已满足"换电脑也能跑"。
+- ❌ **Wal archiving / PITR** — [§13 Longevity](../archive/2026-08-27-todo-full-snapshot.md) 用户原话"保证系统长期有生命力"，不是"保证任意时刻可回滚到秒级"；24h 数据窗口足够。
+- ❌ **自动上传到 S3 / 异地云** — [§13 #1](../archive/2026-08-27-todo-full-snapshot.md) Neon 副本暂缓（用户 review）；本地 iCloud 已满足"换电脑也能跑"。
 - ❌ **Postgres BTRFS / ZFS snapshot** — 容器内文件系统是 docker volume，btrfs/zfs 不适用。
 - ❌ **打包成 .dmg / .pkg** — tarball + restore.sh 已足够；新 Mac 上 git clone + `pnpm install` 即可起 UI。
 - ❌ **备份 scheduler 自动检测** — 当前靠 launchd 03:00 + RunAtLoad + zshenv 已覆盖；再加 watchdog 是过度设计。
@@ -182,6 +182,6 @@ pnpm install
 
 - [todo §12 #18](../todo.md) 是本条目的源头
 - [designs/db-direction-2026-08.md](./db-direction-2026-08.md) §3 的"备份 3 副本"具体落地（本地 + iCloud + 异地？见 §1.5：当前只 2 副本）
-- [designs/karios-longevity-2026-08.md](./karios-longevity-2026-08.md) §3 "换电脑也能跑"的数据侧补完（与 §12 #7 Docker 的代码侧互补）
+- [designs/karios-longevity-2026-08.md](./karios-longevity-2026-08.md) §3 "换电脑也能跑"的数据侧补完（与 [§12 #7](../archive/2026-08-27-todo-full-snapshot.md) Docker 的代码侧互补）
 - [designs/mac-mini-deployment.md](./mac-mini-deployment.md) §5 实施时序应在 Mac mini 拿到当天跑 `install-db-backup-launchd.sh`
-- §13 Longevity #1 Neon 副本仍是 🟡 暂缓，但 iCloud Drive 已能应对"换电脑也能恢复"场景
+- [§13 Longevity](../archive/2026-08-27-todo-full-snapshot.md) #1 Neon 副本仍是 🟡 暂缓，但 iCloud Drive 已能应对"换电脑也能恢复"场景

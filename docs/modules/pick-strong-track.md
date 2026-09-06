@@ -1,6 +1,6 @@
 # 择强单轨（Pick-Strong Track）
 
-> **核心腿真值**（2026-08-29 起）。2026-09-02 起 **实盘默认 = 机会双子星 v3.1 clip4**（本文规则作核心；卫星见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md)）。单轨仍可 Settings 切回作对照。  
+> **核心腿真值**（2026-08-29 起）。2026-09-02 起 **实盘默认 = 机会双子星 v3.1 clip4**（本文规则作核心；卫星见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/core/state-bucket-algo-2026-08-31.md)）。单轨仍可 Settings 切回作对照。  
 > S-3 / 套筒 / R5c 等是**子组件或历史分层**，不是并列的「主策略」。
 
 ---
@@ -25,13 +25,13 @@
 1. 用 **t-1** 收盘算各资产 `mom60`；ETF 须站上 `MA200`（防前视）。  
 2. 候选 = {STOCK（若有仓）} ∪ {站上 MA 的 ETF}，取 **`argmax mom60`**，**100%** 硬切；空 → **REPO**。  
 3. LOOKBACK=**60** · MA=**200** · **min_hold=1** · **ETF 峰值 −8%（trail8）→ REPO** · 不计强制成本（5–10bp 压力下仍稳）。  
-4. 拒收：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`backtests/pick-strong-hardening-2026-08-29.md`](../backtests/pick-strong-hardening-2026-08-29.md)。  
-5. trail8 绝对 NAV 证据：[`backtests/pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；OOS2 持平）。
+4. 拒收：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`backtests/pick-strong-hardening-2026-08-29.md`](../backtests/core/pick-strong-hardening-2026-08-29.md)。  
+5. trail8 绝对 NAV 证据：[`backtests/pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/core/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；OOS2 持平）。
 
 > **Live / Watchlist**：与定案同规则（`multi_asset_sleeve` + `pick_strong_track`）。  
 > STOCK 入池闸（n / mom>0 / 自 MA）仍为实验中，默认「有仓即入池」。
 
-> **机会双子星 v3.1（2026-09-02 · 实盘默认）**：**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`；卫星 **4 槽 × 总资产 12.5%**。window-local 可执行三窗全过单轨，且相对 v3 15×5% 三窗全正。**过去一年**（本文件 §2 同窗）clip4 **+194.9 / sr2.64 / dd12.6** vs 本单轨 **+190.6 / 2.54 / 12.6**（+4.3pt）；旧 15×5% 双子星该窗 **−0.2pt** 输单轨。滚到 2026-09-02 仍赢。Settings 可切回本单轨作对照。真值：`docs/backtests/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。Watchlist：核心 pick ≠ STOCK 时 CN 持仓全部进卫星仓，不按 S-3 股票篮轮出。
+> **机会双子星 v3.1（2026-09-02 · 实盘默认）**：**strict S-gap**（涨停跳过、不扩池）+ 无仓 100% 核心 / 有仓切 50%；退出日 `satActive`；卫星 **4 槽 × 总资产 12.5%**。window-local 可执行三窗全过单轨，且相对 v3 15×5% 三窗全正。**过去一年**（本文件 §2 同窗）clip4 **+194.9 / sr2.64 / dd12.6** vs 本单轨 **+190.6 / 2.54 / 12.6**（+4.3pt）；旧 15×5% 双子星该窗 **−0.2pt** 输单轨。滚到 2026-09-02 仍赢。Settings 可切回本单轨作对照。真值：`docs/backtests/core/state-bucket-algo-2026-08-31.md` 文首「口径铁律」+ §3.0。历史 PS-G50 sr≈4 不可当实盘。Watchlist：核心 pick ≠ STOCK 时 CN 持仓全部进卫星仓，不按 S-3 股票篮轮出。
 
 > **不是**「套筒」：套筒只是闲置现金的 ETF 增强。  
 > **不是**「纯 S-3」：S-3 只负责生成 STOCK 候选/持仓；最终仓位由择强单轨决定。  
@@ -64,7 +64,7 @@
 
 | 口径 | 收益 | 最大回撤 | 说明 |
 |------|------|----------|------|
-| **择强单轨 `mom_compare`+trail8（定案）** | **+190.7%** | **12.6%** | ETF 峰值 −8%→REPO；三窗/长窗见 trail8 文档 |
+| **择强单轨 `mom_compare`+trail8（定案）** | **+190.6%** | **12.6%** | ETF 峰值 −8%→REPO；三窗/长窗见 trail8 文档 |
 | 对照：无 trail（旧 A0） | +93.6% | 28.3% | 仅硬切；已降级为对照 |
 | 对照：`hard_stock`（有股票仓则锁 STOCK） | +110.8% | 32.0% | 旧 Timeline 偏置；**不作定案** |
 | 对照：CN S-3 引擎单独 | +58.3% | 23.0% | 仅股票腿，现金≤100% NAV |
@@ -83,11 +83,13 @@
 | 滚到今日 `2025-09-02~2026-09-02` | +197.6 / 2.58 / 12.6 | +201.7 / 2.65 / 12.6（+4.1） | **+204.0 / 2.69 / 12.6** | **+6.4pt** | **+2.3pt** |
 | 协议 past_year `2025-08-01~2026-08-07` | +181.2 / 2.43 / 12.6 | +191.3 / 2.57 / 12.6（+10.1） | **+195.9 / 2.62 / 12.6** | +14.7pt | +4.6pt |
 
+> 表定义见 [state-bucket-algo §3.0](../backtests/core/state-bucket-algo-2026-08-31.md)（同报告；本表多两个窗口）。
+
 要点：
 
 - 产品窗上 **旧 15×5% 双子星略输单轨**（−0.2pt）；clip4 把增量翻正，Sharpe +0.10，回撤仍钉在核心 12.6。
 - 滚到 2026-09-02 仍全正，卫星开闸日均约 **3.6 只**。
-- **实盘默认 clip4**；Settings 可切回本单轨。三窗 walk-forward 真值见 [`backtests/state-bucket-algo-2026-08-31.md`](../backtests/state-bucket-algo-2026-08-31.md) §3.0。
+- **实盘默认 clip4**；Settings 可切回本单轨。三窗 walk-forward 纪律见 [`backtests/README.md`](../backtests/README.md)；clip4 数字见 [`state-bucket-algo-2026-08-31.md`](../backtests/core/state-bucket-algo-2026-08-31.md) §3.0。
 
 ---
 
@@ -103,7 +105,7 @@
    - Watchlist live pick：`multi_asset_sleeve.build_multi_asset_sleeve` 同 `mom_compare`（含 STOCK 篮）  
 5. **实验记录**：一律写回 `docs/backtests/`；最近加固定案见 `pick-strong-hardening-2026-08-29.md`。
 
-> **提醒（2026-09-01 归档 · 再有此想法时直接读）**：**不要再松 S-3 gate**。`S-3 gate` 在择强内的 `full→regime→none` 松闸已 10 变体三窗实测全拒收（`gates_none valid -58pt / gates_regime valid -32pt / entry_score OOS2 -6pt`），唯一过线的 `no_exclude300` 亦被 `twin` 稀释且与 `strategy-params.md:29` 创业板三窗亏钱结论冲突，**该方向结案**。下次再想“择强里 S-3 太严”时，直接读 [`backtests/s3-gate-pickstrong-optimization-2026-09-01.md`](../backtests/s3-gate-pickstrong-optimization-2026-09-01.md) §1-§3，无需重跑（复现 `scripts/test_s3_pickstrong_gates.py:1`）。真要动 STOCK腿请改**强度代理**而非闸门。
+> **提醒（2026-09-01 归档 · 再有此想法时直接读）**：**不要再松 S-3 gate**。`S-3 gate` 在择强内的 `full→regime→none` 松闸已 10 变体三窗实测全拒收（`gates_none valid -58pt / gates_regime valid -32pt / entry_score OOS2 -6pt`），唯一过线的 `no_exclude300` 亦被 `twin` 稀释且与 `strategy-params.md:29` 创业板三窗亏钱结论冲突，**该方向结案**。下次再想“择强里 S-3 太严”时，直接读 [`backtests/s3-gate-pickstrong-optimization-2026-09-01.md`](../backtests/core/s3-gate-pickstrong-optimization-2026-09-01.md) §1-§3，无需重跑（复现 `scripts/test_s3_pickstrong_gates.py:1`）。真要动 STOCK腿请改**强度代理**而非闸门。
 
 ---
 

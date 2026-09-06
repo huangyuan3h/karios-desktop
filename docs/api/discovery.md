@@ -1,7 +1,7 @@
 # Discovery Endpoints（稳定发现性）
 
 > 这 4 个 endpoint 是 Karios `/v1/*` 与外部 AI 助手的**唯一桥梁**。路径与基础行为永不变。  
-> 详细规则：[`docs/designs/api-contract.md`](../../designs/api-contract.md)
+> 详细规则：[`docs/designs/api-contract.md`(../designs/api-contract.md)
 
 **鉴权**：4 个 endpoint **永远不要求 API Key**（AI 助手启动时调，没 Key 死锁）。
 

@@ -1,7 +1,7 @@
 # TV Capture 数据源决策 · 落地决策（OPT-057）
 
-> **关联 todo**：[`docs/todo.md §12 #8.5`](../../todo.md) · [§3 收益](../../todo.md) · [§6 数据源](../../todo.md)
-> **上下文**：[`ego-lite-spike-2026-08.md`](./ego-lite-spike-2026-08.md)（Phase 1 spike 已完成）· [`modules/screener.md`](../modules/screener.md)（业务真值）
+> **关联 todo**：[`docs/todo.md §12 #8.5`(../archive/2026-08-27-todo-full-snapshot.md) · [§3 收益(../archive/2026-08-27-todo-full-snapshot.md) · [§6 数据源(../archive/2026-08-27-todo-full-snapshot.md)
+> **上下文**：[`ego-lite-spike-2026-08.md`](./ego-lite-spike-2026-08.md)（Phase 1 spike 已完成）· [`modules/screener.md`(../archive/modules-legacy/screener.md)（业务真值）
 > **OPT**：[`OPT-057`](../optimization-checklist.md) · [`OPT-008`](../optimization-checklist.md)（tv_capture_jobs async）
 > **决议日**：2026-08-01
 > **下次复审**：2027-02-01（6 个月后评估是否 deprecate Chrome）
@@ -18,7 +18,7 @@
 
 **新建 screener 流程**：从"用户必须自己去 TV 网站存 screener" → 三模式（**Template** / **Custom URL** / **Filter JSON**），让 90% 用户不再需要接触 TV 网站。
 
-**用户价值**（收益 §3 + 数据源 §6 双线）：
+**用户价值**（收益 [§3](../archive/2026-08-27-todo-full-snapshot.md) + 数据源 [§6](../archive/2026-08-27-todo-full-snapshot.md) 双线）：
 - ✅ TV capture 完全 Docker-friendly（去掉 Chrome 依赖）
 - ✅ TV capture 抓取成功率 ≥ 95%（API 兜底 + 多层 fallback）
 - ✅ TV capture 维护成本 ↓（不用管理 Chrome profile / 登录态）

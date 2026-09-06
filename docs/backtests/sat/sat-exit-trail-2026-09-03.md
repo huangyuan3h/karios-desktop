@@ -13,7 +13,7 @@
 
 ## 0. 为什么测
 
-冻结 S-gap 回测 = body=3 收盘。当时 Live paper 另加 cost×0.95。用户希望：活过 3 天且没打 −5% 的票，不要在 body 收盘卖掉，改跟峰值 5% 或 8% 移动止损。三窗全拒后，进一步问「是不是其实不该止损」——卫星按冻结腿不应把 −5% 当卖出规则。讨论全文：[`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md)。
+冻结 S-gap 回测 = body=3 收盘。当时 Live paper 另加 cost×0.95。用户希望：活过 3 天且没打 −5% 的票，不要在 body 收盘卖掉，改跟峰值 5% 或 8% 移动止损。三窗全拒后，进一步问「是不是其实不该止损」——卫星按冻结腿不应把 −5% 当卖出规则。讨论全文：[`clip4-ops-decisions-2026-09-03.md`](../clip4-ops-decisions-2026-09-03.md)。
 
 相关旧证据（不能替代本窗）：S-gap 边是 3 日脉冲；Scout「time3 切亏损」valid 崩；S-3 D6 profit_trail REJECT。
 

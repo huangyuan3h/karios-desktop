@@ -283,9 +283,9 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 > 1. trail8 是袖的命门：漏了袖平（0%），加上袖 +64%（past_year）/ +174%（valid）→ 联合-卫星 +165.7% / +288.8% 明显 > 状态分桶单独 +122.8% / +137.3%。
 > 2. **但风险调整仍劣**：联合 dd 升到 11.9、sharpe 降到 2.90（< 状态分桶 3.36 / dd 8.4）。→ 按收益联合赢，按 sharpe 状态分桶单独赢。
 > 3. **argmax(100% 切换) 仍烂 +38.6%**：状态分桶收益脉冲状，60 日动量在两信号间回落 → argmax 误判走弱切去平/负 ETF/REPO，洗掉强 alpha。**必须用卫星结构（状态分桶核心 + 袖管 idle），勿用 100% 切换。**
-> 4. **自洽 pick-strong +190.7%**：初版误判"袖平→+190% 全来自 S-3"；加 trail8 后袖 +64% + S-3 +58% ≈ +190%，对上。说明第三类袖本身确有 edge（trail8 之功）。
-> 5. **手上算法排序（past_year）**：择强定案 +190.7% > 联合-卫星(+trail8) +165.7% > 状态分桶 +122.8% > S-3 +58.3%。状态分桶是远比 S-3 好的 A股 股票腿。
-> 6. **真正 upside（待做）**：择强架构用状态分桶替 S-3 股票腿 + trail8 袖 → 预期 > +190.7% 且 dd 更低。需接 `fused_timeline_walk.py` 真实管线验证。
+> 4. **自洽 pick-strong +190.6%**：初版误判"袖平→+190% 全来自 S-3"；加 trail8 后袖 +64% + S-3 +58% ≈ +190%，对上。说明第三类袖本身确有 edge（trail8 之功）。
+> 5. **手上算法排序（past_year）**：择强定案 +190.6% > 联合-卫星(+trail8) +165.7% > 状态分桶 +122.8% > S-3 +58.3%。状态分桶是远比 S-3 好的 A股 股票腿。
+> 6. **真正 upside（待做）**：择强架构用状态分桶替 S-3 股票腿 + trail8 袖 → 预期 > +190.6% 且 dd 更低。需接 `fused_timeline_walk.py` 真实管线验证。
 
 ### R8 状态分桶替 S-3 作股票腿 + trail8 袖（`state_bucket_pickstrong_latest.json` · 2026-08-31）
 > 核心验证：择强单轨的股票腿（S-3）换成状态分桶，非股票腿保持第三类袖（金/油/纳/债 mom60+MA200+trail8）+ REPO。两种分配结构：卫星（状态分桶核心 + idle 接袖）/ argmax（pick-strong 式 100% 切换）。跑 3 窗 + 长窗（past_year）。
@@ -301,7 +301,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 > 1. **联合-卫星+trail8 在全部 4 窗均优于状态分桶单独**（CAGR 全更高，3 窗 + 长窗全正）→ "状态分桶替 S-3 + trail8 袖"的卫星结构有效，过纪律关。
 > 2. **联合-argmax 在 valid/past_year 崩**（dd 29~33%、sharpe<0.65）→ 100% 切换把状态分桶的脉冲收益洗掉（与 R7 一致）。**必须用卫星结构，不能用 argmax 直接替股票腿。**
 > 3. **代价**：联合-卫星 dd 升到 11.9（vs 状态分桶 8.4），sharpe 略降（past_year 2.90 vs 3.36）——收益换来的 dd；train/valid 卫星 sharpe 反而更高（4.18/3.25）。
-> 4. **vs 择强定案 +190.7%**：联合-卫星+trail8 past_year +165.7% **略低于** 择强定案。原因：择强定案用 **argmax**（适配 S-3 的平滑动量），状态分桶是脉冲收益、不适 argmax（argmax+状态分桶仅 +17.4%）。故"替 S-3"仅在**卫星结构**成立，且不超择强定案。
+> 4. **vs 择强定案 +190.6%**：联合-卫星+trail8 past_year +165.7% **略低于** 择强定案。原因：择强定案用 **argmax**（适配 S-3 的平滑动量），状态分桶是脉冲收益、不适 argmax（argmax+状态分桶仅 +17.4%）。故"替 S-3"仅在**卫星结构**成立，且不超择强定案。
 
 ### R8 子方向：状态分桶适配 argmax（股票腿动量平滑）· 已测，拒收
 > 假设：argmax 崩是因状态分桶 NAV 的 60 日动量在信号结束后骤降→argmax 误逃。若用更长回看（120/250 日）平滑股票腿动量，argmax 或能在信号间歇期留在 STOCK、捕获更多。测 `combine_argmax_momlb` lb∈{60,120,250}。
@@ -317,7 +317,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 > - 长回看在 train/past_year 有帮助（lb250 past_year +96.9 vs lb60 +16.6），但 **valid（验证窗）全负**（lb120/250 = -2.3%、dd33）→ 样本内改善、样本外失败，典型过拟合。
 > - 状态分桶收益本质是**脉冲状**（信号日集中、间歇期 flat），任何基于历史动量的 argmax 都会在其间歇期逃向 ETF/REPO 而错失下一信号 → **脉冲性与 argmax 根本不兼容**，平滑无法根治。
 > - **最终定位（修正 R8.4）**：状态分桶是远比 S-3 好的**独立 A股 策略**（+122.8% vs S-3 +58.3%），但**不能替入择强的 argmax 股票腿**。二者是**不同角色**而非可互换：
->   - 择强（argmax + S-3 + trail8 袖）= 当前最高收益引擎（+190.7%），靠 argmax 适配 S-3 平滑动量。
+>   - 择强（argmax + S-3 + trail8 袖）= 当前最高收益引擎（+190.6%），靠 argmax 适配 S-3 平滑动量。
 >   - 状态分桶 + trail8 袖（卫星）= +165.7%，收益略低但 dd 更低（11.9 vs 12.6）、且纯 A股 容量受限。
 >   - **真正 upside 不在"替 S-3"，而在：状态分桶作卫星 + 择强作核心的 core-satellite 组合**（互不替、各自最优结构），或等状态分桶 holdout 验证后实盘对照。
 
@@ -507,7 +507,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
   - 执行顺序：先按 `coreTargetPct` 调核心腿；再按持仓簿卖到期 / 开闸买 strict 候选。
   - 核心 pick=STOCK 时 S-3 篮仍是 **10×10%**（收到 5/4/3 只 2026-09-03 OOS2 拒收）。Watchlist top 5 只是展示。
 - **对照**：Settings 切 `single_track` = 无卫星的纯择强。
-- **讨论记录**：[`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md)。
+- **讨论记录**：[`clip4-ops-decisions-2026-09-03.md`](../clip4-ops-decisions-2026-09-03.md)。
 
 ### 7.8 14:30 前操作提醒 + 卫星持仓簿
 

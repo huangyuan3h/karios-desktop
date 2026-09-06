@@ -1,7 +1,7 @@
 # L3 → L4 升级路线图（2026-08-07 立）
 
 > **何时看**：系统下一步升级方向的唯一真值。拍 L3/L4 相关需求、排期、拍板时先看这里。
-> **何时不看**：单个任务的落地实现（→ `optimization-checklist.md` OPT-xxx / `trading-improvement-checklist.md` TIP-xxx）；产品级战略（→ `todo.md` §16）。
+> **何时不看**：单个任务的落地实现（→ `optimization-checklist.md` OPT-xxx / `trading-improvement-checklist.md` TIP-xxx）；产品级战略（→ [`todo.md` §16](../archive/2026-08-27-todo-full-snapshot.md)）。
 > **状态**：方向已拍板（2026-08-07）。L3 为当前目标，L4 为长期愿景。
 
 ---
@@ -53,9 +53,9 @@
 
 | 里程碑 | 内容 | 依赖 | 预估 | 衔接现有 | 状态 |
 |--------|------|------|------|----------|------|
-| **L3-P1 度量基座** | paper v0.2：HK 接入（FX/T+0 结算建模）+ 成本/滑点参数表 + 成交假设统一；paper 胜率口径修正 | §8 paper v0.1 已有 | 2-3 天 | §8 P1；`paper_trading.py` | ✅ **done 2026-08-07**（OPT-062；FX 汇率与 ETF 明确记入 L3-P3，见 archive） |
-| **L3-P2 回测引擎** | 与 live 同口径回测（复用 Execution Gate / TrendOK 代码路径）；5y 历史 bars；单策略参数敏感度视图 | L3-P1 | 4-6 天 | §8 P0 重启前置条件已齐 | ✅ **done 2026-08-07**（OPT-063：信号回放 + `_pick_close_reason` 同码 + 36 组网格；v0.2：TV 池回撤窗口 / 月度滚动 / BacktestPage） |
-| **L3-P3 归因与敏感度** | 卖出归因分桶；参数敏感性报告（score / 回撤 / TrendOK）；卫星仓上限复核（15%/30%/sleeve） | L3-P2 | 3-5 天 | TIP-011 买入归因已有；§3 P1 | ✅ **done 2026-08-07**（OPT-064：卖出归因 + 组合暴露 + 回测页；卫星仓上限复核 v0 = 组合暴露统计，规则复核待 paper 数据积累） |
+| **L3-P1 度量基座** | paper v0.2：HK 接入（FX/T+0 结算建模）+ 成本/滑点参数表 + 成交假设统一；paper 胜率口径修正 | [§8](../archive/2026-08-27-todo-full-snapshot.md) paper v0.1 已有 | 2-3 天 | [§8](../archive/2026-08-27-todo-full-snapshot.md) P1；`paper_trading.py` | ✅ **done 2026-08-07**（OPT-062；FX 汇率与 ETF 明确记入 L3-P3，见 archive） |
+| **L3-P2 回测引擎** | 与 live 同口径回测（复用 Execution Gate / TrendOK 代码路径）；5y 历史 bars；单策略参数敏感度视图 | L3-P1 | 4-6 天 | [§8](../archive/2026-08-27-todo-full-snapshot.md) P0 重启前置条件已齐 | ✅ **done 2026-08-07**（OPT-063：信号回放 + `_pick_close_reason` 同码 + 36 组网格；v0.2：TV 池回撤窗口 / 月度滚动 / BacktestPage） |
+| **L3-P3 归因与敏感度** | 卖出归因分桶；参数敏感性报告（score / 回撤 / TrendOK）；卫星仓上限复核（15%/30%/sleeve） | L3-P2 | 3-5 天 | TIP-011 买入归因已有；[§3 P1](../archive/2026-08-27-todo-full-snapshot.md) | ✅ **done 2026-08-07**（OPT-064：卖出归因 + 组合暴露 + 回测页；卫星仓上限复核 v0 = 组合暴露统计，规则复核待 paper 数据积累） |
 | **L3-P4 决策 Agent M2** | 周度复盘：喂 paper 实绩 + 归因 + 漏斗数据，输出「本周决策质量报告」 | L3-P1/P3 | 2-3 天 | TIP-015 M1 已落地 | ✅ **done 2026-08-07**（OPT-065 v0：数据驱动周报，决策 Agent「分析」tab；M2 v1：LLM 深度解读归外部 agent） |
 | **L3-P5 组合风控** | V7.0-01 相关性热力网落地（Correlation Cap + 共振预警） | L3-P2 | 2-3 天 | V7.0-01 暂缓中，此处转正 | ✅ **done 2026-08-07**（OPT-067：9 语义簇 + 日历对齐相关性 + >30% 拦新开仓 + roomCorrelation min 链 + 回测页面板） |
 
@@ -81,7 +81,7 @@
 | **L4-P2 半自动下单** | 确认式下单：UI 确认 → broker API → 回执入库；失败重试 / 幂等 | L4-P1 | 3-5 天 | 先小额实盘 |
 | **L4-P3 组合风控实时化** | V7.0-01 相关性与 L3-P5 的能力盘中化 + 熔断规则 | L3-P5 | 2-3 天 | |
 | **L4-P4 自动对账** | 券商持仓 ↔ 本地 Watchlist 每日对账；异常告警 | L4-P2 | 2-3 天 | |
-| **L4-P5 多市场执行** | US / CA 数据 + 时区调度 + 执行 | §9 P3 数据源先行 | 远期 | 依赖 §7 多市场推进 |
+| **L4-P5 多市场执行** | US / CA 数据 + 时区调度 + 执行 | [§9 P3](../archive/2026-08-27-todo-full-snapshot.md) 数据源先行 | 远期 | 依赖 [§7](../archive/2026-08-27-todo-full-snapshot.md) 多市场推进 |
 
 > **L4 红线**：
 > - **人永远在环**：任何自动下单必须经人工确认；确认前置条件（闸门、仓位、相关性）缺一不可
@@ -104,7 +104,7 @@
 
 | 文档 | 关系 |
 |------|------|
-| [`todo.md`](../todo.md) §16 | 升级方向的 todo 侧指针（§16 = 本文件的产品层落点） |
+| [`todo.md`](../archive/2026-08-27-todo-full-snapshot.md) §16 | 升级方向的 todo 侧指针（§16 = 本文件的产品层落点） |
 | [`optimization-checklist.md`](../optimization-checklist.md) | 单个工程任务落地（OPT-xxx） |
 | [`trading-improvement-checklist.md`](../trading-improvement-checklist.md) | 交易规则改动落地（TIP-xxx / V6.x / V7.0） |
 | [`modules/README.md`](../modules/README.md) | 业务模块真值（规则变化同步更新） |
@@ -112,4 +112,4 @@
 | `tip-015-decision-agent-loop.md` | L3-P4 / L4 决策 Agent 演进的设计稿 |
 | `miniqmt-xtquant-live-trading.md` | L4-P1 券商研究的方向初稿（miniQMT/xtquant 低费率方案） |
 
-> **工作流**：本文件只改方向与判定标准；具体条目从 todo §16 起，再落 OPT-xxx / TIP-xxx 实现。
+> **工作流**：本文件只改方向与判定标准；具体条目从 [todo §16](../archive/2026-08-27-todo-full-snapshot.md) 起，再落 OPT-xxx / TIP-xxx 实现。

@@ -1,4 +1,4 @@
-# §12 #8 ego-lite Spike — Chrome Capture 替代方案
+# [§12 #8](../archive/2026-08-27-todo-full-snapshot.md) ego-lite Spike — Chrome Capture 替代方案
 
 > **决策文档** | 2026-08-01 | 非落地代码，仅调研结论
 
@@ -169,15 +169,15 @@ def fetch_screener_via_api(screener_filter: dict, columns: list[str]) -> list[di
 
 ---
 
-## 6. 与 todo §12 的关系
+## 6. 与旧 [todo §12](../archive/2026-08-27-todo-full-snapshot.md) 的关系
 
-| §12 # | 内容 | 状态 |
+| [§12 #](../archive/2026-08-27-todo-full-snapshot.md) | 内容 | 状态 |
 |--------|------|------|
 | #8 | ego-lite调研 | 本 spike |
 | #7 | Docker 一键部署 | 推荐 |
 | #8 + 重构 | Chrome → API 模式 | **建议** |
 
-**本 spike 决定：§12 #8 ego-lite（Chrome CDP）→ 用 TV Scanner API 替代，不是 "ego-lite"（轻量浏览器），而是完全不需要浏览器。**
+**本 spike 决定：[§12 #8](../archive/2026-08-27-todo-full-snapshot.md) ego-lite（Chrome CDP）→ 用 TV Scanner API 替代，不是 "ego-lite"（轻量浏览器），而是完全不需要浏览器。**
 
 ---
 

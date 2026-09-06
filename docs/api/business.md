@@ -1,7 +1,7 @@
 # Business Endpoints（只读业务数据）
 
 > 4 个业务 endpoint。所有都是**只读**——禁止改仓（写操作走现有 `/watchlist/*` / `/execution/*`）。  
-> 详细规则：[`docs/designs/api-contract.md`](../../designs/api-contract.md)
+> 详细规则：[`docs/designs/api-contract.md`(../designs/api-contract.md)
 
 **鉴权**：opt-in。当 `KARIOS_API_KEYS` 设置时，**所有 4 个业务 endpoint 要求 `Authorization: Bearer <key>`**；未设置时全部可达（向后兼容现有前端）。
 

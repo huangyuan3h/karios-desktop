@@ -164,16 +164,21 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 用户问「能不能改策略 / 少买几只 / 加止损 / 赢家拿长一点 / 卫星怎么卖」时，**先查过往实验，再谈改不改**。禁止凭直觉改 Live 参数。
 
+0. 新想法先过 [`first-principles-2026-09-05.md`](docs/backtests/first-principles-2026-09-05.md) 自查：撞上已杀直觉（§一不变量 / §三死因）的不开诊断；撞上不变量的直接用；只有档里没有的才开预注册。
+
 1. **先读** [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)（拒收总表 + 失败模式），再打开对口实验：
-   - 卫星槽/单票 → [`sat-clip-concentration-2026-09-02.md`](docs/backtests/sat-clip-concentration-2026-09-02.md)
-   - 核心 S-3 篮只数 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core-stock-clip-2026-09-03.md)
-   - 卫星退出 / −5% / trail → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat-exit-trail-2026-09-03.md)
-   - 卫星 14:30 / 收盘成交日历 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat-fill-same-close-2026-09-03.md)
-   - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat-entry-c1-2026-09-03.md)
-   - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat-habit-clock-2026-09-03.md)
-   - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat-exit-hhmm-2026-09-03.md)
+   - 卫星槽/单票 → [`sat-clip-concentration-2026-09-02.md`](docs/backtests/sat/sat-clip-concentration-2026-09-02.md)
+   - 核心 S-3 篮只数 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core/core-stock-clip-2026-09-03.md)
+   - 卫星退出 / −5% / trail → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat/sat-exit-trail-2026-09-03.md)
+   - 卫星 14:30 / 收盘成交日历 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat/sat-fill-same-close-2026-09-03.md)
+   - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat/sat-entry-c1-2026-09-03.md)
+   - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat/sat-habit-clock-2026-09-03.md)
+   - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)
    - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
-   - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/state-bucket-algo-2026-08-31.md)
+    - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/core/state-bucket-algo-2026-08-31.md)
+- **调参查找**（用户说法 → 对口实验）：篮子太多 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core/core-stock-clip-2026-09-03.md)；
+  止损/拿长一点/第几天卖 → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat/sat-exit-trail-2026-09-03.md) + [讨论记录](docs/backtests/clip4-ops-decisions-2026-09-03.md) + [第 3 日卖点](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)；
+  对齐 14:30 习惯回测 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat/sat-fill-same-close-2026-09-03.md) + [C1 过滤](docs/backtests/sat/sat-entry-c1-2026-09-03.md) + [3 天/买点](docs/backtests/sat/sat-habit-clock-2026-09-03.md)。
 2. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
 3. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。
 4. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
@@ -183,7 +188,7 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 ## Backtest walk-forward（S-3 参数验证铁律工具）
 
-任何 S-3 参数/机制改动必须过 **三窗 walk-forward**（单窗好看 = 过拟合，todo §19 反模式）。
+任何 S-3 参数/机制改动必须过 **三窗 walk-forward**（单窗好看 = 过拟合，三窗铁律）。
 工具：`services/data-sync-service/scripts/run_walk_forward.py`（C1，2026-08-09 交付）：
 
 ```bash
@@ -193,12 +198,12 @@ PYTHONPATH=src python3 scripts/run_walk_forward.py --param score_threshold=70   
 PYTHONPATH=src python3 scripts/run_walk_forward.py --save-baseline       # 数据/引擎变化后重固化基线
 ```
 
-- 三窗固定切分：`OOS2`=2024-08-01~2025-08-01 · `train`=2025-08-01~2026-02-01 · `valid`=2026-03-01~2026-08-07
+- 三窗固定切分与 holdout/long 口径：见 [backtests/README 验证纪律](docs/backtests/README.md)（OOS2/train/valid 日期 + holdout 只读 + long 说明 + no-op 警告）
 - 内置 S-3 定案配置（真值在 `docs/modules/strategy-params.md` §1）；`--param k=v` 覆盖任意
   `BacktestConfig` 字段（未知字段告警忽略）
 - 基线固化在 `data/backtest_reports/walk_forward_baseline.json`；三窗相对基线 >5pt 劣化
   → 自动判"未通过/拒收"
-- 验收口径：改动后跑 `--param ...` 三窗对比，输出表 + 判定随实验记录（todo §19 步骤要求）
+- 验收口径：改动后跑 `--param ...` 三窗对比，输出表 + 判定随实验记录
 
 ## Scoped optimization tasks
 

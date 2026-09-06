@@ -1,6 +1,6 @@
 # API Contract — 跨项目接口契约
 
-> **关联 todo**：[§3 API 开放](../todo.md) · [`freelancer-architecture.md`](./freelancer-architecture.md)  
+> **关联 todo**：[§3 API 开放](../archive/2026-08-27-todo-full-snapshot.md) · [`freelancer-architecture.md`](./freelancer-architecture.md)  
 > **配套**：OpenAI 兼容 `/v1/*` 的**稳定发现性**端点  
 > **决议日**：2026-08-01
 
@@ -161,6 +161,6 @@ AI 助手侧流程：
 
 ## 与 Karios 其他 todo 的关系
 
-- §3 P0 拆分：endpoint 暴露（#1-A） + 稳定发现性（#1-B），**不**单独成条目
-- §3 P1 改：人类可读 OpenAPI 文档（`docs/api/` + Swagger UI），AI 友好性已在 #1-B 完成
-- §3 P3（MCP）：与本契约同源；MCP server 只是把 `/v1/schema` 包装为 MCP tools
+- [§3](../archive/2026-08-27-todo-full-snapshot.md) P0 拆分：endpoint 暴露（#1-A） + 稳定发现性（#1-B），**不**单独成条目
+- [§3](../archive/2026-08-27-todo-full-snapshot.md) P1 改：人类可读 OpenAPI 文档（`docs/api/` + Swagger UI），AI 友好性已在 #1-B 完成
+- [§3](../archive/2026-08-27-todo-full-snapshot.md) P3（MCP）：与本契约同源；MCP server 只是把 `/v1/schema` 包装为 MCP tools
