@@ -144,6 +144,18 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "tableTsColumn": "date",
         "thresholdMinutes": 48 * 60,
     },
+    # OPT-126: East Money egress probe (own job_type `em_probe`, 10min).
+    # stale = never ran / older than 20min / any host failing / IP ban latched.
+    {
+        "source": "eastmoney_probe",
+        "weekendTolerant": True,
+        "label": "东财出口探针",
+        "jobType": "em_probe",
+        "table": None,
+        "tableTsColumn": None,
+        "resolver": "em_probe_status",
+        "thresholdMinutes": 20,
+    },
 )
 
 
@@ -219,6 +231,9 @@ def datasource_freshness() -> list[dict[str, Any]]:
         if spec.get("resolver") == "intraday_snapshot":
             sources.append(_intraday_snapshot_source(spec))
             continue
+        if spec.get("resolver") == "em_probe_status":
+            sources.append(_em_probe_source(spec))
+            continue
         job_at = _job_last_success(spec["jobType"])
         table_at = _last_table_timestamp(
             spec.get("table"),
@@ -275,6 +290,50 @@ def _intraday_snapshot_source(spec: dict[str, Any]) -> dict[str, Any]:
         "ageMinutes": int(age_sec / 60) if isinstance(age_sec, (int, float)) else None,
         "thresholdMinutes": spec["thresholdMinutes"],
         "stale": not bool(status.get("ok", True)),
+    }
+
+
+def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
+    """East Money egress probe status (OPT-126).
+
+    Extra keys (banLatched/hosts/...) ride along for the frontend health
+    banner; the standard stale contract stays intact.
+    """
+    import time
+
+    try:
+        from data_sync_service.service.em_probe import probe_status
+        from data_sync_service.service.em_push2_http import breaker_status
+
+        status = probe_status()
+        breaker = breaker_status()
+    except Exception:  # noqa: BLE001
+        status = {"at": None, "checks": [], "failing": []}
+        breaker = {"ban_latched": False, "cooldown_remaining_s": 0, "fail_streak": 0, "proxy_degraded": False}
+    at = status.get("at")
+    age_minutes = int((time.time() - at) / 60) if at else None
+    failing = status.get("failing") or []
+    stale = (
+        age_minutes is None
+        or age_minutes > spec["thresholdMinutes"]
+        or bool(failing)
+        or bool(breaker.get("ban_latched"))
+    )
+    last = datetime.fromtimestamp(at, UTC).isoformat() if at else None
+    return {
+        "source": spec["source"],
+        "label": spec["label"],
+        "group": spec.get("group"),
+        "lastSyncedAt": last,
+        "ageMinutes": age_minutes,
+        "thresholdMinutes": spec["thresholdMinutes"],
+        "stale": stale,
+        "banLatched": breaker.get("ban_latched"),
+        "cooldownRemainingS": breaker.get("cooldown_remaining_s"),
+        "failStreak": breaker.get("fail_streak"),
+        "proxyDegraded": breaker.get("proxy_degraded"),
+        "hosts": status.get("checks"),
+        "failingHosts": failing,
     }
 
 

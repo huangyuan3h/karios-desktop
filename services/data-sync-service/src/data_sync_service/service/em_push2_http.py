@@ -39,6 +39,28 @@ _EM_FAIL_STREAK = 0
 _EM_BLOCK_COOLDOWN_SECONDS = 15 * 60
 
 
+def breaker_status() -> dict[str, Any]:
+    """Process breaker snapshot for the health endpoint (OPT-126).
+
+    Never raises; pure read of module state.
+    """
+    try:
+        latched = bool(_EM_BLOCKED)
+        remaining = 0
+        if latched:
+            remaining = max(0, int(_EM_BLOCK_COOLDOWN_SECONDS - (time.time() - _EM_BLOCKED_AT)))
+            if remaining <= 0:
+                latched = False  # cooldown elapsed; next call unlatches
+        return {
+            "ban_latched": latched,
+            "cooldown_remaining_s": remaining,
+            "fail_streak": int(_EM_FAIL_STREAK),
+            "proxy_degraded": bool(_PROXY_DEGRADED),
+        }
+    except Exception:  # noqa: BLE001
+        return {"ban_latched": False, "cooldown_remaining_s": 0, "fail_streak": 0, "proxy_degraded": False}
+
+
 def _em_headers(referer: str) -> dict[str, str]:
     parsed = urllib.parse.urlparse(referer)
     origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://quote.eastmoney.com"
