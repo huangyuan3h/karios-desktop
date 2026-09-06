@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   TWIN_STAR_CLIP4,
+  TWIN_STAR_HABIT,
+  TWIN_STAR_RECIPE_VERSION,
   TwinStarActionResponseSchema,
   TwinStarClip4Schema,
   parseTwinStarAction,
@@ -104,5 +106,11 @@ describe('TwinStarActionResponseSchema', () => {
         sat: { ...GOLDEN.sat, coreTargetPct: 70, satTargetPct: 30 },
       }),
     ).toThrow();
+  });
+
+  it('locks the frozen recipe version', () => {
+    expect(TWIN_STAR_RECIPE_VERSION).toBe('clip4 v3.1');
+    expect(TWIN_STAR_CLIP4).toMatchObject({ maxPos: 4, body: 3, protectStopPct: 0 });
+    expect(TWIN_STAR_HABIT).toMatchObject({ fillHhmm: '1430', c1Pct: 0.03, exitHhmm: '1430' });
   });
 });

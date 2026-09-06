@@ -261,6 +261,76 @@ def run_intake_twin_star(*, trade_date: str | None = None) -> dict[str, Any]:
     return summary
 
 
+def paper_twin_star_recon(*, day: str | None = None) -> dict[str, Any]:
+    """Expected-vs-actual for the habit paper book (H5 daily 对账).
+
+    Expected buys = today's action candidates (only when the gate is open
+    and the snapshot is good — otherwise any same-day insert is an extra).
+    Actuals = twin_star rows entered today + opens held from earlier days
+    (already-open names are correctly skipped, not missed).
+    Exits due = opens held >= BODY; closed today = closeDate == day.
+    """
+    from datetime import date as _date
+
+    from data_sync_service.service.twin_star_daily import ts_from_cn_symbol
+
+    day = day or shanghai_today_iso()
+    try:
+        action = build_twin_star_daily_action(_date.fromisoformat(day))
+    except Exception as exc:  # noqa: BLE001
+        return {"day": day, "ok": False, "error": f"twin_star action failed: {exc}"}
+    sat = action.get("sat") or {}
+    snapshot_bad = bool(sat.get("snapshotMissing") or sat.get("snapshotStale"))
+    gate_open = bool(sat.get("gateOpen"))
+    expected = (
+        [str(c.get("ts") or "") for c in sat.get("candidates") or [] if c.get("ts")]
+        if gate_open and not snapshot_bad
+        else []
+    )
+
+    try:
+        opens = _open_twin_star()
+        closed_rows = list_paper_trades(status="closed", limit=200)
+    except Exception as exc:  # noqa: BLE001
+        return {"day": day, "ok": False, "error": f"list paper failed: {exc}"}
+    closed_today = [
+        r for r in closed_rows
+        if str(r.get("source") or "") == SOURCE_TWIN_STAR and str(r.get("closeDate") or "")[:10] == day
+    ]
+
+    def _ts_of(row: dict[str, Any]) -> str:
+        return ts_from_cn_symbol(str(row.get("symbol") or "")) or ""
+
+    inserted_ts = {_ts_of(r) for r in opens if str(r.get("entryDate") or "")[:10] == day}
+    inserted_ts |= {_ts_of(r) for r in closed_today if str(r.get("entryDate") or "")[:10] == day}
+    inserted_ts.discard("")
+    held_before_ts = {_ts_of(r) for r in opens if str(r.get("entryDate") or "")[:10] != day}
+    held_before_ts.discard("")
+
+    missed = [ts for ts in expected if ts not in inserted_ts and ts not in held_before_ts]
+    extra = sorted(ts for ts in inserted_ts if ts not in expected)
+    exits_due = sorted(
+        {str(r.get("symbol") or "") for r in opens if _held_days(str(r.get("entryDate") or ""), day) >= BODY}
+    )
+    closed_ts = {_ts_of(r) for r in closed_today}
+    missed_exits = sorted(s for s in exits_due if (ts_from_cn_symbol(s) or "") not in closed_ts)
+    ok = not missed and not extra and not missed_exits
+    return {
+        "day": day,
+        "ok": ok,
+        "gateOpen": gate_open,
+        "snapshotBad": snapshot_bad,
+        "expectedBuys": expected,
+        "insertedToday": sorted(inserted_ts),
+        "heldBefore": sorted(held_before_ts),
+        "missedBuys": missed,
+        "extraOpens": extra,
+        "exitsDue": exits_due,
+        "closedToday": sorted(str(r.get("symbol") or "") for r in closed_today),
+        "missedExits": missed_exits,
+    }
+
+
 def run_update_twin_star(*, today_iso_s: str | None = None) -> dict[str, Any]:
     """Close habit paper at body=3 day-3 14:30 print. No protect stop."""
     day = today_iso_s or shanghai_today_iso()

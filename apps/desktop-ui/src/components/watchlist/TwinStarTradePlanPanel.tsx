@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import type { TwinStarTradePlan } from '@/lib/twin-star-trade-plan';
 import { twinStarRecipeLine } from '@/lib/twin-star-trade-plan';
+import { TWIN_STAR_RECIPE_VERSION } from '@karios/shared';
 
 export function TwinStarTradePlanPanel({
   plan,
@@ -39,6 +40,12 @@ export function TwinStarTradePlanPanel({
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-1.5 text-[11px]">
       <span className="font-semibold">今日</span>
+      <span
+        className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-px font-mono text-[10px] text-emerald-700 dark:text-emerald-300"
+        title="线上跑的就是该冻结配方（后端常量 = shared Zod 字面量，单测锁定）"
+      >
+        {TWIN_STAR_RECIPE_VERSION}
+      </span>
       <span className="font-mono text-[10px] text-[var(--k-muted)]">
         {snapshotFailed ? '快照失败' : snapLabel ? `${snapLabel} 行情` : '等待快照'}
         {frozen ? ' · 收盘冻结至次日 09:00' : ''}

@@ -267,7 +267,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | H2 | 稳定性收尾 | OPT-125 DB 池 / OPT-126 东财探针 / OPT-146 港股符号 / OPT-145 形式化脚本回填 | [done] 2026-09-06：池 2/20+超时+1×重试+compose 健康门；探针 10min+streak3 告警+横幅；54 行港股重标（总数 113 不变）+ 结算语义 §1.7；分钟对拍脚本固化（600000.SH 复现 95.7%/1500 97.5%）；checklist 未完成清零（108 归档）。OPT-127（P2 轮询）125 后已解锁，待唤醒 |
 | H3 | Agent 读写公约 | outbound 收敛（`get_pool` 先例→DB 池同构；范围外 15+ `ts.pro_api` 分批收）；新模块模板（guard 文案 / ok-error 契约 / 单例+reset 可测性）沉淀进 AGENTS 一节 | [done] 2026-09-06：13 文件 17 站点→pool；裸 `ts.pro_api` 只剩 realtime_quote（tk.csv）+ bar_5min（全局 token）两处有据豁免；11 个旧测试文件换 `get_pool` patch；AGENTS +1 节；全量 4164 passed |
 | H4 | 文档↔代码漂移护栏 | linkcheck 脚本 + 进 CI；shared Zod 补 datasources/`tushare_quota`（OPT-009 workflow，OPT-124 加的字段）+ 前端横幅消费 + test_api shape 断言 | [done] 2026-09-06：linkcheck（archive 豁免，118 文件干净，真抓 1 处 tv.py 死链）；CI +1 门；shared health.ts+4 用例；横幅 quota/熔断行+1 用例；test_health shape 断言；前端 879 passed |
-| H5 | 用户信任：一致性 + 跟随 | live 配方哈希 == 冻结基线（单测 + UI 展示"线上跑的就是 clip4 v3.1"）；paper 每日对账（预期 vs 实际）；跟随页 today-plan + reason + evidence 链 | 用户 2 分钟回答"今天买什么、为什么" |
+| H5 | 用户信任：一致性 + 跟随 | live 配方哈希 == 冻结基线（单测 + UI 展示"线上跑的就是 clip4 v3.1"）；paper 每日对账（预期 vs 实际）；跟随页 today-plan + reason + evidence 链 | [done] 2026-09-06：后端跨层 attestation（TS 字面量=引擎常量）+ shared 版本常量 + 计划面板徽；paper_twin_star_recon（应买/已买/应卖/已卖 + 高事件）进 action brief；跟随页既有 reason（TodayActionCard）+ recipe 行；全量 4178 passed |
 | H6 | CI 锁门 | linkcheck 进 ci.yml；`coverage.json` 去跟踪（`git rm --cached` + ignore，消灭常脏） | main 推即验，全绿 |
 
 **顺序**：H1 → H2 → H3 → H4 → H5 → H6（H5 依赖 H1 的 paper 覆盖；H6 最后锁门）。

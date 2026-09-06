@@ -205,6 +205,35 @@ def _recon_section(top: int = 5) -> list[dict[str, Any]]:
     return out
 
 
+def _twin_star_recon_section() -> list[dict[str, Any]]:
+    """Habit paper expected-vs-actual for the action brief (H5).
+
+    Mismatches emit one high system event per day (banner inbox); the brief
+    carries the counts either way. Never raises (brief must survive).
+    """
+    from data_sync_service.service.paper_twin_star import paper_twin_star_recon
+
+    try:
+        recon = paper_twin_star_recon()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trading_brief twin_star recon failed: %s", exc)
+        return [{"type": "twin_star_recon", "ok": False, "error": str(exc)}]
+    out = [{"type": "twin_star_recon", **recon}]
+    mismatches = (recon.get("missedBuys") or []) + (recon.get("extraOpens") or []) + (recon.get("missedExits") or [])
+    if mismatches and not recon.get("error"):
+        try:
+            from data_sync_service.db.webhook import emit_event
+
+            emit_event(
+                "twin_star_recon_mismatch",
+                {"day": recon.get("day"), "mismatches": mismatches[:10]},
+                dedupe_key=f"twin_star_recon:{recon.get('day')}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trading_brief recon emit failed: %s", exc)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Markdown rendering (compact, ~30s read)
 # ---------------------------------------------------------------------------
@@ -338,6 +367,26 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
         for n in news:
             lines.append(f"- {n['title']}")
 
+    ts_recon = [s for s in sections if s.get("type") == "twin_star_recon"]
+    if ts_recon:
+        lines.append("")
+        for r in ts_recon:
+            if r.get("error"):
+                lines.append(f"**卫星纸账对账**：失败（{r['error']}）")
+                continue
+            flag = "✅一致" if r.get("ok") else "🔴有差异"
+            lines.append(
+                f"**卫星纸账对账 {r.get('day')}** {flag}"
+                f" · 应买 {len(r.get('expectedBuys') or [])}"
+                f" · 今已买 {len(r.get('insertedToday') or [])}"
+                f" · 应卖 {len(r.get('exitsDue') or [])}"
+                f" · 今已卖 {len(r.get('closedToday') or [])}"
+            )
+            for m in (r.get("missedBuys") or []) + (r.get("missedExits") or []):
+                lines.append(f"  缺 {m}")
+            for m in r.get("extraOpens") or []:
+                lines.append(f"  多 {m}")
+
     return "\n".join(lines)
 
 
@@ -382,6 +431,10 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
             )
     if brief_type == "action":
         sections += _recon_section(5)
+        # H5: twin-star habit paper expected-vs-actual. Mismatches push one
+        # high event per day (banner inbox) so a skipped buy / missed exit
+        # cannot pass silently.
+        sections += _twin_star_recon_section()
         # OPT-113: the 14:00 execution card pushes to webhook subscribers so
         # the user's phone gets the buy list + exit flags + gate state at
         # their actual trading time (once per day via dedupe_key).

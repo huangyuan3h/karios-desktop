@@ -44,6 +44,13 @@ export const TwinStarHabitSchema = z.object({
 });
 export type TwinStarHabitRecipe = z.infer<typeof TwinStarHabitSchema>;
 
+/**
+ * Live recipe version shown in the UI ("线上跑的就是 clip4 v3.1").
+ * Bump only with a frozen walk-forward pass + backend HABIT_RECIPE rename.
+ */
+export const TWIN_STAR_RECIPE_VERSION = 'clip4 v3.1' as const;
+export type TwinStarRecipeVersion = typeof TWIN_STAR_RECIPE_VERSION;
+
 /** Python `clip4` block on the action payload — literals so 10%×10 cannot sneak in. */
 export const TwinStarClip4Schema = z.object({
   maxPos: z.literal(TWIN_STAR_CLIP4.maxPos),
