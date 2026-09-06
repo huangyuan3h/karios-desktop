@@ -23,6 +23,20 @@ def _rollmean(a: np.ndarray, w: int) -> np.ndarray:
     return out
 
 
+def _symbol_for_ts(ts_code: str) -> str:
+    """Market-disambiguated symbol (OPT-146).
+
+    HK tickers (``*.HK``, 5 digits) must never be labeled ``CN:`` — a 5-digit
+    ``CN:00004`` collides with nothing real but poisons every symbol join
+    (Shenzhen 000004 is 6 digits). No-suffix codes default to CN (legacy).
+    """
+    ts = str(ts_code or "")
+    code = ts.split(".")[0]
+    suffix = ts.split(".")[-1].upper() if "." in ts else ""
+    market = "HK" if suffix == "HK" else "CN"
+    return f"{market}:{code}"
+
+
 def _probability(ret60: float, vol_ratio: float) -> float:
     # thresholds from deep-dig table (out-of-sample stable)
     if ret60 > 0.50 and vol_ratio > 1.2:
@@ -111,9 +125,7 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
         entry = float(closes[t])
         target = float(bottom * 0.99)
         stop = float(ph * 1.02)
-        # symbol format: CN:code
-        code = ts_code.split(".")[0]
-        symbol = f"CN:{code}"
+        symbol = _symbol_for_ts(ts_code)
         meta = basic.get(ts_code, {})
         board_map = {"主板": "主板", "创业板": "创业板", "科创板": "科创板", "北交所": "北交所"}
         signals.append(dict(
@@ -127,6 +139,50 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
     if signals:
         upsert_rows(signals)
     return len(signals)
+
+
+def repair_hk_symbols() -> dict:
+    """One-shot repair for the 2025-06-16 backfill mislabeling (OPT-146).
+
+    A 5-digit ``CN:xxxxx`` can never be a real A-share code (6 digits) — it
+    is a Hong Kong ticker that went through the old ``f"CN:{code}"`` path.
+    Rewrite to ``HK:xxxxx``. If an ``HK:`` twin already exists for the same
+    (trade_date, factor_name) key, drop the mislabeled duplicate instead of
+    violating the primary key. History is preserved (rows relabeled, not
+    deleted-except-duplicates), and the count is reported.
+    """
+    repaired = 0
+    dropped = 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT trade_date, symbol, factor_name FROM factor_signals "
+                "WHERE symbol ~ '^CN:[0-9]{5}$'"
+            )
+            bad = [(str(r[0])[:10], str(r[1]), str(r[2])) for r in cur.fetchall()]
+            for trade_date, symbol, factor_name in bad:
+                hk_symbol = "HK:" + symbol[3:]
+                cur.execute(
+                    "SELECT 1 FROM factor_signals "
+                    "WHERE trade_date = %s AND symbol = %s AND factor_name = %s",
+                    (trade_date, hk_symbol, factor_name),
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        "DELETE FROM factor_signals "
+                        "WHERE trade_date = %s AND symbol = %s AND factor_name = %s",
+                        (trade_date, symbol, factor_name),
+                    )
+                    dropped += 1
+                else:
+                    cur.execute(
+                        "UPDATE factor_signals SET symbol = %s "
+                        "WHERE trade_date = %s AND symbol = %s AND factor_name = %s",
+                        (hk_symbol, trade_date, symbol, factor_name),
+                    )
+                    repaired += 1
+        conn.commit()
+    return {"repaired": repaired, "dropped_duplicates": dropped}
 
 
 def sync_for_range(start_date: str, end_date: str) -> dict:
