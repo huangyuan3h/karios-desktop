@@ -19,6 +19,14 @@ class FakeConn:
     def __init__(self, pool: FakePool) -> None:
         self._pool = pool
         self.closed = False
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
 
     def cursor(self):
         class _Cur:
@@ -116,6 +124,7 @@ def test_checkout_returns_to_pool() -> None:
     with db_mod.get_connection() as conn:
         assert isinstance(conn, FakeConn)
     assert pool.out == 0 and pool.put_back == 1
+    assert conn.commits == 1  # psycopg3 with-connect() semantics: clean exit commits
 
 
 def test_transient_failure_retries_once(monkeypatch) -> None:

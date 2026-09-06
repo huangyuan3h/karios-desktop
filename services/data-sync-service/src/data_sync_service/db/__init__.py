@@ -84,6 +84,8 @@ def get_connection() -> Iterator[psycopg.Connection]:
     Drop-in for the old per-call `psycopg.connect`: every existing caller
     already uses `with`, so the switch is transparent — exit returns the
     connection to the pool instead of closing the socket.
+    Commit semantics match psycopg3 `with connect()`: clean exit commits,
+    exception rolls back (several db modules rely on the implicit commit).
     """
     pool = get_pool()
     try:
@@ -94,6 +96,14 @@ def get_connection() -> Iterator[psycopg.Connection]:
         conn = pool.getconn()
     try:
         yield conn
+    except BaseException:
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            logger.warning("db rollback failed", exc_info=True)
+        raise
+    else:
+        conn.commit()
     finally:
         pool.putconn(conn)
 

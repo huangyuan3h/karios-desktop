@@ -264,7 +264,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | # | 动作 | 范围 | 验收 |
 |---|------|------|------|
 | H1 | 核心链覆盖率补齐 | backtest_engine / twin_star_daily+intraday(+jobs) / paper_twin_star(+job) / multi_asset_sleeve / state_bucket_track 各→≥90；门 85→88 | [done] 2026-09-06：engine 99.6 / sleeve 98 / state 99 / paper 100 / jobs 100+98 / daily 100 / intraday 98；全量 4131 passed + 门 89.31%≥88；余下均为证伪不可达防御分支（engine 6 行死代码候选 OPT 清理） |
-| H2 | 稳定性收尾 | OPT-125 DB 池 / OPT-126 东财探针 / OPT-146 港股符号 / OPT-145 形式化脚本回填 | checklist 标 x + 按天归档 |
+| H2 | 稳定性收尾 | OPT-125 DB 池 / OPT-126 东财探针 / OPT-146 港股符号 / OPT-145 形式化脚本回填 | [done] 2026-09-06：池 2/20+超时+1×重试+compose 健康门；探针 10min+streak3 告警+横幅；54 行港股重标（总数 113 不变）+ 结算语义 §1.7；分钟对拍脚本固化（600000.SH 复现 95.7%/1500 97.5%）；checklist 未完成清零（108 归档）。OPT-127（P2 轮询）125 后已解锁，待唤醒 |
 | H3 | Agent 读写公约 | outbound 收敛（`get_pool` 先例→DB 池同构；范围外 15+ `ts.pro_api` 分批收）；新模块模板（guard 文案 / ok-error 契约 / 单例+reset 可测性）沉淀进 AGENTS 一节 | 无新增裸 `ts.pro_api`；AGENTS +1 节 |
 | H4 | 文档↔代码漂移护栏 | linkcheck 脚本 + 进 CI；shared Zod 补 datasources/`tushare_quota`（OPT-009 workflow，OPT-124 加的字段）+ 前端横幅消费 + test_api shape 断言 | CI 红当且仅当真漂移；横幅可见 quota |
 | H5 | 用户信任：一致性 + 跟随 | live 配方哈希 == 冻结基线（单测 + UI 展示"线上跑的就是 clip4 v3.1"）；paper 每日对账（预期 vs 实际）；跟随页 today-plan + reason + evidence 链 | 用户 2 分钟回答"今天买什么、为什么" |
