@@ -112,6 +112,15 @@ services:
       TV_CHROME_CDP_URL: ${TV_CHROME_CDP_URL:-http://host.docker.internal:9222}
     ports:
       - '${DATA_SYNC_PORT:-4330}:4330'
+    # OPT-125: /healthz runs check_db() through the connection pool, so this
+    # gate is green only when the pool can actually check out a connection
+    # (and desktop-ui's service_healthy gate on data-sync becomes real).
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:4330/healthz'', timeout=5)"']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - karios-net
     depends_on:
