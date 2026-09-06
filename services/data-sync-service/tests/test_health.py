@@ -28,6 +28,15 @@ def test_datasources_endpoint_shape() -> None:
     assert sources["daily_basic"]["label"].startswith("双子星")
     assert sources["twin_star_etf"]["label"].startswith("双子星")
     assert sources["twin_star_intraday"]["label"].startswith("双子星")
+    # OPT-126: eastmoney probe source + breaker fields for the banner.
+    assert "eastmoney_probe" in sources
+    probe = sources["eastmoney_probe"]
+    assert probe["thresholdMinutes"] == 20
+    for key in ("banLatched", "cooldownRemainingS", "failingHosts"):
+        assert key in probe
+    # OPT-124: pooled tushare quota next to sources.
+    assert "tushare_quota" in payload
+    assert "configured" in payload["tushare_quota"]
 
 
 def test_twin_star_etf_source_matches_sleeve_codes() -> None:

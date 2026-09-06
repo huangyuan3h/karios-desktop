@@ -85,8 +85,43 @@ describe('SystemHealthBanner', () => {
     expect(screen.getByText(/同步失败 cn_industry_post_close_sync ×3/)).toBeDefined();
   });
 
-  it('re-checks on demand', async () => {
+  it('shows tushare quota and eastmoney ban detail', async () => {
     fetchSystemHealth.mockResolvedValue({
+      ...HEALTHY,
+      datasources: [
+        {
+          source: 'eastmoney_probe',
+          label: '东财出口探针',
+          stale: true,
+          ageMinutes: 25,
+          thresholdMinutes: 20,
+          lastSyncedAt: null,
+          banLatched: true,
+          cooldownRemainingS: 100,
+          failingHosts: ['push2.eastmoney.com'],
+        },
+      ],
+      tushareQuota: {
+        configured: true,
+        keyCount: 2,
+        rotations: 3,
+        keys: [
+          { index: 0, suffix: 'tAAA', minuteUsed: 150, minuteLimit: 200, coolingSeconds: 0 },
+          { index: 1, suffix: 'tBBB', minuteUsed: 10, minuteLimit: 200, coolingSeconds: 0 },
+        ],
+      },
+      errorCount: 0,
+      warnCount: 1,
+    });
+    renderBanner();
+    expect(await screen.findByText(/0 项异常 · 1 项告警/)).toBeDefined();
+    screen.getByText(/0 项异常 · 1 项告警/).click();
+    expect(await screen.findByText(/IP 熔断中（冷却 100s）/)).toBeDefined();
+    expect(screen.getByText(/失败宿主 push2\.eastmoney\.com/)).toBeDefined();
+    expect(screen.getByText(/Tushare 配额 2 key · 最忙 …tAAA 分钟 150\/200 · 轮换 3 次/)).toBeDefined();
+  });
+
+  it('re-checks on demand', async () => {    fetchSystemHealth.mockResolvedValue({
       ...HEALTHY,
       errorCount: 1,
       warnCount: 0,

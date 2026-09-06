@@ -1,21 +1,12 @@
 import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import type { JobFailuresResponse, SyncJobFailure } from '@/lib/queries/syncFailures';
 
-export interface DataSourceStatus {
-  source: string;
-  label: string;
-  group?: string | null;
-  lastSyncedAt: string | null;
-  ageMinutes: number | null;
-  thresholdMinutes: number;
-  stale: boolean;
-}
+// OPT-009: contract types live in @karios/shared (schemas/health.ts).
+export type { DatasourceStatus, DatasourcesResponse, TushareQuota } from '@karios/shared';
+import type { DatasourceStatus, DatasourcesResponse, TushareQuota } from '@karios/shared';
 
-export interface DatasourcesResponse {
-  ok: boolean;
-  generatedAt: string;
-  sources: DataSourceStatus[];
-}
+/** Legacy local alias (banner uses DataSourceStatus). */
+export type DataSourceStatus = DatasourceStatus;
 
 export interface SystemHealthReport {
   dataSyncOnline: boolean;
@@ -24,6 +15,8 @@ export interface SystemHealthReport {
   failures: SyncJobFailure[];
   errorCount: number;
   warnCount: number;
+  /** OPT-124/126 extras for the banner (undefined when backend predates them). */
+  tushareQuota?: TushareQuota | null;
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
@@ -53,6 +46,7 @@ export async function fetchSystemHealth(
     failures: failures?.failures ?? [],
     errorCount: 0,
     warnCount: 0,
+    tushareQuota: ds?.tushare_quota ?? null,
   };
   if (!report.dataSyncOnline) report.errorCount += 1;
   if (!report.aiOnline) report.errorCount += 1;

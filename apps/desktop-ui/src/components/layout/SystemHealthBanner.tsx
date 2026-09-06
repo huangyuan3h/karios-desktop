@@ -68,6 +68,11 @@ export function SystemHealthBanner() {
   const hasError = (report?.errorCount ?? 0) > 0;
   const stale = (report?.datasources ?? []).filter((s: DataSourceStatus) => s.stale) ?? [];
   const failures = report?.failures ?? [];
+  const quota = report?.tushareQuota;
+  const quotaPeak =
+    quota?.configured && quota.keys?.length
+      ? quota.keys.reduce((a, k) => (k.minuteUsed > a.minuteUsed ? k : a))
+      : null;
 
   return (
     <div
@@ -119,10 +124,27 @@ export function SystemHealthBanner() {
           )}
           {stale.map((s: DataSourceStatus) => (
             <div key={s.source} className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
-              <span>△ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值 {fmtThreshold(s.thresholdMinutes)}）</span>
+              <span>
+                △ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值 {fmtThreshold(s.thresholdMinutes)}）
+                {s.source === 'eastmoney_probe' && s.banLatched
+                  ? ` · IP 熔断中（冷却 ${s.cooldownRemainingS ?? '?'}s）`
+                  : null}
+                {s.source === 'eastmoney_probe' && s.failingHosts?.length
+                  ? ` · 失败宿主 ${s.failingHosts.join(', ')}`
+                  : null}
+              </span>
               <span className="text-[10px] text-[var(--k-muted)]">最近同步 {fmtTime(s.lastSyncedAt)}</span>
             </div>
           ))}
+          {quota?.configured && quotaPeak && (
+            <div className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
+              <span>
+                ◇ Tushare 配额 {quota.keyCount ?? '?'} key · 最忙 …{quotaPeak.suffix} 分钟{' '}
+                {quotaPeak.minuteUsed}/{quotaPeak.minuteLimit} · 轮换 {quota.rotations ?? 0} 次
+              </span>
+              <span className="text-[10px] text-[var(--k-muted)]">超限自动切 key</span>
+            </div>
+          )}
           {failures.map((f) => (
             <div key={f.jobType} className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
               <span className="min-w-0 truncate">

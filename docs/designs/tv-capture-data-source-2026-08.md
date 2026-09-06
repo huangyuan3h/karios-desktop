@@ -31,7 +31,7 @@
 
 ### 1.1 现状痛点
 
-**Chrome capture 链路**（[`tv.py:330-363`](../../services/data-sync-service/src/data_sync_service/service/tv.py)）：
+**Chrome capture 链路**（`service/tv.py:330-363`，该文件已随 Screener 下线移除，见 git 历史）：
 
 ```
 POST /integrations/tradingview/screeners/{id}/sync

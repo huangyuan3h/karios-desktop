@@ -1,4 +1,5 @@
 export * from './schemas/artifact';
+export * from './schemas/health';
 export * from './schemas/orderRecipe';
 export * from './schemas/portfolio';
 export * from './schemas/trendok';

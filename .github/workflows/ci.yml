@@ -71,5 +71,8 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Docs linkcheck
+        run: python3 scripts/linkcheck.py
+
       - name: Build
         run: pnpm build
