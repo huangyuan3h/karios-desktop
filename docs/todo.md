@@ -256,7 +256,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
-## P0-10 工程坚实计划（2026-09-06 立 · 草案待拍板）
+## P0-10 工程坚实计划（2026-09-06 立 · 已拍板执行中，H1 开工）
 
 **大白话**：代码让 agent 一读就懂、一下手就不踩坑；测试盖住核心策略链；用户一眼确信线上跑的就是冻结配方，2 分钟知道今天跟什么。
 **基线（今日实测）**：覆盖率 86.35%/门 85；核心链偏薄 backtest_engine 73、paper_twin_star 67（job 46）、twin_star_daily 73、twin_star_intraday 64（job 49）、multi_asset_sleeve 80、state_bucket_track 81；未完成 OPT 剩 125/126/145/146；CI 有（lint+typecheck+test+build+PG16）缺死链门；`coverage.json` 跟踪中常脏；教训：OPT-124 连带修 8 个旧测试文件（mock 直连 `ts.pro_api`）。
