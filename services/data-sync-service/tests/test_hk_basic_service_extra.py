@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pandas as pd
@@ -64,7 +65,7 @@ class TestSync:
         out = hb.sync_hk_basic()
         assert out["skipped"] is True
         monkeypatch.setattr(hb, "get_last_success", lambda job: {})
-        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key=""))
+        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
         out = hb.sync_hk_basic()
         assert out["ok"] is False and "TU_SHARE_API_KEY" in out["error"]
         monkeypatch.setattr(hb, "get_last_success", lambda job: {"sync_at": "bad-date"})
@@ -73,7 +74,7 @@ class TestSync:
 
     def test_no_key(self, monkeypatch) -> None:
         monkeypatch.setattr(hb, "get_last_success", lambda job: None)
-        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key=""))
+        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
         seen = {}
         monkeypatch.setattr(hb, "insert_record", lambda **kw: seen.update(kw))
         out = hb.sync_hk_basic()
@@ -82,10 +83,10 @@ class TestSync:
 
     def test_empty_df(self, monkeypatch) -> None:
         monkeypatch.setattr(hb, "get_last_success", lambda job: None)
-        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         pro = Mock()
         pro.hk_basic.return_value = pd.DataFrame()
-        monkeypatch.setattr(hb.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hb, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         seen = {}
         monkeypatch.setattr(hb, "insert_record", lambda **kw: seen.update(kw))
         out = hb.sync_hk_basic()
@@ -94,10 +95,10 @@ class TestSync:
 
     def test_success(self, monkeypatch) -> None:
         monkeypatch.setattr(hb, "get_last_success", lambda job: None)
-        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         pro = Mock()
         pro.hk_basic.return_value = pd.DataFrame([{"ts_code": "00700.HK", "name": "腾讯", "list_date": "20040616", "delist_date": None}])
-        monkeypatch.setattr(hb.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hb, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         seen = {}
         monkeypatch.setattr(hb, "insert_record", lambda **kw: seen.update(kw))
         monkeypatch.setattr(hb, "upsert_from_dataframe", lambda df, keep_industry=True: 1)
@@ -108,10 +109,10 @@ class TestSync:
 
     def test_exception(self, monkeypatch) -> None:
         monkeypatch.setattr(hb, "get_last_success", lambda job: None)
-        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(hb, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         pro = Mock()
         pro.hk_basic.side_effect = RuntimeError("boom")
-        monkeypatch.setattr(hb.ts, "pro_api", lambda k: pro)
+        monkeypatch.setattr(hb, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         seen = {}
         monkeypatch.setattr(hb, "insert_record", lambda **kw: seen.update(kw))
         out = hb.sync_hk_basic(force=True)

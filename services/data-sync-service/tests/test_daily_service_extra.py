@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from datetime import date
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -12,6 +13,7 @@ from data_sync_service.service import daily as dl
 
 class _Settings:
     tu_share_api_key = "TEST_KEY"
+    tushare_tokens = ("TEST_KEY",)
 
 
 class _Pro:
@@ -28,7 +30,7 @@ def _patch(monkeypatch, pro=None, ts_codes=None, last=None, run=None):
     if pro is None:
         pro = _Pro()
     monkeypatch.setattr(dl, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(dl, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: pro)}))
+    monkeypatch.setattr(dl, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(dl, "get_today_run", lambda jt: run)
     monkeypatch.setattr(dl, "fetch_ts_codes", lambda: ts_codes or [])
     monkeypatch.setattr(dl, "get_last_trade_date", lambda code: last)
@@ -68,7 +70,7 @@ def test_sync_single_requires_code(monkeypatch) -> None:
 
 def test_sync_single_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch)
-    monkeypatch.setattr(dl, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(dl, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = dl.sync_daily_for_ts_code("600000.sh")
     assert out["ok"] is False and "API_KEY" in out["error"]
 
@@ -146,7 +148,7 @@ def test_sync_full_resume_unknown(monkeypatch) -> None:
 
 def test_sync_full_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch, ts_codes=["600000.SH"])
-    monkeypatch.setattr(dl, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(dl, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = dl.sync_daily_full()
     assert out["ok"] is False and "API_KEY" in out["error"]
 

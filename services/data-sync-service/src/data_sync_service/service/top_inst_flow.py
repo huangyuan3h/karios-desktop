@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.top_inst import (
     ensure_table,
@@ -40,7 +41,6 @@ EM_PAGE_SIZE = 500
 EM_MAX_PAGES = 20
 EM_SEAT_FETCH_MAX_WORKERS = 4
 TOP_INST_PROVIDER_ENV = "TOP_INST_PROVIDER"
-TUSHARE_TOKEN_ENV = "TUSHARE_TOKEN"
 DEFAULT_TOP_INST_PROVIDERS = ("tushare", "eastmoney")
 SUPPORTED_TOP_INST_PROVIDERS = {"tushare", "eastmoney"}
 
@@ -471,16 +471,9 @@ def normalize_tushare_top_inst_rows(
 
 
 def fetch_tushare_top_inst_on_date(trade_date_iso: str) -> TopInstProviderResult:
-    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
-    try:
-        import tushare as ts  # type: ignore[import-not-found]
-    except Exception as e:
-        raise RuntimeError(f"tushare_import_failed: {e}") from e
-
-    if token:
-        pro = ts.pro_api(token)
-    else:
-        pro = ts.pro_api()
+    # H3: pooled client owns TUSHARE_TOKEN parsing (multi-key); the old
+    # single-token env read + file-token fallback is retired.
+    pro = get_pool().pro()
     trade_date = _tushare_trade_date(trade_date_iso)
     top_list_rows = _df_records(pro.top_list(trade_date=trade_date))
     top_inst_rows = _df_records(pro.top_inst(trade_date=trade_date))

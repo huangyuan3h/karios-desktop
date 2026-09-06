@@ -333,14 +333,9 @@ def _akshare():
 
 def _tushare_pro():
     try:
-        import tushare as ts  # type: ignore[import-not-found]
+        from data_sync_service.clients.tushare_pool import get_pool
 
-        from data_sync_service.config import get_settings
-
-        settings = get_settings()
-        if not settings.tu_share_api_key:
-            raise RuntimeError("TU_SHARE_API_KEY is not set")
-        return ts.pro_api(settings.tu_share_api_key)
+        return get_pool().pro()
     except Exception as e:
         raise RuntimeError(f"Tushare is required for fallback. Original error: {e}") from e
 

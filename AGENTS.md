@@ -259,6 +259,31 @@ paper_trades（230+ 条）、`source='manual-test'` 快照（72 条）、假快�
 
 ---
 
+## New-module conventions (H3 · outbound / errors / testability)
+
+E1/H3 lesson: 26 + 15 old tests broke because services constructed their own
+`ts.pro_api(token)` / `psycopg.connect()`. New outbound code must converge:
+
+1. **Single pooled client per vendor.** Tushare → `clients/tushare_pool.get_pool().pro()`
+   (multi-token round-robin + quota watchdog); Postgres → `db.get_connection()`
+   (`with` only — exit commits, exception rolls back). Never add a second
+   `pro_api(` / `connect(` call site; the only legitimate exceptions are
+   `realtime_quote` (tk.csv file-token flow) and `bar_5min` (global-token flow).
+2. **Missing-credential guard contract.** Gate on the *parsed* setting
+   (`settings.tushare_tokens`, not the raw env string) and keep the legacy
+   message (`"TU_SHARE_API_KEY is not set"`) — tests and frontend match on it.
+   `get_pool()` raising the same message is the backstop, not the gate.
+3. **`{"ok", "error"}` dicts, never bare raise** across service boundaries;
+   exceptions are for programmer errors and pool-exhaustion backstops.
+4. **Singleton + reset for testability.** Process-wide clients expose
+   `get_pool()` (rebuilds when settings change) + `reset_pool()`; injectable
+   `pro_factory / clock / sleep` (pool) so policy is unit-testable with fakes.
+   Tests patch `<module>.get_pool`, never `<module>.ts`.
+5. **No network/DB at import.** Lazy imports inside functions; module import
+   must succeed (and tests must pass) with no Postgres and no tokens.
+
+---
+
 ## Language
 
 - User-facing chat: Chinese

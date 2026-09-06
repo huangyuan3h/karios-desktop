@@ -274,16 +274,21 @@ class TestParsing:
     def test_tushare_pro_no_key(self, monkeypatch) -> None:
         from data_sync_service import config
 
-        monkeypatch.setattr(config, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+        monkeypatch.setattr(config, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
         with pytest.raises(RuntimeError, match="TU_SHARE_API_KEY"):
             ms._tushare_pro()
 
     def test_tushare_pro_ok(self, monkeypatch) -> None:
         from data_sync_service import config
+        from data_sync_service.clients.tushare_pool import PooledPro, reset_pool
 
-        monkeypatch.setattr(config, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
-        pro = ms._tushare_pro()
-        assert pro is not None
+        monkeypatch.setattr(config, "get_settings", lambda: type("S", (), {"tushare_tokens": ("k",)})())
+        reset_pool()
+        try:
+            pro = ms._tushare_pro()
+            assert isinstance(pro, PooledPro)
+        finally:
+            reset_pool()
 
 
 class TestBreadthEod:

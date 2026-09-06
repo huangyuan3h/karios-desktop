@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from data_sync_service.service import etf_fund_flow as eff
 
 
@@ -166,14 +168,14 @@ def test_sync_stale_symbol(monkeypatch) -> None:
 
 
 def test_sync_tushare_history_no_key(monkeypatch) -> None:
-    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     assert eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="x") == 0
 
 
 def test_sync_tushare_history_full_flow(monkeypatch) -> None:
     pro = type("Pro", (), {})()
-    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tu_share_api_key": "key"})())
-    monkeypatch.setattr(eff, "ts", type("TS", (), {"pro_api": staticmethod(lambda k: pro)})())
+    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tushare_tokens": ("key",)})())
+    monkeypatch.setattr(eff, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(eff, "get_last_trade_date", lambda code: None)
     monkeypatch.setattr(eff, "fetch_rows_for_codes", lambda codes: [1, 2])
     monkeypatch.setattr(eff, "_date_to_yyyymmdd", lambda d: "20260101")
@@ -187,8 +189,8 @@ def test_sync_tushare_history_full_flow(monkeypatch) -> None:
 
 def test_sync_tushare_history_dates_exhausted(monkeypatch) -> None:
     last = datetime.date(2026, 8, 6)
-    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tu_share_api_key": "key"})())
-    monkeypatch.setattr(eff, "ts", type("TS", (), {"pro_api": staticmethod(lambda k: object())})())
+    monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tushare_tokens": ("key",)})())
+    monkeypatch.setattr(eff, "get_pool", lambda: SimpleNamespace(pro=lambda: object()))
     monkeypatch.setattr(eff, "get_last_trade_date", lambda code: last)
     monkeypatch.setattr(eff, "fetch_rows_for_codes", lambda codes: [1, 2, 3, 4, 5])
     monkeypatch.setattr(eff, "_date_to_yyyymmdd", lambda d: "20260807")

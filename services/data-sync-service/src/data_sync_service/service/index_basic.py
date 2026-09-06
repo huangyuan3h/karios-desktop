@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import tushare as ts
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.index_basic import get_last_trade_date, upsert_from_dataframe
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
@@ -47,10 +47,10 @@ def sync_index_basic_full() -> dict[str, Any]:
         return {"ok": True, "skipped": True, "message": "already synced today"}
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
     end_date = _today_yyyymmdd()
     total_rows = 0
     last_successful_ts_code: str | None = None

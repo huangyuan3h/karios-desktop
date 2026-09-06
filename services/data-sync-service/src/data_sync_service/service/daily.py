@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import tushare as ts
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
 from data_sync_service.db.stock_basic import fetch_ts_codes
@@ -67,7 +67,7 @@ def sync_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
         return {"ok": False, "error": "ts_code is required"}
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     start_date, end_date = _incremental_start_date(code)
@@ -75,7 +75,7 @@ def sync_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
         return {"ok": True, "updated": 0, "skipped": True, "ts_code": code}
 
     try:
-        pro = ts.pro_api(settings.tu_share_api_key)
+        pro = get_pool().pro()
         df: pd.DataFrame = pro.daily(
             ts_code=code,
             start_date=start_date,
@@ -127,10 +127,10 @@ def sync_daily_full() -> dict[str, Any]:
             pass
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
     end_date = _sync_end_date(ts_codes[0] if ts_codes else "")
     total_rows = 0
     last_successful_ts_code: str | None = None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -327,15 +328,8 @@ def _fake_pro():
 
 
 def test_fetch_tushare_top_inst_on_date(monkeypatch) -> None:
-    monkeypatch.setenv("TUSHARE_TOKEN", "secret-token")
-
-    class _FakeTs:
-        @staticmethod
-        def pro_api(token=None):
-            assert token == "secret-token"
-            return _fake_pro()
-
-    monkeypatch.setitem(__import__("sys").modules, "tushare", _FakeTs)
+    # H3: token sourcing moved into the pool; the service takes any pooled pro.
+    monkeypatch.setattr(tif, "get_pool", lambda: SimpleNamespace(pro=lambda: _fake_pro()))
     out = tif.fetch_tushare_top_inst_on_date("2026-08-07")
     assert out.source == "tushare"
     assert out.lhb_tickers == {"600000", "000001"}
@@ -346,30 +340,21 @@ def test_fetch_tushare_top_inst_on_date(monkeypatch) -> None:
 
 
 def test_fetch_tushare_top_inst_on_date_no_token(monkeypatch) -> None:
-    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    def _no_pool():
+        raise RuntimeError("TU_SHARE_API_KEY is not set")
 
-    class _FakeTs:
-        @staticmethod
-        def pro_api(token=None):
-            assert token is None
-            return _fake_pro()
-
-    monkeypatch.setitem(__import__("sys").modules, "tushare", _FakeTs)
-    out = tif.fetch_tushare_top_inst_on_date("2026-08-07")
-    assert out.lhb_tickers == {"600000", "000001"}
+    monkeypatch.setattr(tif, "get_pool", _no_pool)
+    with pytest.raises(RuntimeError, match="TU_SHARE_API_KEY is not set"):
+        tif.fetch_tushare_top_inst_on_date("2026-08-07")
 
 
-def test_fetch_tushare_import_failure(monkeypatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "tushare", raising=False)
-    real_import = __import__
+def test_fetch_tushare_pool_failure_propagates(monkeypatch) -> None:
+    class _BadPro:
+        def top_list(self, trade_date: str):
+            raise RuntimeError("pool key hot")
 
-    def fake_import(name, *args, **kw):
-        if name == "tushare":
-            raise ImportError("no tushare installed")
-        return real_import(name, *args, **kw)
-
-    monkeypatch.setattr(__import__("sys").modules["builtins"], "__import__", fake_import)
-    with pytest.raises(RuntimeError, match="tushare_import_failed"):
+    monkeypatch.setattr(tif, "get_pool", lambda: SimpleNamespace(pro=lambda: _BadPro()))
+    with pytest.raises(RuntimeError, match="pool key hot"):
         tif.fetch_tushare_top_inst_on_date("2026-08-07")
 
 

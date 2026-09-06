@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -13,6 +14,7 @@ from data_sync_service.service.daily import sync_daily_for_ts_code
 def test_sync_daily_for_ts_code_missing_api_key() -> None:
     with patch("data_sync_service.service.daily.get_settings") as mock_settings:
         mock_settings.return_value.tu_share_api_key = ""
+        mock_settings.return_value.tushare_tokens = ()
         result = sync_daily_for_ts_code("000001.SZ")
     assert result["ok"] is False
     assert "TU_SHARE_API_KEY" in str(result.get("error", ""))
@@ -25,6 +27,7 @@ def test_sync_daily_for_ts_code_skips_when_up_to_date() -> None:
         patch("data_sync_service.service.daily._sync_end_date", return_value="20260618"),
     ):
         mock_settings.return_value.tu_share_api_key = "test-key"
+        mock_settings.return_value.tushare_tokens = ("test-key",)
         mock_last.return_value = date(2026, 6, 18)
         result = sync_daily_for_ts_code("000001.SZ")
     assert result["ok"] is True
@@ -57,10 +60,11 @@ def test_sync_daily_for_ts_code_incremental_fetch() -> None:
         patch("data_sync_service.service.daily.get_settings") as mock_settings,
         patch("data_sync_service.service.daily.get_last_trade_date") as mock_last,
         patch("data_sync_service.service.daily._sync_end_date", return_value="20260618"),
-        patch("data_sync_service.service.daily.ts.pro_api", return_value=pro),
+        patch("data_sync_service.service.daily.get_pool", return_value=SimpleNamespace(pro=lambda: pro)),
         patch("data_sync_service.service.daily.upsert_from_dataframe", return_value=1) as mock_upsert,
     ):
         mock_settings.return_value.tu_share_api_key = "test-key"
+        mock_settings.return_value.tushare_tokens = ("test-key",)
         mock_last.return_value = date(2026, 6, 17)
         result = sync_daily_for_ts_code("000001.SZ")
 

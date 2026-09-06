@@ -15,9 +15,7 @@ from __future__ import annotations
 import logging
 import time
 
-import tushare as ts  # type: ignore[import-not-found]
-
-from data_sync_service.config import get_settings
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.db import get_connection
 
 logger = logging.getLogger(__name__)
@@ -69,11 +67,8 @@ def sync_forecast_for_dates(start_date: str, end_date: str, *, limit: int = 2000
     day-by-day with a short sleep and a retry on rate-limit errors.
     Idempotent (ON CONFLICT DO NOTHING).
     """
-    try:
-        pro = ts.pro_api(get_settings().tu_share_api_key)
-    except Exception:  # noqa: BLE001
-        ts.set_token(get_settings().tu_share_api_key)
-        pro = ts.pro_api()
+    # H3: pooled client; explicit error instead of the file-token fallback.
+    pro = get_pool().pro()
     ensure_table()
     total = 0
     from datetime import date as _date

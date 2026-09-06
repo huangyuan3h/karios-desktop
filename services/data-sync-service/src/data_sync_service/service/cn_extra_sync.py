@@ -6,9 +6,7 @@ import logging
 import time
 from datetime import date
 
-import tushare as ts  # type: ignore[import-not-found]
-
-from data_sync_service.config import get_settings
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.db import cn_financial, cn_hk_hold, cn_holder, cn_margin_detail, cn_moneyflow
 from data_sync_service.db.trade_calendar import get_open_dates
 
@@ -16,11 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def _pro():
-    try:
-        return ts.pro_api(get_settings().tu_share_api_key)
-    except Exception:
-        ts.set_token(get_settings().tu_share_api_key)
-        return ts.pro_api()
+    # OPT-124/H3: pooled client (multi-token round-robin + quota watchdog).
+    # get_pool() raises RuntimeError("TU_SHARE_API_KEY is not set") when no
+    # token is configured — explicit instead of the old file-token fallback.
+    return get_pool().pro()
 
 
 def _with_retry(fn, tries=3, base=1.5):

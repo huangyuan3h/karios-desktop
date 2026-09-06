@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
-import tushare as ts
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.stock_basic import upsert_from_dataframe
 from data_sync_service.db.sync_job_record import get_last_success, insert_record
@@ -125,13 +125,13 @@ def sync_etf_fund_basic(
             return {"ok": True, "skipped": True, "message": "already synced this month"}
 
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         msg = "TU_SHARE_API_KEY is not set"
         insert_record(job_type=JOB_TYPE, success=False, last_ts_code=None, error_message=msg)
         return {"ok": False, "error": msg}
 
     try:
-        pro = ts.pro_api(settings.tu_share_api_key)
+        pro = get_pool().pro()
         etf_df: pd.DataFrame = pro.fund_basic(
             market="E",
             status=list_status2,

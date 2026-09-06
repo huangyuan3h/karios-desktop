@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import logging
 
-import tushare as ts  # type: ignore[import-not-found]
-
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db import get_connection
 
@@ -44,11 +43,8 @@ def ensure_table() -> None:
 
 def sync_daily_basic_for_date(trade_date: str) -> int:
     """Fetch one trade date's valuation rows for the whole market (best-effort)."""
-    try:
-        pro = ts.pro_api(get_settings().tu_share_api_key)
-    except Exception:  # noqa: BLE001
-        ts.set_token(get_settings().tu_share_api_key)
-        pro = ts.pro_api()
+    # H3: pooled client; explicit error instead of the file-token fallback.
+    pro = get_pool().pro()
     df = pro.daily_basic(
         trade_date=trade_date.replace("-", ""),
         fields="ts_code,total_mv,circ_mv,turnover_rate",

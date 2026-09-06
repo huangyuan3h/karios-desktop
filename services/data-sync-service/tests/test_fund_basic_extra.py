@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -11,6 +12,7 @@ from data_sync_service.service import fund_basic as fb
 
 class _Settings:
     tu_share_api_key = "TEST_KEY"
+    tushare_tokens = ("TEST_KEY",)
 
 
 class _Pro:
@@ -27,7 +29,7 @@ def _patch(monkeypatch, pro=None, last_ok=None):
     if pro is None:
         pro = _Pro()
     monkeypatch.setattr(fb, "get_settings", lambda: _Settings())
-    monkeypatch.setattr(fb, "ts", type("ts", (), {"pro_api": staticmethod(lambda k: pro)}))
+    monkeypatch.setattr(fb, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
     monkeypatch.setattr(fb, "get_last_success", lambda jt: last_ok)
     monkeypatch.setattr(fb, "upsert_from_dataframe", lambda df: len(df))
     monkeypatch.setattr(fb, "insert_record", lambda **kw: None)
@@ -137,7 +139,7 @@ def test_sync_empty_last_ok(monkeypatch) -> None:
 
 def test_sync_missing_api_key(monkeypatch) -> None:
     _patch(monkeypatch)
-    monkeypatch.setattr(fb, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
+    monkeypatch.setattr(fb, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
     out = fb.sync_etf_fund_basic()
     assert out["ok"] is False and "API_KEY" in out["error"]
 

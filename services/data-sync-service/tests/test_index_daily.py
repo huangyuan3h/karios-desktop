@@ -28,9 +28,10 @@ def test_sync_index_daily_skips_when_today_succeeded(monkeypatch) -> None:
     def _boom(*args, **kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("sync should have been skipped")
 
-    from types import SimpleNamespace
+    def _boom():
+        raise AssertionError("sync should have been skipped")
 
-    monkeypatch.setattr(index_daily, "ts", SimpleNamespace(pro_api=_boom))
+    monkeypatch.setattr(index_daily, "get_pool", _boom)
     try:
         result = index_daily.sync_index_daily_full()
         assert result.get("skipped") is True

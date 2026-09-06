@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import tushare as ts
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.trade_calendar import summary as cal_summary
 from data_sync_service.db.trade_calendar import upsert_from_dataframe
@@ -28,7 +28,7 @@ def sync_trade_calendar(
     Sync trade calendar into DB. This is intended to be called manually.
     """
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     if not start_date:
@@ -37,7 +37,7 @@ def sync_trade_calendar(
     if not end_date:
         end_date = _today_yyyymmdd()
 
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
     # trade_cal usually fits in one page, but keep pagination for robustness
     limit = 5000
     offset = 0

@@ -8,8 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
-import tushare as ts  # type: ignore[import-not-found]
 
+from data_sync_service.clients.tushare_pool import get_pool
 from data_sync_service.config import get_settings
 from data_sync_service.db.etf_fund_flow import (
     ensure_table,
@@ -439,9 +439,9 @@ def _sync_tushare_history_if_available(
     updated_at: str,
 ) -> int:
     settings = get_settings()
-    if not settings.tu_share_api_key:
+    if not settings.tushare_tokens:
         return 0
-    pro = ts.pro_api(settings.tu_share_api_key)
+    pro = get_pool().pro()
     last_date = get_last_trade_date(ts_code)
     row_count = len(fetch_rows_for_codes([ts_code]))
     if last_date is None or row_count < 5:

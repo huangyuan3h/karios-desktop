@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pandas as pd
@@ -199,15 +200,15 @@ class TestRecompute:
 
 class TestSyncTushare:
     def test_no_api_key(self, monkeypatch) -> None:
-        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key=""))
+        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
         assert eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="n") == 0
 
     def test_full(self, monkeypatch) -> None:
         pro = Mock()
         pro.fund_share.return_value = pd.DataFrame([{"trade_date": "20260807", "fd_share": "100"}])
         pro.fund_daily.return_value = pd.DataFrame([{"trade_date": "20260807", "close": 1.0, "vol": 10.0, "amount": 10.0}])
-        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key="k"))
-        monkeypatch.setattr(eff.ts, "pro_api", lambda key: pro)
+        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(eff, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(eff, "get_last_trade_date", lambda code: None)
         monkeypatch.setattr(eff, "fetch_rows_for_codes", lambda codes: [])
         monkeypatch.setattr(eff, "upsert_daily_rows", lambda rows: len(rows))
@@ -217,7 +218,7 @@ class TestSyncTushare:
         pro.fund_share.assert_called_with(ts_code="510300.SH", start_date="20230101", end_date="20260807")
 
     def test_up_to_date(self, monkeypatch) -> None:
-        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key="k"))
+        monkeypatch.setattr(eff, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
         monkeypatch.setattr(eff, "get_last_trade_date", lambda code: date(2026, 8, 7))
         monkeypatch.setattr(eff, "fetch_rows_for_codes", lambda codes: [{}] * 5)
         assert eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="n") == 0
