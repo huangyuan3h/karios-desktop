@@ -256,6 +256,26 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
+## P0-10 工程坚实计划（2026-09-06 立 · 草案待拍板）
+
+**大白话**：代码让 agent 一读就懂、一下手就不踩坑；测试盖住核心策略链；用户一眼确信线上跑的就是冻结配方，2 分钟知道今天跟什么。
+**基线（今日实测）**：覆盖率 86.35%/门 85；核心链偏薄 backtest_engine 73、paper_twin_star 67（job 46）、twin_star_daily 73、twin_star_intraday 64（job 49）、multi_asset_sleeve 80、state_bucket_track 81；未完成 OPT 剩 125/126/145/146；CI 有（lint+typecheck+test+build+PG16）缺死链门；`coverage.json` 跟踪中常脏；教训：OPT-124 连带修 8 个旧测试文件（mock 直连 `ts.pro_api`）。
+
+| # | 动作 | 范围 | 验收 |
+|---|------|------|------|
+| H1 | 核心链覆盖率补齐 | backtest_engine / twin_star_daily+intraday(+jobs) / paper_twin_star(+job) / multi_asset_sleeve / state_bucket_track 各→≥90；门 85→88 | 全绿 + 门过 + 核心链无 <85 |
+| H2 | 稳定性收尾 | OPT-125 DB 池 / OPT-126 东财探针 / OPT-146 港股符号 / OPT-145 形式化脚本回填 | checklist 标 x + 按天归档 |
+| H3 | Agent 读写公约 | outbound 收敛（`get_pool` 先例→DB 池同构；范围外 15+ `ts.pro_api` 分批收）；新模块模板（guard 文案 / ok-error 契约 / 单例+reset 可测性）沉淀进 AGENTS 一节 | 无新增裸 `ts.pro_api`；AGENTS +1 节 |
+| H4 | 文档↔代码漂移护栏 | linkcheck 脚本 + 进 CI；shared Zod 补 datasources/`tushare_quota`（OPT-009 workflow，OPT-124 加的字段）+ 前端横幅消费 + test_api shape 断言 | CI 红当且仅当真漂移；横幅可见 quota |
+| H5 | 用户信任：一致性 + 跟随 | live 配方哈希 == 冻结基线（单测 + UI 展示"线上跑的就是 clip4 v3.1"）；paper 每日对账（预期 vs 实际）；跟随页 today-plan + reason + evidence 链 | 用户 2 分钟回答"今天买什么、为什么" |
+| H6 | CI 锁门 | linkcheck 进 ci.yml；`coverage.json` 去跟踪（`git rm --cached` + ignore，消灭常脏） | main 推即验，全绿 |
+
+**顺序**：H1 → H2 → H3 → H4 → H5 → H6（H5 依赖 H1 的 paper 覆盖；H6 最后锁门）。
+**纪律**：一 H 一会话；只改范围文件；修测试不改行为（行为要变另起 OPT）。
+**不做**：重写 engine；微服务拆分；任何策略参数改动（冻结）。
+
+---
+
 ## 实施清单（剩余 P0/P1 各一行）
 
 | # | 动作 | 预期 |
