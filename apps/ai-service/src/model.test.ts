@@ -4,6 +4,9 @@ import {
   modelFromProfile,
   getStrategyFallbackModelId,
   getDecisionModelBundle,
+  getAlphaGatewayBundle,
+  getAlphaRadarModelBundle,
+  ALPHA_GATEWAY_MODEL_ID,
   DECISION_DEFAULT_MODEL_ID,
   rewriteDeveloperMessageRolesInJsonString,
   rewriteOpenAiCompatibleRequestBody,
@@ -310,5 +313,42 @@ describe('getDecisionModelBundle', () => {
     expect(bundle.provider).toBe('openai');
     expect(bundle.modelId).toBe('gpt-test-model');
     expect(bundle.looseStructuredOutputs).toBe(false);
+  });
+});
+
+describe('getAlphaGatewayBundle', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('returns null without VERCEL_API_GATEWAY', async () => {
+    delete process.env.VERCEL_API_GATEWAY;
+    expect(getAlphaGatewayBundle()).toBeNull();
+    // Falls through to the global strategy resolution.
+    delete process.env.OPENAI_BASE_URL;
+    process.env.KARIOS_APP_DATA_DIR = '/tmp/karios-ai-test-nonexistent-dir';
+    process.env.AI_PROVIDER = 'openai';
+    process.env.AI_MODEL = 'gpt-test-model';
+    const r = await getAlphaRadarModelBundle();
+    expect(r.modelId).toBe('gpt-test-model');
+    expect(r.looseStructuredOutputs).toBe(false);
+  });
+
+  it('prefers the hardcoded gateway free model when the key is set', async () => {
+    process.env.VERCEL_API_GATEWAY = 'gateway-test-key';
+    process.env.AI_MODEL = 'gpt-test-model';
+    const gw = getAlphaGatewayBundle();
+    expect(gw).not.toBeNull();
+    expect(gw?.modelId).toBe(ALPHA_GATEWAY_MODEL_ID);
+    expect(gw?.looseStructuredOutputs).toBe(true);
+    const r = await getAlphaRadarModelBundle();
+    expect(r.modelId).toBe(ALPHA_GATEWAY_MODEL_ID);
+    expect(r.fallbackModel).toBeNull();
   });
 });

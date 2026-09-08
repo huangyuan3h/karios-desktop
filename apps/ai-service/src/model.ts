@@ -235,6 +235,56 @@ export function getStrategyFallbackModelId(): string | null {
 
 export const DECISION_DEFAULT_MODEL_ID = 'gemini-3.6-flash';
 
+/**
+ * Alpha module model (hardcoded): Vercel AI Gateway free fin model.
+ *
+ * When VERCEL_API_GATEWAY is set, alpha-radar routes use this and nothing
+ * else changes (chat/news/broker/decision keep the global model).
+ * Free models churn — swap ALPHA_GATEWAY_MODEL_ID when this one disappears.
+ * trend_json records the serving model id per trend (routes attach `model`),
+ * so future research can split card cohorts by generator.
+ */
+export const ALPHA_GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1';
+export const ALPHA_GATEWAY_MODEL_ID = 'inclusionai/ling-3.0-flash-fin-free';
+
+export function getAlphaGatewayBundle(): ResolvedModelBundle | null {
+  const apiKey = asTrimmedString(process.env.VERCEL_API_GATEWAY);
+  if (!apiKey) return null;
+  const client = createOpenAI({
+    apiKey,
+    baseURL: ALPHA_GATEWAY_BASE_URL,
+    fetch: withFetchTimeout(openAiCompatibleFetch(ALPHA_GATEWAY_BASE_URL)),
+  });
+  return {
+    model: client.chat(ALPHA_GATEWAY_MODEL_ID),
+    provider: 'openai',
+    modelId: ALPHA_GATEWAY_MODEL_ID,
+    // Non-OpenAI backend: json_object mode instead of json_schema.
+    looseStructuredOutputs: true,
+  };
+}
+
+/** Alpha-radar resolution: gateway bundle first, else the global strategy models. */
+export async function getAlphaRadarModelBundle(): Promise<{
+  model: AiModel;
+  modelId: string;
+  fallbackModel: AiModel | null;
+  fallbackModelId: string | null;
+  looseStructuredOutputs: boolean;
+}> {
+  const gw = getAlphaGatewayBundle();
+  if (gw) {
+    return {
+      model: gw.model,
+      modelId: gw.modelId,
+      fallbackModel: null,
+      fallbackModelId: null,
+      looseStructuredOutputs: gw.looseStructuredOutputs,
+    };
+  }
+  return getStrategyPrimaryAndFallbackModels();
+}
+
 let geminiFetch: typeof fetch | null = null;
 
 /**

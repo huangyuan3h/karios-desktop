@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from datetime import date, timedelta
 from typing import Any
@@ -877,30 +878,39 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     meta["alphaRejected"] = alpha_rejected
 
     # TIP-012: research channel (研报 → α) — same entry gates, lower floor.
+    # PAUSED 2026-09-07 (research-coverage-2026-09-07 REJECT: first-coverage
+    # 10d -3%, denser coverage worse; TIP-012 shipped on plumbing only, the
+    # promised 2-week observation never ran). Research sync / list / display /
+    # trace stay live; only registry nomination is skipped. Re-enable with
+    # RESEARCH_CHANNEL_ENABLED=1 after the TIP-012 observation passes.
     research_add: list[dict[str, Any]] = []
     research_rejected: dict[str, int] = {}
-    try:
-        research_payload = build_research_catalyst_payload(limit=100)
-        # Research reports carry their own East Money industry label (same
-        # taxonomy as the EM cache); prefer it over the DB cache so fresh
-        # names without a warm cache row still pass the defense/Top10 gates.
-        research_industries = {
-            str(x.get("symbol")): str(x["industryName"])
-            for x in (research_payload.get("items") or [])
-            if isinstance(x, dict) and x.get("symbol") and x.get("industryName")
-        }
-        research_add, research_rejected = compute_alpha_additions(
-            catalyst_payload=research_payload,
-            industry_by_symbol=research_industries,
-            top_industries=top10,
-            score_min=RESEARCH_SCORE_MIN,
-        )
-        # Attention budget: cap research-channel additions per run (best
-        # scores first — payload is already sorted descending).
-        research_add = research_add[:RESEARCH_MAX_CANDIDATES]
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("research channel candidate build failed: %s", exc)
-        research_rejected = {"research_channel_error": 1}
+    research_enabled = os.getenv("RESEARCH_CHANNEL_ENABLED", "0").strip() == "1"
+    if not research_enabled:
+        research_rejected = {"research_channel_paused": 1}
+    else:
+        try:
+            research_payload = build_research_catalyst_payload(limit=100)
+            # Research reports carry their own East Money industry label (same
+            # taxonomy as the EM cache); prefer it over the DB cache so fresh
+            # names without a warm cache row still pass the defense/Top10 gates.
+            research_industries = {
+                str(x.get("symbol")): str(x["industryName"])
+                for x in (research_payload.get("items") or [])
+                if isinstance(x, dict) and x.get("symbol") and x.get("industryName")
+            }
+            research_add, research_rejected = compute_alpha_additions(
+                catalyst_payload=research_payload,
+                industry_by_symbol=research_industries,
+                top_industries=top10,
+                score_min=RESEARCH_SCORE_MIN,
+            )
+            # Attention budget: cap research-channel additions per run (best
+            # scores first — payload is already sorted descending).
+            research_add = research_add[:RESEARCH_MAX_CANDIDATES]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("research channel candidate build failed: %s", exc)
+            research_rejected = {"research_channel_error": 1}
     alpha_add = alpha_add + research_add
     meta["researchCandidates"] = len(research_add)
     meta["researchRejected"] = research_rejected

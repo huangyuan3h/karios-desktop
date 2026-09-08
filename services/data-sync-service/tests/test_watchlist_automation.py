@@ -641,6 +641,7 @@ def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
 
 
 def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
+    monkeypatch.setenv("RESEARCH_CHANNEL_ENABLED", "1")
     monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
     monkeypatch.setattr(wa, "list_registry", lambda: [])
@@ -961,3 +962,34 @@ def test_is_cn_b_share() -> None:
     assert wa._is_cn_b_share("CN:9009") is False
     assert wa._is_cn_b_share("HK:0900") is False
     assert wa._is_cn_b_share("") is False
+
+
+def test_run_watchlist_automation_research_channel_paused_by_default(monkeypatch) -> None:
+    """TIP-012 paused 2026-09-07: no env flag -> no research payload build."""
+    monkeypatch.delenv("RESEARCH_CHANNEL_ENABLED", raising=False)
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
+    monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(wa, "list_registry", lambda: [])
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
+    monkeypatch.setattr(
+        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+    )
+    monkeypatch.setattr(
+        wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())
+    )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
+    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
+
+    def boom(limit: int = 100) -> dict:
+        raise AssertionError("research payload must not build while paused")
+
+    monkeypatch.setattr(wa, "build_research_catalyst_payload", boom)
+    monkeypatch.setattr(wa, "compute_alpha_additions", lambda **kwargs: ([], {}))
+
+    result = wa.run_watchlist_automation(trigger="scheduled", force=True)
+    assert result["skipped"] is False
+    assert result["meta"]["researchCandidates"] == 0
+    assert result["meta"]["researchRejected"] == {"research_channel_paused": 1}
+    assert all(a.get("channel") != "research" for a in result["alphaAdd"])

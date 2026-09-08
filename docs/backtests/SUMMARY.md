@@ -40,6 +40,7 @@
 | 卫星当日收盘 / 真 14:30 成交 | 2 变体 | **拒收当改写 9:30**；14:30 vs 核心 train/valid 亏 | 见 [sat-fill-same-close](sat/sat-fill-same-close-2026-09-03.md) |
 | 卫星 14:30 入场过滤 C1/C2 | 4 变体 | C1 3% 相对无过滤 PASS+（tot/sr/dd）；vs 核心 valid tot −3.3，**不进 Live** | 见 [sat-entry-c1](sat/sat-entry-c1-2026-09-03.md) |
 | 卫星习惯 3 天 vs 4 天 / 下午买点 | 7 变体 | 计数仍 3 天；body=4 占槽；13:30–15:00 无更佳分钟 | 见 [sat-habit-clock](sat/sat-habit-clock-2026-09-03.md) |
+| 卫星持有 1/2 天 vs 3 天 | 2 变体（OOS2+train，valid 未碰） | **REJECT/total**：body=2 OOS2 −17.8/train −2.4，夏普回撤全差；body=1 退化为 body=2（引擎先退后买，同日卖不可表达）；路径表 d1 均值互证截右尾 | 见 [sat-body1](sat/sat-body1-2026-09-07.md) |
 | 卫星 C1 + 第 3 日 10:00/14:30 卖 | 3 变体 | C1·14:30 卖三窗 tot/sr/dd 过核心；**Live 已切 habit（2026-09-03 全量跟进）** | 见 [sat-exit-hhmm](sat/sat-exit-hhmm-2026-09-03.md) |
 | 卫星第 3 日条件单 D3（高点−2% 否则 14:30） | 2 变体+自检 | **REJECT/total**：OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 ~63%；回吐≠反转，网格不补 | 见 [sat-exit-d3trail](sat/sat-exit-d3trail-2026-09-04.md) |
 | 卫星名单漂移（全天振幅 vs 14:30-proxy 排名） | 1 诊断（OOS2+train，valid 未碰） | **无超额，不改 Live**：top-4 Jaccard 均值 0.43（相同 20/205 天），3 日前瞻 +2.05% vs +1.90%（差 0.14pp/笔）；Live 本来就是快照-proxy 排名 | 见 [sat-list-drift](sat/sat-list-drift-2026-09-04.md) |

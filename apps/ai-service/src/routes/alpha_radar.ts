@@ -23,7 +23,7 @@ import {
   AlphaRadarMapCnResponseSchema,
 } from '../schemas.js';
 import {
-  getStrategyPrimaryAndFallbackModels,
+  getAlphaRadarModelBundle,
   AiModel,
   generateObjectCompatOptions,
   generateTextJsonObjectModeOptions,
@@ -62,7 +62,7 @@ alphaRadarRoutes.post('/extract', async (c) => {
   let fallbackModelId: string | null = null;
   let looseStructuredOutputs = false;
   try {
-    const r = await getStrategyPrimaryAndFallbackModels();
+    const r = await getAlphaRadarModelBundle();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
@@ -168,7 +168,7 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
   let fallbackModelId: string | null = null;
   let looseStructuredOutputs = false;
   try {
-    const r = await getStrategyPrimaryAndFallbackModels();
+    const r = await getAlphaRadarModelBundle();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
@@ -260,7 +260,7 @@ alphaRadarRoutes.post('/map-cn', async (c) => {
   let fallbackModelId: string | null = null;
   let looseStructuredOutputs = false;
   try {
-    const r = await getStrategyPrimaryAndFallbackModels();
+    const r = await getAlphaRadarModelBundle();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
