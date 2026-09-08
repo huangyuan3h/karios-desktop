@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
-> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-147`（重号见文末）。
-> **正文 1 条未完成（OPT-147） + 3 条冬眠**；已完成 108 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-148`（重号见文末）。
+> **正文 2 条未完成（OPT-147/148） + 3 条冬眠**；已完成 108 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 未完成（1 条 · OPT-147 open）
+## 未完成（2 条 · OPT-147/148 open）
 
 ### OPT-147：R-wide breadth 池 HK 污染量级断言（P2 · 只读不断言不修引擎）
 
@@ -38,6 +38,19 @@ habit 引擎已验证两道 containment（`_day_features` mv 门排除 HK，`bar
 2. 若翻转天数为 0 → 关项，first-principles §二.7 补一行结论。
 3. 若 >0 → 不修引擎，另起预注册评估对 clip4 三窗的影响（诊断→回放 discipline），本 OPT 只负责量级数字。
 4. 加回归测试：`bar_5min` 0 HK 断言 + mv 门 HK 排除断言（防 pattern 复制退化）。
+
+### OPT-148：paper_s3 HK intake settled-cash 账本（P2 · paper 偏乐观缺口）
+
+**状态**：[ ] open（2026-09-08 登记 · 来源 HK T+2 交收现实化）
+
+**背景**：回测引擎已加 `settle_lock_sessions`（T+2 后 OOS2 +31.3→+7.7），但 `paper_s3` HK intake 没有 settled 账本——会开出真券商买不起的仓（paper 偏乐观，真执行以券商可用资金为准）。见 `docs/backtests/hk/hk-settle-t2-2026-09-08.md §4`。
+
+**范围**：只动 paper HK intake（`paper_s3.py` HK 路径 + 单测），不动引擎、不动 CN、不动 Live 券商执行（券商本来就按可用资金拦单）。
+
+**验收**：
+1. paper HK intake 维护 settled 账本（卖出 T+2 可用，口径与引擎 `settle_lock_sessions=2` 一致）。
+2. 单测：T+1 无可用资金时跳过开仓并记 skip 原因；T+2 恢复。
+3. 跑一轮 paper HK recon，确认无"无钱硬开"。
 
 | OPT-124 | [x] 2026-09-06 · 多 token 轮换 + 配额看门狗 | [2026-09-06-opt-124-tushare-pool.md](archive/2026-09-06-opt-124-tushare-pool.md) |
 

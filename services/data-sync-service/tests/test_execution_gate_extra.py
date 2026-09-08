@@ -133,21 +133,23 @@ class TestDefendPaths:
         assert out["mode"] == MODE_DEFEND
         assert "RISK_EXTREME_CAUTION" in out["reasons"]
 
-    def test_srv_extreme_high_defends(self) -> None:
+    def test_srv_extreme_high_is_info_only(self) -> None:
         out = compute_execution_gate(
             index_signals=[CN, CN2],
             srv_index={"level": "Extreme_High", "overlapCount": 3},
         )
-        assert out["mode"] == MODE_DEFEND
-        assert "SRV_EXTREME_HIGH" in out["reasons"]
+        assert out["mode"] == MODE_ATTACK
+        assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
+        assert out["srvLevel"] == "Extreme_High"
+        assert out["srvOverlapCount"] == 3
 
-    def test_elevated_srv_hold_only(self) -> None:
+    def test_elevated_srv_is_info_only(self) -> None:
         out = compute_execution_gate(
             index_signals=[CN, CN2],
             srv_index={"level": "Elevated", "overlapCount": 3},
         )
-        assert out["mode"] == MODE_HOLD_ONLY
-        assert "SRV_ELEVATED" in out["reasons"]
+        assert out["mode"] == MODE_ATTACK
+        assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
 
     def test_weak_regime_defends(self) -> None:
         out = compute_execution_gate(
@@ -165,13 +167,14 @@ class TestDefendPaths:
         assert out["mode"] == MODE_ATTACK
         assert "REGIME_DIVERGING" in out["reasons"]
 
-    def test_diverging_with_elevated_srv_hold_only(self) -> None:
+    def test_diverging_with_elevated_srv_attacks(self) -> None:
         out = compute_execution_gate(
             index_signals=[CN, {"name": "创业板指", "signal": "red"}],
             srv_index={"level": "Elevated", "overlapCount": 3},
         )
-        assert out["mode"] == MODE_HOLD_ONLY
-        assert "SRV_ELEVATED" in out["reasons"]
+        assert out["mode"] == MODE_ATTACK
+        assert "REGIME_DIVERGING" in out["reasons"]
+        assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
 
 
 class TestOverflowOverride:
@@ -265,19 +268,19 @@ class TestComputeExecutionGate:
         out = compute_execution_gate(max_sector_inflow_cny="abc")
         assert out["overflowInflowYi"] is None
 
-    def test_strong_with_unknown_srv_level_hold_only(self) -> None:
+    def test_unknown_srv_level_is_info_only(self) -> None:
         out = compute_execution_gate(
             index_signals=[CN, CN2],
             srv_index={"level": "Mild", "overlapCount": 2},
         )
-        assert out["mode"] == MODE_HOLD_ONLY
+        assert out["mode"] == MODE_ATTACK
         assert "REGIME_STRONG" in out["reasons"]
-        assert "SRV_MILD" in out["reasons"]
+        assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
 
     def test_strong_without_srv_attacks(self) -> None:
         out = compute_execution_gate(index_signals=[CN, CN2])
         assert out["mode"] == MODE_ATTACK
-        assert "SRV_UNKNOWN" in out["reasons"]
+        assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
 
 
 class TestComputeHkGate:

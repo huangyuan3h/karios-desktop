@@ -151,9 +151,11 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 
 | mode | allowNewEntries | 含义 |
 |------|-----------------|------|
-| ATTACK | true | Strong + SRV Stable（等）时允许开新仓/加仓 |
-| HOLD_ONLY | false | 分化或 SRV Elevated：禁止新开，只管理持仓 |
-| DEFEND | false | 广度恐慌 / SRV Extreme_High / Weak / 极端风险：防守 |
+| ATTACK | true | Strong / Diverging（等）时允许开新仓/加仓 |
+| HOLD_ONLY | false | ETF contradict 等：禁止新开，只管理持仓 |
+| DEFEND | false | 广度恐慌 / Weak / 极端风险：防守 |
+
+> SRV 说明（2026-09-08 起）：SRV（轮动指数）只算分、只展示、只记录（twin intake `signal_snapshot.srv*`），**不再参与 mode**——验证见 `docs/backtests/srv/srv-validation-2026-09-08.md`（REJECT 当开关）。此前"SRV Extreme_High → DEFEND / Elevated → HOLD_ONLY / Strong 需 Stable 才 ATTACK"三条已删除。
 
 **双市场独立仓位（A股 / 港股）**：`executionGate` 顶层字段仍为 A 股闸门（兼容下游），并新增 `cnGate`（=顶层）与 `hkGate`。两市场**各自独立**按本市场红绿灯给出 `positionRangeHint`，不共用仓位预算——总仓位 100% 可在 A 股与港股之间分配。HK 闸门由恒生指数 + 恒生科技指数驱动，叠加全局 riskMode（extreme_caution / no_new_positions 强制 DEFEND）；不含 A 股特有的广度恐慌 / SRV / 盘中溢出覆盖。Dashboard / Copy all 分别展示 `A股闸门` / `港股闸门`。
 

@@ -60,6 +60,9 @@
 | 对冲双子星 v0.2 修正（成交语义） | 同上（限价成交重算） | **REJECT/实现证伪**：正确语义下 strict 65.3%/+0.92%（门 85–93% 未过），最差 −236%，23% 亏超 5%；冻结 89% 表系 naive-touch 幻影；附带 `factor_signals` 港股误标（OPT-146）+ strategy-params §7 联动暂停 | 同上 §1–§2 |
 | 大盘风格 vs 卫星 G1（理解层） | 趋势×波动分组 | up 三窗全赚，choppy 次之，down 被 R-wide 拦（19 天开 1 天）；波动率非稳定亏钱因子；**无新规则** | 见 [sat-regime](sat/sat-regime-2026-09-04.md) |
 | CPA-CN v1a（外部策略独立验证 · A-only · 不动 Live） | 三窗+产品窗+长窗（10×10%·次日开盘·含成本涨跌停） | **REJECT**：OOS2 +5.8/train +13.1/valid **−13.5**（ΔS-3 −42/−21/−52pt），产品窗 −11.4，long −53.3/DD−66/最差−30%；胜率26–35%、持有~6天、~90% wedge_drop 鞭打、信号~1000/天无选择（v1 混入 HK 版作废见档 §8） | 见 [cpa-cn-v1-2026-09-08](cpa/cpa-cn-v1-2026-09-08.md) |
+| SRV 指数验证（质疑指数本身 · 诊断 · 不动 Live） | Q1 指数前瞻分组 + Q2 习惯 fills 按 entry 日 SRV 分组 + Q3 阈值滑动/维度分解 | **REJECT 当开关**：Q1 两半同向但 ~0.5pt/3d 且后半无 Stable 样本；Q2 Extreme valid +1.04%/holdout −0.39% 打架，Stable 只活在 2025-12-18~2026-02-02 单块（与时段共线）；Q3 triple 57%/leader 70% 天数满分、阈值滑不动"天天 Extreme"、60 天校准窗无 Stable 却定了 Stable 线；降级纯记录（twin snapshot 已带 srv*，20 fills 后 C4 归因） | 见 [srv-validation-2026-09-08](srv/srv-validation-2026-09-08.md) |
+| STOCK 篮剥离港股对照（诊断 · 不动 Live） | 同 builder，CN-only snaps vs A+H 合并 × 三窗+past_year | **REJECT 剥离**：港股正贡献——OOS2 fused Δ−27.5pt、valid Δ−80pt（valid 上攻是 HK 带的，剥离后 STOCK 只选中 2 天 vs 16 天）；唯一反例 train +11.2pt（单窗不采信）；OOS2 回撤 18.0→29.6 亦变差 | 见 [stock-basket-nohk-2026-09-08](core/stock-basket-nohk-2026-09-08.md) |
+| 双子星现实版（core-HK现实 + 卫星习惯 opp blend · 策略零改动） | 同 builder，core 腿现实HK合并 vs 冻结合并 × 三窗+past_year+long | **期望重置**：OOS2 +82.2 / train +51.5 / valid +85.8 / past_year +118.7（冻结 +94.3/+56.3/+141.8/+195.5）；valid −56pt 主因 pick 层（STOCK天16→29挤掉NASDAQ 38→26），不是 fill 层 | 见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md) §9 |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
@@ -88,6 +91,8 @@
 ## 3. HK 线（STOCK 腿的一部分）
 
 NAV 重固化：OOS2 **+31.3%** / train **+1.9%** / valid **+60.7%** —— train 弱，**不作独立高置信叙事**；并入择强股票篮即可。
+
+> T+2 交收现实化（2026-09-08，已固化）：`settle_lock_sessions=2` 后 OOS2 +7.7（−23.6pt，未通过）/ train +0.3 / valid +66.4；再加滑点 +0.2（`slippage_pct=0.25`）后 OOS2 +4.6 / train +0.2 / valid +65.2；past_year 现实 +58.7/84笔（基线+57.7/101笔，回撤27.8→16.9）——主杀伤是交收，滑点是添头。规则已联网核验（T+2 ✓、印花税0.1% ✓、微费~1.27bps/边未建模≈0.2pt、佣金待用户报券商费率）；R1 pyramid关已拒（valid −21.7pt）。策略不换、期望按现实版、paper缺口挂账 OPT-148。见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md)，现实数字固化于 strategy-params §1b。
 
 ## 4. 下一步（只服务择强单轨）
 

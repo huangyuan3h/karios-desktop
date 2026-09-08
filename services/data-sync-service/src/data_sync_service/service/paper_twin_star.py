@@ -42,6 +42,57 @@ SLEEVE_PCT = POSITION_PCT * 0.5  # 0.125 of NAV when sat sleeve is 50%
 HABIT_RECIPE = "clip4_habit_c1_x1430"
 
 
+def _srv_snapshot_for(day: str) -> dict[str, Any]:
+    """SRV rotation read as-of the entry day, for the C4 record template.
+
+    Observation only (SRV is not a satellite-gate input): each twin_star
+    intake row carries the day's SRV score/level/overlap in signal_snapshot
+    so the future SRV-vs-satellite diagnostic can join on entry_date without
+    recomputing history. Fail-soft — any failure yields Nones, never blocks
+    the intake insert.
+    """
+    blank: dict[str, Any] = {
+        "srvScore": None,
+        "srvLevel": None,
+        "srvOverlap": None,
+        "srvAsOf": day,
+    }
+    try:
+        from data_sync_service.db.industry_fund_flow import (
+            ensure_table as ensure_industry,
+        )
+        from data_sync_service.db.industry_fund_flow import (
+            get_dates_upto,
+            get_rows_for_dates,
+        )
+        from data_sync_service.service.industry_fund_flow_read import (
+            top_by_date_from_rows,
+        )
+        from data_sync_service.service.sector_rotation_index import (
+            compute_srv_index,
+        )
+        from data_sync_service.service.trade_calendar_utils import (
+            trade_dates_upto,
+        )
+
+        ensure_industry()
+        dates = trade_dates_upto(day, 5, fallback_dates_fn=get_dates_upto)
+        rows = get_rows_for_dates(dates)
+        srv = compute_srv_index(
+            top_by_date=top_by_date_from_rows(rows, dates, top_k=5),
+            as_of_date=day,
+        )
+        return {
+            "srvScore": srv.get("score"),
+            "srvLevel": srv.get("level"),
+            "srvOverlap": srv.get("overlapCount"),
+            "srvAsOf": srv.get("asOfDate") or day,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_twin_star srv snapshot failed %s: %s", day, exc)
+        return blank
+
+
 def _ensure_5min_today(ts_codes: list[str], day: str) -> None:
     """Best-effort import of today's last-hour 5min bars before paper pricing.
 
@@ -179,6 +230,7 @@ def run_intake_twin_star(*, trade_date: str | None = None) -> dict[str, Any]:
 
     ts_codes = [str(c.get("ts") or "") for c in candidates if c.get("ts")]
     _ensure_5min_today(ts_codes, day)
+    srv_snap = _srv_snapshot_for(day)
     px_1430, _ = _fetch_1430_px_map(ts_codes, day)
     closes: dict[str, float] = {}
     close_src: dict[str, str] = {}
@@ -246,6 +298,7 @@ def run_intake_twin_star(*, trade_date: str | None = None) -> dict[str, Any]:
                     "exitHhmm": HABIT_EXIT_HHMM,
                     "entryPx": px,
                     "entryPxSrc": px_src,
+                    **srv_snap,
                 },
             )
         except Exception as exc:  # noqa: BLE001

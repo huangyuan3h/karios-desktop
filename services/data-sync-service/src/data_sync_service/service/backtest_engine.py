@@ -144,6 +144,13 @@ class BacktestConfig:
     profit_trail_trigger_pct: float = 0.0
     profit_trail_pct: float = 0.0
     industry_flow_exit_days: int = 0
+    # T+2 settlement realism (experiment-only, default off): when >0, exit
+    # proceeds become usable for new entries N sessions later (usable ON
+    # T+N day; N=2 = HK T+2 交收: sell Mon -> usable Wed). 0 = frozen
+    # behavior (proceeds reusable immediately). CN stays 0 — HK line only.
+    # Covers entries / exits / pyramid adds. Swaps move no cash in this
+    # engine version, so they are unaffected (HK swaps are off anyway).
+    settle_lock_sessions: int = 0
     mainline_top_k: int = 3
     score_confirm_days: int = 0
     position_pct: float = 0.05
@@ -386,6 +393,8 @@ class BacktestConfig:
             raise ValueError("profit_trail_pct must be set when profit_trail_trigger_pct > 0")
         if self.industry_flow_exit_days < 0:
             raise ValueError("industry_flow_exit_days must be >= 0 (0 disables, 3 = exit when the holding's SW L1 industry 5d net inflow stays negative for 3 straight sessions)")
+        if self.settle_lock_sessions < 0:
+            raise ValueError("settle_lock_sessions must be >= 0 (0 disables, 2 = HK T+2 settlement)")
         if not 0 < self.position_pct <= 1:
             raise ValueError("position_pct must be in (0, 1]")
         if not 1 <= self.max_positions <= 100:
@@ -1555,6 +1564,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     strength_cache: dict[str, float] = {}  # §19.2 D1: day -> strength score
     last_panic_idx = -10 ** 9
     day_index = 0
+    settle_n = int(config.settle_lock_sessions or 0)
+    settled_cash = 1.0  # usable-for-entries cash; diverges from nav_cash only when settle_n > 0
+    pending_settle: list[tuple[int, float]] = []  # (usable 1-based day_index, amount)
 
     threshold = config.score_threshold
     realized_pnl_window: list[tuple[str, float]] = []  # (close_date, pnl_pct)"""
@@ -1734,6 +1746,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         )
         prev_day = data.calendar[day_index - 1] if day_index > 0 else None
         day_index += 1
+        if settle_n > 0 and pending_settle:
+            # T+N settlement: proceeds sold on day k become usable ON day k+N.
+            due = sum(a for idx, a in pending_settle if idx <= day_index)
+            if due:
+                settled_cash += due
+                pending_settle = [(idx, a) for idx, a in pending_settle if idx > day_index]
 
         # 1.5) RS-rotation swaps (before entries): swap out RS-weakened held
         #      stocks for clearly-stronger candidates, so a full sleeve is not
@@ -2328,6 +2346,13 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if sum(p["position_pct"] for p in positions.values()) + eff_pct > 1.0 + 1e-9:
                 gated_blocks["cash_cap"] += 1
                 continue
+            entry_cost = eff_pct * (1.0 + _entry_cost_frac)
+            if settle_n > 0:
+                # Settlement realism: only settled cash opens new sleeves.
+                if settled_cash + 1e-9 < entry_cost:
+                    gated_blocks["settle_lock"] += 1
+                    continue
+                settled_cash -= entry_cost
             positions[sym] = {
                 "symbol": sym,
                 "market": config.market,
@@ -2342,7 +2367,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "entry_env": data.env_by_day.get(day) if config.max_hold_env_shorten > 0 else None,
             }
             # NAV: deploy the sleeve's capital + pay entry cost up front.
-            nav_cash -= eff_pct * (1.0 + _entry_cost_frac)
+            nav_cash -= entry_cost
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
         for sym in list(positions.keys()):
@@ -2501,7 +2526,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     add_cost = add_entry * (1 + slip / 100.0)
                     add_gross = (close_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
                     # NAV: credit the realised add P&L (exit cost applied).
-                    nav_cash += add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
+                    add_proceeds = add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
+                    nav_cash += add_proceeds
+                    if settle_n > 0:
+                        pending_settle.append((day_index + settle_n, add_proceeds))
                     closed_trades.append(
                         BacktestTrade(
                             symbol=sym,
@@ -2520,7 +2548,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         )
                     )
                 # NAV: credit the realised main-leg P&L (exit cost applied).
-                nav_cash += pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
+                main_proceeds = pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
+                nav_cash += main_proceeds
+                if settle_n > 0:
+                    pending_settle.append((day_index + settle_n, main_proceeds))
                 del positions[sym]
                 continue
 
@@ -2538,7 +2569,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 )
                 if total_now + add_pct > 1.0 + 1e-9:
                     gated_blocks["cash_cap_pyramid"] = gated_blocks.get("cash_cap_pyramid", 0) + 1
+                elif settle_n > 0 and settled_cash + 1e-9 < add_pct * (1.0 + _entry_cost_frac):
+                    gated_blocks["settle_lock_pyramid"] = gated_blocks.get("settle_lock_pyramid", 0) + 1
                 else:
+                    if settle_n > 0:
+                        settled_cash -= add_pct * (1.0 + _entry_cost_frac)
                     pos["adds"] = pos.get("adds", 0) + 1
                     pos.setdefault("adds_list", []).append(
                         {

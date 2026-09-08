@@ -9,7 +9,6 @@ from data_sync_service.service.execution_gate import (
     MODE_ATTACK,
     MODE_DEFEND,
     MODE_HOLD_ONLY,
-    MODE_WEAK_ATTACK,
     OVERFLOW_INFLOW_THRESHOLD_CNY,
     REGIME_DIVERGING,
     REGIME_STRONG,
@@ -38,7 +37,11 @@ def _sh(hour: int, minute: int) -> datetime:
     return datetime(2026, 7, 27, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai"))
 
 
-def test_attack_when_strong_and_srv_stable() -> None:
+def _no_srv_reasons(out: dict) -> None:
+    assert not [r for r in out["reasons"] if str(r).startswith("SRV_")]
+
+
+def test_srv_stable_is_info_only_and_still_attacks() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "deep_green"),
         down_count=1200,
@@ -49,10 +52,12 @@ def test_attack_when_strong_and_srv_stable() -> None:
     assert out["allowNewEntries"] is True
     assert out["marketRegime"] == REGIME_STRONG
     assert "REGIME_STRONG" in out["reasons"]
-    assert "SRV_STABLE" in out["reasons"]
+    _no_srv_reasons(out)
+    assert out["srvLevel"] == SRV_LEVEL_STABLE
+    assert out["srvOverlapCount"] == 3
 
 
-def test_attack_when_strong_and_srv_unknown() -> None:
+def test_srv_missing_is_info_only() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=800,
@@ -61,19 +66,22 @@ def test_attack_when_strong_and_srv_unknown() -> None:
     )
     assert out["mode"] == MODE_ATTACK
     assert out["allowNewEntries"] is True
-    assert "SRV_UNKNOWN" in out["reasons"]
+    _no_srv_reasons(out)
+    assert out["srvLevel"] is None
 
 
-def test_defend_when_srv_extreme_high() -> None:
+def test_srv_extreme_high_no_longer_defends() -> None:
+    # SRV info-only (2026-09-08): Strong regime attacks despite Extreme_High.
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 1),
     )
-    assert out["mode"] == MODE_DEFEND
-    assert out["allowNewEntries"] is False
-    assert "SRV_EXTREME_HIGH" in out["reasons"]
+    assert out["mode"] == MODE_ATTACK
+    assert out["allowNewEntries"] is True
+    _no_srv_reasons(out)
+    assert out["srvLevel"] == SRV_LEVEL_EXTREME_HIGH
 
 
 def test_defend_when_breadth_panic() -> None:
@@ -102,16 +110,16 @@ def test_diverging_allows_entries() -> None:
     assert "REGIME_DIVERGING" in out["reasons"]
 
 
-def test_hold_only_when_srv_elevated_even_if_strong() -> None:
+def test_srv_elevated_no_longer_holds_even_if_strong() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=900,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_ELEVATED, 2),
     )
-    assert out["mode"] == MODE_HOLD_ONLY
-    assert out["allowNewEntries"] is False
-    assert "SRV_ELEVATED" in out["reasons"]
+    assert out["mode"] == MODE_ATTACK
+    assert out["allowNewEntries"] is True
+    _no_srv_reasons(out)
 
 
 def test_defend_when_weak_regime() -> None:
@@ -151,8 +159,8 @@ def test_index_light_is_tighter_of_pair() -> None:
     assert out["positionRangeHint"] == "30%"
 
 
-def test_v63_overflow_upgrades_srv_extreme_to_weak_attack() -> None:
-    """726亿 electronics + upCount 4100 at 14:31 → WEAK_ATTACK despite SRV Extreme_High."""
+def test_v63_overflow_irrelevant_when_base_attacks_despite_srv_extreme() -> None:
+    """726亿 electronics + upCount 4100 at 14:31: base is ATTACK now, no override."""
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
@@ -163,15 +171,15 @@ def test_v63_overflow_upgrades_srv_extreme_to_weak_attack() -> None:
         overflow_sector="电子",
         now=_sh(14, 31),
     )
-    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["mode"] == MODE_ATTACK
     assert out["allowNewEntries"] is True
-    assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
-    assert "SRV_EXTREME_HIGH" in out["reasons"]
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
+    _no_srv_reasons(out)
     assert out["overflowSector"] == "电子"
     assert out["overflowInflowYi"] == 726.0
 
 
-def test_v63_overflow_before_1430_stays_defend() -> None:
+def test_v63_overflow_before_1430_stays_attack() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
@@ -182,8 +190,8 @@ def test_v63_overflow_before_1430_stays_defend() -> None:
         overflow_sector="电子",
         now=_sh(14, 0),
     )
-    assert out["mode"] == MODE_DEFEND
-    assert out["allowNewEntries"] is False
+    assert out["mode"] == MODE_ATTACK
+    assert out["allowNewEntries"] is True
     assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
@@ -235,7 +243,7 @@ def test_v63_overflow_does_not_downgrade_attack() -> None:
     assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
-def test_v63_overflow_requires_up_count() -> None:
+def test_v63_overflow_insufficient_up_count_stays_attack() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
@@ -245,7 +253,7 @@ def test_v63_overflow_requires_up_count() -> None:
         max_sector_inflow_cny=726e8,
         now=_sh(14, 31),
     )
-    assert out["mode"] == MODE_DEFEND
+    assert out["mode"] == MODE_ATTACK
     assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
@@ -369,8 +377,8 @@ def test_etf_contradict_downgrades_attack_to_hold_only() -> None:
     assert "ETF_FLOW_CONTRADICT" in out["reasons"]
 
 
-def test_etf_contradict_never_upgrades_or_moves_hard_defend() -> None:
-    # DEFEND base (SRV extreme high) stays DEFEND; contradict is informational.
+def test_etf_contradict_downgrades_attack_despite_srv_extreme() -> None:
+    # Base is ATTACK now (SRV info-only); contradict still downgrades to HOLD_ONLY.
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
@@ -378,11 +386,11 @@ def test_etf_contradict_never_upgrades_or_moves_hard_defend() -> None:
         srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 1),
         etf_flow_signal=_etf("contradict"),
     )
-    assert out["mode"] == MODE_DEFEND
+    assert out["mode"] == MODE_HOLD_ONLY
     assert "ETF_FLOW_CONTRADICT" in out["reasons"]
 
 
-def test_etf_contradict_does_not_downgrade_weak_attack() -> None:
+def test_etf_contradict_downgrades_attack_when_overflow_would_fire() -> None:
     out = compute_execution_gate(
         index_signals=_signals("green", "green"),
         down_count=1000,
@@ -394,8 +402,9 @@ def test_etf_contradict_does_not_downgrade_weak_attack() -> None:
         now=_sh(14, 31),
         etf_flow_signal=_etf("contradict"),
     )
-    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["mode"] == MODE_HOLD_ONLY
     assert "ETF_FLOW_CONTRADICT" in out["reasons"]
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
 def test_etf_incomplete_signal_is_ignored() -> None:

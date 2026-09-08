@@ -10,11 +10,6 @@ from data_sync_service.service.market_sentiment import (
     CN_INDEX_TRAFFIC_LIGHT_NAMES,
     breadth_panic_active,
 )
-from data_sync_service.service.sector_rotation_index import (
-    SRV_LEVEL_ELEVATED,
-    SRV_LEVEL_EXTREME_HIGH,
-    SRV_LEVEL_STABLE,
-)
 
 MODE_ATTACK = "ATTACK"
 MODE_WEAK_ATTACK = "WEAK_ATTACK"
@@ -270,10 +265,12 @@ def compute_execution_gate(
 ) -> dict[str, Any]:
     """
     Derive ATTACK / WEAK_ATTACK / HOLD_ONLY / DEFEND from index lights, breadth,
-    riskMode, SRV, and V6.3 intraday overflow override.
+    riskMode, and V6.3 intraday overflow override.
 
-    SRV missing/null: does not alone force DEFEND; ATTACK still requires Stable
-    when SRV level is present.
+    SRV is info-only since 2026-09-08 (docs/backtests/srv/ rejected it as a
+    switch): it is still computed, stored, and returned as srvLevel /
+    srvOverlapCount for display + forward logging, but it no longer drives
+    mode and emits no SRV_* reasons.
 
     V6.3 overflow: when base mode is DEFEND/HOLD_ONLY (and not BREADTH_PANIC /
     RISK_*), sector 1D inflow > 500亿 + upCount > 4000 + Shanghai >= 14:30
@@ -322,41 +319,25 @@ def compute_execution_gate(
     if hard_defend_reasons:
         defend = True
         reasons.extend(hard_defend_reasons)
-    if srv_level_str == SRV_LEVEL_EXTREME_HIGH:
-        defend = True
-        reasons.append("SRV_EXTREME_HIGH")
+    # SRV info-only (2026-09-08): Extreme_High no longer forces DEFEND.
     if regime == REGIME_WEAK:
         defend = True
         reasons.append("REGIME_WEAK")
 
     if defend:
         mode = MODE_DEFEND
-    elif regime == REGIME_DIVERGING or srv_level_str == SRV_LEVEL_ELEVATED:
+    elif regime == REGIME_DIVERGING:
         # S-3 定案（strategy-params §1）：Diverging = 进攻（diverging_scale=1.0
         # 满仓开仓）——与回测引擎 _gate_blocked 及 paper_s3 同口径，不再压 HOLD_ONLY。
-        # SRV_ELEVATED 是回测之外的资金流拥挤防御，仍单独压 HOLD_ONLY。
-        mode = (
-            MODE_ATTACK
-            if regime == REGIME_DIVERGING and srv_level_str != SRV_LEVEL_ELEVATED
-            else MODE_HOLD_ONLY
-        )
-        if regime == REGIME_DIVERGING:
-            reasons.append("REGIME_DIVERGING")
-        if srv_level_str == SRV_LEVEL_ELEVATED:
-            reasons.append("SRV_ELEVATED")
-    elif regime == REGIME_STRONG and (srv_level_str is None or srv_level_str == SRV_LEVEL_STABLE):
+        mode = MODE_ATTACK
+        reasons.append("REGIME_DIVERGING")
+    elif regime == REGIME_STRONG:
         mode = MODE_ATTACK
         reasons.append("REGIME_STRONG")
-        if srv_level_str == SRV_LEVEL_STABLE:
-            reasons.append("SRV_STABLE")
-        elif srv_level_str is None:
-            reasons.append("SRV_UNKNOWN")
     else:
-        # Strong but unexpected SRV level (should be covered by Elevated/Extreme)
+        # classify_market_regime only returns the three regimes above;
+        # unreachable safety fallback, mirrors the HK gate.
         mode = MODE_HOLD_ONLY
-        reasons.append("REGIME_STRONG")
-        if srv_level_str:
-            reasons.append(f"SRV_{srv_level_str.upper()}")
 
     overflow_sector_out: str | None = None
     overflow_inflow_yi: float | None = None

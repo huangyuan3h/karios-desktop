@@ -2606,3 +2606,58 @@ def test_pead_gate_blocks_stale_forecast() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 0
+
+
+# ---------------------------------------------------------------------------
+# settle_lock_sessions (T+2 settlement realism, experiment-only)
+# ---------------------------------------------------------------------------
+
+CN2 = "CN:600002"
+TS2 = "600002.SH"
+
+
+def _settle_data() -> tuple[list[str], dict, dict]:
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {CN1: 88.0},
+        "2026-06-19": {CN2: 88.0},
+        "2026-06-22": {CN2: 88.0},
+        "2026-06-23": {CN2: 88.0},
+    }
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 9.4, "2026-06-22": 9.4, "2026-06-23": 9.4},
+        TS2: {"2026-06-18": 5.0, "2026-06-19": 5.0, "2026-06-22": 5.0, "2026-06-23": 5.0},
+    }
+    return calendar, scores, prices
+
+
+def test_settle_lock_off_reenters_next_day() -> None:
+    """Frozen behavior: A stops day2, B (same 0.5 sleeve) enters day2."""
+    calendar, scores, prices = _settle_data()
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-23",
+        position_pct=0.5, max_positions=2, settle_lock_sessions=0,
+    )
+    run = simulate(config, data=_data(calendar, scores, prices))
+    b_entries = [t.entry_date for t in run.trades if t.symbol == CN2]
+    assert b_entries == ["2026-06-19"]
+    assert run.summary.gated_blocks.get("settle_lock", 0) == 0
+
+
+def test_settle_lock_2_delays_reentry_to_t2() -> None:
+    """A exits day2 -> proceeds usable day4 (T+2); B blocked day2+day3."""
+    calendar, scores, prices = _settle_data()
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-23",
+        position_pct=0.5, max_positions=2, settle_lock_sessions=2,
+    )
+    run = simulate(config, data=_data(calendar, scores, prices))
+    b_entries = [t.entry_date for t in run.trades if t.symbol == CN2]
+    assert b_entries == ["2026-06-23"]
+    assert run.summary.gated_blocks.get("settle_lock", 0) >= 2
+
+
+def test_settle_lock_config_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-23", settle_lock_sessions=-1)
+    assert BacktestConfig(start_date="2026-06-18", end_date="2026-06-23").settle_lock_sessions == 0

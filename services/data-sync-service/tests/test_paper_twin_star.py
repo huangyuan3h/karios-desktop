@@ -225,6 +225,51 @@ def test_intake_prefers_bar_1430_and_records_source(monkeypatch) -> None:
     assert out["entryPxSrc"] == {"bar_5min_1430": 1}
 
 
+def test_intake_snapshot_carries_srv_observation(monkeypatch) -> None:
+    seen: list[dict] = []
+    monkeypatch.setattr(
+        pts,
+        "build_twin_star_daily_action",
+        lambda: {
+            "sat": {
+                "gateOpen": True,
+                "candidates": [{"ts": "000001.SZ", "amp": 1, "gapPct": 5, "close": 10.5}],
+            }
+        },
+    )
+    monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
+    monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
+    monkeypatch.setattr(
+        pts,
+        "_srv_snapshot_for",
+        lambda day: {"srvScore": 95.0, "srvLevel": "Extreme_High", "srvOverlap": 0, "srvAsOf": day},
+    )
+
+    def fake_insert(**kwargs):
+        seen.append(kwargs)
+        return {"id": "x"}
+
+    monkeypatch.setattr(pts, "insert_paper_trade", fake_insert)
+    out = pts.run_intake_twin_star(trade_date="2026-09-02")
+    assert out["inserted"] == 1
+    snap = seen[0]["signal_snapshot"]
+    assert snap["srvScore"] == 95.0
+    assert snap["srvLevel"] == "Extreme_High"
+    assert snap["srvOverlap"] == 0
+    assert snap["srvAsOf"] == "2026-09-02"
+
+
+def test_srv_snapshot_fail_soft_without_backend(monkeypatch) -> None:
+    import data_sync_service.service.trade_calendar_utils as tcu
+
+    def _boom(*a, **k):
+        raise RuntimeError("no calendar, no db")
+
+    monkeypatch.setattr(tcu, "trade_dates_upto", _boom)
+    out = pts._srv_snapshot_for("2026-09-02")
+    assert out == {"srvScore": None, "srvLevel": None, "srvOverlap": None, "srvAsOf": "2026-09-02"}
+
+
 def test_update_records_exit_source_and_hhmm(monkeypatch) -> None:
     closed: list[dict] = []
     monkeypatch.setattr(
