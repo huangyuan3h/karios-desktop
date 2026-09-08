@@ -75,7 +75,7 @@
 | [`leg-fingerprints-2026-09-06.md`](./leg-fingerprints-2026-09-06.md) | 各腿指纹表（胜率×单笔×周转×右尾×方差） | ✅ 右尾/月度待补 |
 | [`sat-body1-2026-09-07.md`](sat/sat-body1-2026-09-07.md) | 持有 1/2 天 vs 3 天（OOS2+train，valid 未碰） | ❌ 全拒；body=1 退化为 body=2 |
 | [`sat-score-segment-2026-09-08.md`](sat/sat-score-segment-2026-09-08.md) | 分数分段诊断关闭（D3/D4 as-of 门，前瞻 paper 接棒） | ⛔ 未出数；0=真零值无setup |
-| [`index-trend-bigmoney-2026-09-08.md`](index/index-trend-bigmoney-2026-09-08.md) | 指数趋势延续性证伪（000300+000688 MA20/60，预注册） | ❌ 方向证伪+六格全败；连买持都跑不赢 |
+| [`index-trend-bigmoney-2026-09-08.md`](index/index-trend-bigmoney-2026-09-08.md) | 指数趋势证伪（000300+000688 MA20/60，预注册）+ §6 静态掺 + §7 轮动池 | ❌ 四关全拒；§7 valid+22.4 但 OOS2−3.1（维1首个生命体征，复活条件见档） |
 
 ### 早期与专题（结论已定 · 有事才翻）
 
