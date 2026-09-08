@@ -803,3 +803,163 @@ def test_build_s3_candidates_uptrend_day_momentum_filter() -> None:
         }
         # 5d = -4.5% → pullback → momentum filter rejects
         assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
+
+
+# ---------------------------------------------------------------------------
+# OPT-148: HK T+2 settled-cash ledger + market-aware swap costs
+# ---------------------------------------------------------------------------
+
+HK_A = "HK:00001"
+HK_TS = "00001.HK"
+
+
+def test_swap_close_prices_hk_costs() -> None:
+    """HK swap-out legs are priced at the HK round trip (0.90), not CN."""
+    holds = [{"id": "h1", "symbol": HK_A, "source": "S3HK", "tsCode": HK_TS,
+              "entryDate": "2026-07-01", "entryPrice": 10.0}]
+    cands = [{"symbol": "HK:00002", "ts_code": "00002.HK", "score": 90.0, "rs": 0.9,
+              "regime": "Strong", "industry": "银行"}]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+    ):
+        swapped, _ = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07", holds=holds, candidates=cands,
+            rs_by_ts={HK_TS: 0.1, "00002.HK": 0.9},
+            closes={HK_TS: 9.5, "00002.HK": 12.0},
+            market="HK",
+        )
+    assert len(swapped) == 1
+    kwargs = close.call_args.kwargs
+    assert kwargs["costs_pct"] == pytest.approx(0.9)
+    assert kwargs["pnl_pct"] == pytest.approx(-5.0 - 0.9)
+
+
+def test_hk_settled_cash_empty_book() -> None:
+    with (
+        patch.object(paper_s3, "_s3_open_holds", return_value=[]),
+        patch.object(paper_s3, "list_paper_trades", return_value=[]),
+    ):
+        out = paper_s3._hk_settled_cash(day="2026-08-07")
+    assert out == {"ok": True, "settled": 1.0, "deployed": 0.0, "unsettled": 0.0}
+
+
+def test_hk_settled_cash_freezes_recent_proceeds() -> None:
+    opens = [{"symbol": HK_A, "source": "S3HK", "sleevePct": 0.10}]
+    closes = [
+        {"symbol": "HK:00002", "source": "S3HK", "sleevePct": 0.10,
+         "entryPrice": 10.0, "closePrice": 10.0, "closeDate": "2026-08-06",
+         "closeReason": "trailing_stop"},
+        {"symbol": "HK:00003", "source": "S3HK", "sleevePct": 0.10,
+         "entryPrice": 10.0, "closePrice": 11.0, "closeDate": "2026-08-06",
+         "closeReason": "swapped"},
+        {"symbol": "HK:00004", "source": "S3HK", "sleevePct": 0.10,
+         "entryPrice": 10.0, "closePrice": 10.0, "closeDate": "2026-08-01",
+         "closeReason": "max_hold"},
+    ]
+    with (
+        patch.object(paper_s3, "_s3_open_holds", return_value=opens),
+        patch.object(paper_s3, "list_paper_trades", return_value=closes),
+        # 08-06 close is 1 session old, 08-01 close is 5 sessions old.
+        patch.object(paper_s3, "_hk_session_count",
+                     side_effect=lambda a, b: 1 if a == "2026-08-06" else 5),
+    ):
+        out = paper_s3._hk_settled_cash(day="2026-08-07")
+    assert out["ok"] is True
+    # swapped leg excluded, old leg settled: unsettled = 0.10 only.
+    assert out["deployed"] == pytest.approx(0.10)
+    assert out["unsettled"] == pytest.approx(0.10)
+    assert out["settled"] == pytest.approx(0.80)
+
+
+def test_hk_settled_cash_fails_open() -> None:
+    with patch.object(paper_s3, "_s3_open_holds", side_effect=RuntimeError("db down")):
+        out = paper_s3._hk_settled_cash(day="2026-08-07")
+    assert out["ok"] is False
+
+
+def _hk_intake(fill_px=10.5):
+    fill = {"entry_date": "2026-08-08", "entry_price": fill_px,
+            "pending_open_fill": False, "signal_snapshot": {"entryMode": "next_open"}}
+    return (
+        patch.object(
+            paper_s3, "build_s3_candidates",
+            return_value=[{"symbol": HK_A, "ts_code": HK_TS, "score": 90.0,
+                           "regime": "Strong", "rs": 0.8, "industry": "银行"}],
+        ),
+        patch.object(paper_s3, "_s3_open_holds", return_value=[]),
+        patch.object(paper_s3, "_lookup_stock_basic", return_value=({HK_TS: "测试H"}, {})),
+        patch.object(paper_s3, "fetch_last_ohlcv_batch",
+                     return_value={HK_TS: [("2026-08-07", 10, 10, 10, 10.0, 1000)]}),
+        patch("data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+              return_value=fill),
+        patch.object(paper_s3, "_signal_snapshot_for", return_value={}),
+    )
+
+
+def test_hk_session_count_escapes_like_wildcard() -> None:
+    """psycopg uses %s placeholders: the LIKE pattern must be %%-escaped."""
+    seen: dict[str, object] = {}
+
+    class FakeCur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, q, params):
+            seen["q"] = q
+            seen["params"] = params
+
+        def fetchone(self):
+            return [3]
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return FakeCur()
+
+    import data_sync_service.db as db_pkg
+
+    with patch.object(db_pkg, "get_connection", return_value=FakeConn()):
+        assert paper_s3._hk_session_count("2026-09-04", "2026-09-08") == 3
+    assert "%%.HK" in str(seen["q"])
+    assert seen["params"] == ("2026-09-04", "2026-09-08")
+
+
+def test_hk_intake_skips_on_settle_lock() -> None:
+    patches = _hk_intake() + (
+        patch.object(paper_s3, "_hk_settled_cash",
+                     return_value={"ok": True, "settled": 0.0, "deployed": 1.0, "unsettled": 0.0}),
+        patch.object(paper_s3, "insert_paper_trade",
+                     side_effect=AssertionError("no insert")),
+    )
+    with _patch_day_gates(), patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07", market="HK")
+    assert summary["inserted"] == 0
+    assert summary["skippedReasons"].get("settle-lock") == 1
+
+
+def test_hk_intake_inserts_when_settled() -> None:
+    inserted: list[dict] = []
+
+    def fake_insert(**kw):
+        inserted.append(kw)
+        return {"symbol": kw["symbol"]}
+
+    patches = _hk_intake() + (
+        patch.object(paper_s3, "_hk_settled_cash",
+                     return_value={"ok": True, "settled": 1.0, "deployed": 0.0, "unsettled": 0.0}),
+        patch.object(paper_s3, "insert_paper_trade", side_effect=fake_insert),
+    )
+    with _patch_day_gates(), patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07", market="HK")
+    assert summary["inserted"] == 1
+    assert inserted[0]["source"] == "S3HK"
+    assert summary["settledCash"] == pytest.approx(1.0)

@@ -468,7 +468,7 @@ class PaperTrade(BaseModel):
         default=None,
         description=(
             "v0.2: round-trip cost % (slippage + commission + stamp tax by "
-            "market). CN ~0.30%, HK ~0.60% under the default model. null on "
+            "market). CN ~0.30%, HK ~0.90% under the default model. null on "
             "legacy rows (costs not modeled)."
         ),
     )

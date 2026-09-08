@@ -46,8 +46,12 @@ class CostParams:
 
 
 # Conservative defaults. CN: 万2.5 commission + 0.05% sell stamp + 10bps
-# slippage/side. HK: 0.05% commission + 0.1% stamp both sides + 15bps
-# slippage/side (wider intraday spreads, no price limit).
+# slippage/side. HK: Ping An online 0.20% commission BOTH sides (highest
+# schedule rate, verified 2026-09-08 from stock.pingan.com.hk fee table;
+# phone trades 0.25% not modeled) + 0.1% stamp both sides + 15bps
+# slippage/side (wider intraday spreads, no price limit). HK$100/trade
+# minimum NOT modeled (needs absolute capital; sleeves are % notional —
+# stated optimistic residual alongside ~1.27bps/side micro-levies).
 _COST_PARAMS: dict[str, CostParams] = {
     MARKET_CN: CostParams(
         commission_bps_entry=2.5,
@@ -58,8 +62,8 @@ _COST_PARAMS: dict[str, CostParams] = {
         slippage_bps_exit=10.0,
     ),
     MARKET_HK: CostParams(
-        commission_bps_entry=5.0,
-        commission_bps_exit=5.0,
+        commission_bps_entry=20.0,
+        commission_bps_exit=20.0,
         stamp_bps_entry=10.0,
         stamp_bps_exit=10.0,
         slippage_bps_entry=15.0,
@@ -97,3 +101,13 @@ def round_trip_cost_pct(market: str) -> float:
 def net_pnl_pct(gross_pnl_pct: float, market: str) -> float:
     """Net pnl % for a close: gross minus the market's round-trip cost."""
     return gross_pnl_pct - round_trip_cost_pct(market) * 100.0
+
+
+def entry_cost_frac(market: str) -> float:
+    """Entry-side cost as a fraction of sleeve size (commission + stamp + slippage)."""
+    if market not in _COST_PARAMS:
+        raise ValueError(f"no cost model for market {market!r} (known: {sorted(_COST_PARAMS)})")
+    p = _COST_PARAMS[market]
+    return (
+        p.commission_bps_entry + p.stamp_bps_entry + p.slippage_bps_entry
+    ) / 100.0 / 100.0

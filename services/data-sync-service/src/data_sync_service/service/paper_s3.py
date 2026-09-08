@@ -46,7 +46,7 @@ from data_sync_service.service.env_label import (
     ENV_WEAK,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
-from data_sync_service.service.paper_cost_model import round_trip_cost_pct
+from data_sync_service.service.paper_cost_model import entry_cost_frac, round_trip_cost_pct
 from data_sync_service.service.paper_trading import _holding_days_for, _resolve_ts_code
 from data_sync_service.service.trendok import _lookup_stock_basic
 
@@ -610,6 +610,7 @@ def _swap_holds_for_candidates(
     candidates: list[dict[str, Any]],
     rs_by_ts: dict[str, float],
     closes: dict[str, float],
+    market: str = "CN",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """RS rotation: swap RS-weakened S-3 holds for clearly stronger candidates.
 
@@ -654,7 +655,7 @@ def _swap_holds_for_candidates(
         if entry_px <= 0:
             continue
         gross = (close_px - entry_px) / entry_px * 100.0
-        costs = round_trip_cost_pct("CN") * 100.0
+        costs = round_trip_cost_pct(market if market in ("CN", "HK") else "CN") * 100.0
         close_paper_trade(
             trade_id=str(hold.get("id") or ""),
             close_date=day,
@@ -723,6 +724,75 @@ def _alpha_key(symbol: str) -> str:
     if symbol.startswith("HK:") and len(symbol) == 7:
         return "HK:" + symbol[3:].zfill(5)
     return symbol
+
+def _hk_session_count(from_iso: str, to_iso: str) -> int | None:
+    """HK open sessions in [from, to] from HK bars; None on any failure."""
+    try:
+        from data_sync_service.db import get_connection
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(DISTINCT trade_date) FROM daily "
+                    "WHERE ts_code LIKE '%%.HK' AND trade_date >= %s AND trade_date <= %s",
+                    (str(from_iso)[:10], str(to_iso)[:10]),
+                )
+                row = cur.fetchone()
+                return int(row[0]) if row and row[0] is not None else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 HK session count failed: %s", exc)
+        return None
+
+
+def _hk_settled_cash(*, day: str) -> dict[str, Any]:
+    """Settled-cash ledger for the HK paper book (OPT-148, T+2 settlement).
+
+    settled = 1.0 - deployed(open S3HK sleeves) - unsettled(non-swap closes
+    younger than 3 HK sessions; usable ON T+2). Swap closes are excluded
+    (engine parity: swaps move no cash). Never raises: on failure returns
+    ok=False and intake falls back to the pre-ledger behavior.
+    """
+    out: dict[str, Any] = {"ok": False, "settled": 1.0, "deployed": 0.0, "unsettled": 0.0}
+    try:
+        from data_sync_service.service.trade_calendar_utils import count_open_sessions
+
+        day10 = str(day)[:10]
+        deployed = 0.0
+        for r in _s3_open_holds(source=SOURCE_S3_HK):
+            try:
+                deployed += float(r.get("sleevePct") or 0.0)
+            except (TypeError, ValueError):
+                continue
+        unsettled = 0.0
+        for r in list_paper_trades(status="closed", market="HK", limit=500):
+            if r.get("source") != SOURCE_S3_HK:
+                continue
+            if r.get("closeReason") == CLOSE_REASON_SWAPPED:
+                continue
+            cd = str(r.get("closeDate") or "")[:10]
+            if not cd:
+                continue
+            n = _hk_session_count(cd, day10)
+            if n is None:
+                n = count_open_sessions(cd, day10)
+            if n >= 3:
+                continue
+            try:
+                ep = float(r.get("entryPrice") or 0.0)
+                cp = float(r.get("closePrice") or 0.0)
+                sv = float(r.get("sleevePct") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if ep > 0 and cp > 0 and sv > 0:
+                unsettled += sv * cp / ep
+        out.update(
+            {"ok": True, "settled": 1.0 - deployed - unsettled,
+             "deployed": deployed, "unsettled": unsettled}
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 HK settle ledger failed (fallback): %s", exc)
+    return out
+
 
 def run_intake_s3(
     *,
@@ -806,7 +876,7 @@ def run_intake_s3(
             closes = _fetch_closes(all_ts)
             swapped_cands, candidates = _swap_holds_for_candidates(
                 day=day, holds=holds, candidates=candidates,
-                rs_by_ts=rs_by_ts, closes=closes,
+                rs_by_ts=rs_by_ts, closes=closes, market=market,
             )
             summary["swappedOut"] = len(swapped_cands)
     except Exception as exc:  # noqa: BLE001
@@ -832,6 +902,24 @@ def run_intake_s3(
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 env position scale failed (fallback 1.0): %s", exc)
     sleeve = S3_POSITION_PCT * sleeve_scale * env_scale
+
+    # OPT-148: HK T+2 settled-cash ledger — only settled cash opens new
+    # sleeves. CN untouched; swap-ins bypass (engine parity: swaps move no
+    # cash). Ledger outage falls back to pre-ledger behavior, loudly.
+    settle_ok = True
+    settled_cash = float("inf")
+    if market == "HK":
+        try:
+            led = _hk_settled_cash(day=day)
+            settle_ok = bool(led.get("ok"))
+            settled_cash = float(led.get("settled", 1.0))
+            summary["settledCash"] = round(settled_cash, 4)
+            summary["settledDeployed"] = round(float(led.get("deployed", 0.0)), 4)
+            summary["settledUnsettled"] = round(float(led.get("unsettled", 0.0)), 4)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 settle ledger wiring failed (fallback): %s", exc)
+        if not settle_ok:
+            summary["settleLedger"] = "fallback"
 
     ts_codes = [c["ts_code"] for c in candidates]
     by_name = {}
@@ -920,6 +1008,13 @@ def run_intake_s3(
             summary["skipped"] += 1
             summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
             continue
+        if market == "HK" and settle_ok:
+            need = float(sleeve) * (1.0 + entry_cost_frac("HK"))
+            if settled_cash + 1e-9 < need:
+                summary["skipped"] += 1
+                summary["skippedReasons"]["settle-lock"] = summary["skippedReasons"].get("settle-lock", 0) + 1
+                continue
+            settled_cash -= need
         fill = resolve_next_open_fill(ts, day, signal_close=float(px))
         if fill is None:
             summary["skipped"] += 1
