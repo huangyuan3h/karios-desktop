@@ -113,9 +113,11 @@ def main() -> int:
         navs1 = [float(r["navSingle"]) for r in twin1["rows"]]
         picks = [r["pick"] for r in core1["rows"]]
         idx_days = sum(1 for p in picks if p in INDEX_KEYS)
+        import collections as _c
         print(f"{w:6s} | +idx | {sm1['fusedPct']:+7.1f} | "
               f"{sm1['maxDdFusedPct']:5.1f} | {sr_of(navs1):+.2f} | "
-              f"{idx_days}/{len(picks)} | {core1.get('trailExits')}")
+              f"{idx_days}/{len(picks)} | {core1.get('trailExits')} | "
+              f"{dict(_c.Counter(picks))}")
     pst.MULTI_TS = dict(BASE_MULTI_TS)
     return 0
 
