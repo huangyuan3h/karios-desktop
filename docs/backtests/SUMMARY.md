@@ -63,6 +63,7 @@
 | SRV 指数验证（质疑指数本身 · 诊断 · 不动 Live） | Q1 指数前瞻分组 + Q2 习惯 fills 按 entry 日 SRV 分组 + Q3 阈值滑动/维度分解 | **REJECT 当开关**：Q1 两半同向但 ~0.5pt/3d 且后半无 Stable 样本；Q2 Extreme valid +1.04%/holdout −0.39% 打架，Stable 只活在 2025-12-18~2026-02-02 单块（与时段共线）；Q3 triple 57%/leader 70% 天数满分、阈值滑不动"天天 Extreme"、60 天校准窗无 Stable 却定了 Stable 线；降级纯记录（twin snapshot 已带 srv*，20 fills 后 C4 归因） | 见 [srv-validation-2026-09-08](srv/srv-validation-2026-09-08.md) |
 | STOCK 篮剥离港股对照（诊断 · 不动 Live） | 同 builder，CN-only snaps vs A+H 合并 × 三窗+past_year | **REJECT 剥离**：港股正贡献——OOS2 fused Δ−27.5pt、valid Δ−80pt（valid 上攻是 HK 带的，剥离后 STOCK 只选中 2 天 vs 16 天）；唯一反例 train +11.2pt（单窗不采信）；OOS2 回撤 18.0→29.6 亦变差 | 见 [stock-basket-nohk-2026-09-08](core/stock-basket-nohk-2026-09-08.md) |
 | 双子星现实版（core-HK现实 + 卫星习惯 opp blend · 策略零改动） | 同 builder，core 腿现实HK合并 vs 冻结合并 × 三窗+past_year+long | **期望重置**：OOS2 +84.0 / train +53.3 / valid +85.8 / past_year +137.8（平安90bps最终版；60bps中间版 +82.2/+51.5/+85.8/+118.7 见档）；valid −56pt 主因 pick 层（STOCK天16→29挤掉NASDAQ 38→26），不是 fill 层 | 见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md) §9/§11 |
+| 指数趋势延续性（大资金主导 proposal 证伪 · 预注册 · 不动 Live） | 000300（SSE50代理）+000688（科创✓）MA20/60趋势态诊断 + 次日开盘回放 × 三窗，vs 双子星现实版+买持 | **REJECT/方向证伪+六格全败**：bull态远期四切全弱于无条件（edge −0.8~−8.8pp，科创fwd60 +5.3 vs +14.1——涨幅在V反转里，MA全踏空）；趋势腿OOS2 −6.6/−8.2、train +7.1/+30.9、valid −10.0/+7.7，6格全败twin且**全输买持**；valid窗300买持仅+0.3（"年年30%"无base-rate支撑）；弱年OOS2 twin +84 > 科创买持+39 > 300买持+17.8 | 见 [index-trend-bigmoney-2026-09-08](index/index-trend-bigmoney-2026-09-08.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
