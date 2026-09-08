@@ -57,6 +57,7 @@ def build_mom_compare_timeline(
     lookback: int = LOOKBACK,
     ma_window: int = MA_WINDOW,
     trail_pct: float = TRAILING_PCT,
+    ma_window_by_key: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Replay 择强单轨 NAV (absolute) + daily rows for UI.
 
@@ -153,9 +154,10 @@ def build_mom_compare_timeline(
                 pi = days_k.index(prev)
             except ValueError:
                 continue
-            if pi < max(lookback, ma_window) - 1:
+            ma_w = (ma_window_by_key or {}).get(k, ma_window)
+            if pi < max(lookback, ma_w) - 1:
                 continue
-            ma = sum(mp[days_k[j]] for j in range(pi - ma_window + 1, pi + 1)) / ma_window
+            ma = sum(mp[days_k[j]] for j in range(pi - ma_w + 1, pi + 1)) / ma_w
             if mp[prev] < ma:
                 continue
             ago = mp[days_k[pi - lookback]]
