@@ -41,6 +41,7 @@
 | 卫星 14:30 入场过滤 C1/C2 | 4 变体 | C1 3% 相对无过滤 PASS+（tot/sr/dd）；vs 核心 valid tot −3.3，**不进 Live** | 见 [sat-entry-c1](sat/sat-entry-c1-2026-09-03.md) |
 | 卫星习惯 3 天 vs 4 天 / 下午买点 | 7 变体 | 计数仍 3 天；body=4 占槽；13:30–15:00 无更佳分钟 | 见 [sat-habit-clock](sat/sat-habit-clock-2026-09-03.md) |
 | 卫星持有 1/2 天 vs 3 天 | 2 变体（OOS2+train，valid 未碰） | **REJECT/total**：body=2 OOS2 −17.8/train −2.4，夏普回撤全差；body=1 退化为 body=2（引擎先退后买，同日卖不可表达）；路径表 d1 均值互证截右尾 | 见 [sat-body1](sat/sat-body1-2026-09-07.md) |
+| 卫星分数分段（高分 vs 0 分） | 0 变体（诊断关闭，未出数） | **方法论 kill**：06-18 前分数全合成（D3）+ 幸存者宇宙（D4），梯度不可解释；真分数时代 ~80 笔全 underpowered；唯一路径是前瞻 paper（`score_at_entry`，20 fills 结算），出结果前不进门 | 见 [sat-score-segment](sat/sat-score-segment-2026-09-08.md) |
 | 卫星 C1 + 第 3 日 10:00/14:30 卖 | 3 变体 | C1·14:30 卖三窗 tot/sr/dd 过核心；**Live 已切 habit（2026-09-03 全量跟进）** | 见 [sat-exit-hhmm](sat/sat-exit-hhmm-2026-09-03.md) |
 | 卫星第 3 日条件单 D3（高点−2% 否则 14:30） | 2 变体+自检 | **REJECT/total**：OOS2 −6.4/train −2.8/valid −5.8，夏普全差，触发率 ~63%；回吐≠反转，网格不补 | 见 [sat-exit-d3trail](sat/sat-exit-d3trail-2026-09-04.md) |
 | 卫星名单漂移（全天振幅 vs 14:30-proxy 排名） | 1 诊断（OOS2+train，valid 未碰） | **无超额，不改 Live**：top-4 Jaccard 均值 0.43（相同 20/205 天），3 日前瞻 +2.05% vs +1.90%（差 0.14pp/笔）；Live 本来就是快照-proxy 排名 | 见 [sat-list-drift](sat/sat-list-drift-2026-09-04.md) |
@@ -58,6 +59,7 @@
 | 对冲双子星 v0.2（全新算法 · 做空耗尽顶） | 三窗+2023+产品窗+严格有券敏感性 | **PASS+（样本内折扣版）**：vs 习惯 Δ+6540/+1221/+1333，sr全升dd全降，2023熊 +1783；敏感性 Δ+1023/+666/+508；绝对值禁入仓位决策，待 paper-shorts ≥20 笔前瞻 | 见 [hedge-twin-2026-09-05](hedge/hedge-twin-2026-09-05.md) |
 | 对冲双子星 v0.2 修正（成交语义） | 同上（限价成交重算） | **REJECT/实现证伪**：正确语义下 strict 65.3%/+0.92%（门 85–93% 未过），最差 −236%，23% 亏超 5%；冻结 89% 表系 naive-touch 幻影；附带 `factor_signals` 港股误标（OPT-146）+ strategy-params §7 联动暂停 | 同上 §1–§2 |
 | 大盘风格 vs 卫星 G1（理解层） | 趋势×波动分组 | up 三窗全赚，choppy 次之，down 被 R-wide 拦（19 天开 1 天）；波动率非稳定亏钱因子；**无新规则** | 见 [sat-regime](sat/sat-regime-2026-09-04.md) |
+| CPA-CN v1a（外部策略独立验证 · A-only · 不动 Live） | 三窗+产品窗+长窗（10×10%·次日开盘·含成本涨跌停） | **REJECT**：OOS2 +5.8/train +13.1/valid **−13.5**（ΔS-3 −42/−21/−52pt），产品窗 −11.4，long −53.3/DD−66/最差−30%；胜率26–35%、持有~6天、~90% wedge_drop 鞭打、信号~1000/天无选择（v1 混入 HK 版作废见档 §8） | 见 [cpa-cn-v1-2026-09-08](cpa/cpa-cn-v1-2026-09-08.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量

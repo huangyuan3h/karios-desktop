@@ -1,0 +1,90 @@
+{
+  "params": {
+    "position_pct": 0.1,
+    "max_pos": 10,
+    "costs": 0.003,
+    "tight": 0.02,
+    "pop_trigger": 1.005,
+    "exhaust": 0.1,
+    "max_hold": 60,
+    "min_avg_yi": 0.7,
+    "a_only": true
+  },
+  "windows": {
+    "OOS2": {
+      "window": "OOS2",
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "trading_days": 243,
+      "n_signals": 221900,
+      "signals_per_day": 913.169,
+      "n_entries": 324,
+      "n_trades": 324,
+      "total_nav": 5.83,
+      "sharpe": 0.37,
+      "maxdd": -19.72,
+      "winrate": 27.2,
+      "avg_net_pct": 0.36,
+      "worst_pct": -19.94,
+      "avg_hold_days": 6.4,
+      "n_pop": 309,
+      "n_crossback": 15,
+      "exit_reasons": {
+        "wedge_drop": 284,
+        "exhaustion": 32,
+        "end_of_window": 8
+      },
+      "end_nav": 1.0583
+    },
+    "train": {
+      "window": "train",
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "trading_days": 123,
+      "n_signals": 144671,
+      "signals_per_day": 1176.187,
+      "n_entries": 185,
+      "n_trades": 185,
+      "total_nav": 13.11,
+      "sharpe": 1.56,
+      "maxdd": -10.85,
+      "winrate": 34.6,
+      "avg_net_pct": 0.77,
+      "worst_pct": -14.95,
+      "avg_hold_days": 5.6,
+      "n_pop": 185,
+      "n_crossback": 0,
+      "exit_reasons": {
+        "wedge_drop": 159,
+        "exhaustion": 20,
+        "end_of_window": 6
+      },
+      "end_nav": 1.1311
+    },
+    "valid": {
+      "window": "valid",
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "trading_days": 110,
+      "n_signals": 72434,
+      "signals_per_day": 658.491,
+      "n_entries": 175,
+      "n_trades": 175,
+      "total_nav": -13.54,
+      "sharpe": -1.52,
+      "maxdd": -19.64,
+      "winrate": 26.3,
+      "avg_net_pct": -0.95,
+      "worst_pct": -14.52,
+      "avg_hold_days": 5.2,
+      "n_pop": 175,
+      "n_crossback": 0,
+      "exit_reasons": {
+        "wedge_drop": 153,
+        "exhaustion": 14,
+        "end_of_window": 8
+      },
+      "end_nav": 0.8646
+    }
+  }
+}

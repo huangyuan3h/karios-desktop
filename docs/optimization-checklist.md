@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
-> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-146`（重号见文末）。
-> **正文 0 条未完成 + 3 条冬眠**；已完成 108 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-147`（重号见文末）。
+> **正文 1 条未完成（OPT-147） + 3 条冬眠**；已完成 108 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,7 +18,26 @@
 
 ---
 
-## 未完成（0 条 · 2026-09-06 H2 收官）
+## 未完成（1 条 · OPT-147 open）
+
+### OPT-147：R-wide breadth 池 HK 污染量级断言（P2 · 只读不断言不修引擎）
+
+**状态**：[ ] open（2026-09-08 登记 · 来源 CPA/Amihud 两连撞宇宙门复查）
+
+**背景**：`state_bucket_track._load_rows` 无 `sb.market` 过滤，`daily` 池含 ~2500 HK 行。
+habit 引擎已验证两道 containment（`_day_features` mv 门排除 HK，`bar_5min` 0 HK symbol），
+但 R-wide breadth（close>MA20 占比）在含 HK 池上计算，~1/3 权重为 HK。见
+`first-principles-2026-09-05.md §二.7`。
+
+**范围（只读，不改冻结引擎）**：
+- `services/data-sync-service/scripts/` 新只读断言脚本（仿 `diag_amihud.py` 口径）
+- 读 `services/data-sync-service/src/data_sync_service/service/state_bucket_track.py:113` `_day_features` breadth 段
+
+**验收**：
+1. 输出 OOS2/train/valid 每日 breadth（含 HK）vs 去 HK breadth 的差序列：翻转天数（跨 0.5 门限的天）、R-wide 开闸日差异数。
+2. 若翻转天数为 0 → 关项，first-principles §二.7 补一行结论。
+3. 若 >0 → 不修引擎，另起预注册评估对 clip4 三窗的影响（诊断→回放 discipline），本 OPT 只负责量级数字。
+4. 加回归测试：`bar_5min` 0 HK 断言 + mv 门 HK 排除断言（防 pattern 复制退化）。
 
 | OPT-124 | [x] 2026-09-06 · 多 token 轮换 + 配额看门狗 | [2026-09-06-opt-124-tushare-pool.md](archive/2026-09-06-opt-124-tushare-pool.md) |
 

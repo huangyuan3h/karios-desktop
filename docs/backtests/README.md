@@ -47,7 +47,7 @@
 | [`state-bucket-algo-2026-08-31.md`](core/state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
 
-### 09-04 → 09-07 增补（习惯 Live 打磨 + 规律提取 · 明细只看 SUMMARY §1）
+### 09-04 → 09-08 增补（习惯 Live 打磨 + 规律提取 · 明细只看 SUMMARY §1）
 
 | 文档 | 内容 | 状态 |
 |------|------|------|
@@ -74,6 +74,7 @@
 | [`first-principles-2026-09-05.md`](./first-principles-2026-09-05.md) | 基础规律与不变量（新想法先自查） | ✅ §一–§六 |
 | [`leg-fingerprints-2026-09-06.md`](./leg-fingerprints-2026-09-06.md) | 各腿指纹表（胜率×单笔×周转×右尾×方差） | ✅ 右尾/月度待补 |
 | [`sat-body1-2026-09-07.md`](sat/sat-body1-2026-09-07.md) | 持有 1/2 天 vs 3 天（OOS2+train，valid 未碰） | ❌ 全拒；body=1 退化为 body=2 |
+| [`sat-score-segment-2026-09-08.md`](sat/sat-score-segment-2026-09-08.md) | 分数分段诊断关闭（D3/D4 as-of 门，前瞻 paper 接棒） | ⛔ 未出数；0=真零值无setup |
 
 ### 早期与专题（结论已定 · 有事才翻）
 
