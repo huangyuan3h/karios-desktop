@@ -249,11 +249,16 @@ def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = Non
     return {"reconDate": day, "window": window, "markets": markets}
 
 
-def run_and_persist(day: str, *, window: str = "valid") -> dict[str, Any]:
-    """reconcile_day + persist (idempotent per day+market). Cron entry point."""
+def run_and_persist(day: str, *, window: str = "valid", end_date: str | None = None) -> dict[str, Any]:
+    """reconcile_day + persist (idempotent per day+market). Cron entry point.
+
+    ``end_date`` extends the frozen window so recent days (e.g. last Friday)
+    stay reconcilable — without it the weekly job fails every Monday once the
+    day falls past the frozen window end (2026-08-24/31, 2026-09-07).
+    """
     from data_sync_service.db.reconciliation import insert_recon
 
-    out = reconcile_day(day, window=window)
+    out = reconcile_day(day, window=window, end_date=end_date)
     for market, m in out["markets"].items():
         if not m.get("available"):
             continue

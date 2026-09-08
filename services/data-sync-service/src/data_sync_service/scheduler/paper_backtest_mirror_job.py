@@ -39,15 +39,40 @@ def build_trigger() -> CronTrigger:
     return CronTrigger.from_crontab(CRON_EXPRESSION, timezone=TIMEZONE)
 
 
+def _resolve_python() -> str:
+    """Pick an interpreter that can actually import the service deps.
+
+    The repo venv is canonical but can go stale (2026-09-06: it lacked
+    psycopg_pool added in OPT-125, mirror failed daily); sys.executable
+    can be a bare or versioned (python3.12) system interpreter (2026-08-14:
+    exit=2). Probe the import and take the first working candidate so env
+    drift degrades to the other interpreter instead of paging Bark.
+    """
+    candidates = [
+        Path(__file__).resolve().parents[3] / ".venv" / "bin" / "python",
+        Path(sys.executable),
+    ]
+    seen: set[str] = set()
+    for cand in candidates:
+        s = str(cand)
+        if s in seen or not cand.exists():
+            continue
+        seen.add(s)
+        try:
+            probe = subprocess.run(
+                [s, "-c", "import psycopg_pool"],
+                capture_output=True,
+                timeout=30,
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        if probe.returncode == 0:
+            return s
+    return str(candidates[-1])
+
+
 def run() -> None:
-    # Use the project venv python explicitly — sys.executable can point at
-    # the WRONG interpreter when the service was started with a bare
-    # `uvicorn` (e.g. miniconda python), which then cannot resolve the
-    # venv deps or script path (2026-08-14: exit=2 /miniconda3/bin/python3
-    # can't open file). Resolve the venv interpreter relative to this file.
-    venv_python = Path(sys.executable)
-    if venv_python.name in ("python", "python3"):
-        venv_python = Path(__file__).resolve().parents[3] / ".venv" / "bin" / "python"
+    venv_python = _resolve_python()
     try:
         proc = subprocess.run(
             [str(venv_python), str(SCRIPT), "--market", "HK"],

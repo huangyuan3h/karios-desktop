@@ -52,7 +52,20 @@ class TestIntradayAlarm:
 
 
 class TestJobFailureEvent:
+    # NOTE (2026-09-08): insert_record also writes system_events via that
+    # module's own get_connection — patching only sync_job_record's
+    # connection still leaks REAL job_failed rows (close_sync 'boom' paged
+    # the phone on 09-04/09-06). Neutralize the system_events write here;
+    # these tests assert on the emit path, not on stored rows.
+    @staticmethod
+    def _no_system_events(monkeypatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.db.system_events.insert_event",
+            lambda **kw: True,
+        )
+
     def test_failure_emits_job_failed_event(self, monkeypatch) -> None:
+        self._no_system_events(monkeypatch)
         emitted: list[dict] = []
 
         def fake_emit(event_type, payload, dedupe_key):
@@ -77,6 +90,7 @@ class TestJobFailureEvent:
     def test_low_severity_failure_emits_nothing(self, monkeypatch) -> None:
         # intraday_alarm is low-severity: failure is recorded to system_events
         # but must NOT push a webhook (phone stays quiet for peripheral jobs).
+        self._no_system_events(monkeypatch)
         with patch("data_sync_service.db.sync_job_record.get_connection"):
             with patch("data_sync_service.db.webhook.emit_event") as emit_mock:
                 sync_job_record.insert_record("intraday_alarm", success=False, error_message="boom")

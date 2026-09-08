@@ -613,6 +613,10 @@ class TestAlphaRadarJobs:
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": False, "errors": ["boom"]})
+        # NOTE (2026-09-08): job.run() records REAL failure rows (system_events
+        # job_failed:alpha_radar_pipeline_job polluted dev on 09-04/09-06).
+        # This test asserts on logs only — stub the record write.
+        monkeypatch.setattr(job, "insert_record", lambda *a, **k: None)
         job.run()
         assert "failed" in caplog.text
 
@@ -621,6 +625,7 @@ class TestAlphaRadarJobs:
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(job, "insert_record", lambda *a, **k: None)
         job.run()
         assert "failed" in caplog.text
 

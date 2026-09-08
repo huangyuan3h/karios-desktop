@@ -80,7 +80,11 @@ def upsert_research_reports(rows: list[dict[str, Any]]) -> int:
                          rating, target_price, eps_this_year, pe_this_year,
                          industry_name, market, publish_date, encode_url, source)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (info_code) DO NOTHING
+                    -- Bare DO NOTHING covers BOTH unique arbiters
+                    -- (info_code and (stock_code, publish_date, title)):
+                    -- eastmoney re-issues the same title under a new
+                    -- info_code (2026-09-04/05 dup-key failures).
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         str(row.get("infoCode") or "").strip(),

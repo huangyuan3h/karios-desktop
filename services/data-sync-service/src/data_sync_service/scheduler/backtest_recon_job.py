@@ -41,7 +41,9 @@ def _last_friday() -> str:
 def run() -> None:
     day = _last_friday()
     try:
-        out = run_and_persist(day)
+        # end_date=day keeps last Friday inside the replay window even after
+        # the frozen valid window end (reconcile_day docstring blesses this).
+        out = run_and_persist(day, end_date=day)
     except Exception as exc:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(exc))
         logger.warning("backtest_paper_recon failed: %s", exc)

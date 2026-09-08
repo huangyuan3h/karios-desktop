@@ -26,7 +26,18 @@ def run() -> dict:
     today = date.today().isoformat()
     start = (date.today() - timedelta(days=365)).isoformat()
     try:
-        result = _fn(start=start, end=today)
+        # backtest_timeline is a FastAPI route: its defaults are Query()
+        # objects, so every param must be passed as a plain value here.
+        # (2026-09-08: omitted strategy stringified to "Query(pick_strong)"
+        # and failed validation every weekday since 09-03.)
+        result = _fn(
+            start=start,
+            end=today,
+            strategy="pick_strong",
+            sat_fill="next_open",
+            sat_exit=None,
+            c1_pct=None,
+        )
         insert_record(job_type="timeline_warmup", success=True, last_ts_code=f"{start}_{today}", error_message=f"warmed {len(result.get('rows',[]))} rows")
         return result
     except Exception as exc:

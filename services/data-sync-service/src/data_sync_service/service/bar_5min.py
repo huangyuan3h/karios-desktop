@@ -210,11 +210,11 @@ def list_cn_a_share_codes() -> list[str]:
             cur.execute(
                 """
                 SELECT ts_code FROM stock_basic
-                WHERE (ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ')
+                WHERE (ts_code LIKE '%%.SH' OR ts_code LIKE '%%.SZ')
                   AND COALESCE(market, '') NOT IN ('ETF', 'HK', '北交所')
-                  AND ts_code NOT LIKE '%.BJ'
+                  AND ts_code NOT LIKE '%%.BJ'
                   AND delist_date IS NULL
-                  AND name NOT LIKE '%ST%'
+                  AND name NOT LIKE '%%ST%%'
                 ORDER BY ts_code
                 """
             )
@@ -234,10 +234,10 @@ def list_gap_codes(trade_date: str, *, min_gap: float = 0.03) -> list[str]:
                 WHERE d.trade_date = %s
                   AND d.open IS NOT NULL AND d.pre_close IS NOT NULL AND d.pre_close > 0
                   AND d.open / d.pre_close - 1 > %s
-                  AND (d.ts_code LIKE '%.SH' OR d.ts_code LIKE '%.SZ')
+                  AND (d.ts_code LIKE '%%.SH' OR d.ts_code LIKE '%%.SZ')
                   AND COALESCE(sb.market, '') NOT IN ('ETF', 'HK', '北交所')
                   AND sb.delist_date IS NULL
-                  AND sb.name NOT LIKE '%ST%'
+                  AND sb.name NOT LIKE '%%ST%%'
                 ORDER BY d.ts_code
                 """,
                 (trade_date, min_gap),

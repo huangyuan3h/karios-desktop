@@ -68,7 +68,10 @@ def test_high_severity_emits_immediately(monkeypatch) -> None:
             )
             cur.execute(
                 "DELETE FROM system_events WHERE dedupe_key LIKE 'job_failed:close_sync:%'"
-                " AND title LIKE '%boom%'"
+                # NOTE (2026-09-08): title never contains 'boom' (detail does),
+                # so the old `title LIKE '%boom%'` predicate matched zero rows
+                # and every suite run left a HIGH close_sync row paging Bark.
+                " AND detail = 'boom'"
             )
         conn.commit()
 
