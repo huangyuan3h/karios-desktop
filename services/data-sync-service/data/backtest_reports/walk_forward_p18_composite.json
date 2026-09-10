@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-09-10T22:11:49.582897+00:00",
+  "tag": "P18-composite",
+  "config": {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "CN",
+    "gates": "full",
+    "entry_mode": "next_open",
+    "trailing_stop_pct": -8.0,
+    "position_pct": 0.1,
+    "max_positions": 10,
+    "rs_rank_min": 0.5,
+    "diverging_scale": 1.0,
+    "drawdown_circuit_pct": -25.0,
+    "slippage_pct": 0.0,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1,
+    "exclude_boards": "300",
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": true,
+    "neutral_block": true,
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
+    "max_hold_env_shorten": 45,
+    "env_position_scale": "uptrend:1.25,fan:0.75",
+    "min_avg_amount": 0.7,
+    "panic_cooldown_days": 2,
+    "national_team_gate": true,
+    "value_mom_gate": "composite"
+  },
+  "results": {
+    "OOS2": {
+      "closed": 87,
+      "winRate": 0.425,
+      "winRateCI": [
+        0.32673072915584994,
+        0.5301630287700343
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": 3.623,
+      "totalNetPnlPct": 39.654,
+      "maxDrawdownPct": 20.312,
+      "sharpe": 1.09
+    },
+    "train": {
+      "closed": 39,
+      "winRate": 0.308,
+      "winRateCI": [
+        0.1856575344598306,
+        0.46421548615564595
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": -3.33,
+      "totalNetPnlPct": -8.237,
+      "maxDrawdownPct": 13.466,
+      "sharpe": -1.01
+    },
+    "valid": {
+      "closed": 9,
+      "winRate": 0.111,
+      "winRateCI": [
+        0.019890371327130518,
+        0.4350062147680602
+      ],
+      "underpowered": "⚠️ underpowered n<100",
+      "avgNetPnlPct": -5.409,
+      "totalNetPnlPct": -4.437,
+      "maxDrawdownPct": 4.832,
+      "sharpe": -1.6
+    }
+  },
+  "baselineUsed": true
+}

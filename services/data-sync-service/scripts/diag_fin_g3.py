@@ -1,8 +1,8 @@
-"""G2 diagnostic (P0-11): lev_safe, size-neutral — pre-registered, single hypothesis.
+"""G3 diagnostic (P0-11): roe_ttm, size-neutral — pre-registered, single hypothesis.
 
-Hypothesis H-G2: within size quintiles, low-leverage (industry-relative 
-debt-ratio) stocks have higher 60d forward returns (F4's weak raw signal was
-possibly drowned by the size effect, e.g. 2024Q2 small-cap rally).
+Hypothesis H-G3: within size quintiles, high ROE-TTM stocks have higher 60d
+forward returns (F1's negative raw signal possibly confounded by size —
+high ROE concentrates in large caps; neutralize and re-test).
 
 Method: per quarter cohort, split into circ_mv quintiles; RankIC and Q5-Q1
 computed within each size bucket, pooled equal-weight across buckets.
@@ -17,7 +17,7 @@ Otherwise the direction closes with no grid search.
 PiT: ann_date; universe non-financials (same as F4).
 
 Usage:
-    PYTHONPATH=src python3 scripts/diag_fin_g2.py
+    PYTHONPATH=src python3 scripts/diag_fin_g3.py
 """
 
 from __future__ import annotations

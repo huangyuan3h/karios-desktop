@@ -151,6 +151,42 @@ def leverage_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
 
 
+def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
+    """Value numerators (PiT): NI-TTM, revenue-TTM, book equity, FCF-TTM.
+
+    Ratios (EP/BP/SP/FCFP) are formed at diag time with total_mv asof the
+    signal date. FCF uses tushare's reported free_cashflow (YTD-split like
+    the rest); coverage is reported by callers. No dividend yield leg —
+    no dividend table exists locally (honest boundary, P18 spec minus 股息率).
+    """
+    inc = _ttm(_single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
+               tuple(c + "_sq" for c in INCOME_COLS))
+    cf = _ttm(_single_quarter(_load("cn_cashflow_stmt", ("free_cashflow",), end_from),
+                              ("free_cashflow",)),
+              ("free_cashflow_sq",))
+    bal = _load("cn_balance_sheet", BALANCE_COLS, end_from)
+    m = inc.merge(
+        cf[["ts_code", "end_date", "free_cashflow_sq_ttm", "ann_date"]],
+        on=["ts_code", "end_date"], how="inner", suffixes=("", "_cf"),
+    )
+    m["ann_date"] = pd.concat([m["ann_date"], m["ann_date_cf"]], axis=1).max(axis=1)
+    m = m.merge(
+        bal[["ts_code", "end_date", "total_hldr_eqy_inc_min_int", "ann_date"]],
+        on=["ts_code", "end_date"], how="inner", suffixes=("", "_bal"),
+    )
+    m["ann_date"] = pd.concat([m["ann_date"], m["ann_date_bal"]], axis=1).max(axis=1)
+    m = m[(m["total_hldr_eqy_inc_min_int"] > 0)].copy()
+    with get_connection() as conn:
+        ind = pd.read_sql("SELECT ts_code, industry FROM stock_basic", conn)
+    m = m.merge(ind, on="ts_code", how="left")
+    m["is_fin"] = m["comp_type"] != "1"
+    return m[[
+        "ts_code", "end_date", "ann_date", "n_income_attr_p_sq_ttm",
+        "total_revenue_sq_ttm", "total_hldr_eqy_inc_min_int",
+        "free_cashflow_sq_ttm", "industry", "is_fin",
+    ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
+
+
 def load_trade_calendar() -> tuple[list[str], dict[str, int]]:
     """All trade dates (daily table) + index map. A-share full since 2021."""
     with get_connection() as conn:

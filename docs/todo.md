@@ -288,7 +288,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
-## P0-11 财务质量计划（2026-09-10 立 · 用户拍板：财务看长期）
+## P0-11 财务质量计划（2026-09-10 立 · 用户拍板：财务看长期）[done] 2026-09-11
 
 **大白话**：三张原始报表（tushare `balancesheet/income/cashflow`）已入库，目标是给 S-3 加一层**防守型质量门**（只剔除、不预测涨跌）。财务是季度慢变量——只看 20–60 天归因，不碰 3 天卫星腿（尺度匹配律；P15 未验证子项，可以开）。
 
@@ -299,8 +299,9 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | F1 | ROE-TTM > 行业中位数 **[done] 2026-09-10：REJECT/方向证伪**（22 季 meanIC −0.06、Q-spread 仅 27% 为正；档 `backtests/factors/fin-f1-roe-ttm-2026-09-10.md`；反号不开，需独立预注册） |
 | G1 | F2 + 市值中性 **[done] 2026-09-11：REJECT**（20 季 pooledIC +0.026、Q-spread 仍 50%；规模不是主因；档 `backtests/factors/fin-g1-ccr-neutral-2026-09-11.md`） |
 | G2 | F4 + 市值中性 **[done] 2026-09-11：REJECT/方向反**（pooledIC −0.018、Q-spread 仅 20%；原始弱正向疑为大盘代理；档 `backtests/factors/fin-g2-lev-neutral-2026-09-11.md`） |
+| G3 | F1 + 市值中性 **[done] 2026-09-11：REJECT/方向反坐实**（pooledIC −0.048、Q-spread 仅 20%；roe–size 相关 0.2+ 但非主因；档 `backtests/factors/fin-g3-roe-neutral-2026-09-11.md`） |
 | F2–F4 | CFO/净利 **[done] 2026-09-10：REJECT/弱方向**（档 `backtests/factors/fin-f2-cashconv-2026-09-10.md`）、应计（与 F2 同源跳过）、杠杆 **[done] 2026-09-10：REJECT/弱方向**（meanIC +0.015、Q-spread 仅 32%；档 `backtests/factors/fin-f4-leverage-2026-09-10.md`）。**P15 方向诊断层整体关闭，不进回放** |
-| F5 | 价值复合（P18） | 需 join 市值，放最后 |
+| F5 | 价值复合（P18） **[done] 2026-09-11：回放 REJECT**（三臂：composite −8.5/−43/−43pt、mom_only +2/−44/−36pt；归因 83% 拦截是缺数 fail-closed → #7 覆盖 + #5 砍宽度；value 腿组合零增量；报告 `walk_forward_p18_*.json`；档 `backtests/factors/fin-p18-value-mom-2026-09-11.md` §5） |
 | S1 | 合成决策 | 单因子 PASS 才谈复合；阶段一只做负面剔除 |
 
 **顺序**：D1 → D2 → F1 → F2–F4 → F5 → S1。
@@ -318,6 +319,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ## 沉淀（近 5 条，余见 archive/README）
 
+| 2026-09-11 | P0-11 财务质量（三表 16.5 万行/表 + 7 诊断 + P18 三臂回放，全关） | `archive/2026-09-11-p11-fin-quality.md` |
 | 2026-09-06 | P0-10 工程坚实 H1–H6（核心链覆盖/稳定性/公约/防漂/信任/锁门） | `archive/2026-09-06-p10-engineering-hardening.md` |
 | 2026-09-06 | P0-9 文档轨 D0–D5（backtests 分夹/checklist 双拆/数字单一源/路由统一/一页纸） | `archive/2026-09-06-docs-p09-agent-friendly.md` |
 | 2026-09-06 | P0-8 砖块结论 M1–M6（死因分类/存活律/吸收矩阵/平台表/指纹表） | `archive/2026-09-06-brick-laws-m1-m6.md` |

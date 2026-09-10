@@ -374,6 +374,14 @@ class BacktestConfig:
     mom_ret_days: int = 0
     mom_skip_days: int = 20
     mom_rank_min: float = 0.5
+    # P18 (P0-11, 2026-09-11): value x momentum composite as an ADDITIVE
+    # entry gate — off = baseline; mom_only = 60d-return cross-sectional rank
+    # must be >= 0.5 (median split); composite = 0.5*value_rank + 0.5*mom_rank
+    # must average >= 0.5. value_rank = mean rank of EP/BP/SP/FCF-yield
+    # (TTM numerators PiT by ann_date, total_mv asof entry day). Missing
+    # value data that day = blocked (fail-closed). Frozen single version —
+    # no threshold sweep (diagnostic: factors/fin-p18-value-mom-2026-09-11).
+    value_mom_gate: str = "off"
     # P17 (signal pool, 2026-08-15): portfolio-level risk controls — each
     # sub-item is tested alone (planned-doc §2 P17):
     #   min_avg_amount>0        — liquidity floor: exclude candidates whose
@@ -506,6 +514,8 @@ class BacktestConfig:
             raise ValueError("mom_skip_days must be >= 0 (20 = skip the most recent 20 sessions)")
         if not 0 < self.mom_rank_min <= 1:
             raise ValueError("mom_rank_min must be in (0, 1] (0.5 = top 50% whole-market momentum rank)")
+        if self.value_mom_gate not in ("off", "composite", "mom_only"):
+            raise ValueError("value_mom_gate must be one of ('off', 'composite', 'mom_only')")
         if self.min_avg_amount < 0:
             raise ValueError("min_avg_amount must be >= 0 (亿元; 0 disables)")
         if self.max_hold_unprofitable_days < 0:
@@ -697,6 +707,14 @@ class BacktestData:
         self.mom_rank_by_day: dict[str, dict[str, float]] = {}
         if config.mom_ret_days > 0:
             self.mom_rank_by_day = _load_mom_ranks(config, self.calendar, set(self.ts_codes))
+        # P18 (P0-11 value x momentum): per-day (value_pct, mom60_pct).
+        # Loaded only when the gate is on; missing data that day = blocked.
+        self.value_comp_by_day: dict[str, dict[str, tuple[float, float]]] = {}
+        if config.value_mom_gate != "off":
+            self.value_comp_by_day = _load_value_comp_ranks(
+                config, self.calendar, set(self.ts_codes),
+                self.closes_by_ts, self.mv_by_day,
+            )
         # B-T1: params are stored for heavy recompute; auto-recompute disabled to keep <10s
     def recompute_scores_with_params(self, override: dict[str, float]) -> dict[str, dict[str, float]]:
         from data_sync_service.service.trendok import _trendok_one
@@ -1310,6 +1328,101 @@ def _load_mom_ranks(
             if ts in universe_ts:
                 pos[ts] = (total - i + 1) / total
         out[day] = pos
+    return out
+
+
+def _load_value_comp_ranks(
+    config: BacktestConfig,
+    calendar: list[str],
+    universe_ts: set[str],
+    closes_by_ts: dict[str, list[tuple[str, float]]],
+    mv_by_day: dict[str, dict[str, float]],
+) -> dict[str, dict[str, tuple[float, float]]]:
+    """P18: per-day (value_pct, mom60_pct) for the windowed universe.
+
+    value = mean cross-sectional rank of EP/BP/SP/FCF-yield, where numerators
+    are TTM PiT (latest panel row with ann_date <= day) and market value is
+    total_mv asof the day; mom60 = 60-session return percentile. Percentiles
+    are 0-1 (1 = best), ranked within the scored pool that day. Days with
+    <30 scored stocks are skipped (P9 precedent). Financials have no value
+    rows, so they are absent (gate blocks them when on).
+    Returns {day: {ts_code: (value_pct, mom_pct)}}.
+    """
+    from data_sync_service.service.fin_panel import value_panel
+
+    def num(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f == f else None  # NaN guard without importing math
+
+    if config.value_mom_gate == "off":
+        return {}
+    rows_by_ts: dict[str, list[tuple[str, tuple[float | None, ...]]]] = {}
+    for r in value_panel().itertuples():
+        ts = str(r.ts_code)
+        if ts not in universe_ts or bool(r.is_fin):
+            continue
+        ann = r.ann_date.strftime("%Y-%m-%d")
+        rows_by_ts.setdefault(ts, []).append((
+            ann,
+            (num(r.n_income_attr_p_sq_ttm), num(r.total_revenue_sq_ttm),
+             num(r.total_hldr_eqy_inc_min_int), num(r.free_cashflow_sq_ttm)),
+        ))
+    for v in rows_by_ts.values():
+        v.sort(key=lambda kv: kv[0])
+    pos_by_ts: dict[str, dict[str, int]] = {
+        ts: {d: i for i, (d, _c) in enumerate(series)}
+        for ts, series in closes_by_ts.items()
+    }
+
+    def pct(items: list[tuple[str, float]]) -> dict[str, float]:
+        ranked = sorted(items, key=lambda kv: -kv[1])
+        total = len(ranked)
+        return {ts: (total - i + 1) / total for i, (ts, _v) in enumerate(ranked, start=1)}
+
+    ptr: dict[str, int] = {ts: -1 for ts in rows_by_ts}
+    out: dict[str, dict[str, tuple[float, float]]] = {}
+    for day in calendar:
+        mv_day = mv_by_day.get(day, {})
+        ep, bp, sp, fc, mm = [], [], [], [], []
+        for ts, rows in rows_by_ts.items():
+            p = ptr[ts]
+            while p + 1 < len(rows) and rows[p + 1][0] <= day:
+                p += 1
+            ptr[ts] = p
+            if p < 0:
+                continue
+            ni, rev, eq, fcf = rows[p][1]
+            if ni is None or rev is None or eq is None or fcf is None:
+                continue
+            mv = mv_day.get(ts)
+            if not mv or mv <= 0:
+                continue
+            pmap = pos_by_ts.get(ts, {})
+            q = pmap.get(day)
+            series = closes_by_ts.get(ts, [])
+            if q is None or q < 60:
+                continue
+            c1, c0 = series[q][1], series[q - 60][1]
+            if not c0 or c0 <= 0 or not c1:
+                continue
+            ep.append((ts, ni / mv))
+            bp.append((ts, eq / mv))
+            sp.append((ts, rev / mv))
+            fc.append((ts, fcf / mv))
+            mm.append((ts, c1 / c0 - 1))
+        if len(mm) < 30:
+            continue
+        r_ep, r_bp, r_sp, r_fc = pct(ep), pct(bp), pct(sp), pct(fc)
+        pool = [t for (t, _v) in mm]
+        value_score = {t: (r_ep[t] + r_bp[t] + r_sp[t] + r_fc[t]) / 4.0 for t in pool}
+        r_value = pct([(t, value_score[t]) for t in pool])
+        r_mom = pct(mm)
+        out[day] = {t: (r_value[t], r_mom[t]) for t in pool}
     return out
 
 
@@ -2147,6 +2260,20 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 mr = data.mom_rank_by_day.get(day, {}).get(ts)
                 if mr is None or mr < config.mom_rank_min:
                     gated_blocks["mom"] += 1
+                    continue
+            if config.value_mom_gate != "off":
+                # P18 (P0-11): value x momentum composite gate — median
+                # split on 0.5*value_pct + 0.5*mom60_pct (composite arm) or
+                # on mom60_pct alone (mom_only ablation arm). Missing data
+                # that day = blocked (fail-closed).
+                vv = data.value_comp_by_day.get(day, {}).get(ts)
+                if vv is None:
+                    gated_blocks["value_mom_missing"] += 1
+                    continue
+                v_pct, m_pct = vv
+                score = (0.5 * v_pct + 0.5 * m_pct) if config.value_mom_gate == "composite" else m_pct
+                if score < 0.5:
+                    gated_blocks["value_mom_gate"] += 1
                     continue
             blocked_by = _gate_blocked(config, data, day, ts)
             if blocked_by is not None:
