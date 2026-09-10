@@ -4,6 +4,10 @@ import { z } from 'zod';
 export const UserTradeSideSchema = z.enum(['BUY', 'ADD', 'SELL']);
 export type UserTradeSide = z.infer<typeof UserTradeSideSchema>;
 
+/** Which strategy book a manual leg belongs to (OPT-149). */
+export const UserTradeLegSchema = z.enum(['s3', 'sat']);
+export type UserTradeLeg = z.infer<typeof UserTradeLegSchema>;
+
 /** One alpha-radar event visible as-of the trade date (§19.3 snapshot). */
 export const AlphaSnapshotEventSchema = z.object({
   trend: z.string(),
@@ -41,6 +45,7 @@ export const UserTradeSchema = z.object({
   source: z.string().nullable().optional(),
   market: z.string().optional(),
   note: z.string().nullable().optional(),
+  leg: UserTradeLegSchema.optional().default('s3'),
   alphaSnapshot: AlphaSnapshotSchema.nullable().optional(),
   createdAt: z.string().nullable().optional(),
 });
@@ -58,6 +63,7 @@ export const UserTradeRequestSchema = z.object({
   source: z.string().optional(),
   market: z.string().optional(),
   note: z.string().optional(),
+  leg: UserTradeLegSchema.optional(),
 });
 export type UserTradeRequest = z.infer<typeof UserTradeRequestSchema>;
 
@@ -66,6 +72,14 @@ export const UserTradeResponseSchema = z.object({
   trade: UserTradeSchema,
 });
 export type UserTradeResponse = z.infer<typeof UserTradeResponseSchema>;
+
+/** PATCH /trades/{id} body (OPT-150): corrections only, side/symbol/date immutable. */
+export const UserTradePatchSchema = z.object({
+  leg: UserTradeLegSchema.optional(),
+  positionPct: z.number().positive().optional(),
+  note: z.string().optional(),
+});
+export type UserTradePatch = z.infer<typeof UserTradePatchSchema>;
 
 export const UserTradesListResponseSchema = z.object({
   ok: z.boolean(),

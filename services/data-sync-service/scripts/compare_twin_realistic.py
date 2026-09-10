@@ -62,6 +62,19 @@ def _merge(cn_run, cn_data, hk_run, hk_data):
 
 
 def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--etf-mom-floor",
+        type=float,
+        default=None,
+        help="TIP-016 E: absolute-strength floor on the ETF leg (mom60 fraction); None = frozen",
+    )
+    args = ap.parse_args()
+    floor = args.etf_mom_floor
+    tag = f"floor{floor}" if floor is not None else "frozen"
+
     etf_close = fetch_etf_closes()
     print("loading sgap context ...", flush=True)
     ctx = load_sgap_context("2024-08-01", "2026-08-07")
@@ -83,6 +96,7 @@ def main() -> int:
             core = build_mom_compare_timeline(
                 calendar=cal, positions_by_day=merged,
                 close_by_ts_day=closes, etf_close=etf_close,
+                etf_mom_floor=floor,
             )
             twin = build_twin_star_timeline(
                 core_rows=core["rows"], core_summary=core["summary"],
@@ -90,7 +104,7 @@ def main() -> int:
             )
             sm = twin["summary"]
             print(
-                f"{w:9s} | {name} | {sm['fusedPct']:+8.1f} | {sm['corePct']:+8.1f} | "
+                f"{w:9s} | {name}{tag} | {sm['fusedPct']:+8.1f} | {sm['corePct']:+8.1f} | "
                 f"{sm['basePct']:+8.1f} | {sm['maxDdFusedPct']:5.1f} | {sm['satActiveDays']}"
             )
     return 0

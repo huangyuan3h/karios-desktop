@@ -59,9 +59,11 @@ S3_RS_MIN = 0.5
 S3_RS_MIN_HK = 0.6
 S3_MAX_POSITIONS = 10
 # 2026-08-12 (long-window defence): drawdown circuit breaker — live mirror
-# of backtest drawdown_circuit_pct=-25 (30d realized window, CN line only).
+# of backtest drawdown_circuit_pct=-25 (30d realized window).
 # Realized net pnl over trailing 30 days <= -25% → block new S-3 entries
 # (2022/2023 showed the entry edge turns negative in losing streaks).
+# 2026-08-12: CN line only. 2026-09-09 (TIP-016 B): HK line added
+# (per-line books; walk-forward PASS).
 # 2026-08-12 (OPT-094): red-light block — walk-forward verified (OOS2 win
 # 48→51%, valid win 61→79% & total +10.7pt, no window worse). CN line only;
 # HK index lights show no separation (OPT-093) so HK stays unblocked.
@@ -321,18 +323,20 @@ def _index_light_red(*, as_of: str) -> bool:
         return False
 
 
-def _circuit_blocked(*, as_of: str) -> bool:
+def _circuit_blocked(*, as_of: str, market: str = "CN") -> bool:
     """True when the trailing realized pnl window is in a losing streak.
 
     Same rule as the backtest's drawdown_circuit_pct=-25: at least
     S3_CIRCUIT_MIN_TRADES closed trades whose NET pnl sums to <= -25% over
-    the trailing 30 calendar days → halt new CN S-3 entries. Mirrors the
+    the trailing 30 calendar days → halt new S-3 entries. Mirrors the
     engine exactly (as-of close_date comparison, live rows only).
+    2026-08-12: CN line only. 2026-09-09 (TIP-016 B, walk-forward PASS):
+    extended to the HK line — per-line books evaluated separately.
     """
     from datetime import date, timedelta
 
     cutoff = (date.fromisoformat(as_of) - timedelta(days=S3_CIRCUIT_WINDOW_DAYS)).isoformat()
-    closed = list_paper_trades(status="closed", market="CN", limit=1000)
+    closed = list_paper_trades(status="closed", market=market, limit=1000)
     recent = []
     for r in closed:
         cd = str(r.get("closeDate") or r.get("close_date") or "")
@@ -346,6 +350,21 @@ def _circuit_blocked(*, as_of: str) -> bool:
         except (TypeError, ValueError):
             continue
     return len(recent) >= S3_CIRCUIT_MIN_TRADES and sum(recent) <= S3_CIRCUIT_PCT
+
+
+def _national_team_blocked(*, as_of: str, market: str = "CN") -> bool:
+    """TIP-017 B (2026-09-10 frozen): CN line only — pause new S-3 entries
+    while 沪深300 < MA200 AND the 4-ETF broad-share 20-session delta ≤ 0.
+    Same rule/code as the backtest's ``national_team_gate``. Fail-open on
+    missing data (never blocks without a definite ON state)."""
+    if market != "CN":
+        return False
+    try:
+        from data_sync_service.service.risk_state_gate import national_team_state_on
+
+        return national_team_state_on(as_of)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def build_s3_candidates(
@@ -382,10 +401,17 @@ def build_s3_candidates(
     regime_by_day = _load_regime_by_day(cfg, [day])
     panic = get_panic_cooldown(days=10, cooldown_days=PANIC_COOLDOWN_DAYS, as_of_date=day)
 
-    # 2026-08-12: drawdown circuit breaker (CN line). Block new entries when
+    # 2026-08-12: drawdown circuit breaker. Block new entries when
     # the trailing realized pnl is in a losing streak — mirrors the backtest
     # drawdown_circuit_pct; paper and backtest stay same-code.
-    if market == "CN" and _circuit_blocked(as_of=day):
+    # 2026-09-09 (TIP-016 B): extended to HK (walk-forward PASS on the
+    # settle=2 HK baseline: OOS2 +11.6 / train +1.8 / valid -1.2).
+    if _circuit_blocked(as_of=day, market=market):
+        return []
+
+    # 2026-09-10 (TIP-017 B frozen): CN rescue-flow gate — pause new entries
+    # while 沪深300 < MA200 AND broad-ETF 20d share delta ≤ 0. Fail-open.
+    if _national_team_blocked(as_of=day, market=market):
         return []
 
     # 2026-08-12 (OPT-094): CN red-light days produce no candidates (no

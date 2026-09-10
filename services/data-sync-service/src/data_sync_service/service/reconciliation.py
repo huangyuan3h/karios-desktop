@@ -45,7 +45,8 @@ S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,
-    "slippage_pct": 0.05,
+    # E5 (2026-09-10): cost model already holds slippage; drop the double-count.
+    "slippage_pct": 0.0,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
@@ -67,6 +68,9 @@ S3_CONFIG: dict[str, float | int | str] = {
     "env_position_scale": "uptrend:1.25,fan:0.75",
     # E2 (2026-08-14): panic_cooldown 3→2 — 同 S3_CONFIG (弱市年冷却过严)。
     "panic_cooldown_days": 2,
+    # TIP-017 B (2026-09-10 固化): national-team gate — CN only (三窗 +0 /
+    # long +20.0pt)。同 S3_CONFIG，审计回放须含此门。
+    "national_team_gate": True,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {
@@ -83,11 +87,14 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.6,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,
-    "slippage_pct": 0.05,
+    # E5 (2026-09-10): cost model already holds HK slippage; drop the double-count.
+    "slippage_pct": 0.0,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "",
+    # 2026-09-09: HK T+2 settlement (same as scripts/run_walk_forward.py).
+    "settle_lock_sessions": 2,
 }
 
 

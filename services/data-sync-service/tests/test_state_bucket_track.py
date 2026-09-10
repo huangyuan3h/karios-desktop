@@ -696,3 +696,37 @@ class TestSgapToTimelineRows:
         assert built["rows"][-1]["navSingleReturnPct"] == sat["rows"][-1]["satNavReturnPct"]
         assert "blotter" in built
         assert any(r.get("strictCount") is not None for r in built["rows"])
+
+
+class TestHkContainmentOPT147:
+    """OPT-147: HK names must not leak into S-gap pool or R-wide breadth.
+
+    daily carries ~2800 .HK names; stock_dailybasic carries 0 HK rows, so the
+    mv-membership gate is the containment. These synthetic tests guard the
+    pattern against future copies of the _load_rows loop without the gate.
+    """
+
+    def _mk_hk_data(self) -> tuple[list[str], dict, dict]:
+        dates, per_ts, mv, _ = _mk_data()
+        # HK name with a valid gap + rising closes, but NO mv entry (as in prod:
+        # stock_dailybasic has 0 HK rows). If the mv gate regressed, this name
+        # would enter the top bucket and inflate breadth.
+        per_ts["0700.HK"] = _mk_series(dates, 20, 0.05, 0.005)
+        return dates, per_ts, mv
+
+    def test_day_all_excludes_names_without_mv(self) -> None:
+        dates, per_ts, mv = self._mk_hk_data()
+        date_idx = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts.items()}
+        day_all, _ = sbt._day_features(per_ts, mv, dates, dates[20], date_idx)
+        assert "0700.HK" not in day_all
+
+    def test_breadth_ignores_names_without_mv(self) -> None:
+        dates, per_ts, mv = self._mk_hk_data()
+        date_idx = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts.items()}
+        _, breadth = sbt._day_features(per_ts, mv, dates, dates[20], date_idx)
+        # baseline without the HK name must be identical: gate holds exactly
+        per_ts_cn = {ts: s for ts, s in per_ts.items() if ts != "0700.HK"}
+        date_idx_cn = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts_cn.items()}
+        _, breadth_cn = sbt._day_features(per_ts_cn, mv, dates, dates[20], date_idx_cn)
+        assert breadth == breadth_cn
+        assert breadth > 0.9  # rising CN names still counted (gate open side visible)

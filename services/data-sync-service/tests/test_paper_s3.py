@@ -57,6 +57,9 @@ def _patch_day_gates(*, regime="Strong", flow_ok=True, mainline=None):
             day: {ts: 0.8 for ts in universe}
         },
         _load_industries=lambda ts_codes: {ts: "计算机" for ts in ts_codes},
+        # Circuit reads live paper rows — neutralize here (dedicated circuit
+        # tests cover it with mocked ledgers); these tests target other gates.
+        _circuit_blocked=lambda **kwargs: False,
     )
 
 
@@ -192,6 +195,9 @@ def test_build_s3_candidates_hk_rs_floor_06() -> None:
             _load_rs_ranks=lambda cfg, cal, universe: {
                 "2026-08-07": {ts: (0.55 if ts.startswith("00700") else 0.7) for ts in universe}
             },
+            # Circuit reads live paper rows — neutralize (dedicated tests
+            # cover it with mocked ledgers); this test targets the RS floor.
+            _circuit_blocked=lambda **kwargs: False,
         ),
         patch.object(paper_s3, "_load_today_scores", return_value={hk_a: 90.0, hk_b: 88.0}),
     ):
@@ -963,3 +969,31 @@ def test_hk_intake_inserts_when_settled() -> None:
     assert summary["inserted"] == 1
     assert inserted[0]["source"] == "S3HK"
     assert summary["settledCash"] == pytest.approx(1.0)
+
+
+def test_circuit_blocked_hk_losing_streak() -> None:
+    """TIP-016 B: HK book evaluated separately — HK losers block HK entries."""
+    closed = [
+        {"symbol": "HK:00001", "status": "closed", "closeDate": "2026-07-20",
+         "close_date": "2026-07-20", "pnlPct": -6.0, "pnl_pct": -6.0},
+        {"symbol": "HK:00700", "status": "closed", "closeDate": "2026-07-25",
+         "close_date": "2026-07-25", "pnlPct": -5.5, "pnl_pct": -5.5},
+        {"symbol": "HK:01801", "status": "closed", "closeDate": "2026-08-01",
+         "close_date": "2026-08-01", "pnlPct": -14.0, "pnl_pct": -14.0},
+    ]
+    with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed) as m:
+        assert paper_s3._circuit_blocked(as_of="2026-08-07", market="HK") is True
+        assert m.call_args.kwargs.get("market") == "HK"
+
+
+def test_circuit_hk_ignores_cn_book() -> None:
+    """HK circuit reads only the HK book — CN losers must not block HK."""
+    closed = [
+        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
+         "close_date": "2026-07-20", "pnlPct": -30.0, "pnl_pct": -30.0},
+    ]
+    with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
+        # only 1 trade (< 3 min) and wrong book for HK -> open
+        assert paper_s3._circuit_blocked(as_of="2026-08-07", market="HK") is False
+        # default stays CN for existing callers
+        assert paper_s3._circuit_blocked(as_of="2026-08-07") is False

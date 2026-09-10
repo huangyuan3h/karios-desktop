@@ -74,6 +74,7 @@ def _data(
     data.st_ts_codes = set()
     data.pead_events = {}
     data.delist_by_ts = {}
+    data.national_team_by_day = {}
     return data
 
 
@@ -319,6 +320,45 @@ def test_drawdown_circuit_halts_entries_after_losses() -> None:
         data=data,
     )
     assert run.summary.gated_blocks.get("circuit", 0) >= 1
+
+
+# ---------------------------------------------------------------------------
+# B2b. national-team gate (TIP-017 B frozen)
+# ---------------------------------------------------------------------------
+
+
+def test_national_team_gate_blocks_entries() -> None:
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    data = _data(
+        calendar,
+        {d: {CN1: 90.0} for d in calendar},
+        {TS1: _flat(calendar, 10.0)},
+    )
+    data.national_team_by_day = {d: True for d in calendar}
+    run = simulate(
+        BacktestConfig(
+            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            national_team_gate=True,
+        ),
+        data=data,
+    )
+    assert run.summary.gated_blocks.get("national_team", 0) >= 1
+    assert not run.trades
+
+
+def test_national_team_gate_off_by_default() -> None:
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    data = _data(
+        calendar,
+        {d: {CN1: 90.0} for d in calendar},
+        {TS1: _flat(calendar, 10.0)},
+    )
+    data.national_team_by_day = {d: True for d in calendar}
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="none"),
+        data=data,
+    )
+    assert run.summary.gated_blocks.get("national_team", 0) == 0
 
 
 # ---------------------------------------------------------------------------

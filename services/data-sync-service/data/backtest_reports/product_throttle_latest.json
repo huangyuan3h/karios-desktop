@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-09-09T13:27:24.350450+00:00",
+  "variants": {
+    "-10:pause": {
+      "OOS2": {
+        "baseJointPct": 37.78,
+        "thrJointPct": 20.57,
+        "deltaPt": -17.21,
+        "baseJointDdPct": 30.8,
+        "thrJointDdPct": 21.0,
+        "thrCnPct": 19.0,
+        "thrHkPct": 15.6,
+        "baseCnPct": 47.3,
+        "baseHkPct": 21.5,
+        "windows": [
+          [
+            "2025-02-06",
+            "2025-02-12"
+          ],
+          [
+            "2025-04-09",
+            "2025-07-08"
+          ]
+        ],
+        "windowCount": 2,
+        "throttledDays": 68,
+        "blockedEntries": 30107
+      }
+    }
+  }
+}

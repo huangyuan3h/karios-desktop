@@ -17,6 +17,7 @@ import {
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   useSensitivityQuery,
+  useSleeveReconQuery,
   type CorrelationStatusResponse,
 } from './backtest';
 
@@ -71,6 +72,22 @@ describe('useBacktestRunQuery', () => {
     expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
       '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full&trailing_stop_pct=0&position_pct=0.05&max_positions=10&rs_rank_min=0&diverging_scale=0&target_pnl_pct=100&score_floor=0&panic_cooldown_days=3&slippage_pct=0.05&exclude_boards=300',
     );
+  });
+});
+
+describe('useSleeveReconQuery', () => {
+  beforeEach(() => {
+    mockedApiGetJson.mockReset();
+    mockedUseQuery.mockClear();
+  });
+
+  it('fetches the OPT-151 core recon endpoint', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true, recon: { day: '2026-09-09', ok: true } });
+    useSleeveReconQuery();
+    const opts = lastOptions();
+    expect(opts.queryKey).toEqual(['backtest', 'sleeve-recon']);
+    await opts.queryFn();
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/sleeve-recon/latest');
   });
 });
 

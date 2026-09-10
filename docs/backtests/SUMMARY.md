@@ -47,6 +47,14 @@
 | 卫星名单漂移（全天振幅 vs 14:30-proxy 排名） | 1 诊断（OOS2+train，valid 未碰） | **无超额，不改 Live**：top-4 Jaccard 均值 0.43（相同 20/205 天），3 日前瞻 +2.05% vs +1.90%（差 0.14pp/笔）；Live 本来就是快照-proxy 排名 | 见 [sat-list-drift](sat/sat-list-drift-2026-09-04.md) |
 | 卫星习惯口径冻结成绩单 OPT-141 | 1 口径×三窗 | **PASS+/beats_core**：OOS2 +76.3/+2.22/−1.9 · train +14.5/+1.53/−2.7 · valid +2.7/+0.21/0（09-03 逐数复现）；入场 100% 真 14:30 bar，出场 ~5% 收盘回退（已记血统） | 见 [sat-live-caliber](sat/sat-live-caliber-2026-09-04.md) |
 | 卫星习惯排名 H1（无前视键） | 2 变体 | **2 全部拒收**：gap升序 OOS2 −96pt；\|14:30/今开−1\|升序 valid +14.4 但 OOS2 −21.5（过拟合陷阱，拒） | 见 [sat-rank-hhmm](sat/sat-rank-hhmm-2026-09-04.md) |
+| 产品级回撤漂移诊断（05-28 CN 熔断停机 + 06-09 后 -17% 无闸） | 1 诊断（无变体） | **缺口确认**：仓位级止损齐、CN 熔断开（设计内停机 3 个月）、HK 熔断关、**产品层无策略级止损**；慢变量门属 F1 例外可开但须长窗 → TIP-016 预注册（已全部裁决，见下 4 行） | 见 [product-post-peak-drift](product-post-peak-drift-2026-09-09.md) |
+| W1 regime 连续性 N=2/3（TIP-016 · 预注册执行） | 4 变体（CN/HK × N=2/3） | **4 全部拒收**：CN -23.2/-52.3（OOS2）、valid -45.1 转负；HK OOS2 +24.4 但 valid -34.2/-76.4（胜率 4-9%）。Strong 连击 = 只买连涨顶部，牛市全错过（失败模式 #1） | 见上 |
+| W2 旱后限仓 K=20/M=3（TIP-016 · 预注册执行） | 2 变体（CN/HK） | **2 全部拒收**：CN 三窗全劣（-19.1/-10.3/-24.5）；HK OOS2 -10.4（valid +0.9 无损但 OOS2 出局） | 见上 |
+| E ETF 绝对强度 floor 0.0（TIP-016 · 预注册执行） | twin 融合对照（三窗+past_year+long） | **REJECT（no-op）**：9 对 cells 全同 ±0.0pt；全弱日扫描三窗+past_year 0 天、5 年长窗仅 1 天 → 零证据，未验证的闸不进 Live | 见上 |
+| B HK 熔断 -25（TIP-016 · 预注册执行） | HK 三窗（settle=2 新基线） | **PASS → 已进冻结**：OOS2 +11.6 / train +1.8 / valid -1.2，long +87.9；live `paper_s3` 同码 | 见上 + strategy-params §1b |
+| A 产品级 NAV 水位节流 θ{7,10,12}×{half,pause}（TIP-016 · 预注册执行） | 6 变体 ×（三窗+long+past_year） | **6 全部拒收**：long -13.9~-120.6pt（-12 档水印一开 22 个月 2022-12~2024-10，节流掉整个复苏段）；past_year 参考 -23.4~-70.4（2026-03-24~04-29 锁死 4 月主升 -63.1pt）；valid 窗引擎联合最大回撤仅 4.4% 从不触发。**水位计死于解除动力学；自感器（已实现熔断）赢在快解除** | 见 [product-post-peak-drift §10](product-post-peak-drift-2026-09-09.md) |
+| A 广度闸 K{2,3}×解除{价格/广度/20日}（TIP-017 · 预注册执行） | 6 变体 ×（三窗+long+past_year） | **no-op REJECT**：K2/K3×price/breadth 全窗 +0.0 从不触发（分散化 6 资产宇宙 MA200 广度跌不到 3——债券/黄金/油总有上的，"全市场撤退"在此宇宙结构性不存在）；唯一触发变体 K3:cooldown valid/long **-36.5/-36.3**。且 2021~2023-10 双 ETF 未上市不可评估 | 见 [risk-state-sensors §6.2](risk-state-sensors-2026-09-09.md) |
+| B 国家队闸（沪深300<MA200 且宽基份额 20 日净增≤0）（TIP-017 · 预注册执行） | 三窗+long+past_year（CN 线） | **协议 PASS → 已进冻结（2026-09-10）**：三窗 +0.0（现代完全惰性）、long **+20.0**（CN 78.6→98.6，22 窗全部 2021~2023-04 资金流旱段——跳过 2022 熊市主跌段）、past_year +0.0；fail-open。引擎原生门 `national_team_gate` + live `paper_s3._national_team_blocked` + S3_CONFIG 三处镜像；基线重固化 `s3-cn-baseline-20260910` | 见 [risk-state-sensors §6.3](risk-state-sensors-2026-09-09.md) |
 | 卫星习惯 C1 网格 H2（2/3/4/5%） | 3 变体 | **C1=3% 维持**：2% 打平（train −4.0/sr−0.27，不换）；4% 走弱；5% train −5.8 拒收 | 见 [sat-c1-grid](sat/sat-c1-grid-2026-09-04.md) |
 | 卫星习惯 bucket_q H3（1/2 vs 1/3） | 1 变体 | **1/3 维持**：1/2 选参窗 tot/sr 全弱（train −2.3/sr−0.41），valid 无差 | 见 [sat-bucketq](sat/sat-bucketq-2026-09-04.md) |
 | 卫星习惯 R-wide 闸 H4（0.4/0.5/0.6） | 2 变体 | **0.5 维持**：0.4 valid −17.9；0.6 valid +13.4 但 OOS2 −15.7/train −8.1（过拟合陷阱，拒） | 见 [sat-rwide](sat/sat-rwide-2026-09-04.md) |
@@ -64,6 +72,10 @@
 | STOCK 篮剥离港股对照（诊断 · 不动 Live） | 同 builder，CN-only snaps vs A+H 合并 × 三窗+past_year | **REJECT 剥离**：港股正贡献——OOS2 fused Δ−27.5pt、valid Δ−80pt（valid 上攻是 HK 带的，剥离后 STOCK 只选中 2 天 vs 16 天）；唯一反例 train +11.2pt（单窗不采信）；OOS2 回撤 18.0→29.6 亦变差 | 见 [stock-basket-nohk-2026-09-08](core/stock-basket-nohk-2026-09-08.md) |
 | 双子星现实版（core-HK现实 + 卫星习惯 opp blend · 策略零改动） | 同 builder，core 腿现实HK合并 vs 冻结合并 × 三窗+past_year+long | **期望重置**：OOS2 +84.0 / train +53.3 / valid +85.8 / past_year +137.8（平安90bps最终版；60bps中间版 +82.2/+51.5/+85.8/+118.7 见档）；valid −56pt 主因 pick 层（STOCK天16→29挤掉NASDAQ 38→26），不是 fill 层 | 见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md) §9/§11 |
 | 指数趋势延续性（大资金主导 proposal 证伪 · 预注册 · 不动 Live） | 000300（SSE50代理）+000688（科创✓）MA20/60趋势态诊断 + 次日开盘回放 × 三窗，vs 双子星现实版+买持 | **REJECT/方向证伪+六格全败**：bull态远期四切全弱于无条件（edge −0.8~−8.8pp，科创fwd60 +5.3 vs +14.1——涨幅在V反转里，MA全踏空）；趋势腿OOS2 −6.6/−8.2、train +7.1/+30.9、valid −10.0/+7.7，6格全败twin且**全输买持**；valid窗300买持仅+0.3（"年年30%"无base-rate支撑）；弱年OOS2 twin +84 > 科创买持+39 > 300买持+17.8 | 见 [index-trend-bigmoney-2026-09-08](index/index-trend-bigmoney-2026-09-08.md)（§5 结合三关全闭：D1 门 valid 反号+关太多 · D2 套筒无收益可加 · D3 闲置维持 REPO；§6 真并回放 REJECT：w0.1 valid −22pt，拿右尾换平滑，死因#5镜像+#1；§7 轮动池 REJECT（OOS2 −3.1 触线）但首现生命体征 train +9.8/valid +22.4——趋势市的油弱市的税，复活条件见档；§8 指数MA120三窗零增量（过滤器绑不住赢家，长度无关，不再扫MA）） |
+
+| C 市场级情绪/资金流择时因子族（TIP-017 · 预注册执行） | Phase 0/1 诊断（10 信号 × 三窗 + 共振/背离/趋势控制） | **REJECT / 无候选进 Phase 2**：预注册主假设（两融去杠杆低分位→前瞻负）**三窗翻转证伪**；共振三路同向**覆盖≈0**（全正 5/2/0 天）；北向被趋势共线（+0.76）杀 #2；唯一三窗一致 = **国家队 20dΔ 低分位（上涨中撤离）跑输基线**，但幅度小（−0.1~−1.0%/20d）、n=65/14/45、仅指数>MA200 regime → 降级显示信号，不进闸。**"多维度情绪共振"从直觉变成可证伪负结果** | 见 [candidate-c-flow-resonance](factors/candidate-c-flow-resonance-2026-09-10.md) §9 |
+
+| 核心 S-3 入场执行微观诊断（执行/微观方向 · 只读诊断） | bar_5min 尾盘 + 日线低触限价 × long（零 PnL） | **基线确认 + 限价 REJECT**：`next_open` ≈ 信号日收盘（中位差 **0.00%**）、≈ 实盘 14:30（±0.7%）→ audit E4 realism 修正成立、**无口径缺口**；限价入场改善 +0.1~0.9% 但有 **25–50% 漏单 + 逆向选择**（漏掉"开盘后一路涨"的强势票，open→close 漂移为正）→ 不单开回测。数据陷阱：`daily` qfq vs `bar_5min` raw 需比值法 | 见 [core-entry-execution](core/core-entry-execution-2026-09-10.md) |
 
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
@@ -91,9 +103,9 @@
 
 ## 3. HK 线（STOCK 腿的一部分）
 
-NAV 重固化：OOS2 **+31.3%** / train **+1.9%** / valid **+60.7%** —— train 弱，**不作独立高置信叙事**；并入择强股票篮即可。
+NAV 重固化（**2026-09-09 起 HK 冻结口径含 T+2 交收 + 熔断 -25**，用户拍板）：OOS2 **+21.5%** / train **+2.3%** / valid **+65.4%** —— train 弱，**不作独立高置信叙事**；并入择强股票篮即可。T+2 代价集中在弱市年（旧无 T+2 基线 OOS2 +31.3 → +9.9，−21.4pt 换手税）；熔断 +11.6/+1.8/−1.2（弱市去换手）。基线 tag `s3-hk-baseline-20260909`。
 
-> T+2 交收现实化（2026-09-08，已固化）：`settle_lock_sessions=2` + 滑点 +0.2 + 平安最高佣金（round-trip 90bps）后 OOS2 +2.1 / train −3.0 / valid +64.1；past_year 现实 +57.3/83笔（基线+57.7/101笔，回撤27.8→15.3）；双子星现实 +84.0/+53.3/+85.8/+137.8。规则已联网核验（T+2 ✓、印花税0.1% ✓、微费~1.27bps/边未建模≈0.2pt）；R1 pyramid关已拒（valid −21.7pt）；R2/R3 归因关闭。策略不换、paper settled账本已落地（OPT-148 ✅）。见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md)，现实数字固化于 strategy-params §1b。
+> T+2 交收（2026-09-08 实验档 → 2026-09-09 升级冻结口径）：`settle_lock_sessions=2`（仅 HK；CN=0，A 股卖出资金当日可复用）+ 滑点 +0.2 + 平安最高佣金（round-trip 90bps）现实 overlay 后 OOS2 +2.1 / train −3.0 / valid +64.1；past_year 现实 +57.3/83笔；双子星现实 +84.0/+53.3/+85.8/+137.8。规则已联网核验（T+2 ✓、印花税0.1% ✓、微费~1.27bps/边未建模≈0.2pt）；R1 pyramid关已拒（valid −21.7pt）；R2/R3 归因关闭。策略不换、paper settled账本已落地（OPT-148 ✅）。见 [hk-settle-t2-2026-09-08](hk/hk-settle-t2-2026-09-08.md)（§12 = 升级冻结口径），现实数字固化于 strategy-params §1b。
 
 ## 4. 下一步（只服务择强单轨）
 

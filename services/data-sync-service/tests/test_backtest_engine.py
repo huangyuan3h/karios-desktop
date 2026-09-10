@@ -16,6 +16,7 @@ from data_sync_service.service.backtest_engine import (
     CLOSE_REASON_END_OF_WINDOW,
     BacktestConfig,
     BacktestData,
+    compute_throttle_windows,
     simulate,
 )
 from data_sync_service.service.execution_gate import REGIME_DIVERGING, REGIME_WEAK
@@ -2661,3 +2662,205 @@ def test_settle_lock_config_validation() -> None:
     with pytest.raises(ValueError):
         BacktestConfig(start_date="2026-06-18", end_date="2026-06-23", settle_lock_sessions=-1)
     assert BacktestConfig(start_date="2026-06-18", end_date="2026-06-23").settle_lock_sessions == 0
+
+
+# ---------------------------------------------------------------------------
+# TIP-016 W1/W2 (pre-registered): regime streak + drought ramp-up
+# ---------------------------------------------------------------------------
+
+W_CAL = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+W_PX = {TS1: {d: 10.0 for d in W_CAL}, TS2: {d: 5.0 for d in W_CAL}, "600003.SH": {d: 5.0 for d in W_CAL}}
+W_CN3 = "CN:600003"
+
+
+def _w_data(scores, regimes):
+    data = _data(W_CAL, scores, W_PX)
+    data.regime_by_day = {d: regimes[i] for i, d in enumerate(W_CAL)}
+    return data
+
+
+def test_regime_streak_blocks_after_weak() -> None:
+    """W1 N=2: entry on 06-18 (Strong, prev 06-17 Weak) is blocked."""
+    scores = {"2026-06-18": {CN1: 88.0}}
+    data = _w_data(scores, ["Strong", "Strong", "Weak", "Strong", "Strong", "Strong"])
+    config = BacktestConfig(
+        start_date="2026-06-15", end_date="2026-06-22", regime_streak_min=2,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks.get("regime_streak", 0) >= 1
+
+
+def test_regime_streak_allows_two_strong() -> None:
+    """W1 N=2: entry on 06-19 (Strong, prev 06-18 Strong) opens."""
+    scores = {"2026-06-19": {CN1: 88.0}}
+    data = _w_data(scores, ["Strong", "Strong", "Weak", "Strong", "Strong", "Strong"])
+    config = BacktestConfig(
+        start_date="2026-06-15", end_date="2026-06-22", regime_streak_min=2,
+    )
+    run = simulate(config, data=data)
+    assert [t.entry_date for t in run.trades] == ["2026-06-19"]
+
+
+def test_regime_streak_off_is_frozen() -> None:
+    """Default 0: same entry opens, no streak blocks recorded."""
+    scores = {"2026-06-18": {CN1: 88.0}}
+    data = _w_data(scores, ["Strong", "Strong", "Weak", "Strong", "Strong", "Strong"])
+    config = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")
+    run = simulate(config, data=data)
+    assert [t.entry_date for t in run.trades] == ["2026-06-18"]
+    assert run.summary.gated_blocks.get("regime_streak", 0) == 0
+
+
+def test_regime_streak_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", regime_streak_min=-1)
+    assert BacktestConfig(start_date="2026-06-15", end_date="2026-06-22").regime_streak_min == 0
+
+
+def test_drought_ramp_caps_after_drought() -> None:
+    """W2 K=3/M=1: 4 dry sessions, then 2 candidates/day -> 1 opens per day."""
+    scores = {
+        "2026-06-19": {CN1: 88.0, CN2: 88.0},
+        "2026-06-22": {CN2: 88.0, W_CN3: 88.0},
+    }
+    data = _w_data(scores, ["Strong"] * 6)
+    config = BacktestConfig(
+        start_date="2026-06-15", end_date="2026-06-22",
+        drought_ramp_sessions=3, drought_ramp_max=1,
+    )
+    run = simulate(config, data=data)
+    d19 = sorted(t.entry_date for t in run.trades if t.entry_date == "2026-06-19")
+    d22 = sorted(t.entry_date for t in run.trades if t.entry_date == "2026-06-22")
+    assert len(d19) == 1 and len(d22) == 1
+    assert run.summary.gated_blocks.get("drought_ramp", 0) >= 2
+
+
+def test_drought_ramp_off_opens_all() -> None:
+    """Default off: both candidates open the same day."""
+    scores = {"2026-06-19": {CN1: 88.0, CN2: 88.0}}
+    data = _w_data(scores, ["Strong"] * 6)
+    config = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")
+    run = simulate(config, data=data)
+    assert len([t for t in run.trades if t.entry_date == "2026-06-19"]) == 2
+    assert run.summary.gated_blocks.get("drought_ramp", 0) == 0
+
+
+def test_drought_ramp_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", drought_ramp_sessions=-1)
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", drought_ramp_max=-1)
+    cfg = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")
+    assert (cfg.drought_ramp_sessions, cfg.drought_ramp_max) == (0, 0)
+
+
+# ---------------------------------------------------------------------------
+# TIP-016 A (pre-registered): product-level NAV-watermark throttle
+# ---------------------------------------------------------------------------
+
+
+def test_throttle_pause_blocks_entries_in_window() -> None:
+    """pause (scale=0): fresh entries inside the window are blocked; outside unaffected."""
+    scores = {"2026-06-18": {CN1: 88.0}, "2026-06-19": {CN2: 88.0}}
+    data = _w_data(scores, ["Strong"] * 6)
+    config = BacktestConfig(
+        start_date="2026-06-15", end_date="2026-06-22",
+        throttle_windows=(("2026-06-19", "2026-06-19"),), throttle_scale=0.0,
+    )
+    run = simulate(config, data=data)
+    assert [t.entry_date for t in run.trades] == ["2026-06-18"]
+    assert run.summary.gated_blocks.get("product_throttle", 0) >= 1
+
+
+def test_throttle_half_scales_new_entries() -> None:
+    """half (scale=0.5): entries inside the window open at half position size."""
+    scores = {"2026-06-19": {CN1: 88.0, CN2: 88.0}}
+    data = _w_data(scores, ["Strong"] * 6)
+    config = BacktestConfig(
+        start_date="2026-06-15", end_date="2026-06-22",
+        throttle_windows=(("2026-06-19", "2026-06-22"),), throttle_scale=0.5,
+    )
+    run = simulate(config, data=data)
+    day = next(s for s in run.positions_by_day if s["date"] == "2026-06-19")
+    assert len(day["positions"]) == 2
+    assert all(p["position_pct"] == pytest.approx(0.025) for p in day["positions"])
+    assert run.summary.gated_blocks.get("product_throttle", 0) == 0
+
+
+def test_throttle_pause_blocks_swap_too() -> None:
+    """pause: RS-rotation swaps are new exposure and are blocked inside the window."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0},
+        "2026-06-22": {"CN:000001": 90.0},
+    }
+    prices = {
+        TS1: {d: 10.0 for d in calendar},
+        "000001.SZ": {d: 10.0 for d in calendar},
+    }
+    rs = {d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar}
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-23",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1, swap_max_per_day=2,
+        throttle_windows=(("2026-06-22", "2026-06-23"),), throttle_scale=0.0,
+    )
+    run = simulate(config, data=data)
+    assert not [t for t in run.trades if t.close_reason == "swapped"]
+
+
+def test_throttle_off_is_frozen() -> None:
+    """Default (no windows): identical entries, no throttle blocks."""
+    scores = {"2026-06-19": {CN1: 88.0, CN2: 88.0}}
+    data = _w_data(scores, ["Strong"] * 6)
+    config = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")
+    run = simulate(config, data=data)
+    assert len([t for t in run.trades if t.entry_date == "2026-06-19"]) == 2
+    assert run.summary.gated_blocks.get("product_throttle", 0) == 0
+
+
+def test_throttle_config_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", throttle_scale=1.5)
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", throttle_scale=-0.1)
+    with pytest.raises(ValueError):
+        BacktestConfig(
+            start_date="2026-06-15", end_date="2026-06-22",
+            throttle_windows=(("2026-06-22", "2026-06-19"),),
+        )
+    cfg = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")
+    assert cfg.throttle_windows == () and cfg.throttle_scale == 0.5
+
+
+def test_compute_throttle_windows_trigger_release_hysteresis() -> None:
+    """Trigger at dd>=7%, hold through the 3.5-7% band, release below 3.5%.
+
+    Causality: day t's state uses the drawdown of NAV <= t-1, so the window
+    starts on the first day AFTER the threshold was breached.
+    """
+    cal = [f"d{i}" for i in range(7)]
+    nav = [1.00, 1.05, 1.00, 0.94, 0.96, 1.02, 1.04]
+    windows = compute_throttle_windows(nav, cal, theta_pct=7.0)
+    assert windows == (("d4", "d5"),)
+
+
+def test_compute_throttle_windows_still_on_at_end() -> None:
+    """Still in drawdown at the curve end -> window runs to the last day.
+
+    Note: nav[-1] can only inform a day AFTER the last calendar day (causal
+    convention), so the breach must happen at nav[-2] for the last day to be
+    throttled in-window.
+    """
+    cal = ["d0", "d1", "d2", "d3"]
+    nav = [1.00, 1.05, 0.94, 0.90]
+    windows = compute_throttle_windows(nav, cal, theta_pct=7.0)
+    assert windows == (("d3", "d3"),)
+
+
+def test_compute_throttle_windows_length_mismatch() -> None:
+    with pytest.raises(ValueError):
+        compute_throttle_windows([1.0, 1.1], ["d0"], theta_pct=7.0)

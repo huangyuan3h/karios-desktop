@@ -128,6 +128,38 @@ def test_record_invalid_side_rejected() -> None:
     assert r.status_code == 400
 
 
+def test_record_invalid_leg_rejected() -> None:
+    r = client.post(
+        "/trades",
+        json={"symbol": "CN:688525", "side": "BUY", "price": 221.0, "positionPct": 12.5, "leg": "x"},
+    )
+    assert r.status_code == 400
+
+
+def test_record_leg_passthrough(monkeypatch) -> None:
+    seen: dict = {}
+    monkeypatch.setattr(
+        ur,
+        "insert_trade",
+        lambda **kw: (seen.update(kw), {
+            "id": "t9", "symbol": kw["symbol"], "side": kw["side"], "price": kw["price"],
+            "positionPct": kw["position_pct"], "leg": kw.get("leg", "s3"),
+        })[1],
+    )
+    r = client.post(
+        "/trades",
+        json={"symbol": "CN:688525", "side": "BUY", "price": 221.0, "positionPct": 12.5, "leg": "sat"},
+    )
+    assert r.status_code == 200
+    assert seen.get("leg") == "sat"
+    r = client.post(
+        "/trades",
+        json={"symbol": "CN:600000", "side": "BUY", "price": 10.0, "positionPct": 10.0},
+    )
+    assert r.status_code == 200
+    assert seen.get("leg") == "s3"
+
+
 def test_record_zero_price_rejected() -> None:
     r = client.post(
         "/trades",
@@ -187,3 +219,16 @@ def test_delete_trade() -> None:
     assert r.status_code == 200
     r2 = client.delete("/trades/missing")
     assert r2.status_code == 404
+
+
+def test_patch_trade_leg(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ur, "update_trade",
+        lambda trade_id, **kw: {"id": trade_id, "leg": kw.get("leg", "s3")} if trade_id == "t1" else None,
+    )
+    r = client.patch("/trades/t1", json={"leg": "sat"})
+    assert r.status_code == 200
+    assert r.json()["trade"]["leg"] == "sat"
+    assert client.patch("/trades/missing", json={"leg": "sat"}).status_code == 404
+    assert client.patch("/trades/t1", json={"leg": "x"}).status_code == 400
+    assert client.patch("/trades/t1", json={}).status_code == 400

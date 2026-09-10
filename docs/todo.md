@@ -38,6 +38,18 @@
 - 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
 - 脉冲天平仍观察层；Watchlist 占用对照已是双子星 C4-lite（你卫星仓 vs 引擎模拟）；S-3 统计 C4 仍等 20 笔平仓
 
+### 产品化缺口盘点（2026-09-09 · 用户逐条拍板）
+
+> 背景：全局代码盘点后，"双子星 → 完整产品"的缺口分五层。结论如下：
+
+| 层 | 拍板 | 落点 |
+|----|------|------|
+| 执行桥（真实下单） | **暂缓**——QMT 之外很难接，不硬啃；维持 paper + 手动 QuickBuy + OCR 对账 | 无 OPT；将来接券商再立项 |
+| 对账闭环缺一条腿（核心腿无 expected-vs-actual recon） | **提上来做**——纯代码层面问题 | **OPT-151** [done] 2026-09-09（checklist 归档） |
+| 部署与可用性 | **就本机跑**——不赚钱没必要部署任何地方；tunnel/上云/付费 API 全 park | todo #9 / #2b 维持 P1 挂起 |
+| 风控产品层（kill-switch / 偏离降级） | 任何风控机制**必须过回测 + 三窗**，按 Strategy / parameter changes 流程走 | 不立工程 OPT，先过 AGENTS.md 策略流程 |
+| UI/UX 产品化 | 丑但能用；**先规划极简化美化** | [`designs/ui-minimal-redesign.md`](./designs/ui-minimal-redesign.md)（拍板后转 OPT） |
+
 ---
 
 ## P0-0 机会双子星运营阶段（2026-09-02 拍板）

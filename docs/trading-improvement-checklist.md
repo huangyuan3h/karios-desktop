@@ -19,7 +19,24 @@
 
 ---
 
-## 未完成（3 条）
+## 未完成（4 条）
+
+### TIP-017：跨市场风险状态传感器族（广度闸 / 国家队代理 / 散户共振 · 数据基建落地）
+
+**状态**：[x] 数据基建 + A/B 实验完成 2026-09-09；[x] C Phase 0/1 诊断完成 2026-09-10（REJECT/无候选进 Phase 2）；[x] **B 已进冻结 2026-09-10**（用户拍板）
+**来源**：2026-09-09 用户直觉——"6-9 月国家队撤退、情绪没恢复，但系统还在买可能亏的资产；
+缺的是'谁在买'的核心数据；散户共振等'无法描述但重要'的信息想被量化"。
+**预注册**：[`backtests/risk-state-sensors-2026-09-09`](backtests/risk-state-sensors-2026-09-09.md)
+**裁决（2026-09-09）**：**A 广度闸 no-op REJECT**（分散化 6 资产宇宙的 MA200 广度跌不到 3——
+债券/黄金/油总有上的；唯一触发变体 cooldown -36pt；且 2021~2023-10 双 ETF 未上市不可评估）。
+**B 国家队闸协议 PASS → 已进冻结（2026-09-10 用户拍板）**：long **+20.0pt**（2021~2023-04 资金流旱段跳过 2022 熊市主跌段），
+三窗全 +0.0（现代完全惰性——国家队持续申购），past_year +0.0。接线：引擎 `national_team_gate` + live `paper_s3._national_team_blocked`
++ S3_CONFIG 三处镜像；long 复现 78.6→98.6（逐数一致）；基线重固化 `s3-cn-baseline-20260910`（sha `5ea07cb964be`）。
+**C 预注册已起草**（2026-09-10 · [`backtests/factors/candidate-c-flow-resonance-2026-09-10`](backtests/factors/candidate-c-flow-resonance-2026-09-10.md)）：**方法学修正**——市场级时序不能用 TIP-013 截面 Rank IC，改为条件前瞻收益 + 共线诊断 + gate walk-forward；主假设 = 两融去杠杆低分位 + 趋势破位 → 核心腿前瞻负向（fail-open 休眠闸）；三窗数据全覆盖（2024-08 起）。**Phase 0/1 已完成（`scripts/diag_candidate_c.py`）：REJECT/无候选进 Phase 2**——主假设（两融）三窗翻转证伪；共振三维同向覆盖≈0；北向被趋势共线 0.76 杀；唯一三窗一致 = 国家队 20dΔ 低分位（上涨中撤离，指数>MA200）跑输基线但幅度小、n 小 → 降级显示/监测信号，不进闸。复活条件：前瞻 paper ≥20 个样本仍负 或 holdout 独立复现。
+**基建**：4 新表（cn_etf_share 2018+/cn_margin_total 2021+/cn_moneyflow_hsgt 2021+/global_index_daily 2018+）
++ alembic 0042 + 每日 job `risk_state_sync`（18:50，含 margin_detail/moneyflow 补漏）+ 前端 riskState 组。
+**实验工具 bug**：`_above_flags` lookback 收盘未参与 MA（每窗前 200 日冷启动伪影）——首轮数字作废，
+修复 + 回归测试后重跑（修正数字见预注册档 §6）。
 
 ### TIP-010：备用宽宇宙实验（东财形态仅对照，不替换）
 
@@ -48,8 +65,6 @@
 #### 验证
 
 - [ ] 表格落在本文件或 `docs/modules/screener.md` 附录
-
----
 
 ---
 
@@ -96,6 +111,7 @@ D2 环境持有期 45（valid +11.4pt）· D3 环境仓位 1.25/0.75（三窗 +2
 | 2026-08-04 | TIP-009/011 | 映射抽检 / 开火归因 | [2026-08-04-tip-009-011-mapping.md](archive/2026-08-04-tip-009-011-mapping.md) |
 | 2026-08-05 | V7.0-01–03/TIP-012 | 相关性热力网 / 风险平价 / 护城河排除 / 研报通道 | [2026-08-05-tip-v70-sizing.md](archive/2026-08-05-tip-v70-sizing.md) |
 | 2026-08-22 | TIP-013 | IC 验证（有效因子清单空，S-3 择时唯一超额源） | [2026-08-22-tip-013-ic.md](archive/2026-08-22-tip-013-ic.md) |
+| 2026-09-09 | TIP-016 | 策略级止损：B（HK 熔断 -25）进冻结；W1/W2/E/A 拒收（A 水位节流 long 一开 22 个月，6/6 拒） | [2026-09-09-tip-016-strategy-level-stop.md](archive/2026-09-09-tip-016-strategy-level-stop.md) |
 
 > 旧当时总结（非完整条目）：`archive/2026-08-04-tip-011-*`、`2026-08-05-tip-012-*`、`2026-08-06-tip-013-014-*`——查完整条目走上表。
 

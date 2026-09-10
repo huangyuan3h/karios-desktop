@@ -23,7 +23,7 @@ import {
   type PortfolioHealthResponse,
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
-import { useBacktestReconQuery, useTwinStarActionQuery, refreshTwinStarAction, type ReconItem } from '@/lib/queries/backtest';
+import { useBacktestReconQuery, useSleeveReconQuery, useTwinStarActionQuery, refreshTwinStarAction, type ReconItem, type SleeveRecon } from '@/lib/queries/backtest';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { useStrategyMode } from '@/lib/strategy-settings';
 import { getShanghaiMinutes, getShanghaiTodayIso, isShanghaiTradingTime, satNamesVisible } from '@/lib/market-hours';
@@ -611,6 +611,98 @@ function ReconBlock({
   );
 }
 
+/** OPT-151: core-leg (multi-asset sleeve) paper expected-vs-actual banner.
+ * Mirror of the satellite recon contract: paper-level mismatch = 🔴; the user
+ * side is informational (manual execution may lag to the next open). */
+function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
+  const [expanded, setExpanded] = React.useState(false);
+  if (!recon) return null;
+  if (recon.error) {
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+        核心腿对账失败：{recon.error}
+      </div>
+    );
+  }
+  const hasGap =
+    recon.missedBuys.length > 0 || recon.missedSells.length > 0 || recon.extraOpens.length > 0;
+  const userFlag =
+    recon.userAlignment === 'aligned'
+      ? '· 你已执行'
+      : recon.userAlignment === 'pending'
+        ? '· 你待执行（次日开盘）'
+        : recon.userAlignment === 'missing'
+          ? '· 你未执行'
+          : '';
+  const actionable = recon.expectedBuys.length > 0 || recon.expectedSells.length > 0;
+  const pretty = (s: string) => s.replace('ETF:', '');
+  return (
+    <div
+      id="sleeve-recon"
+      className={
+        hasGap
+          ? 'rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2'
+          : 'rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2'
+      }
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+        <span
+          className={
+            hasGap ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-300'
+          }
+        >
+          {hasGap ? '🔴' : '✓'}
+        </span>
+        <span className="font-medium">核心腿对账 · {recon.day}</span>
+        <span className="tabular-nums text-[var(--k-muted)]">
+          {recon.decisionAvailable
+            ? `应做 ${recon.label ?? recon.action ?? '—'}`
+            : '核心决策不可用（候选数据不足）'}
+          {userFlag ? ` ${userFlag}` : ''}
+        </span>
+        {actionable || hasGap ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+          >
+            {expanded ? '收起' : '细节'}
+          </button>
+        ) : null}
+      </div>
+      {expanded && (
+        <div className="mt-1.5 flex flex-col gap-1 border-t border-sky-500/20 pt-1.5 text-[11px]">
+          <div className="flex flex-wrap gap-x-3 tabular-nums text-[10px] text-[var(--k-muted)]">
+            <span>应买 {recon.expectedBuys.map(pretty).join(', ') || '—'}</span>
+            <span>应卖 {recon.expectedSells.map(pretty).join(', ') || '—'}</span>
+            <span>paper 已买 {recon.paperBuysToday.map(pretty).join(', ') || '—'}</span>
+            <span>paper 已卖 {recon.paperSellsToday.map(pretty).join(', ') || '—'}</span>
+          </div>
+          {hasGap && (
+            <div className="flex flex-col gap-0.5">
+              {recon.missedBuys.map((s) => (
+                <div key={`mb-${s}`} className="text-red-600 dark:text-red-400">
+                  <span className="font-mono text-[10px]">缺买</span> {pretty(s)}
+                </div>
+              ))}
+              {recon.missedSells.map((s) => (
+                <div key={`ms-${s}`} className="text-red-600 dark:text-red-400">
+                  <span className="font-mono text-[10px]">缺卖</span> {pretty(s)}
+                </div>
+              ))}
+              {recon.extraOpens.map((s) => (
+                <div key={`eo-${s}`} className="text-amber-700 dark:text-amber-300">
+                  <span className="font-mono text-[10px]">多开</span> {pretty(s)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function satRowPretty(r: TwinStarTradeRow): { code: string; pretty: string | null } {
   const code = toTsCodeFromSymbol(r.symbol) ?? r.symbol;
   const pretty = r.name && r.name !== code && r.name !== r.symbol ? r.name : null;
@@ -1054,6 +1146,7 @@ export function PortfolioHealthCard({
     refetchInterval: 5 * 60_000,
   });
   const reconQ = useBacktestReconQuery(2);
+  const sleeveReconQ = useSleeveReconQuery(twinStar);
   const reconByMarket = React.useMemo(() => {
     const m = new Map<string, ReconItem>();
     for (const r of reconQ.data?.items ?? []) m.set(r.market, r);
@@ -1073,6 +1166,7 @@ export function PortfolioHealthCard({
     sizePct: number;
     side: 'BUY' | 'SELL';
     initialPrice?: number | null;
+    leg?: 's3' | 'sat';
   } | null>(null);
   const [boughtSymbols, setBoughtSymbols] = React.useState<Set<string>>(new Set());
   const [buyError, setBuyError] = React.useState<string | null>(null);
@@ -1250,7 +1344,7 @@ export function PortfolioHealthCard({
     });
   }
 
-  async function confirmBuy(values: { price: number; positionPct: number }) {
+  async function confirmBuy(values: { price: number; positionPct: number; leg?: 's3' | 'sat' }) {
     if (!buyTarget || buyBusy) return;
     setBuyError(null);
     setBuyBusy(true);
@@ -1272,6 +1366,7 @@ export function PortfolioHealthCard({
         positionPct: values.positionPct,
         source: 'RESEARCH',
         market: tradeMarketForSymbol(target.symbol),
+        ...(target.side === 'BUY' && values.leg ? { leg: values.leg } : {}),
       });
       // Close first so the dialog never sits frozen on network; the derived
       // surfaces refresh in the background (2026-09-04 modal-freeze fix).
@@ -1318,6 +1413,9 @@ export function PortfolioHealthCard({
       sizePct: row.navPct,
       side: row.side === 'SELL' ? 'SELL' : 'BUY',
       initialPrice: qp ?? (typeof row.lastClose === 'number' ? row.lastClose : null),
+      // 2026-09-10: default the leg from the plan row's SLEEVE (sat vs core),
+      // not its navPct — round-lot sizing never lands exactly on 12.5%.
+      leg: row.side === 'SELL' ? undefined : row.sleeve === 'sat' ? 'sat' : 's3',
     });
   }
 
@@ -1625,6 +1723,7 @@ export function PortfolioHealthCard({
               onOpen={onOpenStock}
               coreDestinationReady={tradePlan?.coreBuyable ?? true}
             />
+            {twinStar ? <SleeveReconBlock recon={sleeveReconQ.data?.recon} /> : null}
             <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
               <button
                 type="button"
@@ -1705,6 +1804,7 @@ export function PortfolioHealthCard({
           error={buyError}
           onClose={() => setBuyTarget(null)}
           onConfirm={(values) => void confirmBuy(values)}
+          defaultLeg={buyTarget.leg ?? 's3'}
         />
       )}
       {reminderError && (

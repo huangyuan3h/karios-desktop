@@ -234,6 +234,39 @@ def _twin_star_recon_section() -> list[dict[str, Any]]:
     return out
 
 
+def _sleeve_recon_section() -> list[dict[str, Any]]:
+    """Core-leg paper expected-vs-actual for the action brief (OPT-151).
+
+    Paper-level mismatch emits one high system event per day (banner inbox);
+    the user side is informational (manual execution may lag). Never raises.
+    """
+    from data_sync_service.service.sleeve_paper_recon import sleeve_paper_recon
+
+    try:
+        recon = sleeve_paper_recon()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trading_brief sleeve recon failed: %s", exc)
+        return [{"type": "sleeve_recon", "ok": False, "error": str(exc)}]
+    out = [{"type": "sleeve_recon", **recon}]
+    mismatches = (
+        (recon.get("missedBuys") or [])
+        + (recon.get("missedSells") or [])
+        + (recon.get("extraOpens") or [])
+    )
+    if mismatches and not recon.get("error"):
+        try:
+            from data_sync_service.db.webhook import emit_event
+
+            emit_event(
+                "sleeve_recon_mismatch",
+                {"day": recon.get("day"), "mismatches": mismatches[:10]},
+                dedupe_key=f"sleeve_recon:{recon.get('day')}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trading_brief sleeve recon emit failed: %s", exc)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Markdown rendering (compact, ~30s read)
 # ---------------------------------------------------------------------------
@@ -387,6 +420,31 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
             for m in r.get("extraOpens") or []:
                 lines.append(f"  多 {m}")
 
+    sleeve_recon = [s for s in sections if s.get("type") == "sleeve_recon"]
+    if sleeve_recon:
+        lines.append("")
+        for r in sleeve_recon:
+            if r.get("error"):
+                lines.append(f"**核心纸账对账**：失败（{r['error']}）")
+                continue
+            flag = "✅一致" if r.get("ok") else "🔴有差异"
+            user_flag = {
+                "idle": "",
+                "aligned": " · 你已执行",
+                "pending": " · 你待执行（明日开盘）",
+                "missing": " · 你未执行",
+            }.get(str(r.get("userAlignment") or ""), "")
+            lines.append(
+                f"**核心纸账对账 {r.get('day')}** {flag}{user_flag}"
+                f" · 应做 {r.get('action') or '—'}"
+                f" · 应买 {len(r.get('expectedBuys') or [])}"
+                f" · 应卖 {len(r.get('expectedSells') or [])}"
+            )
+            for m in (r.get("missedBuys") or []) + (r.get("missedSells") or []):
+                lines.append(f"  缺 {m}")
+            for m in r.get("extraOpens") or []:
+                lines.append(f"  多 {m}")
+
     return "\n".join(lines)
 
 
@@ -435,6 +493,8 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
         # high event per day (banner inbox) so a skipped buy / missed exit
         # cannot pass silently.
         sections += _twin_star_recon_section()
+        # OPT-151: core-leg sleeve paper expected-vs-actual (same pattern).
+        sections += _sleeve_recon_section()
         # OPT-113: the 14:00 execution card pushes to webhook subscribers so
         # the user's phone gets the buy list + exit flags + gate state at
         # their actual trading time (once per day via dedupe_key).

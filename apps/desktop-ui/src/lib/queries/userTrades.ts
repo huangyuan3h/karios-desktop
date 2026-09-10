@@ -2,9 +2,10 @@
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
-import { apiDeleteJson, apiGetJson, apiPostJson } from '@/lib/api/client';
+import { apiDeleteJson, apiGetJson, apiPatchJson, apiPostJson } from '@/lib/api/client';
 import type {
   UserTrade,
+  UserTradePatch,
   UserTradeRequest,
   UserTradesStats,
 } from '@karios/shared';
@@ -64,6 +65,15 @@ export async function recordUserTrade(
 
 export async function deleteUserTrade(tradeId: string): Promise<void> {
   await apiDeleteJson<{ ok: boolean }>(`/trades/${tradeId}`);
+}
+
+/** OPT-150: correct a misfiled leg (side/symbol/date immutable on backend). */
+export async function patchUserTrade(
+  tradeId: string,
+  patch: UserTradePatch,
+): Promise<UserTrade> {
+  const res = await apiPatchJson<{ ok: boolean; trade: UserTrade }>(`/trades/${tradeId}`, patch);
+  return res.trade;
 }
 
 export async function invalidateUserTradesQueries(

@@ -37,6 +37,9 @@ TRADING_JOB_TYPES = {
     "twin_star_intraday",
     "sleeve_etf_daily_sync",
     "stock_daily_basic_sync",
+    # OPT-151: core-leg sleeve mirror + expected-vs-actual recon
+    "sleeve_paper_auto",
+    "sleeve_paper_recon",
 }
 
 

@@ -2,14 +2,17 @@
 
 import React from 'react';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
 import { TwinStarNavOverlay } from '@/components/pages/TwinStarNavOverlay';
+import { FundFlowPanel } from '@/components/pages/FundFlowPanel';
 import { SatBlotterCard } from '@/components/pages/SatBlotterCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { patchUserTrade } from '@/lib/queries/userTrades';
 import { cn } from '@/lib/utils';
 import {
   resolveTimelineWindows,
@@ -238,6 +241,22 @@ function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
   const holdings = q.data?.holdings ?? [];
   const counts = q.data?.counts;
   const gate = q.data?.gate;
+  const queryClient = useQueryClient();
+  const [movingLeg, setMovingLeg] = React.useState<Record<string, boolean>>({});
+  async function moveHoldingLeg(h: NonNullable<typeof holdings>[number]) {
+    const toLeg = h.leg === 'sat' ? 's3' : 'sat';
+    const ids = [...new Set((h.ops ?? []).map((o) => o.id).filter((v): v is string => !!v))];
+    if (!h.symbol || !ids.length || movingLeg[h.symbol]) return;
+    setMovingLeg((m) => ({ ...m, [h.symbol as string]: true }));
+    try {
+      for (const id of ids) await patchUserTrade(id, { leg: toLeg });
+      await queryClient.invalidateQueries({ queryKey: ['backtest', 'core-audit'] });
+      await queryClient.invalidateQueries({ queryKey: ['userTrades'] });
+      await queryClient.invalidateQueries({ queryKey: ['portfolio-health'] });
+    } finally {
+      setMovingLeg((m) => ({ ...m, [h.symbol as string]: false }));
+    }
+  }
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
@@ -268,6 +287,18 @@ function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
               <div className="flex flex-wrap items-baseline gap-x-3 text-[11px]">
                 <span className="font-medium">{h.symbol}</span>
                 <span className="text-[var(--k-muted)]">{h.name}</span>
+                <span className="rounded border border-[var(--k-border)] px-1 text-[9px] text-[var(--k-muted)]">
+                  {h.leg === 'sat' ? '卫星' : '核心'}
+                </span>
+                <button
+                  type="button"
+                  disabled={!h.symbol || !(h.ops ?? []).some((o) => o.id) || !!movingLeg[h.symbol ?? '']}
+                  onClick={() => void moveHoldingLeg(h)}
+                  title="把这票整条操作链挪到另一本账（记错腿时点）"
+                  className="rounded border border-[var(--k-border)] px-1 text-[9px] text-[var(--k-muted)] hover:bg-[var(--k-surface-2)] disabled:opacity-40"
+                >
+                  {movingLeg[h.symbol ?? ''] ? '挪动中…' : h.leg === 'sat' ? '挪到核心' : '挪到卫星'}
+                </button>
                 <span>仓位 {h.positionPct ?? 0}%</span>
                 <span>成本 {h.costPrice ?? '—'}</span>
                 {h.pyramidTriggerLine != null && (
@@ -721,6 +752,7 @@ function TimelineCard() {
               </div>
             ) : null}
             {isTwin ? <TwinStarNavOverlay rows={rows} /> : null}
+            {isTwin ? <FundFlowPanel className="mt-1.5" start={start} end={end} /> : null}
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
               <span>
                 {isTwin

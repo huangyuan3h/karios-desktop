@@ -12,6 +12,7 @@ Truth doc: docs/modules/pick-strong-track.md
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 import psycopg
@@ -58,12 +59,18 @@ def build_mom_compare_timeline(
     ma_window: int = MA_WINDOW,
     trail_pct: float = TRAILING_PCT,
     ma_window_by_key: dict[str, int] | None = None,
+    etf_mom_floor: float | None = None,
 ) -> dict[str, Any]:
     """Replay 择强单轨 NAV (absolute) + daily rows for UI.
 
     navSingle = 100% to pick (STOCK basket avg ret / ETF ret / 0 for REPO).
     navBase = 100% stock basket when any position, else 0 (fused baseline).
     ETF legs: peak since entry −trail_pct% → REPO (same day earns repo).
+
+    TIP-016 E (2026-09-09, pre-registered): absolute-strength floor on the
+    ETF leg — when set and the winning candidate is an ETF below the floor
+    (mom60 fraction), fall to REPO instead of 100%-switching into the
+    least-weak name. None = off (frozen).
     """
     etf_close = etf_close or fetch_etf_closes()
     snap_by_day = {str(s.get("date")): s for s in positions_by_day}
@@ -164,6 +171,11 @@ def build_mom_compare_timeline(
             candidates[k] = mp[prev] / ago - 1.0 if ago else -1e9
 
         pick = max(candidates, key=lambda kk: candidates[kk]) if candidates else "REPO"
+
+        # TIP-016 E (pre-registered): absolute-strength floor on the ETF leg.
+        if etf_mom_floor is not None and pick not in ("STOCK", "REPO"):
+            if candidates.get(pick, 0.0) < etf_mom_floor:
+                pick = "REPO"
 
         # ETF trail8: peak since consecutive hold of same ETF −trail% → REPO.
         if trail_pct > 0 and pick not in ("STOCK", "REPO"):
@@ -269,6 +281,64 @@ def build_mom_compare_timeline(
     }
 
 
+def _pair_nav_to_calendar(
+    nav: list[float] | None,
+    own_cal: list[str] | None,
+    calendar: list[str],
+) -> list[float] | None:
+    """Pair an engine nav_curve (len = len(own_cal)+1) onto the merged calendar.
+
+    Missing days forward-fill the last own value (ret 0 that day, e.g. CN
+    closed while HK traded). The terminal forced-close point (nav_curve[-1])
+    binds to the own calendar's last day — same convention as
+    scripts/run_walk_forward_dual.nav_curve_on_calendar.
+    """
+    if not nav or not own_cal:
+        return None
+    n = min(len(nav), len(own_cal))
+    by_day = {str(d): float(nav[i]) for i, d in enumerate(own_cal[:n])}
+    if len(nav) > len(own_cal) and own_cal:
+        by_day[str(own_cal[-1])] = float(nav[-1])
+    out: list[float] = []
+    last = float(nav[0])
+    for d in calendar:
+        v = by_day.get(str(d))
+        if v is not None:
+            last = v
+        out.append(last)
+    return out
+
+
+def _circuit_flags_by_day(
+    trades: list[Any] | None,
+    calendar: list[str],
+    threshold: float = -25.0,
+    window_days: int = 30,
+    min_trades: int = 3,
+) -> dict[str, bool]:
+    """Mirror the engine's realized-drawdown circuit state per day (TIP-016 B).
+
+    Same formula as backtest_engine._circuit_halted: trades closed within the
+    last ``window_days`` natural days, >= ``min_trades`` of them, realized
+    pnl_pct simple-sum <= ``threshold`` -> circuit ON. Display-only (the
+    posture band); the engine state remains authoritative.
+    """
+    closes = sorted(
+        (str(t.close_date or ""), float(t.pnl_pct or 0.0))
+        for t in (trades or [])
+    )
+    out: dict[str, bool] = {}
+    for day in calendar:
+        try:
+            cutoff = (date.fromisoformat(day) - timedelta(days=window_days)).isoformat()
+        except ValueError:
+            out[day] = False
+            continue
+        recent = [p for d, p in closes if cutoff <= d <= day]
+        out[day] = len(recent) >= min_trades and sum(recent) <= threshold
+    return out
+
+
 def build_twin_star_timeline(
     *,
     core_rows: list[dict[str, Any]],
@@ -278,6 +348,14 @@ def build_twin_star_timeline(
     sat_weight: float = 0.5,
     opportunity: bool = True,
     sat_blotter: list[dict[str, Any]] | None = None,
+    sim_nav_cn: list[float] | None = None,
+    sim_cal_cn: list[str] | None = None,
+    sim_nav_hk: list[float] | None = None,
+    sim_cal_hk: list[str] | None = None,
+    cn_trades: list[Any] | None = None,
+    hk_trades: list[Any] | None = None,
+    sentiment_by_day: dict[str, str] | None = None,
+    flow_by_day: dict[str, dict[str, float | None]] | None = None,
 ) -> dict[str, Any]:
     """Blend 择强单轨 (core) + S-gap 卫星 (sat) into 机会双子星 (Opportunity Twin-Star) rows.
 
@@ -290,6 +368,21 @@ def build_twin_star_timeline(
     S-gap ranks). Exit days must stay active so round-trip costs enter the blend.
 
     Fixed 50/50 daily-return blending (opportunity=False) is kept for audit.
+
+    OPT-152 实盘口径 (2026-09-09): when the S-3 sim NAV curves are supplied,
+    rows also carry navSim/navSimMulti — the product-structured curve. The
+    navSingle replay assumes 100% of capital on the daily pick; the product
+    instead earns what the S-3 sim actually earns on STOCK days (real
+    position sizing, gated entries, costs — e.g. a single-stock pump day at
+    deployedPct=10 adds ~4.5pt, not +45). ETF/REPO picks keep the replay
+    return (择强 100% 硬切 IS the product behaviour on those legs). The
+    satellite opportunity blend (idle 100% core / active 50/50) is applied on
+    top of the product core exactly like on the benchmark core.
+
+    TIP-016 posture annotation (2026-09-09): when line trades are supplied,
+    rows carry cnCircuit/hkCircuit (the engine's realized 30-day circuit
+    state, mirrored formula) and sentiment (CN risk mode) per day — the
+    timeline chart renders them as posture bands ("why idle / why bleeding").
     """
     sat_by_day = {r["date"]: r for r in sat_rows}
     nav = 1.0
@@ -299,7 +392,22 @@ def build_twin_star_timeline(
     prev_sat = 1.0
     last_sat_row: dict[str, Any] | None = None
     blended: list[dict[str, Any]] = []
-    for r in core_rows:
+
+    calendar = [str(r["date"]) for r in core_rows]
+    sim_cn = _pair_nav_to_calendar(sim_nav_cn, sim_cal_cn, calendar)
+    sim_hk = _pair_nav_to_calendar(sim_nav_hk, sim_cal_hk, calendar)
+    has_sim = sim_cn is not None
+    circuit_cn = _circuit_flags_by_day(cn_trades, calendar) if cn_trades else {}
+    circuit_hk = _circuit_flags_by_day(hk_trades, calendar) if hk_trades else {}
+    sent_map = sentiment_by_day or {}
+    flow_map = flow_by_day or {}
+    nav_sim = 1.0
+    nav_sim_multi = 1.0
+    sim_peak = 1.0
+    sim_max_dd = 0.0
+    sim_multi_peak = 1.0
+    sim_multi_max_dd = 0.0
+    for idx, r in enumerate(core_rows):
         day = r["date"]
         sat_r = sat_by_day.get(day) or last_sat_row
         last_sat_row = sat_r or last_sat_row
@@ -321,6 +429,14 @@ def build_twin_star_timeline(
                     "filledToday": None,
                     "idleSlots": None,
                     "gateOpen": None,
+                    "cnCircuit": bool(circuit_cn.get(day, False)),
+                    "hkCircuit": bool(circuit_hk.get(day, False)),
+                    "sentiment": sent_map.get(day),
+                    "flow": flow_map.get(day),
+                    "navSim": None,
+                    "navSimReturnPct": None,
+                    "navSimMulti": None,
+                    "navSimMultiReturnPct": None,
                 }
             )
             continue
@@ -331,6 +447,21 @@ def build_twin_star_timeline(
         prev_core = core_nav
         prev_sat = sat_nav
         core_nav_pct = round((core_nav - 1) * 100, 2)
+
+        # OPT-152: product core return for the day. STOCK pick → S-3 sim joint
+        # NAV return (CN+HK 50/50 daily-rebalanced); ETF/REPO → replay return.
+        if has_sim and str(r.get("pick")) == "STOCK":
+            prev_cn = sim_cn[idx - 1] if idx > 0 else sim_cn[0]
+            ret_cn = sim_cn[idx] / prev_cn - 1.0 if prev_cn > 0 else 0.0
+            if sim_hk is not None:
+                prev_hk = sim_hk[idx - 1] if idx > 0 else sim_hk[0]
+                ret_hk = sim_hk[idx] / prev_hk - 1.0 if prev_hk > 0 else 0.0
+                sim_core_ret = 0.5 * ret_cn + 0.5 * ret_hk
+            else:
+                sim_core_ret = ret_cn
+        else:
+            sim_core_ret = None
+
         if "satActive" in sat_r and sat_r["satActive"] is not None:
             has_sat = bool(sat_r["satActive"])
         else:
@@ -344,6 +475,22 @@ def build_twin_star_timeline(
         peak = max(peak, nav)
         if peak > 0:
             max_dd = max(max_dd, (peak - nav) / peak)
+
+        if has_sim:
+            sim_ret = sim_core_ret if sim_core_ret is not None else core_ret
+            sim_multi_ret = (
+                sim_ret + sat_weight * (sat_ret - sim_ret) if has_sat else sim_ret
+            )
+            nav_sim *= 1.0 + sim_ret
+            nav_sim_multi *= 1.0 + sim_multi_ret
+            sim_peak = max(sim_peak, nav_sim)
+            sim_multi_peak = max(sim_multi_peak, nav_sim_multi)
+            if sim_peak > 0:
+                sim_max_dd = max(sim_max_dd, (sim_peak - nav_sim) / sim_peak)
+            if sim_multi_peak > 0:
+                sim_multi_max_dd = max(
+                    sim_multi_max_dd, (sim_multi_peak - nav_sim_multi) / sim_multi_peak
+                )
         sat_pos = int(sat_r.get("satPositions") or 0)
         sat_slots = int(sat_r.get("satSlots") or sat_pos)
         blended.append(
@@ -366,6 +513,16 @@ def build_twin_star_timeline(
                 "filledToday": sat_r.get("filledToday"),
                 "idleSlots": sat_r.get("idleSlots"),
                 "gateOpen": sat_r.get("gateOpen"),
+                "cnCircuit": bool(circuit_cn.get(day, False)),
+                "hkCircuit": bool(circuit_hk.get(day, False)),
+                "sentiment": sent_map.get(day),
+                "flow": flow_map.get(day),
+                "navSim": round(nav_sim, 6) if has_sim else None,
+                "navSimReturnPct": round((nav_sim - 1) * 100, 2) if has_sim else None,
+                "navSimMulti": round(nav_sim_multi, 6) if has_sim else None,
+                "navSimMultiReturnPct": round((nav_sim_multi - 1) * 100, 2)
+                if has_sim
+                else None,
             }
         )
     sat_active_days = sum(1 for row in blended if row.get("satActive"))
@@ -385,5 +542,10 @@ def build_twin_star_timeline(
             "basePct": round(core_summary.get("basePct") or 0.0, 2),
             "maxDdFusedPct": round(max_dd * 100, 1),
             "satActiveDays": sat_active_days,
+            # OPT-152 product-structured curve (实盘口径).
+            "simPct": round((nav_sim - 1) * 100, 2) if has_sim else None,
+            "simMultiPct": round((nav_sim_multi - 1) * 100, 2) if has_sim else None,
+            "simMaxDdPct": round(sim_max_dd * 100, 1) if has_sim else None,
+            "simMultiMaxDdPct": round(sim_multi_max_dd * 100, 1) if has_sim else None,
         },
     }

@@ -151,6 +151,28 @@ class BacktestConfig:
     # Covers entries / exits / pyramid adds. Swaps move no cash in this
     # engine version, so they are unaffected (HK swaps are off anyway).
     settle_lock_sessions: int = 0
+    # TIP-016 W1 (2026-09-09, pre-registered): regime continuity for new
+    # entries — the last N sessions (incl. today) must ALL be Strong.
+    # 0 = off (frozen). Targets the 2026-07-16 whipsaw (Weak,Weak->Strong
+    # flicker opened 8 HK positions, 3 stopped next day). Diverging does NOT
+    # count (only strict Strong streaks gate).
+    regime_streak_min: int = 0
+    # TIP-016 W2 (2026-09-09, pre-registered): drought ramp-up — after K
+    # consecutive sessions with zero new entries, cap new entries at M per
+    # session for the next 5 sessions. 0 = off (frozen). Fresh opens only
+    # (pyramid adds and cashless swaps don't count).
+    drought_ramp_sessions: int = 0
+    drought_ramp_max: int = 0
+    # TIP-016 A (2026-09-09, pre-registered §9.3): product-level NAV-watermark
+    # throttle. Windows are derived OUTSIDE the engine by an outer loop over
+    # the JOINT CN+HK NAV curve (scripts/run_product_throttle.py) and fed in
+    # as inclusive (start, end) date ranges — the engine only checks
+    # membership. Inside a window, NEW entries are scaled by throttle_scale
+    # (0 = pause / no fresh entries, 0.5 = half size); pyramid adds and the
+    # per-line self-gates (circuit / panic / …) are NOT affected. Swaps are
+    # new exposure and follow the same rule. Default = frozen behaviour.
+    throttle_windows: tuple[tuple[str, str], ...] = ()
+    throttle_scale: float = 0.5
     mainline_top_k: int = 3
     score_confirm_days: int = 0
     position_pct: float = 0.05
@@ -160,6 +182,12 @@ class BacktestConfig:
     drawdown_circuit_pct: float = 0.0
     drawdown_circuit_window_days: int = 30
     panic_cooldown_days: int = 0
+    # TIP-017 B (2026-09-10, pre-registered PASS -> frozen): national-team
+    # gate — CN line only. Pause NEW entries while 沪深300 < its MA200 AND the
+    # 4-ETF broad-share 20-session delta ≤ 0 (rescue capital absent in a weak
+    # trend). State is computed causally per line calendar (data ≤ d-1) from
+    # index_daily + cn_etf_share via risk_state_gate. Default off (HK/legacy).
+    national_team_gate: bool = False
     light_red_block: bool = False
     slippage_pct: float = 0.0
     trend_score_min: float = 0.0
@@ -395,6 +423,15 @@ class BacktestConfig:
             raise ValueError("industry_flow_exit_days must be >= 0 (0 disables, 3 = exit when the holding's SW L1 industry 5d net inflow stays negative for 3 straight sessions)")
         if self.settle_lock_sessions < 0:
             raise ValueError("settle_lock_sessions must be >= 0 (0 disables, 2 = HK T+2 settlement)")
+        if self.regime_streak_min < 0:
+            raise ValueError("regime_streak_min must be >= 0 (0 disables, 2 = entries need 2 straight Strong sessions)")
+        if self.drought_ramp_sessions < 0 or self.drought_ramp_max < 0:
+            raise ValueError("drought_ramp_sessions/drought_ramp_max must be >= 0 (0 disables)")
+        if not 0 <= self.throttle_scale <= 1:
+            raise ValueError("throttle_scale must be in [0, 1] (0 = pause, 0.5 = half-size entries)")
+        for w_start, w_end in self.throttle_windows:
+            if str(w_end) < str(w_start):
+                raise ValueError("throttle_windows entries must be (start, end) with start <= end")
         if not 0 < self.position_pct <= 1:
             raise ValueError("position_pct must be in (0, 1]")
         if not 1 <= self.max_positions <= 100:
@@ -603,6 +640,16 @@ class BacktestData:
             self.close_by_ts_day[ts] = closes
             self.closes_by_ts[ts] = series
         self.regime_by_day = _load_regime_by_day(config, self.calendar)
+        # TIP-017 B: national-team gate state (CN only). Computed once per
+        # line calendar with a 400-day price/share lookback so the MA200 and
+        # the 20-session share delta are warm at window start.
+        self.national_team_by_day: dict[str, bool] = {}
+        if config.national_team_gate and config.market == "CN":
+            from data_sync_service.service.risk_state_gate import (
+                national_team_state_for_calendar,
+            )
+
+            self.national_team_by_day = national_team_state_for_calendar(self.calendar)
         self.light_red_by_day: set[str] = set()
         if config.light_red_block and config.market == "CN":
             self.light_red_by_day = _load_light_red_days(config, self.calendar)
@@ -1538,6 +1585,46 @@ class BacktestRun:
     nav_curve: list[float] = field(default_factory=list)
 
 
+def compute_throttle_windows(
+    nav_curve: list[float],
+    calendar: list[str],
+    theta_pct: float,
+    release_frac: float = 0.5,
+) -> tuple[tuple[str, str], ...]:
+    """Derive product-level throttle windows from a joint NAV curve (TIP-016 A).
+
+    Causality: the throttle state for trading day ``calendar[i]`` is decided
+    by the drawdown of the curve STRICTLY BEFORE day i — entries on day i
+    happen at open, so the end-of-day NAV of day i-1 is the freshest known
+    data. Trigger: drawdown >= |theta_pct|/100. Release (hysteresis):
+    drawdown < |theta_pct|/100 * release_frac. Returns inclusive
+    (start, end) date ranges, ready for ``BacktestConfig.throttle_windows``.
+    Drawdown is window-local: the watermark peak starts at ``nav_curve[0]``.
+    """
+    if not nav_curve or len(nav_curve) != len(calendar):
+        raise ValueError("nav_curve and calendar must be non-empty and same length")
+    theta = abs(float(theta_pct)) / 100.0
+    release = theta * float(release_frac)
+    windows: list[tuple[str, str]] = []
+    on = False
+    start: str | None = None
+    peak = nav_curve[0]
+    for i in range(1, len(nav_curve)):
+        prev = nav_curve[i - 1]
+        peak = max(peak, prev)
+        dd = 1.0 - prev / peak if peak > 0 else 0.0
+        if not on and dd >= theta:
+            on = True
+            start = str(calendar[i])
+        elif on and dd < release:
+            on = False
+            windows.append((str(start), str(calendar[i - 1])))
+            start = None
+    if on and start is not None:
+        windows.append((str(start), str(calendar[-1])))
+    return tuple(windows)
+
+
 # ---------------------------------------------------------------------------
 # Simulation
 # ---------------------------------------------------------------------------
@@ -1567,6 +1654,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     settle_n = int(config.settle_lock_sessions or 0)
     settled_cash = 1.0  # usable-for-entries cash; diverges from nav_cash only when settle_n > 0
     pending_settle: list[tuple[int, float]] = []  # (usable 1-based day_index, amount)
+    # TIP-016 W2 state: sessions since last fresh entry; ramp sessions left.
+    # Window-local (starts fresh: no drought assumed at window start).
+    sessions_since_entry = 0
+    ramp_left = 0
 
     threshold = config.score_threshold
     realized_pnl_window: list[tuple[str, float]] = []  # (close_date, pnl_pct)"""
@@ -1746,6 +1837,22 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         )
         prev_day = data.calendar[day_index - 1] if day_index > 0 else None
         day_index += 1
+        # TIP-016 W2: drought ramp-up. Armed when the book went K sessions
+        # with zero fresh entries; caps fresh opens at M/session for the
+        # next 5 sessions once entries resume (this session counts as day 1).
+        ramp_on = config.drought_ramp_sessions > 0 and config.drought_ramp_max > 0
+        ramp_cap_today = config.drought_ramp_max if (ramp_on and (ramp_left > 0 or sessions_since_entry >= config.drought_ramp_sessions)) else 0
+        # TIP-016 A: product-level throttle membership for today (windows are
+        # pre-derived from the joint NAV watermark by the outer loop).
+        throttle_on = any(
+            str(w0) <= day <= str(w1) for (w0, w1) in config.throttle_windows
+        )
+        # TIP-017 B (frozen): national-team gate — CN line, blocks NEW exposure
+        # (fresh entries and swaps) while the rescue-flow state is ON.
+        national_team_on = (
+            config.national_team_gate and bool(data.national_team_by_day.get(day))
+        )
+        opened_today = 0
         if settle_n > 0 and pending_settle:
             # T+N settlement: proceeds sold on day k become usable ON day k+N.
             due = sum(a for idx, a in pending_settle if idx <= day_index)
@@ -1770,8 +1877,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             for sym, score in day_scores.items():
                 if score < threshold:
                     continue
-                if circuit_halted or panic_cooldown:
+                if circuit_halted or panic_cooldown or national_team_on:
                     continue
+                if throttle_on and config.throttle_scale <= 0:
+                    continue  # pause: no new exposure via swaps either
                 if sym in positions or sym in swapped_syms:
                     continue
                 resolved = _resolve_ts_code(sym)
@@ -1833,7 +1942,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                      "peak_price": px_c,
                      "score_at_entry": day_scores[sym_c],
                      "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day)
-                     * config._env_position_scale(data.env_by_day.get(day)),
+                     * config._env_position_scale(data.env_by_day.get(day))
+                     * (config.throttle_scale if throttle_on else 1.0),
                      "industry": data.industry_by_ts.get(ts_c),
                  }
                 swapped_syms.add(sym_c)
@@ -1879,6 +1989,32 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if panic_cooldown:
                 gated_blocks["panic_cooldown"] += 1
                 continue
+            # TIP-017 B (frozen): national-team gate — CN rescue-flow absent.
+            if national_team_on:
+                gated_blocks["national_team"] += 1
+                continue
+            # TIP-016 A (pre-registered): product-level throttle — pause mode
+            # blocks fresh entries outright; half mode scales the size below
+            # (eff_pct). Line-level self-gates (circuit/panic) stay armed.
+            if throttle_on and config.throttle_scale <= 0:
+                gated_blocks["product_throttle"] += 1
+                continue
+            # TIP-016 W1 (pre-registered): regime continuity — new entries
+            # need the last N sessions (incl. today) ALL Strong. Missing
+            # regime data breaks the streak (fail-closed, same as the base
+            # gate). Diverging does not count toward the streak.
+            if config.regime_streak_min > 0:
+                need = int(config.regime_streak_min)
+                cur_idx = day_index - 1  # day_index already 1-based here
+                streak_ok = True
+                for back in range(need):
+                    d = data.calendar[cur_idx - back] if cur_idx - back >= 0 else None
+                    if d is None or data.regime_by_day.get(d) != REGIME_STRONG:
+                        streak_ok = False
+                        break
+                if not streak_ok:
+                    gated_blocks["regime_streak"] += 1
+                    continue
             # TIP-014 finding #3: block new entries on TRUE neutral days AND
             # implicit-weak days (ratio < 0.5 with only normal/caution
             # risk_mode — 16/16 losing trades in the valid window, avg
@@ -2343,6 +2479,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             )
             # E1: cash constraint — total nominal exposure capped at 100%
             eff_pct = config.position_pct * pos_scale * atr_scale_for(ts, day) * config._env_position_scale(data.env_by_day.get(day))
+            if throttle_on:
+                # TIP-016 A half mode: new entries at reduced size inside the
+                # joint-watermark throttle window (0 < scale <= 1 validated).
+                eff_pct *= config.throttle_scale
             if sum(p["position_pct"] for p in positions.values()) + eff_pct > 1.0 + 1e-9:
                 gated_blocks["cash_cap"] += 1
                 continue
@@ -2353,6 +2493,13 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     gated_blocks["settle_lock"] += 1
                     continue
                 settled_cash -= entry_cost
+            # TIP-016 W2 (pre-registered): drought ramp-up cap.
+            if ramp_cap_today > 0 and opened_today >= ramp_cap_today:
+                gated_blocks["drought_ramp"] += 1
+                continue
+            if ramp_on and ramp_left == 0 and sessions_since_entry >= config.drought_ramp_sessions:
+                ramp_left = 5  # entries resume: this session is ramp day 1
+            opened_today += 1
             positions[sym] = {
                 "symbol": sym,
                 "market": config.market,
@@ -2588,6 +2735,13 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         # Continuous NAV (mark-to-market of all open sleeves) for honest
         # Sharpe / MaxDD / CAGR — replaces the old per-close-day proxy.
         nav_curve.append(nav_cash + _nav_for_day(positions, data, day))
+        # TIP-016 W2 bookkeeping (window-local).
+        if opened_today > 0:
+            sessions_since_entry = 0
+        else:
+            sessions_since_entry += 1
+        if ramp_left > 0:
+            ramp_left -= 1
 
         # End-of-day holding snapshot — the anchor for reconciling the real
         # paper/watchlist book against the backtest (2026-08-11). Captured

@@ -3,7 +3,15 @@
 The S-3 line trades are executed automatically (paper_s3), but the core
 holdings (registry watchlist rows like CN:300628 / ETF:513110) are managed
 manually. This module answers "was my trade on the rule, or off it?" for
-every user_trades row, using the same rules as the backtest engine:
+every user_trades row.
+
+Legs (OPT-149): each journal row carries ``leg`` ('s3' | 'sat').
+- S-3 legs use the backtest-engine rules below (pyramid / stop / panic gate).
+- Satellite legs (twin-star 12.5% slots) are reconciled against the paper
+  satellite book (paper_trades source='twin_star'), NOT indicator rules:
+  BUY must match a paper signal (same symbol+day, which implies the R-wide
+  gate was open); SELL must land on the body=3 exit-due session
+  (entry = day 1); ADD is always off-rule (no pyramiding on satellites).
 
   - pyramid ADD: close >= cost * (1 + pyramid_trigger_pct) on the PREVIOUS
     close and not yet added -> add half sleeve (regime-independent, max 1)
@@ -38,14 +46,28 @@ def _load_user_trades(symbol: str) -> list[dict[str, Any]]:
     try:
         with get_connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """SELECT id, symbol, side, trade_date, price, position_pct,
-                              cost_basis, entry_date, pnl_pct, holding_days, source,
-                              market, note, created_at
-                       FROM user_trades WHERE symbol = %s ORDER BY trade_date, created_at""",
-                    (symbol,),
-                )
-                return list(cur.fetchall())
+                try:
+                    cur.execute(
+                        """SELECT id, symbol, side, trade_date, price, position_pct,
+                                  cost_basis, entry_date, pnl_pct, holding_days, source,
+                                  market, note, leg, created_at
+                           FROM user_trades WHERE symbol = %s ORDER BY trade_date, created_at""",
+                        (symbol,),
+                    )
+                except Exception:
+                    # Pre-0041 DBs have no leg column: fall back, all legs read as s3.
+                    conn.rollback()
+                    cur.execute(
+                        """SELECT id, symbol, side, trade_date, price, position_pct,
+                                  cost_basis, entry_date, pnl_pct, holding_days, source,
+                                  market, note, created_at
+                           FROM user_trades WHERE symbol = %s ORDER BY trade_date, created_at""",
+                        (symbol,),
+                    )
+                rows = list(cur.fetchall())
+                for r in rows:
+                    r.setdefault("leg", "s3")
+                return rows
     except Exception as exc:  # noqa: BLE001
         logger.warning("core_holding_audit: user_trades load failed for %s (%s)", symbol, exc)
         return []
@@ -170,6 +192,95 @@ def _judge_open(op: dict[str, Any], holding: dict[str, Any], gate: dict[str, Any
             "rule": rule, "detail": detail}
 
 
+def _load_sat_book() -> set[tuple[str, str]]:
+    """Paper satellite fills as (symbol, entry_date). Read-only reconcile set.
+
+    A paper fill exists only when the R-wide gate was open and the strict
+    C1 candidate filled, so a match certifies the whole satellite entry path.
+    """
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT symbol, entry_date FROM paper_trades WHERE source = 'twin_star'"
+                )
+                return {(str(s), str(d)) for s, d in cur.fetchall() if s and d}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("core_holding_audit: sat book load failed (%s)", exc)
+        return set()
+
+
+def _sat_exit_due(entry_date: str) -> str | None:
+    """Body=3 exit-due session (entry day counts as day 1). None if unknown."""
+    from datetime import date as _date
+    from datetime import timedelta as _td
+
+    from data_sync_service.db.trade_calendar import get_open_dates
+
+    try:
+        d0 = _date.fromisoformat(str(entry_date)[:10])
+        sessions = get_open_dates("SSE", d0, d0 + _td(days=10))
+        if len(sessions) >= 3:
+            return sessions[2].isoformat() if hasattr(sessions[2], "isoformat") else str(sessions[2])
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _judge_sat_open(op: dict[str, Any], sat_book: set[tuple[str, str]]) -> dict[str, Any]:
+    """Satellite BUY verdict.
+
+    Following the paper signal is the default path (same symbol+day implies the
+    R-wide gate was open). A satellite buy that does NOT mirror a paper signal
+    is a **self-directed pick** and is treated as compliant ("ok"), not a warn —
+    the satellite book is user-managed and round-lot sizing never lands exactly
+    on 12.5%. Both paths read ok; the detail distinguishes them (2026-09-10).
+    """
+    sym = str(op["symbol"])
+    day = str(op["trade_date"])
+    if (sym, day) in sat_book:
+        verdict, rule, detail = "ok", "sat_signal", (
+            "跟随卫星信号（paper 同票同日，R-wide 开闸日，body=3，第 3 日 14:30 卖）"
+        )
+    else:
+        verdict, rule, detail = "ok", "sat_manual", (
+            f"主动自选卫星单（paper {day} 无 {sym} 信号）——按自选处理，非偏离"
+        )
+    return {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
+            "positionPct": float(op["position_pct"] or 0), "verdict": verdict,
+            "rule": rule, "detail": detail}
+
+
+def _judge_sat_sell(op: dict[str, Any], open_entry: str | None) -> dict[str, Any]:
+    """Satellite SELL: must land on the body=3 exit-due session."""
+    day = str(op["trade_date"])
+    base = {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
+            "positionPct": float(op["position_pct"] or 0)}
+    if not open_entry:
+        return {**base, "verdict": "warn", "rule": "sat_exit",
+                "detail": "卫星卖出无对应开仓记录——先补开仓腿"}
+    due = _sat_exit_due(open_entry)
+    if due is None:
+        return {**base, "verdict": "ok", "rule": "sat_exit",
+                "detail": f"卫星卖出（{open_entry} 开仓，日历缺数未核到期日）"}
+    if day == due:
+        return {**base, "verdict": "ok", "rule": "sat_exit",
+                "detail": f"第 3 日到期卖（{open_entry}→{due}，body=3）——符合"}
+    if day < due:
+        return {**base, "verdict": "warn", "rule": "sat_exit",
+                "detail": f"提前卖（到期 {due}，body 不足 3 日）——锁死减亏段且打乱周转"}
+    return {**base, "verdict": "warn", "rule": "sat_exit",
+            "detail": f"延迟卖（到期 {due}，多占槽位）——赢家多拿一天已三窗拒收"}
+
+
+def _judge_sat_add(op: dict[str, Any]) -> dict[str, Any]:
+    return {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
+            "positionPct": float(op["position_pct"] or 0), "verdict": "warn",
+            "rule": "sat_exit", "detail": "卫星无加仓规则（body=3 拿满即卖，加仓=占槽）"}
+
+
 def _etf_trend_state(symbol: str) -> dict[str, Any]:
     """MA200 / above flags for a sleeve ETF (from the production state machine)."""
     from data_sync_service.service.third_asset_sleeve import (
@@ -190,17 +301,46 @@ def _replay_ops(
     ops: list[dict[str, Any]],
     state: dict[str, Any],
     gate: dict[str, Any],
+    sat_book: set[tuple[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Judge each op against its PRE-trade state by reverse-replaying from the
     current (cost, pct) backwards — so the 8/21 ADD is checked against the
-    8/20 cost (39.90), not today's blended one."""
+    8/20 cost (39.90), not today's blended one.
+
+    Satellite legs (leg='sat') skip the S-3 rulebook: BUY reconciles against
+    the paper satellite book, SELL against the body=3 exit-due session.
+    """
+    book = sat_book if sat_book is not None else set()
+    # Chronological pre-pass: pair each SELL/ADD with its open entry date.
+    open_entry: str | None = None
+    entry_for: dict[int, str | None] = {}
+    for idx, op in enumerate(ops):
+        leg = str(op.get("leg") or "s3")
+        if leg != "sat":
+            continue
+        if op["side"] == "BUY" and open_entry is None:
+            open_entry = str(op["trade_date"])
+        elif op["side"] == "SELL":
+            entry_for[idx] = open_entry
+            open_entry = None
     cur_cost = float(state.get("costPrice") or 0)
     cur_pct = float(state.get("positionPct") or 0)
     verdicts: list[dict[str, Any]] = []
-    for op in reversed(ops):
+    for rev_idx, op in enumerate(reversed(ops)):
+        idx = len(ops) - 1 - rev_idx
         side = op["side"]
         price = float(op["price"] or 0)
         op_pct = float(op["position_pct"] or 0)
+        leg = str(op.get("leg") or "s3")
+
+        if leg == "sat":
+            if side == "BUY":
+                verdicts.append(_judge_sat_open(op, book))
+            elif side == "SELL":
+                verdicts.append(_judge_sat_sell(op, entry_for.get(idx)))
+            else:
+                verdicts.append(_judge_sat_add(op))
+            continue
 
         if side == "ADD":
             # Roll BACK first: judge against the pre-trade blended state.
@@ -224,6 +364,9 @@ def _replay_ops(
             cur_cost = 0.0  # a fresh open has no prior cost basis to roll to
 
     verdicts.reverse()
+    # OPT-150: carry the journal row id so the UI can patch a misfiled leg.
+    for v, op in zip(verdicts, ops, strict=True):
+        v.setdefault("id", op.get("id"))
     return verdicts
 
 
@@ -240,6 +383,7 @@ def audit_core_holdings(*, day: str) -> dict[str, Any]:
     health = build_portfolio_health(trade_date=day)
     health_by_symbol = {h.get("symbol"): h for h in (health.get("holdings") or [])}
     etf_trend_cache: dict[str, dict[str, Any]] = {}
+    sat_book = _load_sat_book()
 
     holdings_out: list[dict[str, Any]] = []
     violations: list[dict[str, Any]] = []
@@ -261,7 +405,13 @@ def audit_core_holdings(*, day: str) -> dict[str, Any]:
 
         if str(sym).startswith("ETF:"):
             etf_trend_cache[sym] = _etf_trend_state(sym)
-        ops = _replay_ops(ops_raw, state, gate)
+        ops = _replay_ops(ops_raw, state, gate, sat_book)
+        # Holding leg = leg of the most recent BUY (sat and s3 never blend rules).
+        leg = "s3"
+        for o in reversed(ops_raw):
+            if o["side"] == "BUY":
+                leg = str(o.get("leg") or "s3")
+                break
         for o in ops:
             if o["side"] == "ADD" and str(sym).startswith("ETF:"):
                 trend = etf_trend_cache[sym]
@@ -285,6 +435,7 @@ def audit_core_holdings(*, day: str) -> dict[str, Any]:
             {
                 "symbol": sym,
                 "name": state.get("name") or row.get("name"),
+                "leg": leg,
                 "positionPct": state.get("positionPct") or row.get("positionPct"),
                 "costPrice": state.get("costPrice") or row.get("costPrice"),
                 "lastClose": state.get("lastClose"),
@@ -292,8 +443,9 @@ def audit_core_holdings(*, day: str) -> dict[str, Any]:
                 "stopLossLine": state.get("stopLossLine"),
                 "trailingLine": state.get("trailingLine"),
                 "maxHoldDate": state.get("maxHoldDate"),
-                "pyramidTriggerLine": state.get("pyramidTriggerLine"),
-                "pyramidAdded": bool(state.get("pyramidAdded")),
+                # Satellite legs have no pyramid rule: hide the S-3 line (OPT-149).
+                "pyramidTriggerLine": None if leg == "sat" else state.get("pyramidTriggerLine"),
+                "pyramidAdded": bool(state.get("pyramidAdded")) and leg != "sat",
                 "ops": ops,
             }
         )

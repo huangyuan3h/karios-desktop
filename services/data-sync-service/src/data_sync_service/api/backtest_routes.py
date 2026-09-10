@@ -13,6 +13,7 @@ not a release decision basis (see service/backtest_engine docstring).
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,42 @@ from data_sync_service.service.backtest_engine import (
 )
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+
+logger = logging.getLogger(__name__)
+
+
+def warm_default_timelines() -> None:
+    """Prebuild the heavy default timelines in the background (lifespan warmup).
+
+    After a restart the first UI hit used to rebuild the CN+HK S-3 sims inline
+    (>2 min, blowing client timeouts on the timeline / return-attribution
+    cards). Warm the trailing-year keys for the Live recipe + pick_strong so
+    the first page hit lands on a warm in-process cache instead.
+    """
+    if "PYTEST_CURRENT_TEST" in __import__("os").environ:
+        return
+    d0 = date.today()
+    end = d0.isoformat()
+    try:
+        start = d0.replace(year=d0.year - 1).isoformat()
+    except ValueError:  # Feb 29 -> Feb 28 of previous year
+        start = date(d0.year - 1, 2, 28).isoformat()
+    plans: list[dict[str, Any]] = [
+        {"strategy": "pick_strong", "need_engine": True},
+        {
+            "strategy": "twin_star",
+            "need_engine": True,
+            "sat_fill": "same_1430",
+            "sat_exit": "1430",
+            "c1_pct": 0.03,
+        },
+    ]
+    for kwargs in plans:
+        try:
+            _get_or_build_timeline(start, end, **kwargs)
+            logger.info("timeline warmup ok: %s %s %s", start, end, kwargs.get("strategy"))
+        except Exception:  # noqa: BLE001
+            logger.warning("timeline warmup failed: %s", kwargs, exc_info=True)
 
 
 @router.get("/twin-star/action")
@@ -196,6 +233,23 @@ def backtest_recon_latest(limit: int = Query(4, ge=1, le=30)) -> dict[str, Any]:
     return {"ok": True, "items": latest_recon(limit=limit)}
 
 
+@router.get("/sleeve-recon/latest")
+def sleeve_recon_latest(day: str | None = None) -> dict[str, Any]:
+    """OPT-151: core-leg (multi-asset sleeve) paper expected-vs-actual.
+
+    Mirrors the satellite H5 recon: reproduces the 18:20 sleeve decision from
+    the pre-job paper book, then checks the paper book recorded the flows and
+    the user actually executed them. Computed on demand — no snapshot table.
+    """
+    from data_sync_service.service.sleeve_paper_recon import sleeve_paper_recon
+
+    try:
+        recon = sleeve_paper_recon(day=day)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"sleeve recon failed: {exc}") from exc
+    return {"ok": True, "recon": recon}
+
+
 @router.get("/behavior-audit/latest")
 def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
     """OPT-106: latest REAL-book vs backtest behavior audit (watchlist).
@@ -257,7 +311,7 @@ def backtest_run(
     diverging_scale: float = Query(0.0, ge=0, le=1, description="Position size when regime=Diverging (0 = no entries, 0.5 = half size)."),
     drawdown_circuit_pct: float = Query(0.0, le=0, description="Halt new entries when trailing 30d realized pnl <= this (<=0; 0 disables)."),
     panic_cooldown_days: int = Query(0, ge=0, le=30, description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3)."),
-    slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % deducted at entry and exit (default 0; S-3 honest view uses 0.05)."),
+    slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % on top of the round-trip cost model. Default/expert 0: the cost model already carries slippage (CN 10bps, HK 15bps /side) — do not double-count (E5, 2026-09-10)."),
     trend_score_min: float = Query(0.0, ge=0, le=100, description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only)."),
     exclude_boards: str = Query("", description="Comma-separated 3-digit board prefixes to exclude (e.g. '300' = ChiNext; empty = no filter)."),
 ) -> dict[str, Any]:
@@ -452,6 +506,237 @@ def backtest_timeline(
     return result
 
 
+def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
+    """TIP-017 资金流全景 rows (display only, fail-open): one per trading day.
+
+    Fields: etfShareYi 亿份 (4 码 per-code forward-fill SUM, same convention
+    as the B-gate), etfShareD20Pct %, gateOn bool (B 闸: 沪深300 < MA200 且
+    份额 20 日净增 ≤ 0 → 国家队撤退态), marginTrillion 万亿元, marginD20Pct %,
+    northDailyYi 亿元, northD20Yi 亿元 (20-session cumulative), smNetPct %
+    (小单净买 / turnover, 2023+). natDailyYi = Σ Δshare×NAV (亿元, via daily-table
+    ETF closes), natD20Yi / marginD20Yi / northD20Yi = 20-session cumulative
+    net flow (亿元, 1:1:1 money trio).
+    400-day warm lookback feeds every MA/window; T+1 publications (margin/north)
+    forward-fill per field (5-session staleness cap).
+    """
+    try:
+        from datetime import date as date_type
+        from datetime import timedelta
+
+        from data_sync_service.db import get_connection
+        from data_sync_service.service import risk_state_gate as rsg
+        from data_sync_service.service.cn_risk_state_sync import BROAD_ETF_CODES
+
+        warm = (date_type.fromisoformat(start) - timedelta(days=400)).isoformat()
+
+        def _levels(sql: str, params: tuple) -> list[tuple[str, float]]:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    return [
+                        (str(r[0]), float(r[1]))
+                        for r in cur.fetchall()
+                        if r[1] is not None
+                    ]
+
+        shares = rsg.load_etf_share_series(list(BROAD_ETF_CODES), warm, end)
+        share_maps = {c: dict(s) for c, s in shares.items()}
+        index_series = rsg.load_close_series("index_daily", "000300.SH", warm, end)
+        # ETF closes for the money conversion (万份 × 元 → 亿元).
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT trade_date, ts_code, close FROM daily WHERE ts_code = ANY(%s) "
+                    "AND trade_date BETWEEN %s AND %s ORDER BY trade_date",
+                    (list(BROAD_ETF_CODES), warm, end),
+                )
+                nav_maps: dict[str, dict[str, float]] = {c: {} for c in BROAD_ETF_CODES}
+                for d, ts, c in cur.fetchall():
+                    if c is not None:
+                        nav_maps[str(ts)][str(d)] = float(c)
+        # 国家队 daily net subscription (亿元): Σ_c Δshare_c × NAV_c / 1e4.
+        nat_daily: dict[str, float] = {}
+        for c in BROAD_ETF_CODES:
+            s_map = share_maps.get(c, {})
+            n_map = nav_maps.get(c, {})
+            days = sorted(s_map)
+            for i in range(1, len(days)):
+                prev_d, cur_d = days[i - 1], days[i]
+                nav = n_map.get(cur_d)
+                if nav is None:
+                    continue
+                # skip Δ across data gaps (>10 calendar days) to avoid fake spikes
+                if (date_type.fromisoformat(cur_d) - date_type.fromisoformat(prev_d)).days > 10:
+                    continue
+                nat_daily[cur_d] = nat_daily.get(cur_d, 0.0) + (s_map[cur_d] - s_map[prev_d]) * nav / 1e4
+        nat_daily = {d: round(v, 1) for d, v in nat_daily.items()}
+        nat_days = sorted(nat_daily)
+        nat20: dict[str, float] = {}
+        for i in range(19, len(nat_days)):
+            nat20[nat_days[i]] = round(sum(nat_daily[d] for d in nat_days[i - 19 : i + 1]), 1)
+        marg = _levels(
+            "SELECT trade_date, SUM(rzye) FROM cn_margin_total WHERE trade_date "
+            "BETWEEN %s::date - INTERVAL '400 days' AND %s::date "
+            "GROUP BY trade_date ORDER BY trade_date",
+            (start, end),
+        )
+        hsgt = _levels(
+            "SELECT trade_date, north_money FROM cn_moneyflow_hsgt WHERE trade_date "
+            "BETWEEN %s::date - INTERVAL '400 days' AND %s::date ORDER BY trade_date",
+            (start, end),
+        )
+
+        # Per-code forward fill → totals (identical to the B-gate convention).
+        last_by_code: dict[str, float] = {}
+        totals: dict[str, float] = {}
+        for d in sorted({x for s in share_maps.values() for x in s}):
+            for c, s in share_maps.items():
+                if d in s:
+                    last_by_code[c] = s[d]
+            if last_by_code:
+                totals[d] = sum(last_by_code.values())
+        tot_days = sorted(totals)
+        etf20: dict[str, float] = {}
+        for i in range(20, len(tot_days)):
+            base = totals[tot_days[i - 20]]
+            if base:
+                etf20[tot_days[i]] = round((totals[tot_days[i]] / base - 1) * 100, 2)
+
+        marg_map = dict(marg)
+        marg20: dict[str, float] = {}
+        for i in range(20, len(marg)):
+            base = marg[i - 20][1]
+            if base:
+                marg20[marg[i][0]] = round((marg[i][1] / base - 1) * 100, 2)
+        # 两融 daily net buy (亿元): Δrzye between consecutive observations.
+        margin_daily: dict[str, float] = {}
+        for i in range(1, len(marg)):
+            prev_d, cur_d = marg[i - 1][0], marg[i][0]
+            if (date_type.fromisoformat(cur_d) - date_type.fromisoformat(prev_d)).days > 10:
+                continue
+            margin_daily[cur_d] = round((marg[i][1] - marg[i - 1][1]) / 1e8, 1)
+        # 20-session cumulative net buy (亿元): exact level difference rzye[t]-rzye[t-20].
+        marg20sum: dict[str, float] = {}
+        for i in range(20, len(marg)):
+            marg20sum[marg[i][0]] = round((marg[i][1] - marg[i - 20][1]) / 1e8, 1)
+
+        north_daily = {d: round(v / 1e4, 1) for d, v in hsgt}  # 万元 → 亿元
+        north20: dict[str, float] = {}
+        for i in range(19, len(hsgt)):
+            north20[hsgt[i][0]] = round(sum(v for _, v in hsgt[i - 19 : i + 1]) / 1e4, 1)
+
+        sm_net_pct: dict[str, float] = {}
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT trade_date, sm_net, turnover FROM cn_flow_daily "
+                    "WHERE trade_date BETWEEN %s::date AND %s::date ORDER BY trade_date",
+                    (start, end),
+                )
+                for d, sm, to in cur.fetchall():
+                    if sm is not None and to:
+                        sm_net_pct[str(d)] = round(float(sm) / float(to) * 100, 2)
+
+        calendar = sorted(
+            {d for d in tot_days if start <= d <= end}
+            | {d for d in marg_map if start <= d <= end}
+            | {d for d in north_daily if start <= d <= end}
+        )
+        gate = rsg.national_team_state_by_day(index_series, shares, calendar)
+
+        rows: list[dict[str, Any]] = []
+        etf_yi: float | None = None
+        marg_tn: float | None = None
+        last20 = {
+            "etfShareD20Pct": None,
+            "marginD20Pct": None,
+            "northD20Yi": None,
+            "smNetPct": None,
+            "natD20Yi": None,
+            "marginD20Yi": None,
+        }
+        since = {k: 99 for k in last20}
+        src = {
+            "etfShareD20Pct": etf20,
+            "marginD20Pct": marg20,
+            "northD20Yi": north20,
+            "smNetPct": sm_net_pct,
+            "natD20Yi": nat20,
+            "marginD20Yi": marg20sum,
+        }
+        etf_age = marg_age = 99
+        for d in calendar:
+            if totals.get(d) is not None:
+                etf_yi = round(totals[d] / 1e4, 1)
+                etf_age = 0
+            else:
+                etf_age += 1
+            if marg_map.get(d) is not None:
+                marg_tn = round(marg_map[d] / 1e12, 3)
+                marg_age = 0
+            else:
+                marg_age += 1
+            for k, m in src.items():
+                if d in m:
+                    last20[k] = m[d]
+                    since[k] = 0
+                else:
+                    since[k] += 1
+            stale = {k: (v if since[k] <= 5 else None) for k, v in last20.items()}
+            rows.append(
+                {
+                    "date": d,
+                    "etfShareYi": etf_yi if etf_age <= 5 else None,
+                    "etfShareD20Pct": stale["etfShareD20Pct"],
+                    "gateOn": gate.get(d),
+                    "marginTrillion": marg_tn if marg_age <= 5 else None,
+                    "marginD20Pct": stale["marginD20Pct"],
+                    "northDailyYi": north_daily.get(d),
+                    "northD20Yi": stale["northD20Yi"],
+                    "smNetPct": stale["smNetPct"],
+                    "natDailyYi": nat_daily.get(d),
+                    "natD20Yi": stale["natD20Yi"],
+                    "marginDailyYi": margin_daily.get(d),
+                    "marginD20Yi": stale["marginD20Yi"],
+                }
+            )
+        return rows
+    except Exception:  # noqa: BLE001 — display-only; panel renders empty on failure
+        return []
+
+
+def _load_flow_by_day(start: str, end: str) -> dict[str, dict[str, float | None]]:
+    """TIP-017 flow layer for the twin-star timeline (display only, fail-open)."""
+    try:
+        return {
+            r["date"]: {
+                "etfShareD20Pct": r["etfShareD20Pct"],
+                "marginD20Pct": r["marginD20Pct"],
+                "northD20": r["northD20Yi"],
+                "smNetPct": r["smNetPct"],
+            }
+            for r in _load_flow_rows(start, end)
+        }
+    except Exception:  # noqa: BLE001 — display-only; timeline renders without flow
+        return {}
+
+
+@router.get("/flow-series")
+def backtest_flow_series(
+    start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
+    end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
+) -> dict[str, Any]:
+    """TIP-017 资金流全景 (display only): 国家队(宽基份额+B闸) / 两融 / 北向 / 散户."""
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    if not start:
+        start = (date_type.today() - timedelta(days=365)).isoformat()
+    end = end or date_type.today().isoformat()
+    _validate_window(start, end)
+    return {"ok": True, "start": start, "end": end, "rows": _load_flow_rows(start, end)}
+
+
 def _get_or_build_timeline(
     start: str,
     end: str,
@@ -499,6 +784,12 @@ def _get_or_build_timeline(
     try:
         data = BacktestData(cfg)
         run = simulate(cfg, data)
+        cal_cn = list(data.calendar)
+        nav_cn = list(run.nav_curve or [])
+        cn_trades = list(run.trades or [])
+        nav_hk: list[float] = []
+        cal_hk: list[str] = []
+        hk_trades: list = []
         try:
             from run_walk_forward import (  # noqa: E402  # pyright: ignore[reportMissingImports]
                 HK_S3_CONFIG,
@@ -509,6 +800,9 @@ def _get_or_build_timeline(
             )  # type: ignore[arg-type]
             data_hk = BacktestData(cfg_hk)
             run_hk = simulate(cfg_hk, data_hk)
+            cal_hk = list(data_hk.calendar)
+            nav_hk = list(run_hk.nav_curve or [])
+            hk_trades = list(run_hk.trades or [])
             hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
             for s in run.positions_by_day:
                 day = str(s.get("date"))
@@ -570,6 +864,17 @@ def _get_or_build_timeline(
                 sat_rows=sat["rows"],
                 sat_blotter=sat.get("blotter"),
                 opportunity=True,
+                sim_nav_cn=nav_cn or None,
+                sim_cal_cn=cal_cn or None,
+                sim_nav_hk=nav_hk or None,
+                sim_cal_hk=cal_hk or None,
+                cn_trades=cn_trades or None,
+                hk_trades=hk_trades or None,
+                sentiment_by_day={
+                    str(k): str(v)
+                    for k, v in (getattr(data, "sentiment_risk_by_day", {}) or {}).items()
+                },
+                flow_by_day=_load_flow_by_day(start, end),
             )
             result = {
                 "ok": True,

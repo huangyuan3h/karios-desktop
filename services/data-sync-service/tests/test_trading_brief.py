@@ -144,6 +144,7 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._twin_star_recon_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief._sleeve_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._third_asset_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
         patch("data_sync_service.db.webhook.emit_event"),
@@ -232,6 +233,7 @@ def test_action_brief_emits_execution_card_webhook() -> None:
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._twin_star_recon_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief._sleeve_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
         patch("data_sync_service.db.webhook.emit_event", emit),
     ):

@@ -111,6 +111,7 @@ S-3 入场分 65–70 档是**空**的（双窗 0 笔）——entry_style（RS�
 6. **Delta 主义**：存活/复权/宇宙 tint 双边一致， verdict 只看相对增量，不看绝对值。
 7. **宇宙门执行**（2026-09-08 增补 · 两连撞）：§二.3 是声明规则，本条是执行规则——凡抄 `state_bucket_track._load_rows` pattern 的新回放脚本，必须显式带 `sb.market` 过滤 + 印分桶金额分布表（污染绊线）。CPA v1（OOS2 被 HK 粉饰 +18pt）与 Amihud 首跑（Q1 均额 1200 亿+ ETF 污染）两连撞，均由分桶金额表抓获，而非 PnL。`cpa/cpa-cn-v1-2026-09-08 §8` · `factors/amihud-illiquidity-2026-09-08 §4`
    · habit 引擎 containment 已验证 2026-09-08：mv 门排除 HK（`stock_dailybasic` 0 HK 行，`state_bucket_track.py:151`）+ `bar_5min` 0 HK symbol 作第二道闸；**例外**：R-wide breadth 池仍含 HK（~1/3 权重），量级待 OPT-147 断言。
+   · OPT-147（2026-09-09）结案：三窗 flips(cur-vs-去HK) = 0/0/0，mv 门成立，breadth 与去 HK 版逐日一致；反事实（去掉 mv 门）翻转 18/8/5、max 差 0.87——门是真承重墙，pattern 复制必须带 mv 门，回归测试 `TestHkContainmentOPT147` + `test_hk_codes_never_map_to_vendor_opt147` 已锁。
 
 ## 三、死因分类学（2026-09-06 增补 · 90+ 变体统计）
 

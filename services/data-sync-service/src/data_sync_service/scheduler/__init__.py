@@ -50,6 +50,7 @@ from data_sync_service.scheduler import (
     paper_trading_update_job,
     paper_twin_star_job,
     research_report_job,
+    risk_state_sync_job,
     rolling_oos_job,
     sleeve_paper_job,
     stock_basic_job,
@@ -240,6 +241,14 @@ def create_scheduler() -> BackgroundScheduler:
         minute_capture_job.run,
         minute_capture_job.build_trigger(),
         id=minute_capture_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-017: risk-state sensors (ETF shares / margin total / north-bound /
+    # HSI-HSTECH global bars + margin_detail/moneyflow catch-up) — 18:50.
+    scheduler.add_job(
+        risk_state_sync_job.run,
+        risk_state_sync_job.build_trigger(),
+        id=risk_state_sync_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

@@ -40,6 +40,10 @@ SIDE_ADD = "ADD"
 SIDE_SELL = "SELL"
 SIDES = (SIDE_BUY, SIDE_ADD, SIDE_SELL)
 
+LEG_S3 = "s3"
+LEG_SAT = "sat"
+LEGS = (LEG_S3, LEG_SAT)
+
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     id            TEXT PRIMARY KEY,
@@ -56,8 +60,10 @@ CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     market        TEXT NOT NULL DEFAULT 'CN',
     note          TEXT,
     alpha_snapshot JSONB,
+    leg           TEXT NOT NULL DEFAULT 's3',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'sat'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_trades_symbol_date
@@ -93,6 +99,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "market": row["market"],
         "note": row["note"],
+        "leg": row.get("leg") or LEG_S3,
         "alphaSnapshot": row["alpha_snapshot"],
         "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
     }
@@ -113,10 +120,13 @@ def insert_trade(
     market: str = "CN",
     note: str | None = None,
     alpha_snapshot: dict[str, Any] | None = None,
+    leg: str = LEG_S3,
 ) -> dict[str, Any]:
     """Insert one trade leg and return the normalized row."""
     if side not in SIDES:
         raise ValueError(f"invalid side: {side}")
+    if leg not in LEGS:
+        raise ValueError(f"invalid leg: {leg}")
     trade_id = str(uuid.uuid4())
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -124,8 +134,8 @@ def insert_trade(
             INSERT INTO {USER_TRADES_TABLE} (
                 id, symbol, side, trade_date, price, position_pct,
                 cost_basis, entry_date, pnl_pct, holding_days, source, market,
-                note, alpha_snapshot
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                note, alpha_snapshot, leg
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -143,6 +153,7 @@ def insert_trade(
                 market,
                 note,
                 Json(alpha_snapshot) if alpha_snapshot else None,
+                leg,
             ),
         )
         row = cur.fetchone()
@@ -176,6 +187,71 @@ def delete_trade(trade_id: str) -> bool:
             f"DELETE FROM {USER_TRADES_TABLE} WHERE id = %s", (trade_id,)
         )
         return cur.rowcount > 0
+
+
+def update_trade(
+    trade_id: str,
+    *,
+    leg: str | None = None,
+    position_pct: float | None = None,
+    note: str | None = None,
+) -> dict[str, Any] | None:
+    """Correct a journal leg (OPT-150). Only leg/position_pct/note are mutable —
+    side/symbol/trade_date never change so audit pairing stays intact.
+    Returns the normalized row, or None if the id does not exist.
+    """
+    sets: list[str] = []
+    params: list[Any] = []
+    if leg is not None:
+        if leg not in LEGS:
+            raise ValueError(f"invalid leg: {leg}")
+        sets.append("leg = %s")
+        params.append(leg)
+    if position_pct is not None:
+        if not position_pct > 0:
+            raise ValueError("position_pct must be positive")
+        sets.append("position_pct = %s")
+        params.append(position_pct)
+    if note is not None:
+        sets.append("note = %s")
+        params.append(note)
+    if not sets:
+        raise ValueError("nothing to update")
+    params.append(trade_id)
+    with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            UPDATE {USER_TRADES_TABLE}
+            SET {", ".join(sets)}, updated_at = now()
+            WHERE id = %s
+            RETURNING *
+            """,
+            params,
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return _normalize_row(dict(row))
+
+
+def latest_buy_leg(symbol: str) -> str:
+    """Leg of the newest BUY for symbol (SELL/ADD inherit it when leg is omitted)."""
+    with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        try:
+            cur.execute(
+                f"""
+                SELECT leg FROM {USER_TRADES_TABLE}
+                WHERE symbol = %s AND side = 'BUY'
+                ORDER BY trade_date DESC, created_at DESC LIMIT 1
+                """,
+                (symbol,),
+            )
+            row = cur.fetchone()
+        except Exception:
+            return LEG_S3  # pre-0041 DBs have no leg column
+    if not row:
+        return LEG_S3
+    return str((dict(row).get("leg") or LEG_S3))
 
 
 def fetch_sell_rows() -> list[dict[str, Any]]:

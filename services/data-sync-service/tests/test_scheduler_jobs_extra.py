@@ -155,6 +155,7 @@ class TestCreateScheduler:
             "bar_5min_close",
             "sleeve_paper_auto",
             "factor_signals_sync",
+            "risk_state_sync",
         }
         assert ids == expected
 

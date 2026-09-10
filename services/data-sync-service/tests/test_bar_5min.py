@@ -13,6 +13,12 @@ def test_to_baostock_code() -> None:
     assert b5.to_baostock_code("02099.HK") is None
 
 
+def test_hk_codes_never_map_to_vendor_opt147() -> None:
+    """OPT-147: HK names must never reach the vendor fetch (bar_5min stays 0 HK)."""
+    for hk in ["00700.HK", "09988.HK", "02099.HK", "00197.HK", "0700.hk"]:
+        assert b5.to_baostock_code(hk) is None
+
+
 def test_parse_baostock_time() -> None:
     assert b5.parse_baostock_time("20250903093500000") == "0935"
     assert b5.parse_baostock_time("20260902150000000") == "1500"

@@ -165,6 +165,44 @@ export function useBacktestRunQuery(p: BacktestParams, attempt = 0) {
   });
 }
 
+/** TIP-017 资金流全景 row (display only). */
+export type FundFlowRow = {
+  date: string;
+  etfShareYi: number | null;
+  etfShareD20Pct: number | null;
+  gateOn: boolean | null;
+  marginTrillion: number | null;
+  marginD20Pct: number | null;
+  northDailyYi: number | null;
+  northD20Yi: number | null;
+  smNetPct: number | null;
+  /** 国家队 daily net subscription (Σ Δshare×NAV, 亿元). */
+  natDailyYi: number | null;
+  natD20Yi: number | null;
+  /** 两融 daily net buy (Δrzye, 亿元). */
+  marginDailyYi: number | null;
+  /** 两融 20-session cumulative net buy (亿元). */
+  marginD20Yi: number | null;
+};
+
+export type FundFlowResponse = {
+  ok: boolean;
+  start: string;
+  end: string;
+  rows: FundFlowRow[];
+};
+
+/** 国家队(宽基份额+B闸) / 两融 / 北向 / 散户 — daily flow panorama. */
+export function useFundFlowSeriesQuery(start: string, end: string, enabled = true) {
+  const q = new URLSearchParams({ start, end });
+  return useQuery({
+    queryKey: ['backtest', 'flow-series', start, end],
+    queryFn: () => apiGetJson<FundFlowResponse>(`/api/backtest/flow-series?${q.toString()}`, { timeoutMs: 60_000 }),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export function useSensitivityQuery(start: string, end: string, enabled: boolean) {
   const q = new URLSearchParams({ start, end });
   return useQuery({
@@ -261,6 +299,42 @@ export function useBacktestReconQuery(limit = 2, enabled = true) {
   });
 }
 
+/** OPT-151: core-leg (multi-asset sleeve) paper expected-vs-actual. */
+export type SleeveRecon = {
+  day: string;
+  ok: boolean;
+  error?: string;
+  decisionAvailable: boolean;
+  action?: string | null;
+  label?: string | null;
+  message?: string | null;
+  pickKey?: string | null;
+  pickSymbol?: string | null;
+  idlePct?: number | null;
+  expectedBuys: string[];
+  expectedSells: string[];
+  paperBuysToday: string[];
+  paperSellsToday: string[];
+  missedBuys: string[];
+  missedSells: string[];
+  extraOpens: string[];
+  userBuys: string[];
+  userSells: string[];
+  userAlignment?: 'idle' | 'aligned' | 'pending' | 'missing';
+  userExecDate?: string | null;
+};
+
+export type SleeveReconResponse = { ok: boolean; recon: SleeveRecon };
+
+export function useSleeveReconQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'sleeve-recon'],
+    queryFn: () => apiGetJson<SleeveReconResponse>('/api/backtest/sleeve-recon/latest'),
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
 export type BacktestOverviewWindow = {
   totalNetPnlPct?: number | null;
   winRate?: number | null;
@@ -346,6 +420,7 @@ export function useSleeveNavQuery(enabled = true) {
 }
 
 export type CoreAuditOp = {
+  id?: string | null;
   date?: string | null;
   side?: string | null;
   price?: number | null;
@@ -358,6 +433,8 @@ export type CoreAuditOp = {
 export type CoreAuditHolding = {
   symbol?: string | null;
   name?: string | null;
+  /** OPT-149: strategy book — 's3' (S-3 core rules) | 'sat' (twin-star body=3). */
+  leg?: string | null;
   positionPct?: number | null;
   costPrice?: number | null;
   lastClose?: number | null;
@@ -419,8 +496,24 @@ export type TimelineRow = {
   satNav?: number | null;
   satNavReturnPct?: number | null;
   satPositions?: number | null;
+  /** OPT-152 实盘口径 product curve (S-3 actual NAV; null when sim curves absent). */
+  navSim?: number | null;
+  navSimReturnPct?: number | null;
+  navSimMulti?: number | null;
+  navSimMultiReturnPct?: number | null;
   /** Overnight + body-exit occupancy (opportunity blend gate). */
   satActive?: boolean | null;
+  /** TIP-016 posture annotation: line-level realized circuit + CN sentiment. */
+  cnCircuit?: boolean | null;
+  hkCircuit?: boolean | null;
+  sentiment?: string | null;
+  /** TIP-017 flow layer (display only; null when series unavailable that day). */
+  flow?: {
+    etfShareD20Pct: number | null;
+    marginD20Pct: number | null;
+    northD20: number | null;
+    smNetPct: number | null;
+  } | null;
   /** Slots used that day including exits (may exceed satPositions). */
   satSlots?: number | null;
   exits?: string[];
@@ -508,7 +601,7 @@ export function useTimelineQuery(
     : [];
   return useQuery({
     queryKey: ['backtest', 'timeline', start, end, strategy, ...keySuffix],
-    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 90_000 }),
+    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 300_000 }),
     staleTime: 5 * 60_000,
     enabled,
   });
@@ -539,7 +632,7 @@ export function useTwinStarActionQuery(enabled = true) {
 
 export async function refreshTwinStarAction(): Promise<TwinStarAction> {
   return parseTwinStarAction(
-    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 90_000 }),
+    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 300_000 }),
   );
 }
 
@@ -584,7 +677,7 @@ export function useReturnAttributionQuery(start: string, end: string, enabled = 
     queryKey: ['backtest', 'return-attribution', start, end],
     queryFn: () =>
       apiGetJson<ReturnAttributionResponse>(`/api/backtest/return-attribution?${q.toString()}`, {
-        timeoutMs: 120_000,
+        timeoutMs: 300_000,
       }),
     staleTime: 5 * 60_000,
     enabled,

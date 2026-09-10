@@ -53,7 +53,12 @@ S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,
-    "slippage_pct": 0.05,
+    # E5 (2026-08-22 audit, fixed 2026-09-10): the paper_cost_model already
+    # includes 10bps/side slippage in the 30bps CN round-trip (and 15bps/side
+    # for HK's 90bps). The engine's slippage_pct added ANOTHER 5bps/side →
+    # ~40bps RT vs live's 30bps (double-count, backtest mis-aligned with the
+    # live book). Set 0 so the cost model is the single source of truth.
+    "slippage_pct": 0.0,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
@@ -100,6 +105,13 @@ S3_CONFIG: dict[str, float | int | str] = {
     #            · long 270.1(+34.7)
     #   panic=3: OOS2 84.4 · train 81.1 · valid 115.8 · long 235.4
     "panic_cooldown_days": 2,
+    # TIP-017 B (2026-09-10 固化): national-team gate — CN line pauses new
+    # entries while 沪深300 < MA200 AND the 4-ETF broad-share 20-session delta
+    # ≤ 0. Pre-registered protocol PASS: three audit windows +0.0 (modern
+    # dormant), long +20.0pt (2021-08~2023-04 share-drought episodes). A
+    # long-window-only "sleeping insurance" gate; state from index_daily +
+    # cn_etf_share (daily risk_state_sync).
+    "national_team_gate": True,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {
@@ -136,9 +148,15 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "position_pct": 0.10,
     # 2026-08-29: align with cash≤1.0 + paper S3_MAX_POSITIONS=10 (was 20)
     "max_positions": 10,
+    # 2026-09-09 (TIP-016 B, walk-forward PASS): HK drawdown circuit breaker,
+    # mirroring CN -25 (OOS2 +11.6 / train +1.8 / valid -1.2 on the settle=2
+    # baseline; long +87.9 reference). Live mirror: paper_s3._circuit_blocked.
+    "drawdown_circuit_pct": -25.0,
     "rs_rank_min": 0.6,
     "diverging_scale": 1.0,
-    "slippage_pct": 0.05,
+    # E5 (2026-09-10): cost model already holds HK 15bps/side slippage
+    # (90bps RT) — drop the engine double-count (was 0.05).
+    "slippage_pct": 0.0,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
@@ -146,6 +164,12 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     # HK amount coverage uneven — leave liquidity gate off (CN uses 0.7)
     "min_avg_amount": 0.0,
     "panic_cooldown_days": 2,
+    # 2026-09-09: HK T+2 settlement realism (user-approved 口径真实化) — sale
+    # proceeds usable ON T+2; live paper already enforces this (OPT-148,
+    # paper_s3._hk_settled_cash). Walk-forward vs old baseline: OOS2 -21.4pt
+    # (weak-market window), train -1.4pt, valid +5.9pt. CN stays 0 (A-share
+    # same-day proceeds reuse is real).
+    "settle_lock_sessions": 2,
 }
 
 

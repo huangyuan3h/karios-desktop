@@ -50,7 +50,9 @@ S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "drawdown_circuit_pct": -25.0,
-    "slippage_pct": 0.05,
+    # E5 (2026-09-10): cost model already holds slippage; drop the engine
+    # double-count (mirrors scripts/run_walk_forward.py S3_CONFIG).
+    "slippage_pct": 0.0,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
@@ -73,16 +75,23 @@ S3_CONFIG: dict[str, float | int | str] = {
     # E2 (2026-08-14): panic_cooldown 3→2 — 情绪历史回填后弱市年冷却过严
     # 锁死交易; 三窗+长窗验证 2 天最优 (OOS2 +8.2 / train +22 / long +34.7)。
     "panic_cooldown_days": 2,
+    # TIP-017 B (2026-09-10 固化): national-team gate — CN only (三窗 +0 /
+    # long +20.0pt)。同 scripts/run_walk_forward.py S3_CONFIG。
+    "national_team_gate": True,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {
     **S3_CONFIG,
     "market": "HK",
+    "national_team_gate": False,  # TIP-017 B is CN-only (engine also gates on market)
     "gates": "regime",
     "trailing_stop_pct": -12.0,
     "rs_rank_min": 0.6,
     "exclude_boards": "",
-    "drawdown_circuit_pct": 0.0,  # CN-only defence (2026-08-12, long-window)
+    # 2026-09-09 (TIP-016 B): HK drawdown circuit -25 (was 0.0 CN-only).
+    "drawdown_circuit_pct": -25.0,
+    # 2026-09-09: HK T+2 settlement (same as scripts/run_walk_forward.py).
+    "settle_lock_sessions": 2,
 }
 
 

@@ -104,6 +104,7 @@ export const SchedulerJobGroupSchema = z.enum([
   'alphaRadar',
   'news',
   'factors',
+  'riskState',
 ]);
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
 
@@ -690,6 +691,17 @@ meta(
     1,
     { endpoint: '/factors/sync', method: 'POST', label: '立即扫描' },
   ),
+  meta(
+    'risk_state_sync',
+    'riskState',
+    '风险状态传感器同步',
+    '工作日 18:50 同步宽基 ETF 份额（国家队代理）、全市场两融、北向资金、HSI/HSTECH 全球指数，并补漏 margin_detail/moneyflow（T+1 发布由窗口覆盖）。',
+    '工作日 18:50',
+    '50 18 * * 1-5',
+    'cron',
+    true,
+    10,
+  ),
 ];
 
 /** Group display order in the UI. */
@@ -705,6 +717,7 @@ export const SCHEDULER_GROUP_ORDER: readonly SchedulerJobGroup[] = [
   'alphaRadar',
   'news',
   'factors',
+  'riskState',
 ];
 
 export const SCHEDULER_GROUP_META: Record<
@@ -754,6 +767,10 @@ export const SCHEDULER_GROUP_META: Record<
   factors: {
     titleCn: '形态因子',
     descriptionCn: '独立于 S-3 的日线形态信号扫描，只作方向判别。',
+  },
+  riskState: {
+    titleCn: '风险状态传感器',
+    descriptionCn: '宽基 ETF 份额（国家队代理）、全市场两融、北向资金、HSI/HSTECH 全球指数与 margin_detail/moneyflow 补漏，TIP-017。',
   },
 };
 

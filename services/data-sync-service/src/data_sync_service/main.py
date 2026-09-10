@@ -48,6 +48,21 @@ from .scheduler import create_scheduler
 async def lifespan(app: FastAPI):
     scheduler = create_scheduler()
     scheduler.start()
+
+    # OPT-152 follow-up: warm the heavy default timelines in a background
+    # thread so the first UI hit after a restart lands on a warm cache
+    # instead of timing out on a 2+ min cold rebuild.
+    def _warm() -> None:
+        try:
+            from .api.backtest_routes import warm_default_timelines
+
+            warm_default_timelines()
+        except Exception:  # noqa: BLE001
+            pass
+
+    import threading
+
+    threading.Thread(target=_warm, name="timeline-warmup", daemon=True).start()
     yield
     scheduler.shutdown(wait=False)
 

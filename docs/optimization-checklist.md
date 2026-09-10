@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
-> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-148`（重号见文末）。
-> **正文 1 条未完成（OPT-147） + 3 条冬眠**；已完成 109 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-155`（重号见文末）。
+> **正文 0 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,26 +18,23 @@
 
 ---
 
-## 未完成（1 条 · OPT-147 open）
+## 未完成（0 条 · OPT-155 2026-09-10 诊断后关闭）
 
-### OPT-147：R-wide breadth 池 HK 污染量级断言（P2 · 只读不断言不修引擎）
+| OPT-155 | [x] 2026-09-10 · ADV 冲击诊断（AUM ¥1000万 → 不 material，关闭；复活条件 ¥3000万+） | [2026-09-10-opt-155-adv-impact.md](archive/2026-09-10-opt-155-adv-impact.md) |
 
-**状态**：[ ] open（2026-09-08 登记 · 来源 CPA/Amihud 两连撞宇宙门复查）
+| OPT-154 | [x] 2026-09-10 · E5 滑点双计修正（回测成本 = live 成本模型，CN 30bps / HK 90bps） | [2026-09-10-opt-154-e5-slippage.md](archive/2026-09-10-opt-154-e5-slippage.md) |
 
-**背景**：`state_bucket_track._load_rows` 无 `sb.market` 过滤，`daily` 池含 ~2500 HK 行。
-habit 引擎已验证两道 containment（`_day_features` mv 门排除 HK，`bar_5min` 0 HK symbol），
-但 R-wide breadth（close>MA20 占比）在含 HK 池上计算，~1/3 权重为 HK。见
-`first-principles-2026-09-05.md §二.7`。
+| OPT-153 | [x] 2026-09-10 · 卫星腿判定修正（自选卫星单不再误报偏离 + 腿推断去 `===12.5`） | [2026-09-10-opt-153-sat-leg-audit.md](archive/2026-09-10-opt-153-sat-leg-audit.md) |
 
-**范围（只读，不改冻结引擎）**：
-- `services/data-sync-service/scripts/` 新只读断言脚本（仿 `diag_amihud.py` 口径）
-- 读 `services/data-sync-service/src/data_sync_service/service/state_bucket_track.py:113` `_day_features` breadth 段
+| OPT-152 | [x] 2026-09-09 · Timeline 实盘口径主曲线（A 方案：S-3 实际权益主曲线 + 100% 押注基准降虚线） | [2026-09-09-opt-152-timeline-product-curve.md](archive/2026-09-09-opt-152-timeline-product-curve.md) |
 
-**验收**：
-1. 输出 OOS2/train/valid 每日 breadth（含 HK）vs 去 HK breadth 的差序列：翻转天数（跨 0.5 门限的天）、R-wide 开闸日差异数。
-2. 若翻转天数为 0 → 关项，first-principles §二.7 补一行结论。
-3. 若 >0 → 不修引擎，另起预注册评估对 clip4 三窗的影响（诊断→回放 discipline），本 OPT 只负责量级数字。
-4. 加回归测试：`bar_5min` 0 HK 断言 + mv 门 HK 排除断言（防 pattern 复制退化）。
+| OPT-151 | [x] 2026-09-09 · 核心腿 recon 对账闭环（sleeve_paper_recon + brief/job/API/UI） | [2026-09-09-opt-151-sleeve-core-recon.md](archive/2026-09-09-opt-151-sleeve-core-recon.md) |
+
+| OPT-150 | [x] 2026-09-09 · 账本修正机制 PATCH 改腿 + 审计一键挪链 | [2026-09-09-opt-150-trade-correct.md](archive/2026-09-09-opt-150-trade-correct.md) |
+
+| OPT-149 | [x] 2026-09-09 · user_trades 腿拆分 sat/s3 + 审计按腿分支（卫星对 paper 账） | [2026-09-09-opt-149-trade-legs.md](archive/2026-09-09-opt-149-trade-legs.md) |
+
+| OPT-147 | [x] 2026-09-09 · R-wide breadth 池 HK 污染量级断言（flips 0/0/0 关项，引擎零改动） | [2026-09-09-opt-147-rwide-hk.md](archive/2026-09-09-opt-147-rwide-hk.md) |
 
 | OPT-148 | [x] 2026-09-08 · paper HK T+2 settled 账本 + 平安最高佣金 90bps + swap 费用归位 | [2026-09-08-opt-148-hk-settle-ledger.md](archive/2026-09-08-opt-148-hk-settle-ledger.md) |
 
@@ -117,6 +114,11 @@ habit 引擎已验证两道 containment（`_day_features` mv 门排除 HK，`bar
 | 2026-09-06 | 126 | 东财出口探针 + 熔断可视化 | [2026-09-06-opt-126-em-probe.md](archive/2026-09-06-opt-126-em-probe.md) |
 | 2026-09-06 | 145 | 外购分钟对拍 A 形式化 | [2026-09-06-opt-145-vendor-minute.md](archive/2026-09-06-opt-145-vendor-minute.md) |
 | 2026-09-06 | 146 | 港股符号误标 + 结算语义 | [2026-09-06-opt-146-hk-symbol.md](archive/2026-09-06-opt-146-hk-symbol.md) |
+| 2026-09-09 | 147 | R-wide breadth 池 HK 污染量级断言（关项） | [2026-09-09-opt-147-rwide-hk.md](archive/2026-09-09-opt-147-rwide-hk.md) |
+| 2026-09-09 | 149 | user_trades 腿拆分 sat/s3 + 审计按腿分支 | [2026-09-09-opt-149-trade-legs.md](archive/2026-09-09-opt-149-trade-legs.md) |
+| 2026-09-09 | 150 | 账本修正机制 PATCH 改腿 + 审计一键挪链 | [2026-09-09-opt-150-trade-correct.md](archive/2026-09-09-opt-150-trade-correct.md) |
+| 2026-09-09 | 151 | 核心腿 recon 对账闭环（sleeve_paper_recon + brief/job/API/UI） | [2026-09-09-opt-151-sleeve-core-recon.md](archive/2026-09-09-opt-151-sleeve-core-recon.md) |
+| 2026-09-09 | 152 | Timeline 实盘口径主曲线（A 方案：S-3 实际权益主曲线 + 基准降虚线） | [2026-09-09-opt-152-timeline-product-curve.md](archive/2026-09-09-opt-152-timeline-product-curve.md) |
 
 > **历史重号说明**：OPT-057/058/060 在正文出现过两次（不同日期不同内容），OPT-059 的归档文件与正文条目主题不同。
 > 一律不重编号，以"日期+标题"区分：057 = 08-01 TV Capture / 08-31 dailybasic 停更；058 = 08-02 漏斗 / 08-31 双子星 14:30 审计；

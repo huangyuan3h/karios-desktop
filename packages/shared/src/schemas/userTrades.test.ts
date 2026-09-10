@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  UserTradePatchSchema,
+  UserTradeRequestSchema,
   UserTradeSchema,
   UserTradesStatsSchema,
   UserTradeSideSchema,
@@ -85,6 +87,26 @@ describe('UserTradeSchema', () => {
       alphaSnapshot: null,
     });
     expect(trade.alphaSnapshot).toBeNull();
+  });
+
+  it('defaults leg to s3 and accepts sat (OPT-149)', () => {    const core = UserTradeSchema.parse({
+      id: 'a', symbol: 'CN:600000', side: 'BUY', tradeDate: '2026-09-09', price: 10, positionPct: 10,
+    });
+    expect(core.leg).toBe('s3');
+    const sat = UserTradeSchema.parse({
+      id: 'b', symbol: 'CN:688525', side: 'BUY', tradeDate: '2026-09-07', price: 221.28, positionPct: 12.5, leg: 'sat',
+    });
+    expect(sat.leg).toBe('sat');
+    expect(() => UserTradeRequestSchema.parse({
+      symbol: 'CN:688525', side: 'BUY', price: 221.28, positionPct: 12.5, leg: 'x',
+    })).toThrow();
+  });
+
+  it('validates patch bodies (OPT-150)', () => {
+    expect(UserTradePatchSchema.parse({ leg: 'sat' }).leg).toBe('sat');
+    expect(UserTradePatchSchema.parse({ positionPct: 12.5 }).positionPct).toBe(12.5);
+    expect(() => UserTradePatchSchema.parse({ leg: 'x' })).toThrow();
+    expect(() => UserTradePatchSchema.parse({ positionPct: -1 })).toThrow();
   });
 });
 

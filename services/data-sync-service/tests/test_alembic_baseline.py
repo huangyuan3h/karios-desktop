@@ -4,11 +4,18 @@ import os
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import baseline_ddl_statements
 
-HEAD_REVISION = "0040_behavior_audit_sat_leg"
+
+def _head_revision() -> str:
+    """Actual alembic head — hardcoded constants drifted twice (0041, 0042)."""
+    cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    cfg.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
+    return str(ScriptDirectory.from_config(cfg).get_current_head())
 
 
 def _postgres_available() -> bool:
@@ -118,7 +125,7 @@ def test_alembic_baseline_revision_applied(caplog) -> None:
             )
             row = cur.fetchone()
     assert row is not None
-    assert str(row[0]) == HEAD_REVISION
+    assert str(row[0]) == _head_revision()
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
@@ -160,4 +167,4 @@ def test_alembic_upgrade_head_is_idempotent(caplog) -> None:
             cur.execute("SELECT version_num FROM alembic_version LIMIT 1")
             row = cur.fetchone()
     assert row is not None
-    assert str(row[0]) == HEAD_REVISION
+    assert str(row[0]) == _head_revision()

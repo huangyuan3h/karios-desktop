@@ -22,6 +22,7 @@ from data_sync_service.service.sleeve_paper_auto import apply_sleeve_to_paper
 logger = logging.getLogger(__name__)
 
 JOB_ID = "sleeve_paper_auto"
+RECON_JOB_ID = "sleeve_paper_recon"  # OPT-151: daily core-leg expected-vs-actual
 CRON_EXPRESSION = "20 18 * * 1-5"  # weekdays 18:20 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
@@ -40,3 +41,32 @@ def run() -> None:
         return
     insert_record(JOB_ID, success=True)
     logger.info("sleeve_paper_auto %s: %s (%s)", day, out.get("action"), out.get("reason"))
+    _run_recon(day)
+
+
+def _run_recon(day: str) -> None:
+    """OPT-151: after the mirror, reconcile expected-vs-actual into
+    sync_job_record so a paper/book gap surfaces in the watchdog and the
+    notifications hub (never raises)."""
+    try:
+        from data_sync_service.service.sleeve_paper_recon import sleeve_paper_recon
+
+        recon = sleeve_paper_recon(day=day)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("sleeve_paper_recon: %s", exc)
+        insert_record(RECON_JOB_ID, success=False, error_message=str(exc))
+        return
+    if recon.get("ok"):
+        insert_record(RECON_JOB_ID, success=True)
+        return
+    mismatches = (
+        (recon.get("missedBuys") or [])
+        + (recon.get("missedSells") or [])
+        + (recon.get("extraOpens") or [])
+    )
+    insert_record(
+        RECON_JOB_ID,
+        success=False,
+        error_message=f"core recon mismatch: {', '.join(mismatches) or recon.get('error') or 'unknown'}",
+    )
+    logger.warning("sleeve_paper_recon %s mismatch: %s", day, mismatches)

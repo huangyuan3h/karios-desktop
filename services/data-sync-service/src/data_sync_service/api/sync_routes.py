@@ -352,9 +352,13 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "candidate_diff",
     "behavior_audit",
     "cn_extra_sync",
+    "risk_state_sync",
     "paper_twin_star",
     "bar_5min_close",
     "factor_signals_sync",
+    # OPT-151: core-leg sleeve mirror + daily expected-vs-actual recon
+    "sleeve_paper_auto",
+    "sleeve_paper_recon",
 )
 
 
