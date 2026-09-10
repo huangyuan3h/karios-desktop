@@ -288,6 +288,27 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ---
 
+## P0-11 财务质量计划（2026-09-10 立 · 用户拍板：财务看长期）
+
+**大白话**：三张原始报表（tushare `balancesheet/income/cashflow`）已入库，目标是给 S-3 加一层**防守型质量门**（只剔除、不预测涨跌）。财务是季度慢变量——只看 20–60 天归因，不碰 3 天卫星腿（尺度匹配律；P15 未验证子项，可以开）。
+
+| # | 动作 | 范围/验收 |
+|---|------|-----------|
+| D1 | 数据补齐 | 表 `cn_balance_sheet/cn_income_stmt/cn_cashflow_stmt`（主键含 report_type，热字段 typed + 全行 JSONB；migration 0044）。4 年 8.6 万行/表 **[done] 2026-09-10**；扩展到 cutoff 2018-01-01（覆盖三窗 + 长窗 2021-08 + TTM 预热）**[进行中]** |
+| D2 | TTM + 行业中位数管线 | 单季拆分、经营现金流 TTM / 归母 TTM、逐期截面中位数；金融股 `comp_type` 单独处理或剔除；增量接收盘链 |
+| F1 | ROE-TTM > 行业中位数 **[done] 2026-09-10：REJECT/方向证伪**（22 季 meanIC −0.06、Q-spread 仅 27% 为正；档 `backtests/factors/fin-f1-roe-ttm-2026-09-10.md`；反号不开，需独立预注册） |
+| G1 | F2 + 市值中性 **[done] 2026-09-11：REJECT**（20 季 pooledIC +0.026、Q-spread 仍 50%；规模不是主因；档 `backtests/factors/fin-g1-ccr-neutral-2026-09-11.md`） |
+| G2 | F4 + 市值中性 **[done] 2026-09-11：REJECT/方向反**（pooledIC −0.018、Q-spread 仅 20%；原始弱正向疑为大盘代理；档 `backtests/factors/fin-g2-lev-neutral-2026-09-11.md`） |
+| F2–F4 | CFO/净利 **[done] 2026-09-10：REJECT/弱方向**（档 `backtests/factors/fin-f2-cashconv-2026-09-10.md`）、应计（与 F2 同源跳过）、杠杆 **[done] 2026-09-10：REJECT/弱方向**（meanIC +0.015、Q-spread 仅 32%；档 `backtests/factors/fin-f4-leverage-2026-09-10.md`）。**P15 方向诊断层整体关闭，不进回放** |
+| F5 | 价值复合（P18） | 需 join 市值，放最后 |
+| S1 | 合成决策 | 单因子 PASS 才谈复合；阶段一只做负面剔除 |
+
+**顺序**：D1 → D2 → F1 → F2–F4 → F5 → S1。
+**纪律**：PiT 只用 `ann_date`；valid ≥30 笔；看 DD/胜率/踩雷率不看总数；死因预判写进预注册（#2 共线 / #7 覆盖 / #4 单窗）。
+**不做**：财务因子进卫星腿；一次全叠；用报告期不用公告日；重开已拒方向。
+
+---
+
 ## 实施清单（剩余 P0/P1 各一行）
 
 | # | 动作 | 预期 |
