@@ -18,9 +18,12 @@ from data_sync_service.db.alpha_radar import (
 )
 from data_sync_service.db.bar_minute import CREATE_SQL as BAR_MINUTE_CREATE_SQL
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
+from data_sync_service.db.cn_balance import CREATE_SQL as CN_BALANCE_CREATE_SQL
+from data_sync_service.db.cn_cashflow import CREATE_SQL as CN_CASHFLOW_CREATE_SQL
 from data_sync_service.db.cn_financial import CREATE_SQL as CN_FINANCIAL_CREATE_SQL
 from data_sync_service.db.cn_hk_hold import CREATE_SQL as CN_HK_HOLD_CREATE_SQL
 from data_sync_service.db.cn_holder import CREATE_SQL as CN_HOLDER_CREATE_SQL
+from data_sync_service.db.cn_income import CREATE_SQL as CN_INCOME_CREATE_SQL
 from data_sync_service.db.cn_margin_detail import CREATE_SQL as CN_MARGIN_CREATE_SQL
 from data_sync_service.db.cn_moneyflow import CREATE_SQL as CN_MONEYFLOW_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
@@ -169,6 +172,9 @@ def baseline_ddl_statements() -> list[str]:
         SYSTEM_PROMPTS_CREATE_SQL,
         RESEARCH_CREATE_SQL,
         CN_FINANCIAL_CREATE_SQL,
+        CN_BALANCE_CREATE_SQL,
+        CN_INCOME_CREATE_SQL,
+        CN_CASHFLOW_CREATE_SQL,
         CN_HOLDER_CREATE_SQL,
         CN_MARGIN_CREATE_SQL,
         CN_MONEYFLOW_CREATE_SQL,
