@@ -187,6 +187,16 @@ def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
 
 
+def ni_sq_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
+    """Single-quarter attributable NI per (ts_code, end_date), PiT ann_date."""
+    df = _single_quarter(_load("cn_income_stmt", ("n_income_attr_p",), end_from),
+                         ("n_income_attr_p",))
+    df["is_fin"] = df["comp_type"] != "1"
+    return df[["ts_code", "end_date", "ann_date", "n_income_attr_p_sq",
+               "comp_type", "is_fin"]].sort_values(
+        ["ts_code", "end_date", "ann_date"]).reset_index(drop=True)
+
+
 def load_trade_calendar() -> tuple[list[str], dict[str, int]]:
     """All trade dates (daily table) + index map. A-share full since 2021."""
     with get_connection() as conn:
@@ -243,15 +253,16 @@ def load_mv_map(col: str = "circ_mv") -> dict[str, dict[str, float]]:
 
 
 def mv_asof(mv: dict[str, dict[str, float]], cal: list[str],
-            idx_of: dict[str, int], ts: str, base: str) -> float | None:
-    """Latest market value on/before base trading day."""
+            idx_of: dict[str, int], ts: str, base: str,
+            lookback: int = 10) -> float | None:
+    """Latest market value on/before base trading day (lookback sessions)."""
     i = idx_of.get(base)
     if i is None:
         return None
     days = mv.get(ts)
     if not days:
         return None
-    for j in range(i, max(i - 10, -1), -1):
+    for j in range(i, max(i - lookback, -1), -1):
         v = days.get(cal[j])
         if v:
             return v

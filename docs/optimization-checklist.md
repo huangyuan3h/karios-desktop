@@ -18,7 +18,9 @@
 
 ---
 
-## 未完成（0 条 · OPT-155 2026-09-10 诊断后关闭）
+## 未完成（1 条 · OPT-156 新立）
+
+| OPT-156 | [ ] stock_dailybasic 2023-12-29→2024-08-01 七个月空洞回填 + trade_calendar SSE 2023 年前补齐（V2 发现：市值快照断档，G1/G2/G3 的 2024Q1 队列整段缺失；回填约 140 个交易日，tushare daily_basic 按日即可） | — |
 
 | OPT-155 | [x] 2026-09-10 · ADV 冲击诊断（AUM ¥1000万 → 不 material，关闭；复活条件 ¥3000万+） | [2026-09-10-opt-155-adv-impact.md](archive/2026-09-10-opt-155-adv-impact.md) |
 
