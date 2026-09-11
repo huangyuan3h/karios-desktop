@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T14:08:01.124842+00:00",
+  "generatedAt": "2026-09-10T06:21:51.467926+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -35,17 +35,17 @@
   },
   "results": {
     "OOS2": {
-      "closed": 91,
+      "closed": 93,
       "winRate": 0.473,
       "winRateCI": [
-        0.3731563037535909,
-        0.5741242145000025
+        0.3747376923069334,
+        0.5736316035328711
       ],
       "underpowered": "⚠️ underpowered n<100",
-      "avgNetPnlPct": 4.417,
-      "totalNetPnlPct": 46.521,
-      "maxDrawdownPct": 19.426,
-      "sharpe": 1.26
+      "avgNetPnlPct": 4.496,
+      "totalNetPnlPct": 48.132,
+      "maxDrawdownPct": 18.729,
+      "sharpe": 1.27
     },
     "train": {
       "closed": 51,
@@ -55,10 +55,10 @@
         0.6047692865527341
       ],
       "underpowered": "⚠️ underpowered n<100",
-      "avgNetPnlPct": 6.801,
-      "totalNetPnlPct": 34.381,
-      "maxDrawdownPct": 11.437,
-      "sharpe": 2.25
+      "avgNetPnlPct": 6.874,
+      "totalNetPnlPct": 34.713,
+      "maxDrawdownPct": 11.573,
+      "sharpe": 2.26
     },
     "valid": {
       "closed": 16,
@@ -68,10 +68,10 @@
         0.8981809801576265
       ],
       "underpowered": "⚠️ underpowered n<100",
-      "avgNetPnlPct": 23.224,
-      "totalNetPnlPct": 38.737,
-      "maxDrawdownPct": 10.656,
-      "sharpe": 2.4
+      "avgNetPnlPct": 23.321,
+      "totalNetPnlPct": 38.88,
+      "maxDrawdownPct": 10.683,
+      "sharpe": 2.41
     }
   },
   "baselineUsed": true
