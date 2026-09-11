@@ -57,7 +57,8 @@ def _screen():
         "gateOpen": True,
         "breadth": 0.519,
         "snapshotAt": "2026-09-09T14:30:00+08:00",
-        "candidates": [{"ts": "300308.SZ", "amp": 3.68, "gapPct": 3.34}],
+        "candidates": [{"ts": "300308.SZ", "amp": 3.68, "gapPct": 3.34,
+                        "stage": "S2-advance/climax", "stageTier": "0"}],
         "alternates": [{"ts": "600903.SH", "amp": 4.43, "gapPct": 2.1}],
         "blocked": [],
         "skippedC1": [{"ts": "999999.SZ", "amp": 9.9, "gapPct": 9.0}],
@@ -72,6 +73,7 @@ def test_log_push_writes_all_slots(monkeypatch):
     slots = sorted(v[1] for v in vals)
     assert slots == ["alternates", "candidates", "skippedC1"]
     assert vals[0][0] == "2026-09-09" and vals[0][5] is True
+    assert vals[0][8] == "S2-advance/climax"
 
 
 def test_log_push_never_raises(monkeypatch):

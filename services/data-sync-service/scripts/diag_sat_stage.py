@@ -36,43 +36,7 @@ WINDOWS = {
 }
 
 
-def _labels(closes: list[float]):
-    """Trailing stage labels from oldest->newest close list (last = entry day)."""
-    n = len(closes)
-    if n < 61:
-        return None
-    c = closes[-1]
-    h60 = max(closes[-60:])
-    dd60 = 1 - c / h60 if h60 else 0.0
-    r20 = c / closes[-21] - 1
-    r5 = c / closes[-6] - 1
-    closes_s = closes[:-1]  # strictly before entry for blast scan
-    blast = None
-    for i in range(len(closes_s) - 20, -1, -1):
-        seg = closes_s[max(0, i - 19): i + 1]
-        if len(seg) == 20 and seg[-1] / seg[0] - 1 >= 0.25:
-            blast = (len(closes_s) - 1) - i
-            break
-    ma20 = sum(closes[-20:]) / 20
-    ma60 = sum(closes[-60:]) / 60
-    ma20_prev = sum(closes[-21:-1]) / 20
-    slope_up = ma20 >= ma20_prev
-    if c > ma20 > ma60 and slope_up:
-        wein = "S2-advance"
-    elif ma20 > ma60:
-        wein = "S3-distrib"
-    elif c < ma20 < ma60 and not slope_up:
-        wein = "S4-decline"
-    else:
-        wein = "S1-base"
-    return {
-        "dd60": "at-high" if dd60 < 0.02 else ("shallow" if dd60 <= 0.08 else "deep"),
-        "rally20": "neg" if r20 < 0 else ("mid" if r20 <= 0.15 else "blasted"),
-        "blast": "fresh<=10d" if blast is not None and blast <= 10
-                 else ("mid11-40d" if blast is not None and blast <= 40 else "old/never"),
-        "wein": wein,
-        "runup5": "cool" if r5 < 0.03 else ("warm" if r5 <= 0.10 else "climax"),
-    }
+from data_sync_service.service.state_bucket_track import stage_labels as _labels  # noqa: E402
 
 
 def main() -> int:

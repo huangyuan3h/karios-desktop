@@ -23,10 +23,13 @@ wins=2/3 → **PASS**。自检：复刻器三窗 fills 与引擎逐笔一致。
 * 有效成分：tier0/1 优先占据了满仓的 4 个槽位，把 tier2（S1/cool）的槽位
   挤掉——不是"选得更准"，是"烂票少占槽"。
 
-## 3. 落地
+## 3. 落地（done 2026-09-11）
 
-* 本结论只验证"桶内重排"，冻结配方 t1430_b3（amp 排序）保持为基线不动。
-* Live 落地 = 推送层（`select_live_gap_picks` → UI 卡片）加阶段排序，
-  属 Live 执行变更，另起实施项（未做）。
+* 冻结配方 t1430_b3（amp 排序）保持为基线不动。
+* Live 推送（`twin_star_intraday` 14:30）primary 桶按 `stage_rank_key`
+  重排（S2×climax → 任一 → 其他，amp tiebreak；池子尺寸/锁单/C1 都不动），
+  每行带 `stage`/`stageTier`；`sat_push_log.stage` 同步记录（migration 0047）。
+* 标签唯一真值收进 `state_bucket_track.stage_labels/stage_tier`，
+  回测脚本改从 src 引，不再各写一份。
 
 脚本：`scripts/compare_sat_rank.py`（自带复刻自检）；报告：`data/backtest_reports/h_sat_rank.json`。

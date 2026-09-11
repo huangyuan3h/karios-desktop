@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     gate_open   BOOLEAN,
     breadth     DOUBLE PRECISION,
     snapshot_at TIMESTAMPTZ,
+    stage       TEXT,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (trade_date, slot, ts_code)
 );
@@ -90,10 +91,12 @@ def _log_push(screen: dict) -> int:
             ts = str(row.get("ts") or "").strip()
             if not ts:
                 continue
+            stage = row.get("stage")
             vals.append((day, slot, ts, _num(row.get("amp")),
                          _num(row.get("gapPct")),
                          None if gate is None else bool(gate),
-                         breadth, snap))
+                         breadth, snap,
+                         str(stage)[:40] if stage else None))
     if not vals:
         return 0
     with get_connection() as conn:
@@ -101,12 +104,13 @@ def _log_push(screen: dict) -> int:
             cur.executemany(
                 f"""
                 INSERT INTO {TABLE_NAME}(trade_date, slot, ts_code, amp, gap_pct,
-                    gate_open, breadth, snapshot_at, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s, now())
+                    gate_open, breadth, snapshot_at, stage, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
                 ON CONFLICT (trade_date, slot, ts_code) DO UPDATE SET
                     amp=excluded.amp, gap_pct=excluded.gap_pct,
                     gate_open=excluded.gate_open, breadth=excluded.breadth,
-                    snapshot_at=excluded.snapshot_at, updated_at=now()
+                    snapshot_at=excluded.snapshot_at, stage=excluded.stage,
+                    updated_at=now()
                 """,
                 vals,
             )

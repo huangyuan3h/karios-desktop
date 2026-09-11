@@ -1109,3 +1109,72 @@ def build_state_bucket_timeline(*, start: str, end: str) -> dict[str, Any]:
     out["start"] = start
     out["end"] = end
     return out
+
+
+# --- Lifecycle stage labels (H-SAT-RANK, PASS 2026-09-11) ---------------------
+# Single source of truth for stage buckets. Backtest scripts
+# (diag_sat_stage, compare_sat_stage/rank) and the live intraday push
+# must all use these — never reimplement the buckets elsewhere.
+
+def stage_labels(closes: list[float]) -> dict[str, str] | None:
+    """Trailing-only lifecycle labels; last close = entry/decision day.
+
+    Returns None when history < 61 sessions. Buckets:
+      dd60: at-high (<2% off 60d high) | shallow (2-8%) | deep (>8%)
+      rally20: neg | mid (0-15%) | blasted (>15%)
+      blast: fresh<=10d | mid11-40d | old/never (days since trailing 20d +25%)
+      wein: S2-advance | S3-distrib | S4-decline | S1-base (P vs MA20/60)
+      runup5: cool (<3%) | warm (3-10%) | climax (>10%)
+    """
+    n = len(closes)
+    if n < 61:
+        return None
+    c = closes[-1]
+    h60 = max(closes[-60:])
+    dd60 = 1 - c / h60 if h60 else 0.0
+    r20 = c / closes[-21] - 1
+    r5 = c / closes[-6] - 1
+    before = closes[:-1]  # strictly before decision day for blast scan
+    blast = None
+    for i in range(len(before) - 20, -1, -1):
+        seg = before[max(0, i - 19): i + 1]
+        if len(seg) == 20 and seg[-1] / seg[0] - 1 >= 0.25:
+            blast = (len(before) - 1) - i
+            break
+    ma20 = sum(closes[-20:]) / 20
+    ma60 = sum(closes[-60:]) / 60
+    ma20_prev = sum(closes[-21:-1]) / 20
+    slope_up = ma20 >= ma20_prev
+    if c > ma20 > ma60 and slope_up:
+        wein = "S2-advance"
+    elif ma20 > ma60:
+        wein = "S3-distrib"
+    elif c < ma20 < ma60 and not slope_up:
+        wein = "S4-decline"
+    else:
+        wein = "S1-base"
+    return {
+        "dd60": "at-high" if dd60 < 0.02 else ("shallow" if dd60 <= 0.08 else "deep"),
+        "rally20": "neg" if r20 < 0 else ("mid" if r20 <= 0.15 else "blasted"),
+        "blast": "fresh<=10d" if blast is not None and blast <= 10
+                 else ("mid11-40d" if blast is not None and blast <= 40 else "old/never"),
+        "wein": wein,
+        "runup5": "cool" if r5 < 0.03 else ("warm" if r5 <= 0.10 else "climax"),
+    }
+
+
+def stage_tier(labels: dict[str, str] | None) -> int:
+    """H-SAT-RANK order key tier: 0 = S2&climax, 1 = either, 2 = neither.
+
+    Unlabeled (short history) ranks last (3) — same as the validated replay.
+    """
+    if not labels:
+        return 3
+    s2 = labels.get("wein") == "S2-advance"
+    cx = labels.get("runup5") == "climax"
+    return 0 if (s2 and cx) else (1 if (s2 or cx) else 2)
+
+
+def stage_rank_key(ts: str, labels: dict[str, str] | None, amp: float) -> tuple:
+    """Sort key for the primary bucket: easy risers first, amp tiebreak."""
+    return (stage_tier(labels), amp if amp == amp else float("inf"))
