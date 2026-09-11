@@ -1,0 +1,168 @@
+{
+  "params": {
+    "topn": 100000,
+    "target_vol": 0.1,
+    "cost_side": 0.001,
+    "liq_min": 0.0
+  },
+  "variants": [
+    {
+      "label": "top100000 + vt10% cap1.5",
+      "nav": 1.582,
+      "cagr": 2.4,
+      "vol": 10.9,
+      "maxdd": -26.9,
+      "sharpe": 0.27,
+      "ew_nav": 3.697,
+      "avg_exp": 0.42,
+      "avg_turn": 0.02,
+      "gross_nav": 1.587
+    },
+    {
+      "label": "top100000 + vt10% cap1.0 (no lev)",
+      "nav": 1.582,
+      "cagr": 2.4,
+      "vol": 10.9,
+      "maxdd": -26.9,
+      "sharpe": 0.27,
+      "ew_nav": 3.697,
+      "avg_exp": 0.42,
+      "avg_turn": 0.02,
+      "gross_nav": 1.587
+    },
+    {
+      "label": "top100000 (no vt)",
+      "nav": 3.667,
+      "cagr": 6.9,
+      "vol": 30.5,
+      "maxdd": -64.8,
+      "sharpe": 0.37,
+      "ew_nav": 3.697,
+      "avg_exp": 1.0,
+      "avg_turn": 0.02,
+      "gross_nav": 3.697
+    },
+    {
+      "label": "EW all (base)",
+      "nav": 3.667,
+      "cagr": 6.9,
+      "vol": 30.5,
+      "maxdd": -64.8,
+      "sharpe": 0.37,
+      "ew_nav": 3.697,
+      "avg_exp": 1.0,
+      "avg_turn": 0.02,
+      "gross_nav": 3.697
+    }
+  ],
+  "sub_periods": {
+    "07-09 GFC": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 1.21,
+        "dd": -17.7
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 1.21,
+        "dd": -17.7
+      },
+      "top100000 (no vt)": {
+        "nav": 1.82,
+        "dd": -64.8
+      },
+      "EW all (base)": {
+        "nav": 1.82,
+        "dd": -64.8
+      }
+    },
+    "10-14": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 1.1,
+        "dd": -24.6
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 1.1,
+        "dd": -24.6
+      },
+      "top100000 (no vt)": {
+        "nav": 1.15,
+        "dd": -48.5
+      },
+      "EW all (base)": {
+        "nav": 1.15,
+        "dd": -48.5
+      }
+    },
+    "2015 crash": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 1.24,
+        "dd": -7.4
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 1.24,
+        "dd": -7.4
+      },
+      "top100000 (no vt)": {
+        "nav": 1.99,
+        "dd": -33.3
+      },
+      "EW all (base)": {
+        "nav": 1.99,
+        "dd": -33.3
+      }
+    },
+    "16-18 value": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 0.75,
+        "dd": -26.4
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 0.75,
+        "dd": -26.4
+      },
+      "top100000 (no vt)": {
+        "nav": 0.56,
+        "dd": -42.6
+      },
+      "EW all (base)": {
+        "nav": 0.56,
+        "dd": -42.6
+      }
+    },
+    "19-21 bull": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 1.34,
+        "dd": -9.2
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 1.34,
+        "dd": -9.2
+      },
+      "top100000 (no vt)": {
+        "nav": 1.59,
+        "dd": -18.0
+      },
+      "EW all (base)": {
+        "nav": 1.59,
+        "dd": -18.0
+      }
+    },
+    "22-26": {
+      "top100000 + vt10% cap1.5": {
+        "nav": 0.96,
+        "dd": -17.6
+      },
+      "top100000 + vt10% cap1.0 (no lev)": {
+        "nav": 0.96,
+        "dd": -17.6
+      },
+      "top100000 (no vt)": {
+        "nav": 0.98,
+        "dd": -31.1
+      },
+      "EW all (base)": {
+        "nav": 0.98,
+        "dd": -31.1
+      }
+    }
+  }
+}

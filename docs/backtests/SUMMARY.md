@@ -2,7 +2,7 @@
 
 > **何时看**：任何人想「再回测 / 再优化 / 改实盘规则」之前——先走仓库根 `AGENTS.md` → Strategy / parameter changes（主流程）。
 > 本页是拒收总表 + 失败模式（内容层）。
-> **一句话**：**实盘默认 = 机会双子星 v3.1 clip4**（择强核心 + strict S-gap 卫星 4×12.5%、第 3 日收盘卖、无 −5%）。单轨是核心腿 / Settings 对照。  
+> **一句话**：**实盘默认 = 机会双子星 v3.1 clip4**（择强核心 + strict S-gap 卫星 4×12.5%、**14:30 买 / 第 3 日 14:30 卖 / 桶内 `amp_1430` 零前视排序**、无 −5%；2026-09-11 时钟统一，见 [sat-clock-unify-1430](sat/sat-clock-unify-1430-2026-09-11.md)）。单轨是核心腿 / Settings 对照。  
 > S-3 / 套筒 / 信号池实验是子组件与拒收档案，**不再作为并列终局结论**。已 REJECT 的变体不要再当实盘方案提出。
 
 ---
@@ -18,7 +18,7 @@
 | 三窗绝对 NAV（trail8） | OOS2 **+17.8** / train **+40.7** / valid **+139.1**（dd 18.0/8.4/11.9；定义见 trail8 报告） |
 | 报告 | `pick_strong_trail8_20260829.json` · `past_year_twin_vs_core_2026-09-02.json` · `opportunity_twin_star_v3_clip4_frozen.json`（旧实验档内的 190.7 系当时实跑基线，数据漂移 0.1pt；现行定数 +190.6） |
 | 参数定案 | LB60·MA200·hold1·100% mom（[加固实验](core/pick-strong-hardening-2026-08-29.md) **维持 A0**；hold5/短 LB/risk-adj/Top2 拒收） |
-| 优化范围 | 择强打分已扫一轮；**S-3 冻结 10×10%**；卫星 **body=3 收盘、无 −5%**；下一刀优先工程/对齐，不扫新卫星参 |
+| 优化范围 | 择强打分已扫一轮；**S-3 冻结 10×10%**；卫星 **body=3、第 3 日 14:30 卖、`amp_1430` 排序、无 −5%**；下一刀优先工程/对齐，不扫新卫星参 |
 
 对照（非定案）：STOCK 优先 +110.8%；UI Timeline 旧口径 +123.9%；纯 CN S-3 引擎 +58.3%。
 
@@ -47,6 +47,7 @@
 | 卫星名单漂移（全天振幅 vs 14:30-proxy 排名） | 1 诊断（OOS2+train，valid 未碰） | **无超额，不改 Live**：top-4 Jaccard 均值 0.43（相同 20/205 天），3 日前瞻 +2.05% vs +1.90%（差 0.14pp/笔）；Live 本来就是快照-proxy 排名 | 见 [sat-list-drift](sat/sat-list-drift-2026-09-04.md) |
 | 卫星习惯口径冻结成绩单 OPT-141 | 1 口径×三窗 | **PASS+/beats_core**：OOS2 +76.3/+2.22/−1.9 · train +14.5/+1.53/−2.7 · valid +2.7/+0.21/0（09-03 逐数复现）；入场 100% 真 14:30 bar，出场 ~5% 收盘回退（已记血统） | 见 [sat-live-caliber](sat/sat-live-caliber-2026-09-04.md) |
 | 卫星习惯排名 H1（无前视键） | 2 变体 | **2 全部拒收**：gap升序 OOS2 −96pt；\|14:30/今开−1\|升序 valid +14.4 但 OOS2 −21.5（过拟合陷阱，拒） | 见 [sat-rank-hhmm](sat/sat-rank-hhmm-2026-09-04.md) |
+| 习惯卫星时钟统一 H-SAT-1430（14:30 可得振幅 vs 全天振幅） | 2 变体 ×（三窗+past_year+aligned） | **PASS/采纳**：诚实口径（`bar_5min` ≤14:30 振幅，零前视）三窗不降反升——OOS2 +0.4 / train +9.0 / valid +6.6pt，sr +0.02/+0.37/+0.15，past_year +20.8、aligned +13.3；对核心三窗 +74.9/+23.3/+5.0 全过。**Live/回测/审计统一到 14:30 买+卖**（`_sat_book`/Timeline 习惯线改 `rank_key=amp_1430`；push log 冻 14:20–14:35；bar_5min 加回 1000/1330/1400） | 见 [sat-clock-unify-1430](sat/sat-clock-unify-1430-2026-09-11.md) |
 | 产品级回撤漂移诊断（05-28 CN 熔断停机 + 06-09 后 -17% 无闸） | 1 诊断（无变体） | **缺口确认**：仓位级止损齐、CN 熔断开（设计内停机 3 个月）、HK 熔断关、**产品层无策略级止损**；慢变量门属 F1 例外可开但须长窗 → TIP-016 预注册（已全部裁决，见下 4 行） | 见 [product-post-peak-drift](product-post-peak-drift-2026-09-09.md) |
 | W1 regime 连续性 N=2/3（TIP-016 · 预注册执行） | 4 变体（CN/HK × N=2/3） | **4 全部拒收**：CN -23.2/-52.3（OOS2）、valid -45.1 转负；HK OOS2 +24.4 但 valid -34.2/-76.4（胜率 4-9%）。Strong 连击 = 只买连涨顶部，牛市全错过（失败模式 #1） | 见上 |
 | W2 旱后限仓 K=20/M=3（TIP-016 · 预注册执行） | 2 变体（CN/HK） | **2 全部拒收**：CN 三窗全劣（-19.1/-10.3/-24.5）；HK OOS2 -10.4（valid +0.9 无损但 OOS2 出局） | 见上 |
@@ -77,6 +78,19 @@
 
 | 核心 S-3 入场执行微观诊断（执行/微观方向 · 只读诊断） | bar_5min 尾盘 + 日线低触限价 × long（零 PnL） | **基线确认 + 限价 REJECT**：`next_open` ≈ 信号日收盘（中位差 **0.00%**）、≈ 实盘 14:30（±0.7%）→ audit E4 realism 修正成立、**无口径缺口**；限价入场改善 +0.1~0.9% 但有 **25–50% 漏单 + 逆向选择**（漏掉"开盘后一路涨"的强势票，open→close 漂移为正）→ 不单开回测。数据陷阱：`daily` qfq vs `bar_5min` raw 需比值法 | 见 [core-entry-execution](core/core-entry-execution-2026-09-10.md) |
 
+| L1+L2 长持找几倍股（P0-12 新策略孵化 · 只读 pilot） | 年度队列 2021–2024 × 增长+质量 composite top20 × 2/3 年持有 vs 队列 EW（L2 换成连续两年增速下限 min） | **REJECT（L1 4/4、L2 4/4 全输）**：1 年高增长 = **买在盈利脉冲/周期顶**（2021=COVID 检测耗材、2022/23=锂硅化工周期峰），top20 fwd2 −15~−39 vs EW +2~+12；L2 durability 减轻伤害（3/4 好于 naive）但**不转正**——高增长已被 price in，后续是估值杀。**"增长"非 alpha，"可持续且便宜"才是** → 下一步 GARP 或扩财务史 2007 | 见 [fin-l1-tenbagger](factors/fin-l1-tenbagger-2026-09-11.md) |
+
+| C1 风格×市值×市况（P0-12 · 只读诊断） | 行业关键词归 6 桶 + 市值三层 × up/choppy/down/跌后震荡（2021–2026） | **描述性砖**：up 科技/资源领涨、down 金融最抗跌（−0.17 vs 科技 −0.35）、**跌后震荡=医药/科技高 beta 反弹**（非防御）；大盘 5 年 **+243% vs 小盘 +34%**。轮动 v0 打平等权（行业映射幸存者偏差）→ 不作规则 | 见 [style-regime](factors/style-regime-2026-09-11.md) |
+
+| W1 风险管理 beta（**定海 DH** · P0-12） | ①股票池选池 ②真实指数 + 波动率目标 × 2007–2026 | **DH-1 WITHDRAWN / DH-2 KEEP**：DH-1 用本月末成交额选本月票（**前视 ~+20pt/yr**）→ 修正后 top200 **−8.5%/yr、DD−94%**（A 股**市值/流动性是负因子**，只有 EW 全市场 +6.9% 为正）。**DH-2 = 真实市值加权指数**（已回补至 2005）+ vt：中证500 **+7.3%/yr**、300/500+vt20% **+4.6%/yr、DD−46%、sr0.33**，**无前视/可交易/正年化** | 见 [a1-voltarget-beta](a1-voltarget-beta-2026-09-11.md) §1–5 |
+| DH × S-3 股票腿 结合（P0-12） | 叠刹车 + 配比/风险平价/闲置资金 + MA200门（DH-1 股票池版 & **DH-2 真实指数版**） | **❌ REJECT / 无稳健增益**：DH-1 版全稀释；**DH-2 版**（000905+vt20）S1 配比在 OOS2/train 改善（sr 1.26→1.35、2.27→3.09）但 valid/long 劣化（2.42→1.39、0.64→0.51）→ 四窗不一致；闲置资金入 beta 结构性逆势；且 DH-2 在 valid/long 回撤**比 S-3 更大**（−14/−51 vs −9/−28）→ S-3 自带风控更强。选择只在"要 Sharpe=S-3 单独"与"要某窗降波动=配比"之间 | 见 [dh1-s3-hybrid](dh1-s3-hybrid-2026-09-11.md) §5–6 |
+| DH 作**方向指引**（指数趋势→收紧止损 · P0-12） | 引擎默认关闭钩子 `trend_guide_*`：指数跌破 MA 时只收紧 S-3 exit 线 × MA20/60/200 × 905/300 | **❌ REJECT**：MA200 **几乎不触发**（S-3 regime 闸早已空仓，冗余）；MA60/MA20 触发但 **OOS2 劣化**（46.5→38.4/31.6，砍右尾=#2 死法）；valid 微升、train 持平 → 三窗不一致。钩子默认关闭保留 | 见 [dh1-s3-hybrid](dh1-s3-hybrid-2026-09-11.md) §7 |
+| 另类数据 alpha 速筛（股东户数/陆股通/大单资金流 · P0-12） | 月末 as-of rank-IC × 2019-06~2026-09（`alt_alpha_ic.py`）+ 变体/持有期/流动性 + 市值·反转·动量正交化 | **❌ REJECT（无增量）**：陆股通/大单 = 噪音（t<1.5）；股东户数变化有信号（chg2 1月 IC+0.014/t3.05）**但控制市值后塌到 t0.66**→只是小市值代理，非独立 alpha | 见 [alt-alpha-screen](factors/alt-alpha-screen-2026-09-11.md) |
+| 5 分钟日内微结构（P0-12） | `bar_5min` 尾盘/昨夜信号 rank-IC × 2021+，含分位单调/流动性/成本（`intraday_probe.py`/`intraday_reversal.py`） | **❌ REJECT（不可交易）**：`bar_5min` 是稀疏切片（尾盘 2021+、1000/1330/1400 仅 2024+）；`last30`→次日开盘 IC **−0.112/t−53.8**（强反转）**但非单调仅 Q5 尾部、毛 0.21%/天 < 30bp 成本**（净 x0.30）；近半来自收盘竞价价差。完整 5min 回填不做 | 见 [intraday-microstructure](factors/intraday-microstructure-2026-09-11.md) |
+| 长史基本面 投资/应计 composite（P0-12） | 年度 as-of 单因子 IC + `−asset_growth−accruals` composite × 2008–2024 + **行业中性 + 流动池 + 长持 sleeve + 稳健性 + 与 S-3 组合** | **⚠️ INCUBATE（原型成立·稳健性通过·组合=可选降险）**：asset_growth IC−0.066/t−2.91、accruals −0.037/t−2.10；行业中性后流动池边 +0.7%→+2.0%/年(88%胜)。sleeve 净 **+5.3%/年 vs 流动 EW +3.4%（+2.0%/年、14/17 胜）**。**行业非PIT稳健性**四重通过（独立源复现/安慰剂无效/市值中性不提升/两期都正）。**与 S-3 组合**：sleeve 只从 2024 起评估时 w0.3 看似三窗变好（选择偏差，吃了 2024–25 牛市）；**延到 2021（=S-3 5年长窗）后反转**——sleeve 自 DD−40%、组合收益/Sharpe↓、DD 几乎不变 → **组合 REJECT**。sleeve 本体仍 INCUBATE | 见 [fund-investment-accruals](factors/fund-investment-accruals-2026-09-11.md) §2–8 |
+
+| R1 regime 配置腿 Phase 0（趋势×慢价值按市况切换 · P0-12） | 月度 T(mom60 十分位)/V(价值复合十分位) spread × 000300 vs MA200 × 2021–2026（信号月 as-of、OPT-156 补洞后） | **REJECT/方向证伪**：corr(T,V)=0.391 ✓；R=OFF spread **+1.66%/月**、R=ON **+0.15%/月**——**两态同为正，regime 不翻转 V−T**（只放大）；valid 窗反号（off −13.85/on +4.22）、OOS2/train 无 OFF 样本。T 两态全亏（动量毒性）。非方向证伪→check 0/3 | 见 [regime-allocation-prereg](../designs/regime-allocation-incubator-prereg-2026-09-11.md) §6 |
+
 **48+ 次失败的共同模式**（仍有效，勿重开）：
 1. 绝对量技术形态 → 无增量
 2. 防守收紧 → 截断右尾
@@ -88,7 +102,7 @@
 8. 无过滤 14:30 习惯 vs 核心：train/valid 总收益亏，train 夏普也略差；C1 3% 修好夏普/回撤，valid 总收益仍 −3.3，不进 Live
 9. 14:30 改拿第 4 日 = 占槽税（aligned −16pt）；下午换分钟翻不了 valid
 10. 第 3 日改 10:00 卖不如 14:30 卖；C1+第 3 日 14:30 卖才三窗过核心（习惯 Live 配方，冻结 T 开盘对照保留）
-11. 习惯排名用无前视键（最小缺口 / 盘中越平静越优先）打不过全天振幅：gap 升序 OOS2 −96pt 永不重开；|runup| 升序 valid +14.4 但 OOS2 −21.5（拒）；valid 好看 + 选参窗崩 = 过拟合陷阱
+11. 习惯排名：`gap_asc` / `absrunup_asc` 打不过全天振幅（gap 升序 OOS2 −96pt 永不重开；|runup| 升序 valid +14.4 但 OOS2 −21.5 拒）；**但对应的诚实键 `amp_1430`（14:30 可得振幅，零前视）三窗反超全天振幅并已进 Live（2026-09-11 时钟统一，见 [sat-clock-unify-1430](sat/sat-clock-unify-1430-2026-09-11.md)）**。valid 好看 + 选参窗崩 = 过拟合陷阱
 12. 第 3 日盘中条件单（高点−2% 否则 14:30）三窗全拒且 valid 转负：触发率 63%，回吐≠反转，系统性卖在反弹前；回撤端也没赚到。机制证伪，不补网格
 13. 习惯 R-wide 闸 0.5 单峰最优：0.4 valid −17.9；0.6 valid +13.4 但 OOS2 −15.7（拒）；C1=3% 平顶、桶 1/3 不敏感——习惯配方邻域无更优点，可复制
 

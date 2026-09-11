@@ -32,6 +32,8 @@
 | [`scout-breakthrough-2026-09-05.md`](./scout-breakthrough-2026-09-05.md) | **收兵 2026-09-05**（S/K 电池全杀，突破口暂无） |
 | [`sat-weight-6040-prereg-2026-09-05.md`](./sat-weight-6040-prereg-2026-09-05.md) | 预注册；结果见 [sat-weight-6040](../backtests/sat/sat-weight-6040-2026-09-05.md)（薄增益，不进 Live） |
 | [`hedge-twin-short-2026-09-05.md`](./hedge-twin-short-2026-09-05.md) | 关联 [hedge-twin](../backtests/hedge/hedge-twin-2026-09-05.md)（实现证伪，关闭） |
+| [`regime-allocation-incubator-prereg-2026-09-11.md`](./regime-allocation-incubator-prereg-2026-09-11.md) | **P0-12 R1 预注册**：regime 配置腿（趋势×慢价值，换发动机非加 gate）；Phase 0 诊断未跑 |
+| [`longhold-tenbagger-prereg-2026-09-11.md`](./longhold-tenbagger-prereg-2026-09-11.md) | **P0-12 L1 预注册 + pilot**：长持集中找几倍股；**REJECT-frozen**（1 年高增长=盈利脉冲陷阱）；下一步 durability/扩数据 |
 
 ### API / 外部打通
 

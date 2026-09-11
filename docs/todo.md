@@ -322,8 +322,15 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | H1 | 做空输入（财务恶化进对冲楼） | 执行前提重（券源/交收），排后 |
 | A1 | 聚合配置（全市场盈利周期定仓位） **[done] 2026-09-11：REJECT/方向反**（n=24 月，corr60 −0.14、corr120 −0.47；与 F1/P14 跨层同号：好消息兑现即打折；档 `backtests/factors/fin-a1-earn-regime-2026-09-11.md`） |
 | D1 | 个股人气重叠检验 **[done] 2026-09-11：SHELVE/追高税**（14 周 mIC20 −0.04/mIC60 −0.11，top100 多周 −13~−26；反向买冷门不开；表保留；档 `backtests/factors/fin-d1-hot-rank-2026-09-11.md`） |
+| R1 | regime 配置腿（换发动机：趋势腿 × 慢价值腿按慢市况切换，非 S-3 加 gate） | **[done] 2026-09-11：Phase 0 REJECT/方向证伪**（信号月 as-of + OPT-156 补洞后：R=OFF spread +1.66%/月、R=ON +0.15%/月，**两态同为正、regime 不翻转 V−T**；valid 反号；corr 0.391 ✓）。档 `designs/regime-allocation-incubator-prereg-2026-09-11.md` §6 |
+| L1 | 长持集中基本面找几倍股（用户倾向方向） | **[done] 2026-09-11：L1+L2 均 REJECT**（2021–24 四队列 top20 4/4 输 EW；L2 连续两年增速下限减轻伤害但不转正——高增长已 price in）；下一步 GARP 或 财务回填 2007。档 `backtests/factors/fin-l1-tenbagger-2026-09-11.md` |
+| C1 | 风格 × 市值 × 市况分类诊断 | **[done] 2026-09-11：描述性砖**（up 科技/资源、down 金融抗跌、跌后医药/科技；大盘 5 年 +243% vs 小盘 +34%；轮动打平等权，幸存者偏差）。档 `backtests/factors/style-regime-2026-09-11.md` |
+| W1 | **定海 DH**：风险管理 beta（波动率目标；工作名 A1/W1） | **[done] 2026-09-11：DH-1 WITHDRAWN（前视）/ DH-2 KEEP**——DH-1 用本月末成交额选本月票（前视 ~+20pt/yr），修正后 top200 **−8.5%/yr**（A 股市值/流动性负因子）；**DH-2=真实指数 beta**（指数回补 2005+）**中证500+vt20% = +5.4%/yr、DD−51%、sr0.36**。**与 S-3 结合全 REJECT**：配比四窗不一致；**DH 作方向指引（指数趋势→收紧止损）OOS2 劣化**（钩子 `trend_guide_*` 默认关闭保留）。档 `backtests/a1-voltarget-beta-2026-09-11.md` / `dh1-s3-hybrid-2026-09-11.md`；脚本 `scripts/incubate/{dh_v2_honest,dh_v2_index,dh_combine}.py` |
+| X1 | 另类数据 alpha 速筛（股东户数/陆股通/大单资金流） | **[done] 2026-09-11：REJECT/无增量**——陆股通/大单=噪音（t<1.5）；股东户数变化有信号（`chg2` 1月 IC+0.014/t3.05）**但控制市值后塌到 t0.66**=小市值代理，非独立 alpha。档 `backtests/factors/alt-alpha-screen-2026-09-11.md`；脚本 `scripts/incubate/alt_{alpha_ic,holder_refine,holder_ortho}.py` |
+| X2 | 5 分钟日内微结构 | **[done] 2026-09-11：REJECT/不可交易**——`bar_5min` 稀疏（尾盘 2021+、1000/1330/1400 仅 2024+）；`last30`→次日开盘 IC−0.112/t−53.8 但**非单调仅 Q5 尾部、毛 0.21%/天<30bp 成本**（净 x0.30）。不做完整 5min 回填。档 `backtests/factors/intraday-microstructure-2026-09-11.md`；脚本 `scripts/incubate/intraday_{probe,reversal}.py` |
+| X3 | 长史基本面 投资/应计 composite | **[done] 2026-09-11：INCUBATE（sleeve 本体）/ 组合 REJECT**——asset_growth IC−0.066/t−2.91、accruals −0.037/t−2.10；行业中性后流动池边 +2.0%/年(88%胜)；长持 sleeve 净 +5.3%/年 vs 流动 EW +3.4%；行业非PIT稳健性四重通过。**与 S-3 组合**：2024 起 sleeve 看似变好（选择偏差），**延到 2021 长窗后反转**——sleeve 自 DD−40%、组合收益/Sharpe↓、DD 几乎不变 → **REJECT**。档 `backtests/factors/fund-investment-accruals-2026-09-11.md` §2–8；脚本 `scripts/incubate/fundamental_{ic,combo,portfolio,neutral}.py` + `fund_sleeve{,_robust}.py` + `fund_s3_combine.py` |
 
-**顺序**：V1 →（转正）V2；S1/H1/A1 parked，不并行。
+**顺序**：V1 →（转正）V2；**R1（regime 配置腿）**；S1/H1/A1 parked，不并行。
 **纪律**：新策略自有基线（等权买持），不用 S-3 三窗基线判 1 年持有；回放单开脚手架，不在 S-3 引擎加 gate；单假设预注册，零网格。
 **不做**：再给 S-3 加任何财务 gate；拿 60 天 horizon 测价值；调权重凑数。
 

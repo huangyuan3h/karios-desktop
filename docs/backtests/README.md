@@ -41,8 +41,9 @@
 | [`sat-fill-same-close-2026-09-03.md`](sat/sat-fill-same-close-2026-09-03.md) | 卫星成交：T 开盘 vs 收盘 vs **真 14:30** | ❌ 14:30 相对核心 train/valid 亏；不改 Live |
 | [`sat-entry-c1-2026-09-03.md`](sat/sat-entry-c1-2026-09-03.md) | 14:30 入场过滤 C1（冲太高不买）/ C2（近涨停） | ❌ 不进 Live；C1 3% 修好夏普/回撤，valid tot 仍 −3.3 |
 | [`sat-habit-clock-2026-09-03.md`](sat/sat-habit-clock-2026-09-03.md) | 习惯 3 天 vs 4 天 · 13:30–15:00 买点 | ❌ 计数仍 3 天；换分钟无更佳；不改 Live |
-| [`sat-exit-hhmm-2026-09-03.md`](sat/sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | C1·14:30 卖三窗过核心；**未改 Live** |
-| [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录 |
+| [`sat-exit-hhmm-2026-09-03.md`](sat/sat-exit-hhmm-2026-09-03.md) | C1 + 第 3 日 10:00 / 14:30 / 收盘卖 | ✅ C1·14:30 卖三窗过核心；**Live 已切 habit（2026-09-03）** |
+| [`sat-clock-unify-1430-2026-09-11.md`](sat/sat-clock-unify-1430-2026-09-11.md) | 时钟统一：14:30 买+卖 · `amp_1430` 零前视排序 | ✅ Live/回测/审计/paper 全统一（2026-09-11） |
+| [`clip4-ops-decisions-2026-09-03.md`](./clip4-ops-decisions-2026-09-03.md) | 10 只篮 / 止损 / 第 3 日收盘：讨论 + Live 对齐 | ✅ 记录（第 3 日 14:30 卖）。15:00 见钟统一档 |
 | [`../designs/sat-entry-filter-phase1-2026-09-03.md`](../designs/sat-entry-filter-phase1-2026-09-03.md) | 卫星入场过滤一阶段（尾盘买点 / 第 2 天 / 14:30 不买） | C1 已三窗，未进 Live |
 | [`state-bucket-algo-2026-08-31.md`](core/state-bucket-algo-2026-08-31.md) | 状态分桶/机会双子星 v3.1 clip4（可执行最优） | ✅ |
 | [`README.md`](./README.md) | 本索引 | — |
@@ -76,6 +77,19 @@
 | [`sat-body1-2026-09-07.md`](sat/sat-body1-2026-09-07.md) | 持有 1/2 天 vs 3 天（OOS2+train，valid 未碰） | ❌ 全拒；body=1 退化为 body=2 |
 | [`sat-score-segment-2026-09-08.md`](sat/sat-score-segment-2026-09-08.md) | 分数分段诊断关闭（D3/D4 as-of 门，前瞻 paper 接棒） | ⛔ 未出数；0=真零值无setup |
 | [`index-trend-bigmoney-2026-09-08.md`](index/index-trend-bigmoney-2026-09-08.md) | 指数趋势证伪（000300+000688 MA20/60，预注册）+ §6 静态掺 + §7 轮动池 | ❌ 四关全拒；§7 valid+22.4 但 OOS2−3.1（维1首个生命体征，复活条件见档） |
+
+### 2026-09-11 增补（数据统一 + P0-12 孵化 C1/W1）
+
+| 文档 | 内容 | 状态 |
+|------|------|------|
+| [`data-consistency-2026-09-11.md`](./data-consistency-2026-09-11.md) | CN `daily` 复权统一重建 + 日线/财报/两融回填（OPT-157） | ✅ 完成 |
+| [`factors/fin-l1-tenbagger-2026-09-11.md`](factors/fin-l1-tenbagger-2026-09-11.md) | 长持找几倍股 L1+L2 pilot | ❌ REJECT |
+| [`factors/style-regime-2026-09-11.md`](factors/style-regime-2026-09-11.md) | 风格×市值×市况 C1 诊断 | ✅ 描述性砖 |
+| [`a1-voltarget-beta-2026-09-11.md`](a1-voltarget-beta-2026-09-11.md) | 定海 DH：前视 autopsy + **DH-2 真实指数 beta**（正年化） | ⚠️ DH-1 WITHDRAWN / DH-2 KEEP |
+| [`dh1-s3-hybrid-2026-09-11.md`](dh1-s3-hybrid-2026-09-11.md) | DH × S-3 结合（叠刹车 + 配比/闲置资金 + 方向指引收紧止损）Phase 0 | ❌ REJECT |
+| [`factors/alt-alpha-screen-2026-09-11.md`](factors/alt-alpha-screen-2026-09-11.md) | 另类数据 alpha 速筛（股东户数/陆股通/大单资金流） | ❌ REJECT（无增量） |
+| [`factors/intraday-microstructure-2026-09-11.md`](factors/intraday-microstructure-2026-09-11.md) | 5 分钟日内微结构探针（尾盘/隔夜反转） | ❌ REJECT（成本） |
+| [`factors/fund-investment-accruals-2026-09-11.md`](factors/fund-investment-accruals-2026-09-11.md) | 长史基本面 投资/应计 composite + 行业中性 + 长持 sleeve 原型 | ⚠️ INCUBATE |
 
 ### 早期与专题（结论已定 · 有事才翻）
 
