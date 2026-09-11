@@ -1,0 +1,41 @@
+{
+  "id": "h-sat-rank",
+  "hypothesis": "stage re-rank in primary bucket",
+  "rank_key": "(0 if S2&climax else 1 if S2|climax else 2, amp)",
+  "frozen": "2026-09-11",
+  "windows": {
+    "OOS2": {
+      "engine_satPct": 101.59,
+      "replica_satPct": 103.02,
+      "replica_match": true,
+      "base_fills": 271,
+      "var_fills": 270,
+      "var_satPct": 94.27,
+      "var_avg": 1.7,
+      "var_hit": 53.7
+    },
+    "train": {
+      "engine_satPct": 21.58,
+      "replica_satPct": 21.58,
+      "replica_match": true,
+      "base_fills": 127,
+      "var_fills": 126,
+      "var_satPct": 43.06,
+      "var_avg": 1.67,
+      "var_hit": 54.0
+    },
+    "valid": {
+      "engine_satPct": -6.07,
+      "replica_satPct": -5.62,
+      "replica_match": true,
+      "base_fills": 84,
+      "var_fills": 84,
+      "var_satPct": -2.4,
+      "var_avg": 0.19,
+      "var_hit": 50.0
+    }
+  },
+  "wins": 2,
+  "verdict": "PASS",
+  "created_at": "2026-09-11T05:25:44.591895+00:00"
+}

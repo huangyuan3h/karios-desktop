@@ -440,6 +440,14 @@ def cache_intraday_sat(sat: dict[str, Any], today: date | None = None) -> None:
     os.makedirs(_CACHE_DIR, exist_ok=True)
     with open(_cache_path(today), "w", encoding="utf-8") as fh:
         json.dump(sat, fh, ensure_ascii=False)
+    # DB twin of the push (queryable push -> fill audit). Best-effort:
+    # log_push never raises; a DB outage must not break the file cache.
+    try:
+        from data_sync_service.db.sat_push_log import log_push as _log_push
+
+        _log_push(sat if isinstance(sat, dict) else {})
+    except Exception:  # noqa: BLE001
+        logger.debug("twin_star_intraday: sat_push_log write skipped", exc_info=True)
 
 
 def load_intraday_sat(

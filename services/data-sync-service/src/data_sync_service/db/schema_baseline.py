@@ -23,6 +23,7 @@ from data_sync_service.db.cn_cashflow import CREATE_SQL as CN_CASHFLOW_CREATE_SQ
 from data_sync_service.db.cn_financial import CREATE_SQL as CN_FINANCIAL_CREATE_SQL
 from data_sync_service.db.cn_hk_hold import CREATE_SQL as CN_HK_HOLD_CREATE_SQL
 from data_sync_service.db.cn_holder import CREATE_SQL as CN_HOLDER_CREATE_SQL
+from data_sync_service.db.cn_hot_rank import CREATE_SQL as CN_HOT_RANK_CREATE_SQL
 from data_sync_service.db.cn_income import CREATE_SQL as CN_INCOME_CREATE_SQL
 from data_sync_service.db.cn_margin_detail import CREATE_SQL as CN_MARGIN_CREATE_SQL
 from data_sync_service.db.cn_moneyflow import CREATE_SQL as CN_MONEYFLOW_CREATE_SQL
@@ -52,6 +53,7 @@ from data_sync_service.db.system_prompts import CREATE_SQL as SYSTEM_PROMPTS_CRE
 from data_sync_service.db.top_inst import CREATE_SQL as TOP_INST_CREATE_SQL
 from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CREATE_SQL
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
+from data_sync_service.db.sat_push_log import CREATE_SQL as SAT_PUSH_LOG_CREATE_SQL
 from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
 from data_sync_service.db.webhook import CREATE_SQL as WEBHOOK_CREATE_SQL
@@ -176,12 +178,14 @@ def baseline_ddl_statements() -> list[str]:
         CN_INCOME_CREATE_SQL,
         CN_CASHFLOW_CREATE_SQL,
         CN_HOLDER_CREATE_SQL,
+        CN_HOT_RANK_CREATE_SQL,
         CN_MARGIN_CREATE_SQL,
         CN_MONEYFLOW_CREATE_SQL,
         CN_HK_HOLD_CREATE_SQL,
         FACTOR_SIGNALS_CREATE_SQL,
         DECISION_CREATE_SQL,
         USER_TRADES_CREATE_SQL,
+        SAT_PUSH_LOG_CREATE_SQL,
         TV_LEGACY_CREATE_SQL,
         WEBHOOK_CREATE_SQL,
     ]

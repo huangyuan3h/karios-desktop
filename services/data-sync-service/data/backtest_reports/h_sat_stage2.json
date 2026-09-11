@@ -1,0 +1,43 @@
+{
+  "id": "h-sat-stage2",
+  "hypothesis": "S2 OR climax gate (H-SAT-STAGE2)",
+  "frozen": "2026-09-11",
+  "windows": {
+    "OOS2": {
+      "base_fills": 271,
+      "base_contrib": 103.0,
+      "base_max_concurrent": 4,
+      "gated_fills": 181,
+      "fill_rate": 0.668,
+      "gated_contrib": 105.82,
+      "gated_avg": 2.64,
+      "gated_hit": 60.8,
+      "unlabeled": 1
+    },
+    "train": {
+      "base_fills": 127,
+      "base_contrib": 21.6,
+      "base_max_concurrent": 4,
+      "gated_fills": 78,
+      "fill_rate": 0.614,
+      "gated_contrib": 33.15,
+      "gated_avg": 2.0,
+      "gated_hit": 52.6,
+      "unlabeled": 0
+    },
+    "valid": {
+      "base_fills": 84,
+      "base_contrib": -5.64,
+      "base_max_concurrent": 4,
+      "gated_fills": 32,
+      "fill_rate": 0.381,
+      "gated_contrib": 5.09,
+      "gated_avg": 0.94,
+      "gated_hit": 50.0,
+      "unlabeled": 0
+    }
+  },
+  "wins": 3,
+  "verdict": "REJECT",
+  "created_at": "2026-09-11T05:12:46.749910+00:00"
+}

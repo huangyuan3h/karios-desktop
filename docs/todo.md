@@ -294,7 +294,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 | # | 动作 | 范围/验收 |
 |---|------|-----------|
-| D1 | 数据补齐 | 表 `cn_balance_sheet/cn_income_stmt/cn_cashflow_stmt`（主键含 report_type，热字段 typed + 全行 JSONB；migration 0044）。4 年 8.6 万行/表 **[done] 2026-09-10**；扩展到 cutoff 2018-01-01（覆盖三窗 + 长窗 2021-08 + TTM 预热）**[进行中]** |
+| D1 | 数据补齐 | 表 `cn_balance_sheet/cn_income_stmt/cn_cashflow_stmt`（主键含 report_type，热字段 typed + 全行 JSONB；migration 0044）。4 年 8.6 万行/表 **[done] 2026-09-10**；扩展到 cutoff 2018-01-01 **[done] 2026-09-10**（2018Q1–2026Q2，5461 只，~16.5 万行/表，已验收） |
 | D2 | TTM + 行业中位数管线 | 单季拆分、经营现金流 TTM / 归母 TTM、逐期截面中位数；金融股 `comp_type` 单独处理或剔除；增量接收盘链 |
 | F1 | ROE-TTM > 行业中位数 **[done] 2026-09-10：REJECT/方向证伪**（22 季 meanIC −0.06、Q-spread 仅 27% 为正；档 `backtests/factors/fin-f1-roe-ttm-2026-09-10.md`；反号不开，需独立预注册） |
 | G1 | F2 + 市值中性 **[done] 2026-09-11：REJECT**（20 季 pooledIC +0.026、Q-spread 仍 50%；规模不是主因；档 `backtests/factors/fin-g1-ccr-neutral-2026-09-11.md`） |
@@ -321,6 +321,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | S1 | 特殊情形（ST 摘帽/重组小套筒） | 缺事件数据，待投入，parked |
 | H1 | 做空输入（财务恶化进对冲楼） | 执行前提重（券源/交收），排后 |
 | A1 | 聚合配置（全市场盈利周期定仓位） **[done] 2026-09-11：REJECT/方向反**（n=24 月，corr60 −0.14、corr120 −0.47；与 F1/P14 跨层同号：好消息兑现即打折；档 `backtests/factors/fin-a1-earn-regime-2026-09-11.md`） |
+| D1 | 个股人气重叠检验 **[done] 2026-09-11：SHELVE/追高税**（14 周 mIC20 −0.04/mIC60 −0.11，top100 多周 −13~−26；反向买冷门不开；表保留；档 `backtests/factors/fin-d1-hot-rank-2026-09-11.md`） |
 
 **顺序**：V1 →（转正）V2；S1/H1/A1 parked，不并行。
 **纪律**：新策略自有基线（等权买持），不用 S-3 三窗基线判 1 年持有；回放单开脚手架，不在 S-3 引擎加 gate；单假设预注册，零网格。
