@@ -20,6 +20,10 @@ from data_sync_service.db.bar_5min import coverage_by_ts_code, upsert_5min_bars
 logger = logging.getLogger(__name__)
 
 LAST_HOUR_TIMES = frozenset({"1430", "1435", "1440", "1445", "1450", "1455", "1500"})
+# 14:30-decision inputs (H-SAT-1430): the earlier bars let the no-lookahead
+# amplitude proxy (max high - min low over bars <= 14:30) match Live. Historical
+# backfill already carries these; keep storing them going forward.
+DECISION_TIMES = frozenset({"1000", "1330", "1400"}) | LAST_HOUR_TIMES
 SOURCE_BAOSTOCK = "baostock"
 SOURCE_TUSHARE = "tushare.stk_mins"
 BAOSTOCK_SLEEP_SECONDS = 0.2
@@ -48,6 +52,11 @@ def to_baostock_code(ts_code: str) -> str | None:
 
 def filter_last_hour(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for r in rows if str(r.get("time") or "") in LAST_HOUR_TIMES]
+
+
+def filter_decision_times(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the 14:30-decision bars (10:00/13:30/14:00) plus the last hour."""
+    return [r for r in rows if str(r.get("time") or "") in DECISION_TIMES]
 
 
 def parse_baostock_time(raw: str) -> str | None:
@@ -179,7 +188,7 @@ def fetch_baostock_5min(ts_code: str, start_date: str, end_date: str) -> list[di
             _BS_LOGGED_IN = False
             _bs_ensure_login_unlocked()
             raw = _query()
-    return filter_last_hour(rows_from_baostock(raw))
+    return filter_decision_times(rows_from_baostock(raw))
 
 
 def fetch_tushare_5min(ts_code: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -199,7 +208,7 @@ def fetch_tushare_5min(ts_code: str, start_date: str, end_date: str) -> list[dic
     if df is None or df.empty:
         return []
     records = df.to_dict("records")
-    return filter_last_hour(rows_from_tushare(records))
+    return filter_decision_times(rows_from_tushare(records))
 
 
 def list_cn_a_share_codes() -> list[str]:

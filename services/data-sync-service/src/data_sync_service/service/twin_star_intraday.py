@@ -30,17 +30,17 @@ from data_sync_service.service.state_bucket_track import (
     _load_mv,
     _load_rows,
     select_live_gap_picks,
-    stage_labels,
-    stage_rank_key,
 )
 from data_sync_service.service.twin_star_daily import fill_candidate_names
 
 logger = logging.getLogger(__name__)
 
 TOP_N = MAX_POS
-# Habit recipe (sat-exit-hhmm 2026-09-03): C1 3% + day-3 14:30 sell.
-# Mirrors state_bucket_track replay params: fill_mode=same_1430, fill_hhmm=1430,
-# max_open_to_1430_pct=0.03, exit_hhmm=1430. Frozen T-open engine untouched.
+# Habit LIVE recipe (sat-exit-hhmm 2026-09-03; unified 2026-09-11):
+# fill_mode=same_1430, fill_hhmm=1430, max_open_to_1430_pct=0.03 (C1), exit_hhmm=1430.
+# This snapshot-amplitude-at-the-tick ranking IS the live 14:30-knowable amplitude;
+# the backtest/audit proxy for it is rank_key="amp_1430" (bar_5min <= 14:30).
+# The frozen next_open engine is research-only.
 HABIT_C1_PCT = 0.03
 HABIT_FILL_MODE = "same_1430"
 HABIT_FILL_HHMM = "1430"
@@ -358,45 +358,6 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
         gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
     )
 
-    # H-SAT-RANK (PASS 2026-09-11): re-rank the primary bucket by lifecycle
-    # stage — easy risers first. Same buckets/order as the validated replay
-    # (stage_rank_key); pool size and locked handling unchanged.
-    def _trailing_closes(ts: str) -> list[float]:
-        out: list[float] = []
-        for r in per_ts.get(ts, []) or []:
-            try:
-                v = float(r.get("close")) if r.get("close") is not None else None
-            except (TypeError, ValueError):
-                v = None
-            if v and v > 0:
-                out.append(v)
-        return out
-
-    _ranked_all = sorted(gap_stocks, key=lambda x: x[1])
-    _qn = max(1, len(_ranked_all) // BUCKET_Q) if _ranked_all else 0
-    _bucket = [t for t in _ranked_all[:_qn] if t[0] not in locked]
-    _staged = sorted(
-        _bucket,
-        key=lambda t: stage_rank_key(t[0], stage_labels(_trailing_closes(t[0])), t[1]),
-    )
-    picks = {
-        "primary": _staged[:TOP_N],
-        "blocked": picks["blocked"],
-        "alternates": [g for g in picks["alternates"] if g not in _staged[:TOP_N]],
-    }
-
-    _STAGE_OF: dict[str, dict[str, str]] = {}
-
-    def _stage_row(ts: str, amp: float) -> dict[str, str]:
-        if ts not in _STAGE_OF:
-            lab = stage_labels(_trailing_closes(ts))
-            tier = stage_rank_key(ts, lab, amp)[0]
-            _STAGE_OF[ts] = {
-                "stage": f"{(lab or {}).get('wein', '?')}/{(lab or {}).get('runup5', '?')}",
-                "stageTier": str(tier),
-            }
-        return _STAGE_OF[ts]
-
     def _pack(rows: list, *, blocked: bool = False) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for ts, amp, gap in rows:
@@ -419,7 +380,6 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
                 "limitLocked": blocked,
                 "openPx": float(open_px) if open_px else None,
                 "runUpPct": round(run_up * 100, 2) if run_up is not None else None,
-                **_stage_row(ts, amp),
             }
             if isinstance(snap_name, str) and snap_name.strip():
                 item["name"] = snap_name.strip()

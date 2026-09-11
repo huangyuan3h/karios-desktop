@@ -174,13 +174,14 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
    - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat/sat-entry-c1-2026-09-03.md)
    - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat/sat-habit-clock-2026-09-03.md)
    - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)
-   - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
-    - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/core/state-bucket-algo-2026-08-31.md)
+    - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
+     - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/core/state-bucket-algo-2026-08-31.md)
+     - **卫星时钟统一（14:30 买+卖 · `amp_1430` 零前视排序）→ [`sat-clock-unify-1430-2026-09-11.md`](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md)**
 - **调参查找**（用户说法 → 对口实验）：篮子太多 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core/core-stock-clip-2026-09-03.md)；
   止损/拿长一点/第几天卖 → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat/sat-exit-trail-2026-09-03.md) + [讨论记录](docs/backtests/clip4-ops-decisions-2026-09-03.md) + [第 3 日卖点](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)；
-  对齐 14:30 习惯回测 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat/sat-fill-same-close-2026-09-03.md) + [C1 过滤](docs/backtests/sat/sat-entry-c1-2026-09-03.md) + [3 天/买点](docs/backtests/sat/sat-habit-clock-2026-09-03.md)。
+  对齐 14:30 习惯回测/排序/时钟 → [`sat-clock-unify-1430-2026-09-11.md`](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md) + [C1 过滤](docs/backtests/sat/sat-entry-c1-2026-09-03.md) + [3 天/买点](docs/backtests/sat/sat-habit-clock-2026-09-03.md)。
 2. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
-3. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。
+3. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。**例外（2026-09-11 起）**：卫星腿 Live 时钟 = 习惯 14:30（`same_1430` + C1 + 第3日14:30卖 + `rank_key="amp_1430"`），已三窗验证并统一 Live/回测/审计/paper；冻结 `next_open`/全天 amp/收盘卖只作 S-gap 研究对照。见 [sat-clock-unify-1430](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md)。
 4. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
 5. 改完把结论写进 `docs/backtests/`（PASS 或 REJECT 都留档），不要只停在对话里。
 

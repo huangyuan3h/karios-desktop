@@ -62,3 +62,12 @@ Live 习惯与冻结引擎是两套口径（P0-4 定论）。09-03 的 C1·14:30
 cd services/data-sync-service
 PYTHONPATH=src:scripts python3 scripts/compare_sat_exit_hhmm.py --save-report --report-name sat_live_caliber_2026-09-04.json
 ```
+
+---
+
+## Addendum（2026-09-11 · 时钟统一）
+
+本页表里的**排名仍是全天振幅**（当时已记残差）。2026-09-11 把 Live/回测/审计统一到
+**14:30 可得振幅**（`rank_key="amp_1430"`，零前视）后，三窗不降反升：OOS2 +0.4 / train +9.0 /
+valid +6.6pt，sr +0.02/+0.37/+0.15。Live 跟的是 `amp_1430` 口径，不是本页的全天振幅。
+见 [sat-clock-unify-1430](sat-clock-unify-1430-2026-09-11.md)。

@@ -1,6 +1,7 @@
 # 状态分桶（State-Bucket）算法真值【2026-09-02 v3.1 · 4槽×12.5% NAV】
 
 > **一句话**：**择强单轨（trail8）为主干，S-gap 卫星作"机会增强"**——无仓时 100% 跟核心；R-wide 开闸且候选**可执行**时切 50%；**退出日仍算卫星占用**（`satActive`）。卫星 **`skip_t1_limit` + `pool_mode=strict`**（涨停跳过，**不**顺位补更差的缺口票）。**仓位：4 槽 × 套筒 25% = 总资产 12.5%。Live 习惯配方：C1（14:30/今开 >3% 不买）+ 第 3 日 14:30 卖（sat-exit-hhmm 2026-09-03 beats_core）。**
+> **2026-09-11 时钟统一**：Live / 回测 / 审计 / paper 全部用 **14:30 买 + 第 3 日 14:30 卖**，桶内排序 = **`amp_1430`（14:30 可得振幅，零前视）**；冻结 T-open（next_open/全天 amp/收盘卖）仅作对照。见 [sat-clock-unify-1430](../sat/sat-clock-unify-1430-2026-09-11.md)。
 > **2026-09-02 v3.1 clip**：15×5% NAV 太散；只砍槽不加大单票三窗全拒。`4×12.5%` 相对 v3 15×10% 三窗全正（OOS2 +1.8 / train +2.3 / valid +10.3）。冻结 `opportunity_twin_star_v3_clip4_frozen.json`。
 > **2026-09-01 v3**：window-local 可执行对照结案——机会双子星 **三窗 walk-forward 全过**单轨。历史 15 槽×10% 表见 §3.0-legacy-clip。
 > **2026-09-01 v2 记账修正仍成立**：v1 `satPositions>0` 退出日成本逃逸（aligned 虚高 ~25pt）。v2 表里 past_year/aligned「输核心」是**另一套窗口切法 + 连续簿**，不要和 v3 window-local 混读。
@@ -468,7 +469,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 ### 7.3 S-gap 卫星引擎（冻结参数，R11 寻优 / R12 冻结）
 
 - **状态**：仅 `S-gap`（gap>3%）。
-- **候选**：当日 `S-gap` 桶内按 `amp` **升序**取前 **1/3**（`bucket_q=3`，最低波 33%）。
+- **候选**：当日 `S-gap` 桶内按 `amp` **升序**取前 **1/3**（`bucket_q=3`，最低波 33%）。**Live / 审计 = `amp_1430`**（`bar_5min` ≤14:30 的 max high−min low ÷ 14:30 价，零前视，`rank_key="amp_1430"`）；冻结 T-open 对照用全天 `amp`。
 - **闸**：仅 `R-wide` 日开仓（用 T 日 breadth；候选信号用 **T-1 日** 状态）。
 - **入场**：T 日 **open** 价；**单边滑点 0.15%** 含在 `COSTS_ROUNDTRIP=0.003`（0.3% 往返）内，出场时一次性计提。
 - **持仓**：`body=3` 交易日——**入场日算第 1 天，第 3 日 14:30 出**（周一 14:30 买 → 周三 14:30 卖；冻结回测对照仍是第 3 日 close，见 Timeline 习惯开关）。**入场过滤 C1**：14:30/今开 −1 > 3% 不买（strict 不补，空槽回核心）。**无保护止损**（`protect5` / trail-after-body 2026-09-03 三窗拒收；Live 已对齐）。`max_pos=4`、每槽 `POSITION_PCT=0.25` → **卫星套筒满仓 100%**（4×25%；合成后每只总资产 12.5%）。v3 的 15×10%（名义 150%）已由 v3.1 替代。
@@ -491,7 +492,8 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 
 ### 7.6 验证窗口与冻结数字（v3.1 clip4 · 见 §3.0 表）
 
-> 复现：核心 pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict")`（默认 4×25%）；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `opportunity_twin_star_v3_clip4_frozen.json`。
+> 复现（冻结对照）：核心 pick_strong；卫星 `build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict")`（默认 next_open/全天 amp/收盘卖，4×25%）；合成 `build_twin_star_timeline(..., opportunity=True)`；对照 `opportunity_twin_star_v3_clip4_frozen.json`。
+> 复现（Live 习惯 14:30）：`build_sgap_timeline(..., skip_t1_limit=True, pool_mode="strict", fill_mode="same_1430", fill_hhmm="1430", exit_hhmm="1430", max_open_to_1430_pct=0.03, rank_key="amp_1430")`；脚本 `scripts/compare_sat_rank_1430.py`。三窗 Δ全天 +0.4/+9.0/+6.6pt，对核心 +74.9/+23.3/+5.0 全过（past_year +152.3/2.71、最近一年 +149.6/2.72）。
 
 ### 7.7 实盘执行映射（机会双子星 · 实盘默认）
 
@@ -501,6 +503,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
   - 开闸且 **strict 可成交候选非空** **或** 持仓簿非空 → **核心 50% / 卫星 50%**。
   - 卫星每只 **总资产 12.5%**（套筒 25%），最多 **4 只**。
   - 涨停买不进 → **放弃该票**（不顺位补），空出来的钱留在核心。
+  - **排序**：桶内 `amp_1430` 升序（14:30 可得振幅 = max high−min low ÷ 14:30 价，零前视）；Live 用 14:20/14:30 快照当场算，回测 / 审计用 `bar_5min` ≤14:30 复刻。
   - **C1**：14:30 已经比今开高超 3% → 不买（strict 不补）。
   - body=3 第 3 日 14:30 卖（入场日=第 1 天；持仓簿 `exitsDue`）。**不要**挂 −5% 券商止损、也不要看见 −5% 就卖。
   - **极端情况**：入场日 14:30 跌停的票振幅升序沉底，基本进不了桶（全市场独苗缺口且跌停才可能入选，真遇到手动跳过）；持有中跌停无止损拿到第 3 天（单票 12.5% 封顶）；**退出日 14:30 封死卖不掉 → 顺延下一交易日 14:30 卖**（回测/paper 按打印成交，0.1% 可忽略，见 §3.0 审计；Live 手动执行用顺延）；停牌无价不买，持有中停牌等复牌按规则卖。

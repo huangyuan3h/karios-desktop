@@ -168,7 +168,7 @@ class TestE6E7:
             return True
 
         monkeypatch.setattr(brj, "insert_record", lambda *a, **k: None)
-        monkeypatch.setattr(brj, "run_and_persist", lambda day: {
+        monkeypatch.setattr(brj, "run_and_persist", lambda day, **kwargs: {
             "reconDate": day,
             "markets": {
                 "HK": {"available": True, "missing": 3},
@@ -185,7 +185,7 @@ class TestE6E7:
         from data_sync_service.scheduler import backtest_recon_job as brj
 
         monkeypatch.setattr(brj, "insert_record", lambda *a, **k: None)
-        monkeypatch.setattr(brj, "run_and_persist", lambda day: {
+        monkeypatch.setattr(brj, "run_and_persist", lambda day, **kwargs: {
             "reconDate": day,
             "markets": {"HK": {"available": True, "missing": 0}, "CN": {"available": True, "missing": 0}},
         })

@@ -627,8 +627,8 @@ def test_run_update_gross_within_bounds_net_within_bounds_stays_open() -> None:
 
 
 def test_run_update_hk_trade_uses_hk_cost_model() -> None:
-    """A HK open trade resolves via its own market: cost model 0.6% round
-    trip, close written with net/gross/costs split, score_floor fails open."""
+    """A HK open trade resolves via its own market: cost model 0.9% round
+    trip (OPT-154), close written with net/gross/costs split, score_floor fails open."""
     open_rows = [{**_HK_ROW, "entry_price": 480.0, "entryDate": "2026-08-04"}]
     bars = {"00700.HK": [("2026-08-06", 484.8, 485.0, 484.0, 484.8, 5000)]}  # +1%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
@@ -648,8 +648,8 @@ def test_run_update_hk_trade_uses_hk_cost_model() -> None:
 
 
 def test_run_update_hk_trade_closes_with_hk_costs() -> None:
-    """HK +0.5% gross → net -0.1% (0.6% round trip) — but a later -7% day
-    closes as stop_hit with HK cost split written to the row."""
+    """HK -7% gross closes as stop_hit with 0.9% round-trip cost (OPT-154):
+    net -7.9%, split written to the row."""
     open_rows = [{**_HK_ROW, "entry_price": 480.0, "entryDate": "2026-08-04"}]
     bars = {"00700.HK": [("2026-08-06", 446.4, 447.0, 445.0, 446.4, 5000)]}  # -7%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
@@ -665,8 +665,8 @@ def test_run_update_hk_trade_closes_with_hk_costs() -> None:
     assert summary["closed"] == 1
     assert summary["closeReasons"].get("stop_hit") == 1
     assert abs(mock_close.call_args.kwargs["gross_pnl_pct"] - (-7.0)) < 0.05
-    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.6) < 0.01
-    assert abs(mock_close.call_args.kwargs["pnl_pct"] - (-7.6)) < 0.05
+    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.9) < 0.01
+    assert abs(mock_close.call_args.kwargs["pnl_pct"] - (-7.9)) < 0.05
     mock_update.assert_not_called()
 
 

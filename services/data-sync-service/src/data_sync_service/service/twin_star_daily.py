@@ -31,9 +31,11 @@ BOOK_LOOKBACK_CAL_DAYS = 45
 TOP_N = MAX_POS
 SAT_SLOT_NAV_PCT = round(50 * POSITION_PCT, 2)  # clip4: 4 × 12.5% NAV when sleeve is 50/50
 SAT_PROTECT_STOP_PCT = 0.0
-# Habit live recipe (sat-exit-hhmm 2026-09-03 C1+day-3 14:30 sell, beats_core):
-# entry = today's S-gap at 14:30 print, C1 skip 14:30/open-1 > 3% (strict, no refill);
-# exit = day-3 14:30 print. Frozen T-open engine (next_open/close) stays for Timeline truth.
+# Habit LIVE recipe (sat-exit-hhmm 2026-09-03 C1+day-3 14:30 sell; unified 2026-09-11):
+# entry = today's S-gap at the 14:30 print, ranked by 14:30-knowable amplitude
+# (rank_key="amp_1430", zero lookahead), C1 skip 14:30/open-1 > 3% (strict, no
+# refill); exit = day-3 14:30 print. Live / audit / paper all run this. The frozen
+# next_open/close engine stays only as the research baseline.
 HABIT_FILL_MODE = "same_1430"
 HABIT_FILL_HHMM = "1430"
 HABIT_C1_PCT = 0.03
@@ -185,6 +187,31 @@ def sat_book_ts_codes(today: date | None = None) -> set[str]:
     return set(_book_ts_cache[key])
 
 
+def pushed_sat_ts(day: date | None = None) -> set[str]:
+    """ts codes pushed as 14:20-14:35 ``candidates`` over the last BODY sessions.
+
+    The signal's *sanctioned* names: what the user was actually offered in the
+    current holding window. Used by the behavior audit to avoid flagging a real
+    holding as "off-book" just because the coarse engine replay disagrees. Empty
+    when the push log has no rows for the window (pre-2026-09-11 history).
+    """
+    d = day or date.today()
+    try:
+        from data_sync_service.service.trade_calendar_utils import trade_dates_upto
+
+        sessions = trade_dates_upto(d.isoformat(), BODY)
+    except Exception:
+        sessions = []
+    if not sessions:
+        return set()
+    try:
+        from data_sync_service.db.sat_push_log import list_candidates
+
+        return list_candidates(sessions)
+    except Exception:
+        return set()
+
+
 def live_sat_ts_codes(today: date | None = None) -> set[str]:
     """Candidate + paper-open + engine-book ts codes.
 
@@ -292,7 +319,15 @@ def fill_candidate_names(*groups: list[dict[str, Any]]) -> None:
 
 
 def _sat_signal(today: date) -> dict[str, Any] | None:
-    """Satellite signal from the latest completed close before `today`."""
+    """T-1 close FALLBACK signal (non-executable), used only when the intraday
+    snapshot is unavailable.
+
+    It ranks by full-day amplitude from the latest completed close and has no
+    C1/14:30 clock, so it must NOT drive entries — the reminder labels it
+    "名单不可用，不要用 T-1 名单下单"; live entries come from
+    ``build_intraday_sat`` (14:20/14:30 snapshot, ranked by the 14:30-knowable
+    amplitude).
+    """
     w_start = (today - timedelta(days=LOOKBACK_DAYS)).isoformat()
     w_end = today.isoformat()
     try:
@@ -376,14 +411,19 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
 def _sat_book(today: date) -> dict[str, Any]:
     """Replay recent S-gap engine for open holdings + exits due (body=3).
 
-    This is the live satellite position book: same rules as backtest
-    (skip_t1_limit=True), ending at the latest completed session before today.
+    Unified on the habit 14:30 clock (2026-09-11): signal/fill at the 14:30
+    print, C1 3%, exit day-3 14:30, ranked by the 14:30-knowable amplitude
+    (``amp_1430``, zero lookahead). This is the same definition Live executes,
+    so the audit/book no longer diverges from the pushed list.
     """
     end = (today - timedelta(days=1)).isoformat()
     start = (today - timedelta(days=BOOK_LOOKBACK_CAL_DAYS)).isoformat()
     try:
         built = build_sgap_timeline(
-            start=start, end=end, skip_t1_limit=True, pool_mode="strict"
+            start=start, end=end, skip_t1_limit=True, pool_mode="strict",
+            fill_mode=HABIT_FILL_MODE, fill_hhmm=HABIT_FILL_HHMM,
+            exit_hhmm=HABIT_EXIT_HHMM, max_open_to_1430_pct=HABIT_C1_PCT,
+            rank_key="amp_1430",
         )
     except Exception:
         return {"asOf": None, "holdings": [], "exitsDue": [], "error": "book_unavailable"}

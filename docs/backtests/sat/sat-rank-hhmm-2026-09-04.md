@@ -57,3 +57,13 @@ cd services/data-sync-service
 PYTHONPATH=src:scripts python3 scripts/diag_sat_rank_keys.py
 PYTHONPATH=src:scripts python3 scripts/compare_sat_rank_hhmm.py --save-report
 ```
+
+---
+
+## Addendum（2026-09-11 · 被 H-SAT-1430 部分修正）
+
+本页结论「无前视键打不过全天振幅」只对了当时试的两把键（`gap_asc` / `absrunup_asc`）。
+**真正对应的诚实键是 `amp_1430`**（`bar_5min` ≤14:30 的 max high−min low ÷ 14:30 价）：
+2026-09-11 三窗相对全天振幅 **+0.4 / +9.0 / +6.6pt**，sr 同步升——诚实键**赢**过全天振幅。
+`gap_asc` 永不重开、`absrunup_asc` 仍拒的结论不变。见
+[sat-clock-unify-1430](sat-clock-unify-1430-2026-09-11.md)。

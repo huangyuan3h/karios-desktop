@@ -5,7 +5,15 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from data_sync_service.service import reconciliation as recon
+
+
+@pytest.fixture(autouse=True)
+def _no_user_trades(monkeypatch):
+    """Keep these pure units DB-free: no trade records → registry fallback."""
+    monkeypatch.setattr(recon, "_load_user_trades", lambda day: [])
 
 
 def _fake_run():
@@ -79,6 +87,58 @@ def test_non_stock_pick_all_cn_satellite(monkeypatch) -> None:
     # 600001 is S-3-aligned (not extra anywhere); the other two are sat-leg
     assert m["satExtra"] == 2
     assert {e["symbol"] for e in m["satExtraList"]} == {"CN:600099", "CN:600003"}
+
+
+def test_pushed_satellite_not_flagged_off_book(monkeypatch) -> None:
+    """A holding the signal actually pushed (14:20-14:35 candidates) is
+    sanctioned, even when the coarse engine book disagrees."""
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
+    )
+    leg = {"pick": "STOCK", "sat_ts": {"600099.SH"}, "book_ts": {"600088.SH"},
+           "push_ts": {"600099.SH"}}
+    with patch.object(recon, "simulate", return_value=_fake_run()), \
+         patch.object(recon, "BacktestData", return_value=None):
+        out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
+    m = out["markets"]["CN"]
+    assert m["satExtra"] == 0
+    assert m["satExtraList"] == []
+    # 600088 was never pushed → not a "missing" signal name.
+    assert m["satMissingList"] == []
+
+
+def test_sanctioned_satellite_missing_counted(monkeypatch) -> None:
+    """A pushed name the engine book holds but the user did not buy is missing."""
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
+    )
+    leg = {"pick": "STOCK", "sat_ts": {"600099.SH"}, "book_ts": {"600088.SH"},
+           "push_ts": {"600099.SH", "600088.SH"}}
+    with patch.object(recon, "simulate", return_value=_fake_run()), \
+         patch.object(recon, "BacktestData", return_value=None):
+        out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
+    m = out["markets"]["CN"]
+    assert m["satMissingList"] == [{"symbol": "CN:600088"}]
+
+
+def test_real_book_reconstructed_from_user_trades(monkeypatch) -> None:
+    """As-of holdings come from user_trades (BUY opens, SELL closes), so a
+    sold position is correctly absent on a later audit day."""
+    trades = [
+        ("CN:600099", "BUY", "2026-08-06", 20.0, 12.5),
+        ("CN:600003", "BUY", "2026-08-06", 12.0, 8.0),
+        ("CN:600003", "SELL", "2026-08-07", 12.5, 8.0),
+    ]
+    monkeypatch.setattr(
+        recon, "_load_user_trades", lambda day: [t for t in trades if t[2] <= day]
+    )
+    leg = {"pick": "NASDAQ", "sat_ts": set(), "book_ts": set(), "push_ts": set()}
+    with patch.object(recon, "simulate", return_value=_fake_run()), \
+         patch.object(recon, "BacktestData", return_value=None):
+        out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
+    m = out["markets"]["CN"]
+    assert m["actual"] == 1
+    assert {e["symbol"] for e in m["satExtraList"]} == {"CN:600099"}
 
 
 def test_holding_book_shared_predicate() -> None:

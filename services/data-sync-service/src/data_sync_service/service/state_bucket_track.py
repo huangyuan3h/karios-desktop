@@ -1,17 +1,20 @@
 """双子星 (Twin-Star) 卫星腿 — S-gap State-Bucket engine (service layer).
 
-S-gap 单态卫星 (frozen R12 / core_satellite_frozen_2026-08-31.json):
+Two calibers share this engine (2026-09-11 统一后):
+  frozen (next_open): 信号 T-1 收盘 → T 开盘成交 → body=3 收盘出。S-gap 研究基线，
+    `build_state_bucket_timeline` / Timeline `strategy=state_bucket` 仍用它。
+  habit (same_1430): 信号/成交在 T 日 14:30 print，C1 3%，body=3 第 3 日 14:30 出，
+    排序用 14:30 可得振幅（`rank_key="amp_1430"`，零前视）。**这是 Live 双子星定义**，
+    Live / 审计 / paper 全部跑它。
+
   state   = S-gap (gap>3%)
   factor  = amplitude 升序取前 1/3 (bucket_q=3, 最低波33%)
   gate    = R-wide (close>MA20 占比>0.5, 当日截面)
-  entry   = T 日 open (信号取 T-1 状态), 滑点 0.15% 单边并入 COSTS_ROUNDTRIP
-            fill_mode=next_open is frozen. same_close / same_1430 and
-            14:30 entry filters (max_open_to_1430_pct / near_limit_buffer_pct)
-            are experiment-only. Live / UI must leave them unset.
-  hold    = 3 交易日, close 出, 0.3% 往返
+  hold    = 3 交易日
   slots   = 4 x POSITION_PCT 0.25 (sat sleeve ~100%; 12.5% of NAV at 50/50)
 
 Truth doc: docs/backtests/state-bucket-algo-2026-08-31.md §7
+Clock unification: docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md
 """
 from __future__ import annotations
 
@@ -286,6 +289,33 @@ def _load_1430_closes(start: str, end: str) -> dict[str, dict[str, float]]:
     return _load_bar5_closes(start, end, ("1430",)).get("1430") or {}
 
 
+def _load_bar5_hl(start: str, end: str) -> dict[str, dict[str, tuple[float, float]]]:
+    """{ts_code: {date: (max_high, min_low)}} over bars with trade_time <= '1430'.
+
+    The 14:30-knowable amplitude input (H-SAT-RANK honest live proxy). Empty if
+    the table is missing or coverage is absent.
+    """
+    out: dict[str, dict[str, tuple[float, float]]] = defaultdict(dict)
+    try:
+        s = get_settings()
+        conn = psycopg.connect(s.database_url)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ts_code, trade_date, max(high), min(low) FROM bar_5min "
+            "WHERE trade_time <= '1430' AND trade_date >= %s AND trade_date <= %s "
+            "AND high IS NOT NULL AND low IS NOT NULL "
+            "GROUP BY ts_code, trade_date",
+            (start, end),
+        )
+        for ts, d, h, low in cur.fetchall():
+            ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+            out[str(ts)][ds] = (float(h), float(low))
+        conn.close()
+    except Exception:
+        return {}
+    return {t: dict(m) for t, m in out.items()}
+
+
 def _intraday_px(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> float | None:
     by = ctx.get("px_by_hhmm") or {}
     px = (by.get(hhmm) or {}).get(ts, {}).get(day)
@@ -344,6 +374,7 @@ def load_sgap_context(start: str, end: str) -> dict[str, Any]:
         "feat_cache": {},
         "px_by_hhmm": px_by_hhmm,
         "px_1430": px_by_hhmm.get("1430") or {},
+        "px_hl_1430": _load_bar5_hl(w_start, end),
     }
 
 
@@ -528,33 +559,32 @@ def replay_sgap_from_context(
     """Replay S-gap on a preloaded context. Positions start empty at ``start``.
 
     fill_mode:
-      next_open (frozen): yesterday S-gap → today open.
+      next_open (frozen baseline): yesterday S-gap → today open.
       same_close (experiment): today's S-gap → today's close.
-      same_1430 (experiment): today's S-gap → bar_5min close at fill_hhmm
-      (default 1430). Do not pass same_* from Live/UI.
+      same_1430 (LIVE habit clock, since 2026-09-11): today's S-gap → bar_5min
+      close at fill_hhmm (default 1430). Live / audit / paper pass the habit
+      params below; the frozen next_open callers leave them unset.
 
-    fill_hhmm: 5-minute bar-end time used with same_1430 (e.g. 1330, 1400, 1500).
-    exit_hhmm: experiment-only body-exit print (e.g. 1000, 1430). None = daily close.
-      Live / UI must leave this None.
+    fill_hhmm: 5-minute bar-end time used with same_1430 (habit: "1430").
+    exit_hhmm: body-exit print (habit: "1430"). None = daily close (frozen).
     exit_day_trail_pct: experiment-only day-3 conditional-order trail (e.g. 0.02 =
       sell when a 5-minute bar prints 2% below the exit-day running high, else
       fall back to exit_hhmm/close). Series come from ctx["d3trail_series"].
-      Live / UI must leave this None.
+      REJECTED (sat-exit-d3trail); Live keeps None.
 
-    max_open_to_1430_pct / near_limit_buffer_pct: experiment-only C1/C2
-    filters on same_1430.     min_open_to_1430_pct: experiment-only C3 fade
-    filter (skip when 1430/open-1 < -X). max_t1_turnover_mult: experiment-only
-    CHURN filter (skip when T-1 amount > X the trailing average, fully known
-    at fill). Live / UI must leave them None.
+    max_open_to_1430_pct: habit C1 filter (skip when 1430/open-1 > 3%), Live=0.03.
+    near_limit_buffer_pct: experiment-only C2.
+    min_open_to_1430_pct: experiment-only C3 fade (skip when 1430/open-1 < -X).
+    max_t1_turnover_mult: experiment-only CHURN filter. Live leaves C2/C3/CHURN None.
 
-    rank_key: experiment-only S-gap ranking for same_1430 (H1). None = full-day
-      amplitude ascending (frozen; uses the full daily bar, optimistic for a
-      14:30 decision). "gap_asc" = same-day gap% ascending (known at open).
-      "absrunup_asc" = |fill print / open - 1| ascending (known at fill).
-      Names missing the fill print rank last. Live / UI must leave this None.
+    rank_key: S-gap ranking for same_1430. None = full-day amplitude ascending
+      (the OLD lookahead key; only frozen/experiment callers use it). The LIVE
+      habit key is "amp_1430" = amplitude knowable at 14:30 (max high − min low
+      over bar_5min bars <= 14:30, / 14:30 print; zero lookahead). Other
+      experiment keys: "gap_asc", "absrunup_asc", "stage", "stage_prev", "stage_1430".
+      Names missing the fill print rank last.
 
     r_wide: experiment-only R-wide breadth gate (H4). None = frozen 0.5.
-      Live / UI must leave this None.
     """
     if fill_mode not in VALID_FILL_MODES:
         raise ValueError(f"fill_mode must be one of {VALID_FILL_MODES}, got {fill_mode!r}")
@@ -589,7 +619,14 @@ def replay_sgap_from_context(
             raise ValueError("near_limit_buffer_pct must be > 0")
     if rank_key is not None and fill_mode != FILL_SAME_1430:
         raise ValueError("rank_key requires fill_mode=same_1430")
-    if rank_key is not None and rank_key not in ("gap_asc", "absrunup_asc"):
+    if rank_key is not None and rank_key not in (
+        "gap_asc",
+        "absrunup_asc",
+        "stage",
+        "stage_prev",
+        "stage_1430",
+        "amp_1430",
+    ):
         raise ValueError(f"unknown rank_key {rank_key!r}")
     r_wide_threshold = R_WIDE_THRESHOLD if r_wide is None else float(r_wide)
     if not 0.0 < r_wide_threshold < 1.0:
@@ -700,6 +737,47 @@ def replay_sgap_from_context(
                 ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts]["amp"])
             elif rank_key == "gap_asc":
                 ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts].get("gap", 0))
+            elif rank_key in ("stage", "stage_prev", "stage_1430"):
+                # H-SAT-RANK: keep the amp top-qn bucket, reorder it by lifecycle
+                # stage (easy risers first). Label series variants:
+                #   stage       decision day's daily close (PASSed replica; lookahead)
+                #   stage_prev  stops at the prior session (over-conservative)
+                #   stage_1430  prior sessions + today's 14:30 print (what Live did)
+                _by_amp = sorted(gap_stocks, key=lambda ts: feat_all[ts]["amp"])
+                _qn = max(1, len(_by_amp) // bucket_q) if _by_amp else 0
+                _mode = rank_key
+
+                def _stage_key(
+                    ts: str, _day: str = day, _m: str = _mode, _feat: dict = feat_all
+                ) -> tuple:
+                    di = date_idx.get(ts, {}).get(_day, -1)
+                    series = per_ts.get(ts)
+                    closes: list[float] = []
+                    if series and di >= 0:
+                        upto = di + 1 if _m == "stage" else di
+                        closes = [float(r["close"]) for r in series[:upto] if r.get("close")]
+                    if _m == "stage_1430":
+                        px = _intraday_px(ctx, ts, _day, fill_hhmm)
+                        if px and px > 0:
+                            closes.append(float(px))
+                    lab = stage_labels(closes) if len(closes) >= 61 else None
+                    return (stage_tier(lab), _feat[ts]["amp"])
+
+                ranked = sorted(_by_amp[:_qn], key=_stage_key) + _by_amp[_qn:]
+            elif rank_key == "amp_1430":
+                # Live-honest ranking: amplitude knowable at the 14:30 decision,
+                # built from bar_5min bars with trade_time <= 14:30. Names without
+                # a 14:30 print / intraday bars rank last (blind).
+                _hl = ctx.get("px_hl_1430") or {}
+
+                def _proxy_amp(ts: str, _day: str = day, _m: dict = _hl) -> tuple:
+                    px = _intraday_px(ctx, ts, _day, "1430")
+                    hl = (_m.get(ts) or {}).get(_day)
+                    if not px or px <= 0 or not hl:
+                        return (1, float("inf"))
+                    return (0, float(hl[0] - hl[1]) / float(px))
+
+                ranked = sorted(gap_stocks, key=_proxy_amp)
             else:  # absrunup_asc: |fill print / open - 1|, missing print ranks last
                 def _abs_runup(ts: str, _day: str = day) -> float:
                     di = date_idx.get(ts, {}).get(_day, -1)
@@ -1011,6 +1089,7 @@ def build_sgap_timeline(
     exit_hhmm: str | None = None,
     max_open_to_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
+    rank_key: str | None = None,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -1018,8 +1097,10 @@ def build_sgap_timeline(
              openPositions: [...], summary: {...}}.
     skip_t1_limit: drop candidates that closed limit-up on T-1 (executable口径).
     pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
-    protect_stop_pct / trail_after_body_pct / fill_mode / 14:30 filters:
-    experiment-only; live UI must leave fill_mode at next_open and the rest None.
+    Frozen baseline callers keep fill_mode=next_open and the rest None.
+    Live habit callers pass fill_mode="same_1430", fill_hhmm="1430",
+    exit_hhmm="1430", max_open_to_1430_pct=0.03, rank_key="amp_1430".
+    protect_stop_pct / trail_after_body_pct remain experiment-only.
     """
     ctx = load_sgap_context(start, end)
     return replay_sgap_from_context(
@@ -1042,6 +1123,7 @@ def build_sgap_timeline(
         exit_hhmm=exit_hhmm,
         max_open_to_1430_pct=max_open_to_1430_pct,
         near_limit_buffer_pct=near_limit_buffer_pct,
+        rank_key=rank_key,
     )
 
 

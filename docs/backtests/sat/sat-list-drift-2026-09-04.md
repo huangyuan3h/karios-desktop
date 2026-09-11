@@ -38,3 +38,12 @@
 cd services/data-sync-service
 PYTHONPATH=src:scripts python3 scripts/diag_sat_list_drift.py
 ```
+
+---
+
+## Addendum（2026-09-11 · 时钟统一）
+
+本页当时的结论是「排名前视只值 ~0.14pp/笔，Live 保持现任」。**2026-09-11 已改用 14:30 可得振幅
+（`amp_1430`）**，结果不但没有因去掉前视而变差，三窗还略升（OOS2 +0.4 / train +9.0 / valid +6.6pt）。
+本页的「14:30-proxy 残差」至此关闭——Live 与回测用同一份 `bar_5min` ≤14:30 输入。
+见 [sat-clock-unify-1430](sat-clock-unify-1430-2026-09-11.md)。

@@ -857,6 +857,10 @@ def _get_or_build_timeline(
                 fill_hhmm="1430",
                 exit_hhmm=sat_exit,
                 max_open_to_1430_pct=c1_pct,
+                # Habit line (14:30 clock) ranks by the 14:30-knowable amplitude
+                # so the curve matches Live (zero lookahead). Frozen default
+                # (next_open) keeps the original full-day ranking.
+                rank_key="amp_1430" if sat_fill == "same_1430" else None,
             )
             built = build_twin_star_timeline(
                 core_rows=result["rows"],

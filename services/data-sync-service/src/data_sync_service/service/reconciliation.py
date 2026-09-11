@@ -294,10 +294,10 @@ def run_and_persist(day: str, *, window: str = "valid", end_date: str | None = N
 
 
 def _registry_holdings_on(day: str) -> dict[str, dict]:
-    """symbol -> registry row for holdings open on ``day`` (real book).
+    """symbol -> registry row for holdings open on ``day`` (legacy real book).
 
-    The user's ACTUAL positions (watchlist registry, positionPct > 0) — the
-    behavior audit compares these against the backtest "should hold" set.
+    Current-state watchlist registry, positionPct > 0. Kept as the fallback
+    when ``user_trades`` has no records for the window.
     """
     from data_sync_service.db.watchlist_automation import list_registry
 
@@ -312,6 +312,62 @@ def _registry_holdings_on(day: str) -> dict[str, dict]:
             held = False
         if held:
             out[sym] = row
+    return out
+
+
+def _load_user_trades(day: str) -> list[tuple]:
+    """Actual recorded fills with trade_date <= ``day`` (patchable seam)."""
+    from data_sync_service.db import get_connection
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT symbol, side, trade_date, price, position_pct "
+                "FROM user_trades WHERE trade_date <= %s "
+                "ORDER BY trade_date, id",
+                (day,),
+            )
+            return list(cur.fetchall())
+
+
+def _real_holdings_on(day: str) -> dict[str, dict]:
+    """symbol -> row for the user's REAL positions open on ``day``.
+
+    Reconstructed from ``user_trades`` (BUY/ADD open, SELL close) so historical
+    audits stay correct after a position is sold — unlike the current-state
+    registry. Falls back to ``_registry_holdings_on`` when there are no trade
+    records (pre-2026-08-11 history / tests).
+    """
+    try:
+        rows = _load_user_trades(day)
+    except Exception:  # noqa: BLE001
+        return _registry_holdings_on(day)
+    if not rows:
+        return _registry_holdings_on(day)
+    out: dict[str, dict] = {}
+    for sym, side, trade_date, price, pct in rows:
+        s = str(sym or "").upper()
+        if not s:
+            continue
+        side_u = str(side or "").upper()
+        entry = trade_date.isoformat() if hasattr(trade_date, "isoformat") else str(trade_date)
+        if side_u == "BUY":
+            out[s] = {
+                "symbol": s,
+                "positionPct": float(pct) if pct is not None else None,
+                "costPrice": float(price) if price is not None else None,
+                "entryDate": entry,
+            }
+        elif side_u == "ADD":
+            prev = out.get(s) or {}
+            out[s] = {
+                "symbol": s,
+                "positionPct": float(pct) if pct is not None else prev.get("positionPct"),
+                "costPrice": float(price) if price is not None else prev.get("costPrice"),
+                "entryDate": prev.get("entryDate") or entry,
+            }
+        elif side_u == "SELL":
+            out.pop(s, None)
     return out
 
 
@@ -331,6 +387,7 @@ def _leg_ctx(day: str) -> dict[str, Any]:
     pick: str | None = None
     sat_ts: set[str] = set()
     book_ts: set[str] = set()
+    push_ts: set[str] = set()
     try:
         from data_sync_service.service.multi_asset_sleeve import _pick as sleeve_pick
 
@@ -341,15 +398,20 @@ def _leg_ctx(day: str) -> dict[str, Any]:
     try:
         from data_sync_service.service.twin_star_daily import (
             live_sat_ts_codes,
+            pushed_sat_ts,
             sat_book_ts_codes,
         )
 
         d = _date.fromisoformat(day[:10])
         sat_ts = set(live_sat_ts_codes(d))
         book_ts = set(sat_book_ts_codes(d))
+        # Signal-sanctioned names: the actual 14:20-14:35 pushed candidates over
+        # the holding window. A real holding that appears here is following the
+        # signal, not "off-book", even if the coarse replay disagrees.
+        push_ts = set(pushed_sat_ts(d))
     except Exception:  # noqa: BLE001
         pass
-    return {"pick": pick, "sat_ts": sat_ts, "book_ts": book_ts}
+    return {"pick": pick, "sat_ts": sat_ts, "book_ts": book_ts, "push_ts": push_ts}
 
 
 def reconcile_registry(
@@ -359,8 +421,9 @@ def reconcile_registry(
     """BEHAVIOR AUDIT (2026-08-13): the user's REAL holdings vs the S-3
     backtest "should hold" set for one trading day.
 
-    Unlike reconcile_day (paper book), this compares the watchlist registry
-    (the user's actual buys/sells) against the engine's end-of-day snapshot:
+    Unlike reconcile_day (paper book), this compares the user's REAL trades
+    (``user_trades`` reconstructed as-of ``day``; registry fallback) against the
+    engine's end-of-day snapshot:
 
       - ``extra``  → CORE-leg holding the backtest does NOT hold:
         · backtest never entered it  → "买了不该买"
@@ -392,8 +455,9 @@ def reconcile_registry(
     pick = (leg or {}).get("pick")
     sat_ts: set[str] = set((leg or {}).get("sat_ts") or set())
     book_syms = {_sym_from_ts(ts) for ts in ((leg or {}).get("book_ts") or set())}
+    push_syms = {_sym_from_ts(ts) for ts in ((leg or {}).get("push_ts") or set())}
 
-    real = _registry_holdings_on(day)
+    real = _real_holdings_on(day)
     markets: dict[str, Any] = {}
     for market in ("CN", "HK"):
         cfg = _mk_config(market, start, end)
@@ -431,7 +495,11 @@ def reconcile_registry(
             }
             book = holding_book(mode, pick, market, s, sat_ts) if leg is not None else "s3"
             if book == "sat":
-                sat_extra_list.append({**item, "kind": "sat_leg"})
+                # Only flag as off-book when the signal never pushed this name in
+                # the holding window. A pushed holding is following the signal;
+                # the coarse engine replay diverging is not the user's error.
+                if s not in push_syms:
+                    sat_extra_list.append({**item, "kind": "sat_leg"})
             else:
                 extra_list.append({
                     **item,
@@ -451,9 +519,12 @@ def reconcile_registry(
             }
             for s in sorted(expect - set(in_market))
         ]
-        # Satellite leg: engine book should-hold vs actually held.
+        # Satellite leg should-hold vs actually held. When the push log exists,
+        # only signal-sanctioned names count — you cannot "miss" a name the
+        # 14:20 screen never offered. Falls back to the engine book otherwise.
+        sat_pool = (book_syms & push_syms) if push_syms else book_syms
         sat_expect = {
-            s for s in book_syms
+            s for s in sat_pool
             if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
         } if leg is not None else set()
         sat_missing_list = [{"symbol": s} for s in sorted(sat_expect - set(in_market))]

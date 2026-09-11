@@ -1,0 +1,309 @@
+{
+  "tag": "sat-rank-1430-2026-09-11",
+  "protocol": "habit caliber C1 3% same_1430 body=3 day-3 14:30 exit clip4; frozen pick-strong trail8; opp_50. Variants differ ONLY in rank key. rank_amp_1430 uses bar_5min bars trade_time<=14:30 (no lookahead).",
+  "variants": [
+    {
+      "id": "rank_amp",
+      "label": "全天振幅 (current backtest)",
+      "rank_key": null
+    },
+    {
+      "id": "rank_amp_1430",
+      "label": "14:30可得振幅 (Live honest)",
+      "rank_key": "amp_1430"
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 10.8,
+        "max_dd": 18.5,
+        "sharpe": 0.5
+      },
+      "variants": {
+        "rank_amp": {
+          "label": "全天振幅 (current backtest)",
+          "rank_key": null,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 178.4,
+            "max_dd": 4.6,
+            "sharpe": 5.64
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 85.3,
+            "max_dd": 16.9,
+            "sharpe": 2.72
+          },
+          "delta_core_pt": 74.5,
+          "delta_core_sharpe": 2.22,
+          "delta_core_dd": -1.6,
+          "fillCount": 288,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "rank_amp_1430": {
+          "label": "14:30可得振幅 (Live honest)",
+          "rank_key": "amp_1430",
+          "sat": {
+            "n_days": 254,
+            "total_pct": 171.6,
+            "max_dd": 9.3,
+            "sharpe": 5.49
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 85.7,
+            "max_dd": 16.7,
+            "sharpe": 2.74
+          },
+          "delta_core_pt": 74.9,
+          "delta_core_sharpe": 2.24,
+          "delta_core_dd": -1.8,
+          "fillCount": 266,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.4,
+          "delta_base_sharpe": 0.02,
+          "delta_base_dd": -0.2
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 36.4,
+        "max_dd": 7.2,
+        "sharpe": 2.65
+      },
+      "variants": {
+        "rank_amp": {
+          "label": "全天振幅 (current backtest)",
+          "rank_key": null,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 49.9,
+            "max_dd": 3.6,
+            "sharpe": 4.61
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 50.7,
+            "max_dd": 6.3,
+            "sharpe": 4.1
+          },
+          "delta_core_pt": 14.3,
+          "delta_core_sharpe": 1.45,
+          "delta_core_dd": -0.9,
+          "fillCount": 132,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "rank_amp_1430": {
+          "label": "14:30可得振幅 (Live honest)",
+          "rank_key": "amp_1430",
+          "sat": {
+            "n_days": 128,
+            "total_pct": 68.2,
+            "max_dd": 5.5,
+            "sharpe": 4.93
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 59.7,
+            "max_dd": 6.3,
+            "sharpe": 4.47
+          },
+          "delta_core_pt": 23.3,
+          "delta_core_sharpe": 1.82,
+          "delta_core_dd": -0.9,
+          "fillCount": 128,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 9.0,
+          "delta_base_sharpe": 0.37,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 86.0,
+        "max_dd": 17.8,
+        "sharpe": 2.84
+      },
+      "variants": {
+        "rank_amp": {
+          "label": "全天振幅 (current backtest)",
+          "rank_key": null,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 10.8,
+            "max_dd": 8.2,
+            "sharpe": 1.52
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 84.4,
+            "max_dd": 17.8,
+            "sharpe": 3.05
+          },
+          "delta_core_pt": -1.6,
+          "delta_core_sharpe": 0.21,
+          "delta_core_dd": 0.0,
+          "fillCount": 60,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "rank_amp_1430": {
+          "label": "14:30可得振幅 (Live honest)",
+          "rank_key": "amp_1430",
+          "sat": {
+            "n_days": 112,
+            "total_pct": 19.0,
+            "max_dd": 5.3,
+            "sharpe": 2.18
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 91.0,
+            "max_dd": 17.8,
+            "sharpe": 3.2
+          },
+          "delta_core_pt": 5.0,
+          "delta_core_sharpe": 0.36,
+          "delta_core_dd": 0.0,
+          "fillCount": 56,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 6.6,
+          "delta_base_sharpe": 0.15,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "past_year": {
+      "core": {
+        "n_days": 257,
+        "total_pct": 132.5,
+        "max_dd": 17.8,
+        "sharpe": 2.28
+      },
+      "variants": {
+        "rank_amp": {
+          "label": "全天振幅 (current backtest)",
+          "rank_key": null,
+          "sat": {
+            "n_days": 257,
+            "total_pct": 62.8,
+            "max_dd": 5.6,
+            "sharpe": 3.34
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 131.5,
+            "max_dd": 17.8,
+            "sharpe": 2.48
+          },
+          "delta_core_pt": -1.0,
+          "delta_core_sharpe": 0.2,
+          "delta_core_dd": 0.0,
+          "fillCount": 204,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "rank_amp_1430": {
+          "label": "14:30可得振幅 (Live honest)",
+          "rank_key": "amp_1430",
+          "sat": {
+            "n_days": 257,
+            "total_pct": 93.0,
+            "max_dd": 5.5,
+            "sharpe": 3.85
+          },
+          "twin": {
+            "n_days": 257,
+            "total_pct": 152.3,
+            "max_dd": 17.8,
+            "sharpe": 2.71
+          },
+          "delta_core_pt": 19.8,
+          "delta_core_sharpe": 0.43,
+          "delta_core_dd": 0.0,
+          "fillCount": 196,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 20.8,
+          "delta_base_sharpe": 0.23,
+          "delta_base_dd": 0.0
+        }
+      }
+    },
+    "aligned": {
+      "core": {
+        "n_days": 253,
+        "total_pct": 131.0,
+        "max_dd": 19.5,
+        "sharpe": 2.32
+      },
+      "variants": {
+        "rank_amp": {
+          "label": "全天振幅 (current backtest)",
+          "rank_key": null,
+          "sat": {
+            "n_days": 253,
+            "total_pct": 54.2,
+            "max_dd": 5.8,
+            "sharpe": 2.88
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 136.3,
+            "max_dd": 18.2,
+            "sharpe": 2.57
+          },
+          "delta_core_pt": 5.3,
+          "delta_core_sharpe": 0.25,
+          "delta_core_dd": -1.3,
+          "fillCount": 192,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0
+        },
+        "rank_amp_1430": {
+          "label": "14:30可得振幅 (Live honest)",
+          "rank_key": "amp_1430",
+          "sat": {
+            "n_days": 253,
+            "total_pct": 71.6,
+            "max_dd": 6.5,
+            "sharpe": 3.16
+          },
+          "twin": {
+            "n_days": 253,
+            "total_pct": 149.6,
+            "max_dd": 17.8,
+            "sharpe": 2.72
+          },
+          "delta_core_pt": 18.6,
+          "delta_core_sharpe": 0.4,
+          "delta_core_dd": -1.7,
+          "fillCount": 184,
+          "skipNoPrint1430": 0,
+          "delta_base_pt": 13.3,
+          "delta_base_sharpe": 0.15,
+          "delta_base_dd": -0.4
+        }
+      }
+    }
+  },
+  "as_of": "2026-09-11T07:15:56+00:00"
+}

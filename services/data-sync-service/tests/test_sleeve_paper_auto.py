@@ -59,19 +59,23 @@ def _fill(day: str = "2026-08-20") -> dict:
     }
 
 
-@pytest.fixture(autouse=True)
-def _cleanup():
-    yield
+def _purge_test_rows() -> None:
     from data_sync_service.db import get_connection
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM paper_trades WHERE symbol = %s "
-                "AND (why_at_entry LIKE %s OR why_at_entry LIKE %s)",
-                (TEST_SYMBOL, "test sleeve leg%", "multi-sleeve%"),
-            )
+            cur.execute("DELETE FROM paper_trades WHERE symbol = %s", (TEST_SYMBOL,))
         conn.commit()
+
+
+@pytest.fixture(autouse=True)
+def _cleanup():
+    # Purge before AND after: other test modules also touch ETF:513100 and
+    # random test ordering otherwise leaves an open leg that turns this
+    # module's BUY into a no-op (test-order pollution).
+    _purge_test_rows()
+    yield
+    _purge_test_rows()
 
 
 @pytest.mark.requires_postgres

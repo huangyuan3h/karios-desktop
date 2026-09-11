@@ -14,8 +14,25 @@ re-logging idempotent.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from data_sync_service.db import get_connection
 from data_sync_service.db._ensure_guard import ensure_once
+
+# Canonical decision snapshot window (Asia/Shanghai): the 14:20 reminder /
+# 14:30 buy. Later ticks (15:00 full-day tape) must not overwrite the list the
+# user actually acted on, so only this window is persisted.
+_DECISION_WINDOW_MIN = (14 * 60) + 20
+_DECISION_WINDOW_MAX = (14 * 60) + 35
+
+
+def _in_decision_window(snapshot_at) -> bool:
+    try:
+        t = datetime.fromisoformat(str(snapshot_at))
+    except (TypeError, ValueError):
+        return False
+    mins = t.hour * 60 + t.minute
+    return _DECISION_WINDOW_MIN <= mins <= _DECISION_WINDOW_MAX
 
 TABLE_NAME = "sat_push_log"
 
@@ -46,6 +63,26 @@ def ensure_table() -> None:
             conn.commit()
 
     ensure_once(TABLE_NAME, _impl)
+
+
+def list_candidates(dates: list[str]) -> set[str]:
+    """ts_codes pushed as ``candidates`` on the given trade dates.
+
+    Operational truth for the behavior audit's satellite expected set: the
+    names the 14:20-14:35 screen actually told the user to buy. Empty when the
+    table has no rows for those dates (pre-2026-09-11 history).
+    """
+    if not dates:
+        return set()
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT DISTINCT ts_code FROM {TABLE_NAME} "
+                "WHERE trade_date = ANY(%s) AND slot = 'candidates'",
+                (list(dates),),
+            )
+            return {str(r[0]) for r in cur.fetchall()}
 
 
 def _date(s):
@@ -83,6 +120,10 @@ def _log_push(screen: dict) -> int:
     gate = screen.get("gateOpen")
     breadth = _num(screen.get("breadth"))
     snap = screen.get("snapshotAt")
+    if not _in_decision_window(snap):
+        # Only the 14:20-14:35 decision tape is canonical; skip overnight /
+        # post-close rebuilds so push->fill auditing sees the acted-on list.
+        return 0
     vals = []
     for slot in ("candidates", "alternates", "blocked", "skippedC1"):
         for row in screen.get(slot) or []:
