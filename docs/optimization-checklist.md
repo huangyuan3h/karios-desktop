@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
-> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-155`（重号见文末）。
-> **正文 0 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-173`（重号见文末）。
+> **正文 12 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,9 +18,61 @@
 
 ---
 
-## 未完成（1 条 · OPT-156 新立）
+## 未完成（12 条 · 2026-09-11 工程盘点立）
 
-| OPT-156 | [ ] stock_dailybasic 2023-12-29→2024-08-01 七个月空洞回填 + trade_calendar SSE 2023 年前补齐（V2 发现：市值快照断档，G1/G2/G3 的 2024Q1 队列整段缺失；回填约 140 个交易日，tushare daily_basic 按日即可） | — |
+> 来源：2026-09-11 工程健康盘点。**一 OPT 一会话，只改列出的范围，补测试，不扩 scope。**
+> 顺序建议：A → B →（按需）C/D；E 策略实现准确度建议与 B 同期。以下仅登记计划，未开工。
+
+### A 仓库卫生（高杠杆低风险）
+
+| OPT | 状态 | 范围 / 验收 |
+|-----|------|-------------|
+| OPT-162 | [ ] | **工作区 WIP 切分提交**：当前 32 文件 / 613 行未提交（时钟统一 `state_bucket_track`、`reconciliation`、`twin_star_*` 等）按主题切分提交。验收：`git status` 干净、历史可按主题回溯（**需用户许可后才 commit**） |
+
+### B 质量护栏（棘轮，防回退）
+
+| OPT | 状态 | 范围 / 验收 |
+|-----|------|-------------|
+| OPT-163 | [ ] | **pyright 警告棘轮**：`pyproject` 现把 `report{ArgumentType,OptionalSubscript,OptionalIterable,OptionalMemberAccess,GeneralTypeIssues,AttributeAccessIssue}` 降为 warning。先统计基线数，逐模块转 error（engine/routes/paper 优先）。验收：warning 数单向下行，CI 保持绿 |
+| OPT-164 | [ ] | **CI 格式门**：加 `ruff format --check`（data-sync-service）+ `prettier --check`。先 `--write` 修现状。验收：CI 绿且后续 PR 拦截格式漂移 |
+| OPT-165 | [ ] | **Alembic ↔ `db/*.py` CREATE_SQL parity 测试**：断言每个 `CREATE_*_SQL` 表都有对应 migration head 覆盖（AGENTS 手动同步改自动）。验收：新测试通过，故意删一列会红 |
+| OPT-166 | [ ] | **死代码 / coverage omit 收敛**：核删 `service/state_bucket_slice.py`（唯一消费者是 ruff-excluded research 脚本）及其 coverage omit 例外；engine 6 行死分支（H1 遗留候选）。验收：omit 列表缩短、测试仍绿 |
+
+### C 性能 / 数据（按需）
+
+| OPT | 状态 | 范围 / 验收 |
+|-----|------|-------------|
+| OPT-167 | [ ] | **热表索引 + 慢查询审计**：`bar_5min`(6.5GB)/`daily` EXPLAIN 关键查询、补缺失索引；前端 bundle 体积分析。验收：慢查询清单 + 索引前后耗时对比 |
+| OPT-168 | [ ] | **依赖刷新**：`pnpm outdated` + `uv lock`，分批升级 + 回归。验收：锁文件更新、全量测试绿、无 breaking |
+
+### D 产品 / 可观测（最低优先）
+
+| OPT | 状态 | 范围 / 验收 |
+|-----|------|-------------|
+| OPT-169 | [ ] | **UI 极简化美化**：按 `designs/ui-minimal-redesign.md`（拍板后从 designs 转 OPT）。验收：设计稿条目落地、前端测试绿 |
+| OPT-170 | [ ] | **健康聚合 / 告警巡检补强**：聚合 job 失败/数据新鲜度/熔断为单一 health 视图，巡检缺口。验收：缺口表 + 告警用例 |
+
+### E 策略实现准确度（2026-09-11 新增）
+
+> 把"前视/时钟/成本"那类事故（OPT-159 前视、14:30 时钟统一、OPT-154 滑点双计、OPT-157 qfq 混基准）从**人工审计**变成**机器护栏**。
+
+| OPT | 状态 | 范围 / 验收 |
+|-----|------|-------------|
+| OPT-171 | [ ] | **PiT / 前视回归护栏**：为所有选池/因子入口（`strategy_a1_voltarget.build_panel`、各 `incubate/*` 筛选、S-3 选股）加"调仓日可得性"单测（禁止本月值选本月票 / `.shift(-n)`）。验收：新增回归测试；伪造前视会红 |
+| OPT-172 | [ ] | **配方一致性 attestation 扩展**：在 H5（clip4 字面量跨层）基础上，把**卫星时钟（`same_1430`+C1 3%+第3日14:30）、成本（CN 30bps/HK 90bps）、fill 模式**做成单一源 + 漂移门，声明 Live==冻结。验收：改任一字面量测试红 + UI 展示 |
+| OPT-173 | [ ] | **回放黄金测试**：冻结小窗口 fixtures，断言回测引擎输出 bit-stable（重放保真）。验收：golden 文件对比测试进 CI |
+
+---
+
+### 刚完成（待归档）
+
+| OPT-160 | [x] 2026-09-12 · 运行产物去跟踪分类治理（111 文件 `git rm --cached`；`.gitignore` +4 规则 +`coverage_tmp.json`；README 再生来源表；报告测试 57 passed） | [2026-09-12-opt-160-artifact-untrack.md](archive/2026-09-12-opt-160-artifact-untrack.md) |
+| OPT-161 | [x] 2026-09-12 · 文档死链清零（根因：`opt-151/152` 归档被误放 `docs/optimization-checklist/archive/` → `git mv` 到 `docs/archive/`；`linkcheck` clean 173 文件） | — |
+
+| OPT-156 | [x] 2026-09-11 · stock_dailybasic 2023-12-29→2024-08-01 空洞回填（**实缺 2024-01~07**，140 个 A 股交易日/74.8 万行）+ trade_calendar SSE 补齐到 2005（+6575 行，4374 open days） | — |
+| OPT-157 | [x] 2026-09-11 · CN `daily` 复权统一重建 + A 股日线回填 2007 + 财报回填 2007–2017 + 两融空洞补全（原 close 是标准 qfq/陈旧基准/未复权混合，跨除权收益跳变；重建后 2007–2026 单一基准，全市场一致性 99.8%→100%，脚本 `backfill_cn_daily_history`/`rebuild_cn_daily_qfq`/`fix_daily_outliers`/`backfill_cn_financials_history`，备份 `daily_backup_20260911`） | [data-consistency-2026-09-11.md](backtests/data-consistency-2026-09-11.md) |
+| OPT-158 | [x] 2026-09-11 · 指数历史回补：`index_daily` 000300/000905/000001 等 5 指数经 `index_hist_extend.py --since 2005-01-01` 补 2005–2020（+20870 行），支撑真实市值加权 beta（DH-2） | [a1-voltarget-beta-2026-09-11.md](backtests/a1-voltarget-beta-2026-09-11.md) |
+| OPT-159 | [x] 2026-09-11 · P0-12 pilot 前视审计：`strategy_a1_voltarget.build_panel` 用本月末成交额选本月票（前视 ~+20pt/yr）→ 改上月末 as-of；沉淀纪律"选池必须调仓日可得"；同批 `diag_tenbagger` 审计为 as-of 正确 | [a1-voltarget-beta-2026-09-11.md](backtests/a1-voltarget-beta-2026-09-11.md) |
 
 | OPT-155 | [x] 2026-09-10 · ADV 冲击诊断（AUM ¥1000万 → 不 material，关闭；复活条件 ¥3000万+） | [2026-09-10-opt-155-adv-impact.md](archive/2026-09-10-opt-155-adv-impact.md) |
 
