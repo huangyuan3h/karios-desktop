@@ -226,6 +226,24 @@ def test_pure_env_scale_tolerates_whitespace() -> None:
     assert cfg._env_position_scale("uptrend") == pytest.approx(1.5)
 
 
+def test_pure_trend_guide_defaults_off() -> None:
+    # P0-12 DH trend-guide overlay: default OFF → zero behavior change.
+    cfg = _mk_config()
+    assert cfg.trend_guide_code == ""
+    assert cfg.trend_guide_ma == 200
+    assert cfg.trend_guide_stop_pct == 0.0
+    assert cfg.trend_guide_trail_pct == 0.0
+    cfg2 = _mk_config(
+        trend_guide_code="000905.SH", trend_guide_ma=60,
+        trend_guide_stop_pct=-3.0, trend_guide_trail_pct=-5.0,
+    )
+    assert cfg2.trend_guide_code == "000905.SH"
+    assert cfg2.trend_guide_ma == 60
+    assert cfg2.trend_guide_stop_pct == -3.0
+    assert cfg2.trend_guide_trail_pct == -5.0
+
+
+
 # ---------------------------------------------------------------------------
 # BacktestConfig.__post_init__ validation (one test per raise; the raises for
 # market / window / score_threshold / gates / trailing_stop_pct / rs_rank_min /

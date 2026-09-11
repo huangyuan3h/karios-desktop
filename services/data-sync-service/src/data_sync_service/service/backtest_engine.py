@@ -188,6 +188,17 @@ class BacktestConfig:
     # trend). State is computed causally per line calendar (data ≤ d-1) from
     # index_daily + cn_etf_share via risk_state_gate. Default off (HK/legacy).
     national_team_gate: bool = False
+    # P0-12 DH idea (2026-09-11, experimental default OFF): trend-guide overlay.
+    # A broad index's trend (close vs MA) acts as a DIRECTION guide that only
+    # TIGHTENS per-position stops when the index is BELOW its MA. E.g.
+    # trend_guide_code="000905.SH", ma=200, trail=-5, stop=-3 → on below-MA
+    # days the trailing/stop lines are clamped to be at least that tight.
+    # Causal: uses the index close vs MA as of the same session (known at the
+    # close when exits are decided). Defaults off → zero behavior change.
+    trend_guide_code: str = ""
+    trend_guide_ma: int = 200
+    trend_guide_stop_pct: float = 0.0   # 0 = off
+    trend_guide_trail_pct: float = 0.0  # 0 = off
     light_red_block: bool = False
     slippage_pct: float = 0.0
     trend_score_min: float = 0.0
@@ -660,6 +671,10 @@ class BacktestData:
             )
 
             self.national_team_by_day = national_team_state_for_calendar(self.calendar)
+        # P0-12 DH idea: index trend guide (below-MA days tighten stops).
+        self.guide_down_by_day: dict[str, bool] = {}
+        if config.trend_guide_code:
+            self.guide_down_by_day = _load_guide_trend(config)
         self.light_red_by_day: set[str] = set()
         if config.light_red_block and config.market == "CN":
             self.light_red_by_day = _load_light_red_days(config, self.calendar)
@@ -948,6 +963,40 @@ def _nav_for_day(
             ratio_a = (cp / aep) if (cp and aep and aep > 0) else 1.0
             mtm += a["position_pct"] * ratio_a
     return mtm
+
+
+def _load_guide_trend(config: BacktestConfig) -> dict[str, bool]:
+    """P0-12 DH trend guide: index BELOW its MA → True (tighten stops).
+
+    Causal: a day's value uses that day's index close vs the MA of closes up
+    to and including that day — both known at the session close, when exit
+    decisions are made. Loaded with a warm-up buffer so the MA is defined
+    from the window's first day.
+    """
+    ma = max(2, int(config.trend_guide_ma))
+    start = (date.fromisoformat(config.start_date) - timedelta(days=ma * 2 + 60)).isoformat()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT trade_date, close FROM index_daily WHERE ts_code=%s "
+                "AND trade_date >= %s AND trade_date <= %s AND close>0 "
+                "ORDER BY trade_date",
+                (config.trend_guide_code, start, config.end_date),
+            )
+            rows = cur.fetchall()
+    series = [(str(r[0]), float(r[1])) for r in rows if r[1] is not None]
+    if not series:
+        return {}
+    closes = [c for _d, c in series]
+    out: dict[str, bool] = {}
+    running = 0.0
+    for i, (d, c) in enumerate(series):
+        running += c
+        if i >= ma:
+            running -= closes[i - ma]
+        if i >= ma - 1:
+            out[d] = c < (running / ma)
+    return out
 
 
 def _load_regime_by_day(config: BacktestConfig, calendar: list[str]) -> dict[str, str]:
@@ -2703,6 +2752,13 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             else:
                 stop_i = config.stop_loss_pct
                 trail_i = config.trailing_stop_pct
+            # P0-12 DH trend guide: on below-MA index days, TIGHTEN (only) the
+            # exit lines — less negative == tighter.
+            if config.trend_guide_code and data.guide_down_by_day.get(day):
+                if config.trend_guide_stop_pct != 0:
+                    stop_i = max(stop_i, config.trend_guide_stop_pct)
+                if config.trend_guide_trail_pct != 0:
+                    trail_i = max(trail_i, config.trend_guide_trail_pct)
 
             reason = _pick_close_reason(
                 t=pos,
