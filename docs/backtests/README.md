@@ -94,6 +94,7 @@
 | [`factors/fund-sleeve-standalone-2026-09-12.md`](factors/fund-sleeve-standalone-2026-09-12.md) | X3 投资/应计 sleeve 独立化（月频 + 波动率层 + 容量/成本/OOS） | ⏸️ PARK（超额 +2.2%/年真实但 Sharpe 0.33/DD−58%，无可用风险层） |
 | [`factors/garp-sleeve-2026-09-12.md`](factors/garp-sleeve-2026-09-12.md) | GARP（质量+便宜）sleeve pilot（长史 17 年 × 三臂） | ❌ CLOSE（GARP≈value，质量无增量） |
 | [`factors/gtja191-l0-screen-2026-09-12.md`](factors/gtja191-l0-screen-2026-09-12.md) | GTJA 191 全集 L0（168 条 × 三窗；无新轴） | ❌ REJECT（同价量相关族，成本不可交易） |
+| [`factors/hk-alpha101-gtja191-l0-2026-09-12.md`](factors/hk-alpha101-gtja191-l0-2026-09-12.md) | HK（H 股）Alpha101+GTJA191 对照（269 条 × 三窗） | ❌ REJECT（同族复现但更差；非 A 股特有） |
 | [`factors/README.md`](factors/README.md) | **因子档案总台账**（101/191 + 全部历史因子一眼判定） | ✅ 索引 |
 
 ### 早期与专题（结论已定 · 有事才翻）

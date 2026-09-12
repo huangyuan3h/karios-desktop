@@ -345,6 +345,7 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ## 沉淀（近 5 条，余见 archive/README）
 
+| 2026-09-12 | P0-12 价量公式因子速筛（Alpha101/GTJA191/HK；含 X3 sleeve PARK、GARP CLOSE） | `archive/2026-09-12-factor-library-screens.md` |
 | 2026-09-11 | P0-11 财务质量（三表 16.5 万行/表 + 7 诊断 + P18 三臂回放，全关） | `archive/2026-09-11-p11-fin-quality.md` |
 | 2026-09-06 | P0-9 文档轨 D0–D5（backtests 分夹/checklist 双拆/数字单一源/路由统一/一页纸） | `archive/2026-09-06-docs-p09-agent-friendly.md` |
 | 2026-09-06 | P0-8 砖块结论 M1–M6（死因分类/存活律/吸收矩阵/平台表/指纹表） | `archive/2026-09-06-brick-laws-m1-m6.md` |

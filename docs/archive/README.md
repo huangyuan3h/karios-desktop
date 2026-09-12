@@ -44,6 +44,7 @@ docs/archive/
 | 2026-08-15 | §8 信号池 P1-P26 第一阶段 | [`2026-08-15-signal-pool-p1-p26.md`](./2026-08-15-signal-pool-p1-p26.md) | 10 项实验全拒收（P1-P8 技术形态 + P12 波动率动量 + P16-ST）——S-3 alpha = RS + 环境感知 + 纪律；待验证 14 项，下一候选 P11 行业中性 RS |
 | 2026-09-02 | P0-0 刀 7 | [`2026-09-02-twin-star-ops-knife7-watchlist-flow.md`](./2026-09-02-twin-star-ops-knife7-watchlist-flow.md) | Watchlist 日流程落地；sat/S-3 按标的拆账；S-3 缺票不当双子星交易铃 |
 | 2026-09-06 | P0-8 砖块结论 M1–M6 | [`2026-09-06-brick-laws-m1-m6.md`](./2026-09-06-brick-laws-m1-m6.md) | 死因七类/存活律S1–S5/吸收矩阵/参数四形状/指纹表全进 first-principles；新提案三道自查 |
+| 2026-09-12 | P0-12 价量公式因子速筛 | [`2026-09-12-factor-library-screens.md`](./2026-09-12-factor-library-screens.md) | Alpha101/GTJA191/HK 三组：统计有微弱信号、成本后归零、无新轴；建 `backtests/factors/README.md` 台账；该部分关闭 |
 
 ---
 

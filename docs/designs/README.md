@@ -38,6 +38,7 @@
 | [`x3-sleeve-standalone-prereg-2026-09-12.md`](./x3-sleeve-standalone-prereg-2026-09-12.md) | **P0-12 X3 独立化预注册**；结果 [fund-sleeve-standalone](../backtests/factors/fund-sleeve-standalone-2026-09-12.md)：超额 **+2.2%/年**（OOS +2.6%、容量 19~177 亿），但 Sharpe 0.33 / DD −58%，**波动率层无效 → `PARK`**（smart-beta 边非引擎） |
 | [`garp-sleeve-prereg-2026-09-12.md`](./garp-sleeve-prereg-2026-09-12.md) | **P0-12 GARP 预注册**；结果 [garp-sleeve](../backtests/factors/garp-sleeve-2026-09-12.md)：GARP +2.6%/年 ≈ value 臂（corr +0.93）、quality 只 +0.5% → **`CLOSE`（质量无增量）**，保留慢价值 V1 |
 | [`gtja191-screen-prereg-2026-09-12.md`](./gtja191-screen-prereg-2026-09-12.md) | **GTJA191 L0 预注册**；结果 [gtja191-l0-screen](../backtests/factors/gtja191-l0-screen-2026-09-12.md)：0 PASS/16 候选同族/152 拒，点名的抗跌/DMI/趋势显著性新轴全拒 → **REJECT（无新轴）** |
+| [`hk-factor-screen-prereg-2026-09-12.md`](./hk-factor-screen-prereg-2026-09-12.md) | **HK 对照预注册**；结果 [hk-alpha101-gtja191-l0](../backtests/factors/hk-alpha101-gtja191-l0-2026-09-12.md)：269 条 0 PASS/15 候选/252 拒，同一价量家族复现但更差 → 结论**非 A 股特有**；US/加拿大未测 |
 
 ### API / 外部打通
 
