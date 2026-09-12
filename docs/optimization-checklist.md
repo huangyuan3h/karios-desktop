@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
 > 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-173`（重号见文末）。
-> **正文 6 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> **正文 5 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 未完成（6 条 · 2026-09-11 工程盘点立）
+## 未完成（5 条 · 2026-09-11 工程盘点立）
 
 > 来源：2026-09-11 工程健康盘点。**一 OPT 一会话，只改列出的范围，补测试，不扩 scope。**
 > 顺序建议：A → B →（按需）C/D；E 策略实现准确度建议与 B 同期。
@@ -30,7 +30,6 @@
 | OPT | 状态 | 范围 / 验收 |
 |-----|------|-------------|
 | OPT-163 | [ ] | **pyright 警告棘轮**：`pyproject` 现把 `report{ArgumentType,OptionalSubscript,OptionalIterable,OptionalMemberAccess,GeneralTypeIssues,AttributeAccessIssue}` 降为 warning。先统计基线数，逐模块转 error（engine/routes/paper 优先）。验收：warning 数单向下行，CI 保持绿 |
-| OPT-175 | [ ] | **coverage 余量修复**（OPT-165 发现）：门 88% 现仅 **88.05%**，太薄。给 P0-11 未测的 `service/fin_panel.py`（~200 stmt，0 测）补单测 / 或核减死码。验收：覆盖率回到 ≥89%，门 88 恢复安全垫 |
 
 ### C 性能 / 数据（按需）
 
@@ -54,6 +53,7 @@
 
 ### 刚完成（待归档）
 
+| OPT-175 | [x] 2026-09-12 · **coverage 余量**：88.05% → **88.93%**（门 88 恢复安全垫）；新增 `test_fin_panel`(12)/`test_cn_fin_statements_sync`(11)/`test_commodity_signals`(17)；全量 4345 passed | — |
 | OPT-171 | [x] 2026-09-12 · **PiT 前视护栏**：`build_panel` 拆出纯 `build_panel_from_px`；`tests/test_pit_no_lookahead.py` 钉死"上月流动性选集"契约 + 禁 `.shift(-` | — |
 | OPT-172 | [x] 2026-09-12 · **配方 attestation 扩展**：`state_bucket_track.COSTS_ROUNDTRIP` 改为从 `paper_cost_model` 派生（单一源）；attest CN 30bps / HK 90bps、回测成本==live、engine 用共享模型 | — |
 | OPT-173 | [x] 2026-09-12 · **回放黄金**：`tests/test_engine_golden.py` + `tests/golden/engine_summary.json` 冻结 `_summarize` 指标（`UPDATE_GOLDEN=1` 再生） | — |
