@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 TS_PATH = (
     Path(__file__).resolve().parents[3] / "packages" / "shared" / "src" / "schemas" / "twinStar.ts"
 )
@@ -77,3 +79,30 @@ def test_recipe_version_matches_paper_book() -> None:
     assert version == "clip4 v3.1"
     # The paper book records the same recipe family (UI badge + paper rows agree).
     assert pts.HABIT_RECIPE.startswith(version.split(" ")[0])
+
+
+# -- cost model (OPT-172) -------------------------------------------------
+
+
+def test_cost_model_frozen_literals() -> None:
+    """CN 30bps / HK 90bps round trip are the frozen live assumptions."""
+    from data_sync_service.service import paper_cost_model as pcm
+
+    assert pcm.round_trip_cost_pct("CN") == pytest.approx(0.0030)
+    assert pcm.round_trip_cost_pct("HK") == pytest.approx(0.0090)
+
+
+def test_satellite_backtest_cost_matches_live() -> None:
+    """Backtest satellite cost must equal the live CN paper-cost model."""
+    from data_sync_service.service import paper_cost_model as pcm
+    from data_sync_service.service import state_bucket_track as sbt
+
+    assert sbt.COSTS_ROUNDTRIP == pcm.round_trip_cost_pct("CN")
+
+
+def test_main_engine_uses_shared_cost_model() -> None:
+    """The engine must price off paper_cost_model, not a private copy."""
+    from data_sync_service.service import backtest_engine as be
+    from data_sync_service.service import paper_cost_model as pcm
+
+    assert be.round_trip_cost_pct is pcm.round_trip_cost_pct

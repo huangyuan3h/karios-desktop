@@ -27,9 +27,12 @@ import numpy as np
 import psycopg
 
 from data_sync_service.config import get_settings
+from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 
 POSITION_PCT = 0.25
-COSTS_ROUNDTRIP = 0.003
+# Single source for live + backtest (OPT-172): the satellite round-trip cost is
+# the CN paper-cost model (30bps), never a local copy that can drift.
+COSTS_ROUNDTRIP = round_trip_cost_pct("CN")
 BUCKET_Q = 3
 MAX_POS = 4
 BODY = 3
