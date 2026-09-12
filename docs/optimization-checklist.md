@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
 > 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-173`（重号见文末）。
-> **正文 9 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> **正文 6 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 未完成（9 条 · 2026-09-11 工程盘点立）
+## 未完成（6 条 · 2026-09-11 工程盘点立）
 
 > 来源：2026-09-11 工程健康盘点。**一 OPT 一会话，只改列出的范围，补测试，不扩 scope。**
 > 顺序建议：A → B →（按需）C/D；E 策略实现准确度建议与 B 同期。
@@ -46,20 +46,17 @@
 | OPT-169 | [ ] | **UI 极简化美化**：按 `designs/ui-minimal-redesign.md`（拍板后从 designs 转 OPT）。验收：设计稿条目落地、前端测试绿 |
 | OPT-170 | [ ] | **健康聚合 / 告警巡检补强**：聚合 job 失败/数据新鲜度/熔断为单一 health 视图，巡检缺口。验收：缺口表 + 告警用例 |
 
-### E 策略实现准确度（2026-09-11 新增）
+### E 策略实现准确度（2026-09-11 新增）✅ 全完成（OPT-171/172/173）
 
 > 把"前视/时钟/成本"那类事故（OPT-159 前视、14:30 时钟统一、OPT-154 滑点双计、OPT-157 qfq 混基准）从**人工审计**变成**机器护栏**。
-
-| OPT | 状态 | 范围 / 验收 |
-|-----|------|-------------|
-| OPT-171 | [ ] | **PiT / 前视回归护栏**：为所有选池/因子入口（`strategy_a1_voltarget.build_panel`、各 `incubate/*` 筛选、S-3 选股）加"调仓日可得性"单测（禁止本月值选本月票 / `.shift(-n)`）。验收：新增回归测试；伪造前视会红 |
-| OPT-172 | [ ] | **配方一致性 attestation 扩展**：在 H5（clip4 字面量跨层）基础上，把**卫星时钟（`same_1430`+C1 3%+第3日14:30）、成本（CN 30bps/HK 90bps）、fill 模式**做成单一源 + 漂移门，声明 Live==冻结。验收：改任一字面量测试红 + UI 展示 |
-| OPT-173 | [ ] | **回放黄金测试**：冻结小窗口 fixtures，断言回测引擎输出 bit-stable（重放保真）。验收：golden 文件对比测试进 CI |
 
 ---
 
 ### 刚完成（待归档）
 
+| OPT-171 | [x] 2026-09-12 · **PiT 前视护栏**：`build_panel` 拆出纯 `build_panel_from_px`；`tests/test_pit_no_lookahead.py` 钉死"上月流动性选集"契约 + 禁 `.shift(-` | — |
+| OPT-172 | [x] 2026-09-12 · **配方 attestation 扩展**：`state_bucket_track.COSTS_ROUNDTRIP` 改为从 `paper_cost_model` 派生（单一源）；attest CN 30bps / HK 90bps、回测成本==live、engine 用共享模型 | — |
+| OPT-173 | [x] 2026-09-12 · **回放黄金**：`tests/test_engine_golden.py` + `tests/golden/engine_summary.json` 冻结 `_summarize` 指标（`UPDATE_GOLDEN=1` 再生） | — |
 | OPT-165 | [x] 2026-09-12 · **schema parity 护栏**：`tests/test_schema_parity.py`（纯 migration-coverage + PG 列超集）；**抓到真 drift**——`system_events` 无 migration → 补 `0048_system_events`（head 0048）；全量 4298 passed | — |
 | OPT-166 | [x] 2026-09-12 · **死代码/omit 收敛**：`state_bucket_slice.py` 移出 `src/`→`scripts/`（无 src 引用，文档已更新），删 coverage omit；engine 6 候选行复核为防御 nil 守卫、保留 | — |
 | OPT-174 | [x] 2026-09-12 · **main 变绿 hotfix**：修 ruff 7 + pyright 7（`ruff check`/`pyright` 均 0 error；全量 4295 passed） | — |
