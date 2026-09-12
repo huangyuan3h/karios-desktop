@@ -35,16 +35,12 @@ SUB_PERIODS = [
 ]
 
 
-def build_panel(liq_min: float = 0.0) -> pd.DataFrame:
-    from data_sync_service.db import get_connection
+def build_panel_from_px(px: pd.DataFrame) -> pd.DataFrame:
+    """Pure transform of a daily frame -> monthly selection panel.
 
-    with get_connection() as conn:
-        px = pd.read_sql(
-            "SELECT ts_code, trade_date, close, pct_chg, amount FROM daily "
-            "WHERE trade_date >= '2006-01-01' AND close > 0 "
-            "AND (ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ' OR ts_code LIKE '%.BJ')",
-            conn, parse_dates=["trade_date"],
-        )
+    Split out of :func:`build_panel` so the point-in-time contract (prior
+    month's liquidity, never the same month's) is unit-testable without a DB.
+    """
     px = px[px["ts_code"].str[0].isin(list("0368489"))].sort_values(["ts_code", "trade_date"])
     px["ym"] = px["trade_date"].dt.to_period("M")
     px["r"] = px["pct_chg"] / 100
@@ -66,6 +62,20 @@ def build_panel(liq_min: float = 0.0) -> pd.DataFrame:
     ms = pd.DataFrame({"ym": mstart.index, "td": mstart.values}).merge(
         mvol, left_on="td", right_index=True)
     mo = mo.merge(ms[["ym", "mvol"]], on="ym", how="left")
+    return mo
+
+
+def build_panel(liq_min: float = 0.0) -> pd.DataFrame:
+    from data_sync_service.db import get_connection
+
+    with get_connection() as conn:
+        px = pd.read_sql(
+            "SELECT ts_code, trade_date, close, pct_chg, amount FROM daily "
+            "WHERE trade_date >= '2006-01-01' AND close > 0 "
+            "AND (ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ' OR ts_code LIKE '%.BJ')",
+            conn, parse_dates=["trade_date"],
+        )
+    mo = build_panel_from_px(px)
     if liq_min > 0:
         mo = mo[mo["liq"] >= liq_min]
     return mo
