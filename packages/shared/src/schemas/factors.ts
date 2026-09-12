@@ -6,7 +6,13 @@ export type FactorName = z.infer<typeof FactorNameSchema>;
 export const FactorDirectionSchema = z.enum(['short', 'long']);
 export type FactorDirection = z.infer<typeof FactorDirectionSchema>;
 
-export const FactorStatusSchema = z.enum(['pending', 'active', 'hit_target', 'hit_stop', 'expired']);
+export const FactorStatusSchema = z.enum([
+  'pending',
+  'active',
+  'hit_target',
+  'hit_stop',
+  'expired',
+]);
 export type FactorStatus = z.infer<typeof FactorStatusSchema>;
 
 export const FactorSignalSchema = z.object({

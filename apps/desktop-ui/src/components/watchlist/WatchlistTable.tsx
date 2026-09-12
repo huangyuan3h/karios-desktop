@@ -2,14 +2,7 @@
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronDown,
-  ChevronUp,
-  CircleX,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronUp, CircleX } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ColumnHeader } from '@/components/watchlist/ColumnHeader';
@@ -19,19 +12,9 @@ import {
 } from '@/components/watchlist/TradeActionDialog';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  blendAddCost,
-  tradeMarketForSymbol,
-  tradeSourceForItem,
-} from '@/lib/trade-recording';
-import {
-  invalidateUserTradesQueries,
-  recordUserTrade,
-} from '@/lib/queries/userTrades';
-import {
-  clusterExposureForSymbol,
-  useCorrelationStatusQuery,
-} from '@/lib/queries/backtest';
+import { blendAddCost, tradeMarketForSymbol, tradeSourceForItem } from '@/lib/trade-recording';
+import { invalidateUserTradesQueries, recordUserTrade } from '@/lib/queries/userTrades';
+import { clusterExposureForSymbol, useCorrelationStatusQuery } from '@/lib/queries/backtest';
 import { useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
@@ -46,9 +29,7 @@ import {
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
-import {
-  buildWatchlistRowMetrics,
-} from '@/lib/watchlist-metrics';
+import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import { shouldShowInWatchlistTable } from '@/lib/watchlist-table-filter';
 import { useStrategyMode } from '@/lib/strategy-settings';
@@ -245,10 +226,7 @@ export function WatchlistTable({
   const rsRanksQuery = useWatchlistRsRanksQuery(sortedItems.map((i) => i.symbol));
 
   const rowMetricsBySymbol = React.useMemo(() => {
-    const m = new Map<
-      string,
-      ReturnType<typeof buildWatchlistRowMetrics>
-    >();
+    const m = new Map<string, ReturnType<typeof buildWatchlistRowMetrics>>();
     for (const it of sortedItems) {
       m.set(
         it.symbol,
@@ -269,10 +247,7 @@ export function WatchlistTable({
     [sortedItems, trend],
   );
 
-  const sleeveExposurePct = React.useMemo(
-    () => buildSleeveExposurePct(sortedItems),
-    [sortedItems],
-  );
+  const sleeveExposurePct = React.useMemo(() => buildSleeveExposurePct(sortedItems), [sortedItems]);
 
   const correlationStatus = useCorrelationStatusQuery(true, true).data;
   const defensiveSleeveExposurePct = React.useMemo(
@@ -292,7 +267,15 @@ export function WatchlistTable({
       sleeveExposurePct,
     });
     return new Set(cands.map((c) => c.symbol));
-  }, [sortedItems, trend, rsRanksQuery.data, executionGate, mainlineAllow, sectorOutflowBlock, sleeveExposurePct]);
+  }, [
+    sortedItems,
+    trend,
+    rsRanksQuery.data,
+    executionGate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    sleeveExposurePct,
+  ]);
 
   const actionBySymbol = React.useMemo(() => {
     const m = new Map<string, string>();
@@ -465,18 +448,21 @@ export function WatchlistTable({
     [tradeDialog, tradeBusy, queryClient, applyTradeUpdate],
   );
 
-  const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {
-    const r = el.getBoundingClientRect();
-    const pad = 12;
-    const w = Math.min(width, Math.max(240, window.innerWidth - pad * 2));
-    const x = Math.max(pad, Math.min(window.innerWidth - w - pad, r.right - w));
-    const preferTop = r.top > 140;
-    const placement: 'top-end' | 'bottom-end' = preferTop ? 'top-end' : 'bottom-end';
-    const y = preferTop
-      ? Math.max(pad, r.top - 8)
-      : Math.min(window.innerHeight - pad, r.bottom + 8);
-    setTooltip({ open: true, x, y, w, placement, content });
-  }, []);
+  const showTooltip = React.useCallback(
+    (el: HTMLElement, content: React.ReactNode, width = 360) => {
+      const r = el.getBoundingClientRect();
+      const pad = 12;
+      const w = Math.min(width, Math.max(240, window.innerWidth - pad * 2));
+      const x = Math.max(pad, Math.min(window.innerWidth - w - pad, r.right - w));
+      const preferTop = r.top > 140;
+      const placement: 'top-end' | 'bottom-end' = preferTop ? 'top-end' : 'bottom-end';
+      const y = preferTop
+        ? Math.max(pad, r.top - 8)
+        : Math.min(window.innerHeight - pad, r.bottom + 8);
+      setTooltip({ open: true, x, y, w, placement, content });
+    },
+    [],
+  );
 
   const hideTooltip = React.useCallback(() => {
     setTooltip((prev) => (prev.open ? { ...prev, open: false } : prev));
@@ -900,7 +886,6 @@ export function WatchlistTable({
                       />
                     );
                   })}
-
                 </tbody>
               </table>
             </div>

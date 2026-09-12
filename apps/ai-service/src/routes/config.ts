@@ -249,7 +249,10 @@ configRoutes.post('/test', async (c) => {
       temperature: 0,
       maxOutputTokens: 8,
     });
-    return c.json({ ok: true, provider, modelId, reply: stripModelThinking(text).slice(0, 32) }, 200);
+    return c.json(
+      { ok: true, provider, modelId, reply: stripModelThinking(text).slice(0, 32) },
+      200,
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return c.json({ ok: false, error: msg }, 200);

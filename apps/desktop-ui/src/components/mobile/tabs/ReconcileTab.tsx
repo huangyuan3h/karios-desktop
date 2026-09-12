@@ -32,13 +32,19 @@ export function ReconcileTab() {
         {satExtraRows.length === 0 && satMissingRows.length === 0 ? ' · 一致' : ''}
       </div>
       {satExtraRows.map((e) => (
-        <div key={`sat-extra-${e.market}-${e.symbol}`} className="mt-1 truncate text-[var(--m-text-sm)] text-[var(--k-muted)]">
+        <div
+          key={`sat-extra-${e.market}-${e.symbol}`}
+          className="mt-1 truncate text-[var(--m-text-sm)] text-[var(--k-muted)]"
+        >
           账外持有 · <span className="font-mono">{e.symbol}</span>
           {e.name ? ` ${e.name}` : ''}
         </div>
       ))}
       {satMissingRows.map((m) => (
-        <div key={`sat-miss-${m.market}-${m.symbol}`} className="mt-1 truncate text-[var(--m-text-sm)] text-[var(--k-muted)]">
+        <div
+          key={`sat-miss-${m.market}-${m.symbol}`}
+          className="mt-1 truncate text-[var(--m-text-sm)] text-[var(--k-muted)]"
+        >
           引擎应持未持有 · <span className="font-mono">{m.symbol}</span>
         </div>
       ))}

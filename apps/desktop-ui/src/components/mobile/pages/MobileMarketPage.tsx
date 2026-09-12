@@ -39,7 +39,11 @@ export function MobileMarketPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ limit: String(PAGE_LIMIT), offset: String(offset), market: 'CN' });
+      const params = new URLSearchParams({
+        limit: String(PAGE_LIMIT),
+        offset: String(offset),
+        market: 'CN',
+      });
       if (q.trim()) params.set('q', q.trim());
       const [list, st] = await Promise.all([
         apiGetJson<{ items: MarketStockRow[]; total: number }>(
@@ -81,7 +85,11 @@ export function MobileMarketPage() {
       <MobileSection
         title={`行情列表（${total}）`}
         action={
-          <button type="button" onClick={() => void refresh()} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             刷新
           </button>
         }
@@ -111,10 +119,14 @@ export function MobileMarketPage() {
         </MobileCard>
 
         {error ? (
-          <MobileCard className="px-3 py-4 text-[var(--m-text-sm)] text-[var(--k-danger)]">{error}</MobileCard>
+          <MobileCard className="px-3 py-4 text-[var(--m-text-sm)] text-[var(--k-danger)]">
+            {error}
+          </MobileCard>
         ) : null}
         {added ? (
-          <MobileCard className="px-3 py-2 text-[var(--m-text-sm)] text-[var(--k-down)]">{added}</MobileCard>
+          <MobileCard className="px-3 py-2 text-[var(--m-text-sm)] text-[var(--k-down)]">
+            {added}
+          </MobileCard>
         ) : null}
 
         {rows.length ? (
@@ -148,7 +160,8 @@ export function MobileMarketPage() {
                       <div
                         className="text-[var(--m-text-sm)] font-medium"
                         style={{
-                          color: pct > 0 ? 'var(--k-up)' : pct < 0 ? 'var(--k-down)' : 'var(--k-muted)',
+                          color:
+                            pct > 0 ? 'var(--k-up)' : pct < 0 ? 'var(--k-down)' : 'var(--k-muted)',
                         }}
                       >
                         {pct > 0 ? '▲' : pct < 0 ? '▼' : ''}
@@ -189,13 +202,23 @@ export function MobileMarketPage() {
         )}
 
         <div className="flex items-center justify-between">
-          <MobileButton variant="ghost" size="sm" disabled={offset === 0} onClick={() => setOffset((v) => Math.max(0, v - PAGE_LIMIT))}>
+          <MobileButton
+            variant="ghost"
+            size="sm"
+            disabled={offset === 0}
+            onClick={() => setOffset((v) => Math.max(0, v - PAGE_LIMIT))}
+          >
             上一页
           </MobileButton>
           <span className="text-[var(--m-text-sm)] text-[var(--k-muted)]">
             {page} / {pages}
           </span>
-          <MobileButton variant="ghost" size="sm" disabled={offset + PAGE_LIMIT >= total} onClick={() => setOffset((v) => v + PAGE_LIMIT)}>
+          <MobileButton
+            variant="ghost"
+            size="sm"
+            disabled={offset + PAGE_LIMIT >= total}
+            onClick={() => setOffset((v) => v + PAGE_LIMIT)}
+          >
             下一页
           </MobileButton>
         </div>

@@ -100,7 +100,7 @@ describe('fetch functions', () => {
 describe('hooks', () => {
   beforeEach(() => {
     mockedUseQuery.mockReset();
-    mockedUseQuery.mockImplementation(() => ({ data: undefined } as never));
+    mockedUseQuery.mockImplementation(() => ({ data: undefined }) as never);
   });
 
   it('useUserTradesListQuery wires options', () => {

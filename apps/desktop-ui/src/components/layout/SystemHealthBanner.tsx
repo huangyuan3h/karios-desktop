@@ -7,7 +7,11 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchSystemHealth, type DataSourceStatus } from '@/lib/queries/systemHealth';
-import { fetchSystemEvents, resolveSystemEvent, type SystemEvent } from '@/lib/queries/systemEvents';
+import {
+  fetchSystemEvents,
+  resolveSystemEvent,
+  type SystemEvent,
+} from '@/lib/queries/systemEvents';
 import { cn } from '@/lib/utils';
 
 function fmtAge(min: number | null): string {
@@ -123,9 +127,13 @@ export function SystemHealthBanner() {
             </div>
           )}
           {stale.map((s: DataSourceStatus) => (
-            <div key={s.source} className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
+            <div
+              key={s.source}
+              className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"
+            >
               <span>
-                △ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值 {fmtThreshold(s.thresholdMinutes)}）
+                △ {s.label} 数据陈旧（{fmtAge(s.ageMinutes)} ≥ 阈值{' '}
+                {fmtThreshold(s.thresholdMinutes)}）
                 {s.source === 'eastmoney_probe' && s.banLatched
                   ? ` · IP 熔断中（冷却 ${s.cooldownRemainingS ?? '?'}s）`
                   : null}
@@ -133,7 +141,9 @@ export function SystemHealthBanner() {
                   ? ` · 失败宿主 ${s.failingHosts.join(', ')}`
                   : null}
               </span>
-              <span className="text-[10px] text-[var(--k-muted)]">最近同步 {fmtTime(s.lastSyncedAt)}</span>
+              <span className="text-[10px] text-[var(--k-muted)]">
+                最近同步 {fmtTime(s.lastSyncedAt)}
+              </span>
             </div>
           ))}
           {quota?.configured && quotaPeak && (
@@ -146,12 +156,17 @@ export function SystemHealthBanner() {
             </div>
           )}
           {failures.map((f) => (
-            <div key={f.jobType} className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300">
+            <div
+              key={f.jobType}
+              className="flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"
+            >
               <span className="min-w-0 truncate">
                 △ 同步失败 {f.jobType} ×{f.failures24h ?? 1}（{fmtTime(f.syncedAt)}）
               </span>
               {f.errorMessage && (
-                <span className="truncate text-[10px] text-[var(--k-muted)]">{f.errorMessage.slice(0, 80)}</span>
+                <span className="truncate text-[10px] text-[var(--k-muted)]">
+                  {f.errorMessage.slice(0, 80)}
+                </span>
               )}
             </div>
           ))}
@@ -159,13 +174,22 @@ export function SystemHealthBanner() {
             <div className="mt-2 border-t border-amber-500/20 pt-2">
               <div className="mb-1 flex items-center gap-2 text-[11px] font-medium">
                 <span>系统收件箱</span>
-                <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-600">高 {highEvents.length}</span>
-                <span className="rounded bg-zinc-500/15 px-1.5 py-0.5 text-[10px] text-zinc-500">低 {lowEvents.length}</span>
+                <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-600">
+                  高 {highEvents.length}
+                </span>
+                <span className="rounded bg-zinc-500/15 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                  低 {lowEvents.length}
+                </span>
                 <span className="text-[10px] text-[var(--k-muted)]">低级别仅落表不推 Bark</span>
               </div>
               {events.slice(0, 10).map((ev) => (
                 <div key={ev.id} className="flex items-center justify-between gap-2 py-0.5">
-                  <span className={cn('min-w-0 truncate', ev.severity === 'high' ? 'text-red-700 dark:text-red-300' : 'text-zinc-500')}>
+                  <span
+                    className={cn(
+                      'min-w-0 truncate',
+                      ev.severity === 'high' ? 'text-red-700 dark:text-red-300' : 'text-zinc-500',
+                    )}
+                  >
                     {ev.severity === 'high' ? '●' : '○'} {ev.title} — {ev.detail.slice(0, 60)}
                   </span>
                   <button
@@ -183,8 +207,8 @@ export function SystemHealthBanner() {
             </div>
           )}
           <div className="flex items-center gap-1 text-[10.5px] text-[var(--k-muted)]">
-            <CheckCircle2 size={11} />
-            每 5 分钟自动检查 · 点刷新立即重检 · 高级别推 Bark/站内，低级别仅收件箱
+            <CheckCircle2 size={11} />每 5 分钟自动检查 · 点刷新立即重检 · 高级别推
+            Bark/站内，低级别仅收件箱
           </div>
         </div>
       )}

@@ -67,7 +67,8 @@ export function TradeActionDialog({
   const parsedPrice = Number(price);
   const parsedPct = Number(positionPct);
   const parsedCost = Number(costPrice);
-  const costValid = !missingCost || costPrice === '' || (PRICE_RE.test(costPrice.trim()) && parsedCost > 0);
+  const costValid =
+    !missingCost || costPrice === '' || (PRICE_RE.test(costPrice.trim()) && parsedCost > 0);
   const valid =
     PRICE_RE.test(price.trim()) &&
     parsedPrice > 0 &&
@@ -99,7 +100,8 @@ export function TradeActionDialog({
       <div className="w-full max-w-[340px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4 text-xs text-[var(--k-text)] shadow-lg">
         <div className="mb-1 flex items-center justify-between">
           <div className="text-sm font-medium">
-            {titleForKind(kind)} <span className="font-mono text-[var(--k-muted)]">{item.symbol}</span>
+            {titleForKind(kind)}{' '}
+            <span className="font-mono text-[var(--k-muted)]">{item.symbol}</span>
           </div>
           <button
             type="button"
@@ -128,7 +130,8 @@ export function TradeActionDialog({
                 if (raw === '' || PRICE_RE.test(raw)) setPrice(raw);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && valid) onConfirm({ price: parsedPrice, positionPct: parsedPct });
+                if (e.key === 'Enter' && valid)
+                  onConfirm({ price: parsedPrice, positionPct: parsedPct });
               }}
             />
           </div>
@@ -144,7 +147,8 @@ export function TradeActionDialog({
                 if (raw === '' || PCT_RE.test(raw)) setPositionPct(raw);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && valid) onConfirm({ price: parsedPrice, positionPct: parsedPct });
+                if (e.key === 'Enter' && valid)
+                  onConfirm({ price: parsedPrice, positionPct: parsedPct });
               }}
             />
           </div>
@@ -177,7 +181,9 @@ export function TradeActionDialog({
         {pnlPreview != null ? (
           <div className="mt-2 text-[11px]">
             预计盈亏{' '}
-            <span className={`font-mono font-medium ${pnlPreview >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            <span
+              className={`font-mono font-medium ${pnlPreview >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
+            >
               {pnlPreview >= 0 ? '+' : ''}
               {pnlPreview.toFixed(2)}%
             </span>

@@ -17,19 +17,11 @@ export function WatchlistInsightsPanel({ children }: { children: React.ReactNode
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium">诊断面板</div>
-          <Switch
-            checked={open}
-            onCheckedChange={setOpen}
-            aria-label="Toggle insights panel"
-          />
+          <Switch checked={open} onCheckedChange={setOpen} aria-label="Toggle insights panel" />
         </div>
-        <div className="text-[11px] text-[var(--k-muted)]">
-          交易期望值 · 漏斗转化率 · 导入调试
-        </div>
+        <div className="text-[11px] text-[var(--k-muted)]">交易期望值 · 漏斗转化率 · 导入调试</div>
       </div>
-      <div className={open ? 'mt-4 space-y-4' : 'hidden'}>
-        {children}
-      </div>
+      <div className={open ? 'mt-4 space-y-4' : 'hidden'}>{children}</div>
     </section>
   );
 }

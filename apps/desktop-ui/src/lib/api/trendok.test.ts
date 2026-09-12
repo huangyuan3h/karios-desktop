@@ -22,10 +22,7 @@ describe('fetchTrendOkMap', () => {
     vi.mocked(apiGetJson).mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(
-            () => resolve([{ symbol: 'CN:600519', score: 90 }]),
-            20,
-          );
+          setTimeout(() => resolve([{ symbol: 'CN:600519', score: 90 }]), 20);
         }),
     );
 

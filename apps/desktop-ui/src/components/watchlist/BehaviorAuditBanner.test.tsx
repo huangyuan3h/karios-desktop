@@ -99,7 +99,12 @@ describe('BehaviorAuditBanner (OPT-106)', () => {
       regime: 'Diverging',
       panicCooldown: { active: false },
       circuitBlocked: false,
-      hkHealth: { tradeDate: '2026-08-14', regime: 'Diverging', panicCooldown: { active: false }, circuitBlocked: false },
+      hkHealth: {
+        tradeDate: '2026-08-14',
+        regime: 'Diverging',
+        panicCooldown: { active: false },
+        circuitBlocked: false,
+      },
     });
   });
 
@@ -143,7 +148,12 @@ describe('BehaviorAuditBanner — gate closed (2026-08-14)', () => {
       regime: 'Diverging',
       panicCooldown: { active: true, cooldownEndDate: '2026-08-14' },
       circuitBlocked: false,
-      hkHealth: { tradeDate: '2026-08-14', regime: 'Weak', panicCooldown: { active: false }, circuitBlocked: false },
+      hkHealth: {
+        tradeDate: '2026-08-14',
+        regime: 'Weak',
+        panicCooldown: { active: false },
+        circuitBlocked: false,
+      },
     });
   });
 
@@ -169,7 +179,12 @@ describe('BehaviorAuditBanner — gate closed (2026-08-14)', () => {
       regime: 'Diverging',
       panicCooldown: { active: true, cooldownEndDate: '2026-08-14' },
       circuitBlocked: false,
-      hkHealth: { tradeDate: '2026-08-14', regime: 'Weak', panicCooldown: { active: false }, circuitBlocked: false },
+      hkHealth: {
+        tradeDate: '2026-08-14',
+        regime: 'Weak',
+        panicCooldown: { active: false },
+        circuitBlocked: false,
+      },
     });
     // Override audit data: no extras, only missing rows.
     vi.mocked(useBehaviorAuditQuery).mockReturnValue({

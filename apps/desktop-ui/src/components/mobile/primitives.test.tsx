@@ -24,7 +24,11 @@ describe('mobile primitives', () => {
   });
 
   it('MobileSection shows title and action', () => {
-    render(<MobileSection title="持仓" action={<span>全部</span>}>body</MobileSection>);
+    render(
+      <MobileSection title="持仓" action={<span>全部</span>}>
+        body
+      </MobileSection>,
+    );
     expect(screen.getByText('持仓')).toBeTruthy();
     expect(screen.getByText('全部')).toBeTruthy();
     expect(screen.getByText('body')).toBeTruthy();

@@ -67,14 +67,10 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
           })}
 
           {state.sessions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-              No chats yet.
-            </div>
+            <div className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">No chats yet.</div>
           ) : null}
         </div>
       </div>
     </div>
   );
 }
-
-

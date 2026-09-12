@@ -125,9 +125,13 @@ export function buildMapCnInstruction(params: {
   return (
     'Trend JSON:\n' +
     JSON.stringify(trend) +
-    (seedSymbols.length ? `\n\nPreferred A-share mapping from extract step:\n${JSON.stringify(seedSymbols)}` : '') +
+    (seedSymbols.length
+      ? `\n\nPreferred A-share mapping from extract step:\n${JSON.stringify(seedSymbols)}`
+      : '') +
     '\n\nCandidate A-shares:\n' +
-    (candidates.length ? JSON.stringify(candidates) : '(empty — use cautious knowledge fallback if allowed)') +
+    (candidates.length
+      ? JSON.stringify(candidates)
+      : '(empty — use cautious knowledge fallback if allowed)') +
     (externalContext ? `\n\nExternal search context:\n${externalContext}` : '') +
     (knowledgeFallback
       ? '\n\nIf candidates are empty, return best-effort CN: symbols with confidence <= 0.45.'

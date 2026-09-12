@@ -61,7 +61,10 @@ export function TwinStarTradePlanPanel({
           {refreshing ? '拉取中…' : '刷新行情'}
         </button>
       ) : null}
-      <span className="w-full text-[10px] leading-snug text-[var(--k-muted)]" title="与冻结引擎 state_bucket_track / pick_strong 对齐的实盘映射">
+      <span
+        className="w-full text-[10px] leading-snug text-[var(--k-muted)]"
+        title="与冻结引擎 state_bucket_track / pick_strong 对齐的实盘映射"
+      >
         {twinStarRecipeLine(plan.satSlotNavPct)}
       </span>
     </div>

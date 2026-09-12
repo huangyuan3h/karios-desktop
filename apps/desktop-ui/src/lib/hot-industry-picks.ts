@@ -72,8 +72,7 @@ function buildRankMapsFromDailyRankings(
   todayRankMap: Map<string, number>;
   todayValueMap: Map<string, number>;
 } {
-  const latestRanked =
-    dailyRankings.find((x) => x.date === latestDate)?.ranked ?? [];
+  const latestRanked = dailyRankings.find((x) => x.date === latestDate)?.ranked ?? [];
   const prevRanked = dailyRankings.find((x) => x.date === prevDate)?.ranked ?? [];
 
   const dailyNames = latestRanked
@@ -169,13 +168,8 @@ function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | nul
   const datesAll: string[] = Array.isArray(ind.dates) ? ind.dates.map(String) : [];
   const flow5dObj =
     ind.flow5d && typeof ind.flow5d === 'object' ? (ind.flow5d as Record<string, unknown>) : null;
-  const flow5dDates: string[] = Array.isArray(flow5dObj?.dates)
-    ? flow5dObj.dates.map(String)
-    : [];
-  const rankingDates =
-    dailyRankings.length > 0
-      ? dailyRankings.map((x) => x.date)
-      : datesAll;
+  const flow5dDates: string[] = Array.isArray(flow5dObj?.dates) ? flow5dObj.dates.map(String) : [];
+  const rankingDates = dailyRankings.length > 0 ? dailyRankings.map((x) => x.date) : datesAll;
   const { latestDate, prevDate } = resolveCalendarDates({
     flow5dDates,
     summaryDates: datesAll,
@@ -294,13 +288,7 @@ export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPic
   const ctx = resolveIndustryFlowContext(summary);
   if (!ctx) return [];
 
-  const {
-    dailyNames,
-    yesterdayRankMap,
-    todayRankMap,
-    todayValueMap,
-    fiveRank,
-  } = ctx;
+  const { dailyNames, yesterdayRankMap, todayRankMap, todayValueMap, fiveRank } = ctx;
 
   const picks: HotIndustryPick[] = [];
   const momentumPicks: HotIndustryPick[] = [];

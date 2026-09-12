@@ -23,17 +23,10 @@ import {
   isSectorOutflowBlock,
 } from '@/lib/hot-industry-picks';
 import { writeLastCopyAt } from '@/lib/copy-ai-brief';
-import {
-  buildDashboardCopyAllMarkdown,
-  buildIndustryMarkdown,
-} from '@/lib/dashboard-export';
+import { buildDashboardCopyAllMarkdown, buildIndustryMarkdown } from '@/lib/dashboard-export';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
 import { loadWatchlist } from '@/lib/watchlist-storage';
-import {
-  fmtDateTime,
-  loadCopyMode,
-  saveCopyMode,
-} from '@/lib/dashboard-format';
+import { fmtDateTime, loadCopyMode, saveCopyMode } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import { useChatStore } from '@/lib/chat/store';
@@ -203,7 +196,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, `Copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
+      toastCopyAll(
+        true,
+        `Copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`,
+      );
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -236,7 +232,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, `Synced and copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
+      toastCopyAll(
+        true,
+        `Synced and copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`,
+      );
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -384,9 +383,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                 {s.durationMs !== null ? (
                   <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
                 ) : null}
-                {s.message ? (
-                  <span className="text-red-600 truncate">{s.message}</span>
-                ) : null}
+                {s.message ? <span className="text-red-600 truncate">{s.message}</span> : null}
               </div>
             ))}
           </div>
@@ -398,13 +395,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
             <span className="text-sm font-medium">Last sync</span>
             <span className="text-[var(--k-muted)]">
-              {fmtDateTime(syncResp.startedAt as string)} → {fmtDateTime(syncResp.finishedAt as string)}
+              {fmtDateTime(syncResp.startedAt as string)} →{' '}
+              {fmtDateTime(syncResp.finishedAt as string)}
             </span>
             <span
               className={`rounded px-2 py-0.5 ${
-                syncResp.ok
-                  ? 'bg-emerald-500/15 text-emerald-700'
-                  : 'bg-red-500/15 text-red-700'
+                syncResp.ok ? 'bg-emerald-500/15 text-emerald-700' : 'bg-red-500/15 text-red-700'
               }`}
             >
               {syncResp.ok ? 'OK' : 'FAILED'}
@@ -430,7 +426,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               </span>
             ) : null}
           </div>
-          
         </div>
       ) : null}
 
@@ -489,9 +484,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               ) : id === 'watchlistRisk' ? (
                 <div>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
-                    <span>
-                      Intraday &gt;6%、跳空缺口（弱势/震荡）、VWAP 溢价等建仓风险预警
-                    </span>
+                    <span>Intraday &gt;6%、跳空缺口（弱势/震荡）、VWAP 溢价等建仓风险预警</span>
                     <span>
                       {watchlistRiskUpdatedAt
                         ? `Updated ${fmtDateTime(watchlistRiskUpdatedAt)}`
@@ -612,9 +605,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
         return (
           <>
-            <div className="space-y-4 lg:hidden">
-              {[...left, ...right].map(renderCard)}
-            </div>
+            <div className="space-y-4 lg:hidden">{[...left, ...right].map(renderCard)}</div>
             <div className="hidden lg:flex lg:items-start lg:gap-4">
               <div className="flex min-w-0 flex-1 flex-col gap-4">{left.map(renderCard)}</div>
               <div className="flex min-w-0 flex-1 flex-col gap-4">{right.map(renderCard)}</div>

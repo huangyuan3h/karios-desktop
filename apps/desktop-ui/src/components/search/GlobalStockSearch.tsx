@@ -145,7 +145,9 @@ export function GlobalStockSearch({
                   type="button"
                   className={
                     'flex w-full items-center gap-3 px-3 py-2 text-left text-sm ' +
-                    (idx === activeIdx ? 'bg-[var(--k-surface-2)]' : 'hover:bg-[var(--k-surface-2)]')
+                    (idx === activeIdx
+                      ? 'bg-[var(--k-surface-2)]'
+                      : 'hover:bg-[var(--k-surface-2)]')
                   }
                   onMouseEnter={() => setActiveIdx(idx)}
                   onClick={() => select(it)}
@@ -158,7 +160,9 @@ export function GlobalStockSearch({
                       <div className="font-mono text-xs">{it.ticker}</div>
                       <div className="truncate">{it.name}</div>
                     </div>
-                    <div className="mt-0.5 font-mono text-[11px] text-[var(--k-muted)]">{it.symbol}</div>
+                    <div className="mt-0.5 font-mono text-[11px] text-[var(--k-muted)]">
+                      {it.symbol}
+                    </div>
                   </div>
                   <div className="text-right font-mono text-xs text-[var(--k-muted)]">
                     {it.price ?? '—'}
@@ -172,5 +176,3 @@ export function GlobalStockSearch({
     </div>
   );
 }
-
-

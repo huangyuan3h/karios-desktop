@@ -68,7 +68,14 @@ describe('UserTradeSchema', () => {
         maxConfidence: 0.95,
         riskStatuses: ['active'],
         events: [
-          { trend: 'x', grade: 'S', confidence: 0.95, daysAgo: 1, riskStatus: 'active', focus: 'y' },
+          {
+            trend: 'x',
+            grade: 'S',
+            confidence: 0.95,
+            daysAgo: 1,
+            riskStatus: 'active',
+            focus: 'y',
+          },
         ],
       },
     });
@@ -89,17 +96,35 @@ describe('UserTradeSchema', () => {
     expect(trade.alphaSnapshot).toBeNull();
   });
 
-  it('defaults leg to s3 and accepts sat (OPT-149)', () => {    const core = UserTradeSchema.parse({
-      id: 'a', symbol: 'CN:600000', side: 'BUY', tradeDate: '2026-09-09', price: 10, positionPct: 10,
+  it('defaults leg to s3 and accepts sat (OPT-149)', () => {
+    const core = UserTradeSchema.parse({
+      id: 'a',
+      symbol: 'CN:600000',
+      side: 'BUY',
+      tradeDate: '2026-09-09',
+      price: 10,
+      positionPct: 10,
     });
     expect(core.leg).toBe('s3');
     const sat = UserTradeSchema.parse({
-      id: 'b', symbol: 'CN:688525', side: 'BUY', tradeDate: '2026-09-07', price: 221.28, positionPct: 12.5, leg: 'sat',
+      id: 'b',
+      symbol: 'CN:688525',
+      side: 'BUY',
+      tradeDate: '2026-09-07',
+      price: 221.28,
+      positionPct: 12.5,
+      leg: 'sat',
     });
     expect(sat.leg).toBe('sat');
-    expect(() => UserTradeRequestSchema.parse({
-      symbol: 'CN:688525', side: 'BUY', price: 221.28, positionPct: 12.5, leg: 'x',
-    })).toThrow();
+    expect(() =>
+      UserTradeRequestSchema.parse({
+        symbol: 'CN:688525',
+        side: 'BUY',
+        price: 221.28,
+        positionPct: 12.5,
+        leg: 'x',
+      }),
+    ).toThrow();
   });
 
   it('validates patch bodies (OPT-150)', () => {
@@ -126,7 +151,18 @@ describe('UserTradesStatsSchema', () => {
       total: 2,
       roundTripCostPct: 0.3,
       bySource: {
-        ALPHA: { count: 1, wins: 1, losses: 0, winRate: 1, avgWinPct: 10, avgLossPct: null, expectancyPct: 10, netExpectancyPct: 9.7, profitFactor: null, avgHoldingDays: 5 },
+        ALPHA: {
+          count: 1,
+          wins: 1,
+          losses: 0,
+          winRate: 1,
+          avgWinPct: 10,
+          avgLossPct: null,
+          expectancyPct: 10,
+          netExpectancyPct: 9.7,
+          profitFactor: null,
+          avgHoldingDays: 5,
+        },
       },
       bySymbol: {},
     });

@@ -241,16 +241,12 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
-    expect(md).toContain(
-      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
-    );
+    expect(md).toContain('- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）');
     expect(md).toContain('## 市场环境摘要');
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
-    expect(md).toContain(
-      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
-    );
+    expect(md).toContain('- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）');
     expect(md).not.toContain('## Index traffic lights');
     expect(md).not.toContain('## Market & Macro overview');
     expect(md).not.toContain('## 300ETF Put IV');
@@ -309,12 +305,25 @@ describe('buildSentimentMarkdown', () => {
       marketSentiment: {
         items: [],
         indexSignals: [
-          { name: '上证指数', signal: 'green', positionRange: 'mid', pctChg: 0.5, close: 3200, asOfDate: '2026-08-01' },
+          {
+            name: '上证指数',
+            signal: 'green',
+            positionRange: 'mid',
+            pctChg: 0.5,
+            close: 3200,
+            asOfDate: '2026-08-01',
+          },
         ],
       },
       macroSnapshot: {
         macro: [
-          { name: '300ETF Put IV', category: 'volatility', close: 18.5, signalLabel: 'calm', asOfDate: '2026-08-01' },
+          {
+            name: '300ETF Put IV',
+            category: 'volatility',
+            close: 18.5,
+            signalLabel: 'calm',
+            asOfDate: '2026-08-01',
+          },
         ],
       },
     });
@@ -333,14 +342,50 @@ describe('buildMarketAndMacroMarkdown', () => {
     const md = buildMarketAndMacroMarkdown({
       marketSentiment: {
         indexSignals: [
-          { name: '上证指数', featured: true, signal: 'green', positionRange: '50%-60%', pctChg: 0.5, close: 3200, ma5: 3180, ma20: 3150, asOfDate: '2026-08-01', source: 'cn_index' },
-          { name: '创业板指', signal: 'yellow', positionRange: '30%', pctChg: -0.3, close: 2100, ma5: 2110, ma20: 2150, asOfDate: '2026-08-01', source: 'cn_index' },
+          {
+            name: '上证指数',
+            featured: true,
+            signal: 'green',
+            positionRange: '50%-60%',
+            pctChg: 0.5,
+            close: 3200,
+            ma5: 3180,
+            ma20: 3150,
+            asOfDate: '2026-08-01',
+            source: 'cn_index',
+          },
+          {
+            name: '创业板指',
+            signal: 'yellow',
+            positionRange: '30%',
+            pctChg: -0.3,
+            close: 2100,
+            ma5: 2110,
+            ma20: 2150,
+            asOfDate: '2026-08-01',
+            source: 'cn_index',
+          },
         ],
       },
       macroSnapshot: {
         macro: [
-          { name: 'WTI 原油', category: 'commodity', pctChg: 1.5, close: 82.4, signal: 'up', asOfDate: '2026-08-01', source: 'macro' },
-          { name: '300ETF Put IV', category: 'volatility', close: 18.5, signalLabel: 'calm', asOfDate: '2026-08-01', source: 'iv' },
+          {
+            name: 'WTI 原油',
+            category: 'commodity',
+            pctChg: 1.5,
+            close: 82.4,
+            signal: 'up',
+            asOfDate: '2026-08-01',
+            source: 'macro',
+          },
+          {
+            name: '300ETF Put IV',
+            category: 'volatility',
+            close: 18.5,
+            signalLabel: 'calm',
+            asOfDate: '2026-08-01',
+            source: 'iv',
+          },
         ],
       },
     });
@@ -403,7 +448,9 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     expect(md).not.toContain('## Watchlist\n');
     expect(md).not.toContain('## Positions (execution)');
     expect(mockedFetchWatchlistMarketSnapshot).not.toHaveBeenCalled();
-    expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
+    expect(mockedApiGetJson).not.toHaveBeenCalledWith(
+      expect.stringContaining('/market/stocks/trendok'),
+    );
   });
 
   it('force refreshes watchlist bars when cached TrendOK has missing inputs', async () => {

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  filterWatchlistForTable,
-  shouldShowInWatchlistTable,
-} from './watchlist-table-filter';
+import { filterWatchlistForTable, shouldShowInWatchlistTable } from './watchlist-table-filter';
 
 describe('shouldShowInWatchlistTable', () => {
   it('shows held positions regardless of score', () => {

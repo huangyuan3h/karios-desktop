@@ -109,11 +109,7 @@ export const SchedulerJobGroupSchema = z.enum([
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
 
 /** Trigger interval family — drives the UI pill color. */
-export const SchedulerTriggerKindSchema = z.enum([
-  'cron',
-  'interval',
-  'manual',
-]);
+export const SchedulerTriggerKindSchema = z.enum(['cron', 'interval', 'manual']);
 export type SchedulerTriggerKind = z.infer<typeof SchedulerTriggerKindSchema>;
 
 /** Optional metadata for jobs that can be triggered manually from the UI. */
@@ -310,7 +306,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     10,
     { endpoint: '/sync/index-daily', method: 'POST', label: '立即同步' },
   ),
-meta(
+  meta(
     'index_basic_sync',
     'indexMacro',
     '指数每日指标（市宽）',
@@ -367,7 +363,12 @@ meta(
     'cron',
     true,
     20,
-    { endpoint: '/sync/macro-daily', method: 'POST', label: '立即同步（force）', confirmForce: true },
+    {
+      endpoint: '/sync/macro-daily',
+      method: 'POST',
+      label: '立即同步（force）',
+      confirmForce: true,
+    },
   ),
 
   /* Eastmoney industry ---------------------------------------------------- */
@@ -432,8 +433,8 @@ meta(
     'cron',
     true,
     10,
-     { endpoint: '/market/cn/industry-fund-flow/sync', method: 'POST', label: '立即同步' },
-   ),
+    { endpoint: '/market/cn/industry-fund-flow/sync', method: 'POST', label: '立即同步' },
+  ),
 
   /* Alpha Radar ----------------------------------------------------------- */
   meta(
@@ -446,7 +447,12 @@ meta(
     'cron',
     true,
     10,
-    { endpoint: '/api/alpha-radar/run-pipeline', method: 'POST', label: '强制运行主流程', confirmForce: true },
+    {
+      endpoint: '/api/alpha-radar/run-pipeline',
+      method: 'POST',
+      label: '强制运行主流程',
+      confirmForce: true,
+    },
   ),
   meta(
     'alpha_radar_ingest',
@@ -507,7 +513,11 @@ meta(
     'cron',
     true,
     12,
-    { endpoint: '/api/news/brief/generate?brief_type=morning', method: 'POST', label: '生成早间简报' },
+    {
+      endpoint: '/api/news/brief/generate?brief_type=morning',
+      method: 'POST',
+      label: '生成早间简报',
+    },
   ),
   meta(
     'morning_brief_pm',
@@ -519,7 +529,11 @@ meta(
     'cron',
     true,
     13,
-     { endpoint: '/api/news/brief/generate?brief_type=midday', method: 'POST', label: '生成午间简报' },
+    {
+      endpoint: '/api/news/brief/generate?brief_type=midday',
+      method: 'POST',
+      label: '生成午间简报',
+    },
   ),
   meta(
     'trading_brief_open',
@@ -531,7 +545,11 @@ meta(
     'cron',
     true,
     14,
-    { endpoint: '/api/news/brief/generate?brief_type=trading-open', method: 'POST', label: '生成开盘简报' },
+    {
+      endpoint: '/api/news/brief/generate?brief_type=trading-open',
+      method: 'POST',
+      label: '生成开盘简报',
+    },
   ),
   meta(
     'trading_brief_midday',
@@ -543,7 +561,11 @@ meta(
     'cron',
     true,
     15,
-    { endpoint: '/api/news/brief/generate?brief_type=trading-midday', method: 'POST', label: '生成午间简报' },
+    {
+      endpoint: '/api/news/brief/generate?brief_type=trading-midday',
+      method: 'POST',
+      label: '生成午间简报',
+    },
   ),
   meta(
     'trading_brief_action',
@@ -555,19 +577,23 @@ meta(
     'cron',
     true,
     16,
-    { endpoint: '/api/news/brief/generate?brief_type=trading-action', method: 'POST', label: '生成操作卡' },
+    {
+      endpoint: '/api/news/brief/generate?brief_type=trading-action',
+      method: 'POST',
+      label: '生成操作卡',
+    },
   ),
   meta(
     'research_report_sync',
     'alphaRadar',
-     '研报同步',
-     '每 2 小时从东方财富研报中心抓取最新个股研报（评级/目标价/EPS），供研报 α 通道入池。',
-     '每 2 小时',
-     null,
-     'interval',
-     true,
-     18,
-     { endpoint: '/api/research/sync', method: 'POST', label: '立即同步' },
+    '研报同步',
+    '每 2 小时从东方财富研报中心抓取最新个股研报（评级/目标价/EPS），供研报 α 通道入池。',
+    '每 2 小时',
+    null,
+    'interval',
+    true,
+    18,
+    { endpoint: '/api/research/sync', method: 'POST', label: '立即同步' },
   ),
   meta(
     'paper_chain_watchdog',
@@ -578,7 +604,7 @@ meta(
     null,
     'cron',
     true,
-     19,
+    19,
   ),
   meta(
     'weekly_review',
@@ -589,7 +615,7 @@ meta(
     null,
     'cron',
     true,
-     20,
+    20,
   ),
   meta(
     'intraday_alarm',
@@ -600,7 +626,7 @@ meta(
     null,
     'cron',
     true,
-     21,
+    21,
   ),
   meta(
     'webhook_delivery',
@@ -611,7 +637,7 @@ meta(
     null,
     'cron',
     true,
-     22,
+    22,
   ),
   meta(
     'candidate_diff',
@@ -622,7 +648,7 @@ meta(
     null,
     'cron',
     true,
-     23,
+    23,
   ),
   meta(
     'behavior_audit',
@@ -633,7 +659,7 @@ meta(
     null,
     'cron',
     true,
-     24,
+    24,
   ),
   meta(
     'twin_star_reminder',
@@ -644,7 +670,7 @@ meta(
     null,
     'cron',
     true,
-     25,
+    25,
   ),
   meta(
     'twin_star_intraday',
@@ -770,7 +796,8 @@ export const SCHEDULER_GROUP_META: Record<
   },
   riskState: {
     titleCn: '风险状态传感器',
-    descriptionCn: '宽基 ETF 份额（国家队代理）、全市场两融、北向资金、HSI/HSTECH 全球指数与 margin_detail/moneyflow 补漏，TIP-017。',
+    descriptionCn:
+      '宽基 ETF 份额（国家队代理）、全市场两融、北向资金、HSI/HSTECH 全球指数与 margin_detail/moneyflow 补漏，TIP-017。',
   },
 };
 

@@ -41,5 +41,3 @@ function toModelMessage(msg: ChatRequest['messages'][number]): ModelMessage {
 export function toModelMessagesFromChatRequest(req: ChatRequest): ModelMessage[] {
   return req.messages.map(toModelMessage);
 }
-
-

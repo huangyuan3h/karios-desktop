@@ -111,5 +111,3 @@ export function computeKdj(
   });
   return { k, d, j };
 }
-
-

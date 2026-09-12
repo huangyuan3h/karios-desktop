@@ -1,10 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 import { parseExecutionGate } from '@/lib/execution-action';
-import {
-  buildMainlineAllowSet,
-  isSectorOutflowBlock,
-} from '@/lib/hot-industry-picks';
+import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
 import {
   buildDataFreshnessMarkdown,
   fetchDataSourcesHealth,
@@ -104,7 +101,9 @@ export function buildWatchlistNewsKeys(): { codes: Set<string>; names: Set<strin
   const names = new Set<string>();
   try {
     for (const it of loadWatchlist()) {
-      const sym = String(it?.symbol ?? '').trim().toUpperCase();
+      const sym = String(it?.symbol ?? '')
+        .trim()
+        .toUpperCase();
       const cn = sym.match(/^(?:CN|ETF):(\d{6})$/);
       if (cn) codes.add(cn[1]);
       const hk = sym.match(/^HK:(\d{4,5})$/);
@@ -125,9 +124,7 @@ export function buildWatchlistNewsKeys(): { codes: Set<string>; names: Set<strin
  */
 export function buildNewsMarkdown(s: Record<string, unknown>): string {
   const news = (s?.news ?? {}) as Record<string, unknown>;
-  const items = Array.isArray(news.items)
-    ? (news.items as Array<Record<string, unknown>>)
-    : [];
+  const items = Array.isArray(news.items) ? (news.items as Array<Record<string, unknown>>) : [];
   if (!items.length) return '';
   const keys = buildWatchlistNewsKeys();
   const hits = items
@@ -151,7 +148,9 @@ export function buildNewsMarkdown(s: Record<string, unknown>): string {
     const title = String(it?.title ?? '—').slice(0, 80);
     const rel = it?.relevanceScore ?? '';
     const time = String(it?.publishedAt ?? it?.published_at ?? '');
-    lines.push(`- ${title}${rel !== '' ? ` (rel=${rel})` : ''}${time ? ` · ${time.slice(0, 16)}` : ''}`);
+    lines.push(
+      `- ${title}${rel !== '' ? ` (rel=${rel})` : ''}${time ? ` · ${time.slice(0, 16)}` : ''}`,
+    );
   }
   return lines.join('\n');
 }
@@ -242,7 +241,13 @@ export async function buildDecisionActiveLayer(opts: {
           );
           const gateMd = gate ? formatExecutionGateMarkdown(gate, '###') : '';
           const content = [gateMd, watchlistMd.trim()].filter(Boolean).join('\n\n');
-          return { id: 'p0-watchlist', label: '操作表', tier: 'P0', content, tokens: 0 } as DecisionBlock;
+          return {
+            id: 'p0-watchlist',
+            label: '操作表',
+            tier: 'P0',
+            content,
+            tokens: 0,
+          } as DecisionBlock;
         })()
       : Promise.resolve(null),
     enabled('p1-freshness', 'P1')
@@ -284,7 +289,13 @@ export async function buildDecisionActiveLayer(opts: {
     enabled('p2-alpha', 'P2')
       ? buildWatchlistAlphaMarkdown().then((content) =>
           content
-            ? ({ id: 'p2-alpha', label: 'Alpha 催化', tier: 'P2', content, tokens: 0 } as DecisionBlock)
+            ? ({
+                id: 'p2-alpha',
+                label: 'Alpha 催化',
+                tier: 'P2',
+                content,
+                tokens: 0,
+              } as DecisionBlock)
             : null,
         )
       : Promise.resolve(null),

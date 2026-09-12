@@ -33,10 +33,9 @@ const STATUS_OPTS = [
 ] as const;
 
 async function fetchLog(limit = 14): Promise<ExecItem[]> {
-  const res = await fetch(
-    `${DATA_SYNC_BASE_URL}/commodities/sleeve/execution-log?limit=${limit}`,
-    { cache: 'no-store' },
-  );
+  const res = await fetch(`${DATA_SYNC_BASE_URL}/commodities/sleeve/execution-log?limit=${limit}`, {
+    cache: 'no-store',
+  });
   if (!res.ok) throw new Error(`execution-log ${res.status}`);
   const j = (await res.json()) as { items?: ExecItem[] };
   return j.items ?? [];
@@ -201,9 +200,7 @@ export function EtfExecutionLogCard() {
                   <td className="py-1 pr-2 font-mono">{r.tradeDate}</td>
                   <td className="py-1 pr-2">
                     {r.pickKey}
-                    {r.symbol ? (
-                      <span className="text-[var(--k-muted)]"> · {r.symbol}</span>
-                    ) : null}
+                    {r.symbol ? <span className="text-[var(--k-muted)]"> · {r.symbol}</span> : null}
                   </td>
                   <td
                     className={cn(

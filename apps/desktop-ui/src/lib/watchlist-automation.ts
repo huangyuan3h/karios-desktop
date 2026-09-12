@@ -43,7 +43,9 @@ export { isAutomationPollWindow } from '@/lib/market-hours';
 
 export async function fetchAutomationPending(tradeDate?: string): Promise<AutomationRun | null> {
   const q = tradeDate ? `?tradeDate=${encodeURIComponent(tradeDate)}` : '';
-  const res = await apiGetJson<{ pending: boolean } & AutomationRun>(`/watchlist/automation/pending${q}`);
+  const res = await apiGetJson<{ pending: boolean } & AutomationRun>(
+    `/watchlist/automation/pending${q}`,
+  );
   if (!res.pending || !res.runId) return null;
   return res;
 }
@@ -70,7 +72,9 @@ export async function ackAutomationRun(runId: string): Promise<void> {
   await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {});
 }
 
-export function funnelFromMeta(meta: Record<string, unknown> | undefined): Record<string, number> | null {
+export function funnelFromMeta(
+  meta: Record<string, unknown> | undefined,
+): Record<string, number> | null {
   const raw = meta?.funnel;
   if (!raw || typeof raw !== 'object') return null;
   const f = raw as Record<string, unknown>;
@@ -206,8 +210,7 @@ export function formatAutomationSummary(
   const research = run.meta?.researchCandidates ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
-  const researchPart =
-    typeof research === 'number' && research > 0 ? ` | 研报α +${research}` : '';
+  const researchPart = typeof research === 'number' && research > 0 ? ` | 研报α +${research}` : '';
   const rejected = run.meta?.alphaRejected;
   let rejectPart = '';
   if (rejected && typeof rejected === 'object') {

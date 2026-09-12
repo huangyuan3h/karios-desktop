@@ -535,7 +535,8 @@ export function IndustryFlowPage() {
         ? String(mainlineQueryError)
         : null;
   const displayError =
-    error ?? (flowError instanceof Error ? flowError.message : flowError ? String(flowError) : null);
+    error ??
+    (flowError instanceof Error ? flowError.message : flowError ? String(flowError) : null);
   const refreshing = flowFetching || mainlineFetching;
 
   async function onSync(force: boolean) {

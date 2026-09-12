@@ -9,11 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTwinStarActionQuery } from '@/lib/queries/backtest';
-import {
-  detectReplicaGaps,
-  type GapSeverity,
-  type HoldingSnap,
-} from '@/lib/replica-gap';
+import { detectReplicaGaps, type GapSeverity, type HoldingSnap } from '@/lib/replica-gap';
 import { useStrategyMode } from '@/lib/strategy-settings';
 import { cn } from '@/lib/utils';
 
@@ -98,8 +94,8 @@ export function PickStrongAlignBanner() {
           {verdictLabel}
         </span>
         <span className="ml-auto font-mono text-[10px] font-normal text-[var(--k-muted)]">
-          {twinStar ? '核心腿' : '目标腿'} {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
-          {report.etfWeightPct}% · 闲置 {report.idlePct}%
+          {twinStar ? '核心腿' : '目标腿'} {report.targetWeightPct}% · 股 {report.stockWeightPct}% ·
+          ETF {report.etfWeightPct}% · 闲置 {report.idlePct}%
         </span>
       </div>
       {healthQ.isLoading && !healthQ.data ? (

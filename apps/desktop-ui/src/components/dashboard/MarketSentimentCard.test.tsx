@@ -171,7 +171,12 @@ describe('MarketSentimentCard', () => {
 
   it('renders ETF flow signal with verdicts', () => {
     const base = {
-      dash: { marketSentiment: { ...MS, etfFlowSignal: { verdict: 'confirm', broadDirection: 'buy', sectorDirection: 'buy' } } },
+      dash: {
+        marketSentiment: {
+          ...MS,
+          etfFlowSignal: { verdict: 'confirm', broadDirection: 'buy', sectorDirection: 'buy' },
+        },
+      },
       summary: {},
       sentimentBusy: false,
       onSyncSentiment: vi.fn(),
@@ -181,14 +186,22 @@ describe('MarketSentimentCard', () => {
     };
     const { rerender } = render(<MarketSentimentCard {...base} />);
     expect(screen.getByText('确认净流入')).toBeInTheDocument();
-    expect(screen.getAllByText((_, el) => el?.textContent?.includes('国家队净买') ?? false).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((_, el) => el?.textContent?.includes('国家队净买') ?? false).length,
+    ).toBeGreaterThan(0);
     rerender(
       <MarketSentimentCard
         {...base}
         dash={{
           marketSentiment: {
             ...MS,
-            etfFlowSignal: { verdict: 'contradict', broadDirection: 'outflow', sectorDirection: 'outflow', incomplete: true, asOfDate: '2026-08-07' },
+            etfFlowSignal: {
+              verdict: 'contradict',
+              broadDirection: 'outflow',
+              sectorDirection: 'outflow',
+              incomplete: true,
+              asOfDate: '2026-08-07',
+            },
           },
         }}
       />,
@@ -200,7 +213,9 @@ describe('MarketSentimentCard', () => {
   it('shows capitulation alert for capitulation_v_bottom risk', () => {
     render(
       <MarketSentimentCard
-        dash={{ marketSentiment: { items: [{ ...MS.items[0], riskMode: 'capitulation_v_bottom' }] } }}
+        dash={{
+          marketSentiment: { items: [{ ...MS.items[0], riskMode: 'capitulation_v_bottom' }] },
+        }}
         summary={{}}
         sentimentBusy={false}
         onSyncSentiment={vi.fn()}
@@ -219,7 +234,22 @@ describe('MarketSentimentCard', () => {
           marketSentiment: {
             ...MS,
             indexSignals: [
-              { tsCode: 'idx1', name: '沪深300', signal: 'deep_green', positionRange: '50%', pctChg: 1.5, close: 3800.5, ma5: 3700, ma20: 3600, realtime: true, source: 'eastmoney', tradeTime: '14:30', featured: true, rules: ['r1'], quoteError: 'quota' },
+              {
+                tsCode: 'idx1',
+                name: '沪深300',
+                signal: 'deep_green',
+                positionRange: '50%',
+                pctChg: 1.5,
+                close: 3800.5,
+                ma5: 3700,
+                ma20: 3600,
+                realtime: true,
+                source: 'eastmoney',
+                tradeTime: '14:30',
+                featured: true,
+                rules: ['r1'],
+                quoteError: 'quota',
+              },
             ],
           },
         }}
@@ -270,7 +300,9 @@ describe('MarketSentimentCard', () => {
     );
     expect(screen.getByText('同步情绪')).toBeDisabled();
     fireEvent.click(screen.getByText('参考'));
-    expect(addReference).toHaveBeenCalledWith(expect.objectContaining({ kind: 'marketSentiment', refId: '2026-08-07:5' }));
+    expect(addReference).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'marketSentiment', refId: '2026-08-07:5' }),
+    );
   });
 
   it('renders copy status color', () => {

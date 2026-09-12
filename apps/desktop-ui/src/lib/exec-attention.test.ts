@@ -102,7 +102,10 @@ describe('buildExecAttentionQueue', () => {
           trendok: {
             stopLossParts: {
               warn_reduce_half: true,
-              warn_reasons: ['momentum_warning:hist_shrinking', 'momentum_warning:hist_shrinking_and_volume_dry'],
+              warn_reasons: [
+                'momentum_warning:hist_shrinking',
+                'momentum_warning:hist_shrinking_and_volume_dry',
+              ],
             },
           },
         } as unknown as PositionLike,

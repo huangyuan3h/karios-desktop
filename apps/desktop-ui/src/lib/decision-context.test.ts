@@ -56,8 +56,20 @@ describe('buildNewsMarkdown', () => {
 
 describe('activeLayerToMarkdown', () => {
   it('serializes blocks in order under the layer heading', () => {
-    const p0: DecisionBlock = { id: 'p0-watchlist', label: '操作表', tier: 'P0', content: '## Watchlist\nrow', tokens: 10 };
-    const p1: DecisionBlock = { id: 'p1-news', label: '最近新闻', tier: 'P1', content: '## 最近新闻\n- x', tokens: 5 };
+    const p0: DecisionBlock = {
+      id: 'p0-watchlist',
+      label: '操作表',
+      tier: 'P0',
+      content: '## Watchlist\nrow',
+      tokens: 10,
+    };
+    const p1: DecisionBlock = {
+      id: 'p1-news',
+      label: '最近新闻',
+      tier: 'P1',
+      content: '## 最近新闻\n- x',
+      tokens: 5,
+    };
     const layer: DecisionActiveLayer = {
       blocks: [p0, p1],
       totalTokens: 15,

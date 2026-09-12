@@ -65,7 +65,9 @@ function NotificationRow({
       className="flex w-full flex-col gap-0.5 rounded-md border border-transparent px-2 py-1.5 text-left hover:border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
     >
       <div className="flex items-center gap-1.5 text-[11px] font-medium">
-        <span className={cn('rounded px-1 py-px text-[9px] font-semibold', SEVERITY_CLS[n.severity])}>
+        <span
+          className={cn('rounded px-1 py-px text-[9px] font-semibold', SEVERITY_CLS[n.severity])}
+        >
           {n.severity === 'high' ? '重要' : n.severity === 'medium' ? '提示' : '低'}
         </span>
         {n.title}
@@ -162,8 +164,7 @@ export function NotificationHub() {
     type: 'buy_reminder',
     severity: 'low' as const,
     title: `买入提醒 · ${r.name ?? r.symbol}`,
-    detail:
-      `${r.symbol}${r.targetPrice != null ? ` · 目标价 ${r.targetPrice}` : ''}${r.note ? ` · ${r.note}` : ''}`,
+    detail: `${r.symbol}${r.targetPrice != null ? ` · 目标价 ${r.targetPrice}` : ''}${r.note ? ` · ${r.note}` : ''}`,
     anchor: 'reminders',
     createdAt: r.createdAt,
     lane: 'trade',
@@ -193,7 +194,12 @@ export function NotificationHub() {
           className="fixed right-4 top-14 z-[9998] w-80 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-left shadow-lg"
         >
           <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-            <span className={cn('rounded px-1 py-px text-[9px] font-semibold', SEVERITY_CLS[toast.severity])}>
+            <span
+              className={cn(
+                'rounded px-1 py-px text-[9px] font-semibold',
+                SEVERITY_CLS[toast.severity],
+              )}
+            >
               {toast.severity === 'high' ? '重要' : '提示'}
             </span>
             {toast.title}
@@ -244,7 +250,9 @@ export function NotificationHub() {
                   <div key={g.lane} className="mb-1">
                     <div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--k-muted)]">
                       {NOTIFICATION_LANE_META[g.lane].label}
-                      <span className="ml-1 font-normal normal-case">· {NOTIFICATION_LANE_META[g.lane].hint}</span>
+                      <span className="ml-1 font-normal normal-case">
+                        · {NOTIFICATION_LANE_META[g.lane].hint}
+                      </span>
                     </div>
                     {g.items.map((n) => (
                       <NotificationRow key={n.id} n={n} onClick={handleClick} />

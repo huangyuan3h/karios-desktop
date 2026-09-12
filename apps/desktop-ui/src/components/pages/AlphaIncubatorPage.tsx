@@ -169,7 +169,12 @@ export function AlphaIncubatorPage() {
         );
       }
       if (r.errors?.length) {
-        setError(r.errors.slice(0, 3).map((e) => e.error ?? 'unknown').join('\n'));
+        setError(
+          r.errors
+            .slice(0, 3)
+            .map((e) => e.error ?? 'unknown')
+            .join('\n'),
+        );
       }
       await refresh();
     } catch (e) {
@@ -204,7 +209,11 @@ export function AlphaIncubatorPage() {
       const r = await remapAlphaRadarTrend(trendId);
       if (!r.ok) throw new Error(r.error || 'Remap failed');
       const n = r.cnSymbols?.length ?? 0;
-      setMsg(n ? `Mapped ${n} A-share symbol(s)` : 'Remap done (no symbols — try Tavily or manual review)');
+      setMsg(
+        n
+          ? `Mapped ${n} A-share symbol(s)`
+          : 'Remap done (no symbols — try Tavily or manual review)',
+      );
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -248,7 +257,12 @@ export function AlphaIncubatorPage() {
             <Sparkles className={cn('mr-2 h-4 w-4', busy && 'animate-pulse')} />
             {busy ? '生成中…' : withinCooldown ? '12h 冷却中' : '生成趋势'}
           </Button>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void runPipeline(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => void runPipeline(true)}
+          >
             重新生成
           </Button>
         </div>
@@ -317,241 +331,252 @@ export function AlphaIncubatorPage() {
       </div>
 
       {viewTab === 'trends' ? (
-      <>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={cn(
-            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
-            trendsScope === 'batch'
-              ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
-              : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
-          )}
-          onClick={() => setTrendsScope('batch')}
-        >
-          本批
-          {status.lastTrendCount != null ? ` (${status.lastTrendCount})` : ''}
-        </button>
-        <button
-          type="button"
-          className={cn(
-            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
-            trendsScope === 'all'
-              ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
-              : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
-          )}
-          onClick={() => setTrendsScope('all')}
-        >
-          全部历史 ({trendsTotal})
-        </button>
-        {(['all', 'Global_Tech', 'Domestic_Policy', 'Cycle_Reversal'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            className={cn(
-              'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
-              driverFilter === key
-                ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
-                : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
-            )}
-            onClick={() => setDriverFilter(key)}
-          >
-            {key === 'all' ? '全部驱动' : driverLabel(key)}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-3">
-        {visibleTrends.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--k-border)] p-8 text-center text-sm text-[var(--k-muted)]">
-            暂无趋势卡片。点击「生成趋势」开始（约 1–3 分钟，需 ai-service + 网络）。
-          </div>
-        ) : (
-          visibleTrends.map((t) => {
-            const risk = riskLabel(t.riskStatus);
-            const ageDays = articleAgeDays(t.documentPublishedAt, t.documentFetchedAt);
-            const stale = isStaleArticle(t.documentPublishedAt, t.documentFetchedAt, catalystMeta.maxAgeDays);
-            return (
-              <section
-                key={t.id}
+        <>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                trendsScope === 'batch'
+                  ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
+              )}
+              onClick={() => setTrendsScope('batch')}
+            >
+              本批
+              {status.lastTrendCount != null ? ` (${status.lastTrendCount})` : ''}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                trendsScope === 'all'
+                  ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
+              )}
+              onClick={() => setTrendsScope('all')}
+            >
+              全部历史 ({trendsTotal})
+            </button>
+            {(['all', 'Global_Tech', 'Domestic_Policy', 'Cycle_Reversal'] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
                 className={cn(
-                  'rounded-xl border p-4',
-                  t.riskStatus === 'armed'
-                    ? 'border-red-400 bg-red-50/40 shadow-sm shadow-red-100'
-                    : 'border-[var(--k-border)] bg-[var(--k-surface)]',
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                  driverFilter === key
+                    ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                    : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
                 )}
+                onClick={() => setDriverFilter(key)}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          'rounded px-1.5 py-0.5 text-xs font-semibold',
-                          urgencyTone(trendCatalystGrade(t)),
-                        )}
-                        title="Catalyst grade"
-                      >
-                        {trendCatalystGrade(t)}
-                      </span>
-                      <span
-                        className={cn(
-                          'rounded px-1.5 py-0.5 text-xs font-medium',
-                          driverTone(t.driverType || 'Global_Tech'),
-                        )}
-                        title="Driver type"
-                      >
-                        {driverLabel(t.driverType)}
-                      </span>
-                      <h3 className="font-semibold">{trendDisplayTitle(t)}</h3>
-                    </div>
-                    <div className="mt-2 text-sm text-[var(--k-muted)]">
-                      <span className="font-medium text-[var(--k-text)]">【宏观主题】</span>
-                      {trendDisplayTitle(t)}
-                    </div>
-                    <div className="mt-1 text-sm">
-                      <span className="font-medium">【催化剂源】</span>
-                      {t.documentTitle || '—'}
-                      {t.documentUrl ? (
-                        <a
-                          href={t.documentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="ml-2 inline-flex items-center text-blue-600 hover:underline"
-                        >
-                          原文 <ExternalLink className="ml-0.5 h-3 w-3" />
-                        </a>
-                      ) : null}
-                    </div>
-                    {t.eventFocus || t.catalyst ? (
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">
-                        {stripModelThinking(t.eventFocus || t.catalyst || '')}
-                      </p>
-                    ) : null}
-                    {t.logicSummary ? (
-                      <p className="mt-1 text-xs font-medium text-[var(--k-muted)]">
-                        逻辑：{stripModelThinking(t.logicSummary)}
-                      </p>
-                    ) : null}
-                    <div className="mt-2 text-sm">
-                      <span className="font-medium">【A股映射龙头】</span>
-                      {t.cnSymbols?.length ? (
-                        t.cnSymbols.map((s) => (
-                          <span key={s.symbol} className="mr-2 font-mono">
-                            {s.name} ({s.symbol.replace('CN:', '')})
-                            <span className="text-xs text-[var(--k-muted)]">
-                              {' '}
-                              · {(s.confidence * 100).toFixed(0)}%
-                            </span>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[var(--k-muted)]">待映射 / 待人工复核</span>
-                      )}
-                    </div>
-                    {t.keywordsForMapping?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {t.keywordsForMapping.map((kw) => (
-                          <span
-                            key={kw}
-                            className="rounded-full border border-[var(--k-border)] px-2 py-0.5 text-xs"
-                          >
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className={cn('rounded-lg border px-3 py-2 text-xs font-medium', risk.className)}>
-                    {t.riskStatus === 'armed' ? (
-                      <span className="inline-flex items-center gap-1">
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        【风控状态】{risk.text}
-                      </span>
-                    ) : (
-                      <>【风控状态】{risk.text}</>
+                {key === 'all' ? '全部驱动' : driverLabel(key)}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            {visibleTrends.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[var(--k-border)] p-8 text-center text-sm text-[var(--k-muted)]">
+                暂无趋势卡片。点击「生成趋势」开始（约 1–3 分钟，需 ai-service + 网络）。
+              </div>
+            ) : (
+              visibleTrends.map((t) => {
+                const risk = riskLabel(t.riskStatus);
+                const ageDays = articleAgeDays(t.documentPublishedAt, t.documentFetchedAt);
+                const stale = isStaleArticle(
+                  t.documentPublishedAt,
+                  t.documentFetchedAt,
+                  catalystMeta.maxAgeDays,
+                );
+                return (
+                  <section
+                    key={t.id}
+                    className={cn(
+                      'rounded-xl border p-4',
+                      t.riskStatus === 'armed'
+                        ? 'border-red-400 bg-red-50/40 shadow-sm shadow-red-100'
+                        : 'border-[var(--k-border)] bg-[var(--k-surface)]',
                     )}
-                  </div>
-                </div>
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              'rounded px-1.5 py-0.5 text-xs font-semibold',
+                              urgencyTone(trendCatalystGrade(t)),
+                            )}
+                            title="Catalyst grade"
+                          >
+                            {trendCatalystGrade(t)}
+                          </span>
+                          <span
+                            className={cn(
+                              'rounded px-1.5 py-0.5 text-xs font-medium',
+                              driverTone(t.driverType || 'Global_Tech'),
+                            )}
+                            title="Driver type"
+                          >
+                            {driverLabel(t.driverType)}
+                          </span>
+                          <h3 className="font-semibold">{trendDisplayTitle(t)}</h3>
+                        </div>
+                        <div className="mt-2 text-sm text-[var(--k-muted)]">
+                          <span className="font-medium text-[var(--k-text)]">【宏观主题】</span>
+                          {trendDisplayTitle(t)}
+                        </div>
+                        <div className="mt-1 text-sm">
+                          <span className="font-medium">【催化剂源】</span>
+                          {t.documentTitle || '—'}
+                          {t.documentUrl ? (
+                            <a
+                              href={t.documentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="ml-2 inline-flex items-center text-blue-600 hover:underline"
+                            >
+                              原文 <ExternalLink className="ml-0.5 h-3 w-3" />
+                            </a>
+                          ) : null}
+                        </div>
+                        {t.eventFocus || t.catalyst ? (
+                          <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">
+                            {stripModelThinking(t.eventFocus || t.catalyst || '')}
+                          </p>
+                        ) : null}
+                        {t.logicSummary ? (
+                          <p className="mt-1 text-xs font-medium text-[var(--k-muted)]">
+                            逻辑：{stripModelThinking(t.logicSummary)}
+                          </p>
+                        ) : null}
+                        <div className="mt-2 text-sm">
+                          <span className="font-medium">【A股映射龙头】</span>
+                          {t.cnSymbols?.length ? (
+                            t.cnSymbols.map((s) => (
+                              <span key={s.symbol} className="mr-2 font-mono">
+                                {s.name} ({s.symbol.replace('CN:', '')})
+                                <span className="text-xs text-[var(--k-muted)]">
+                                  {' '}
+                                  · {(s.confidence * 100).toFixed(0)}%
+                                </span>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[var(--k-muted)]">待映射 / 待人工复核</span>
+                          )}
+                        </div>
+                        {t.keywordsForMapping?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {t.keywordsForMapping.map((kw) => (
+                              <span
+                                key={kw}
+                                className="rounded-full border border-[var(--k-border)] px-2 py-0.5 text-xs"
+                              >
+                                {kw}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div
+                        className={cn(
+                          'rounded-lg border px-3 py-2 text-xs font-medium',
+                          risk.className,
+                        )}
+                      >
+                        {t.riskStatus === 'armed' ? (
+                          <span className="inline-flex items-center gap-1">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            【风控状态】{risk.text}
+                          </span>
+                        ) : (
+                          <>【风控状态】{risk.text}</>
+                        )}
+                      </div>
+                    </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {ageDays != null ? (
-                    <span
-                      className={cn(
-                        'self-center text-xs',
-                        stale ? 'text-[var(--k-muted)] line-through decoration-[var(--k-muted)]' : 'text-[var(--k-muted)]',
-                      )}
-                    >
-                      文章年龄 {ageDays} 天{stale ? ' · 已超出催化窗口' : ''}
-                    </span>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void deleteTrend(t.id, trendDisplayTitle(t))}
-                  >
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    Delete
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void remapTrend(t.id)}
-                  >
-                    Remap A-shares
-                  </Button>
-                  {t.cnSymbols?.length ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void addSymbolsToWatchlist(t.cnSymbols)
-                          .then(() => {
-                            setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
-                          })
-                          .catch((err) => {
-                            console.warn('add symbols to watchlist failed:', err);
-                            setMsg('Failed to add symbols to Watchlist');
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {ageDays != null ? (
+                        <span
+                          className={cn(
+                            'self-center text-xs',
+                            stale
+                              ? 'text-[var(--k-muted)] line-through decoration-[var(--k-muted)]'
+                              : 'text-[var(--k-muted)]',
+                          )}
+                        >
+                          文章年龄 {ageDays} 天{stale ? ' · 已超出催化窗口' : ''}
+                        </span>
+                      ) : null}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void deleteTrend(t.id, trendDisplayTitle(t))}
+                      >
+                        <Trash2 className="mr-1 h-4 w-4" />
+                        Delete
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void remapTrend(t.id)}
+                      >
+                        Remap A-shares
+                      </Button>
+                      {t.cnSymbols?.length ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void addSymbolsToWatchlist(t.cnSymbols)
+                              .then(() => {
+                                setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
+                              })
+                              .catch((err) => {
+                                console.warn('add symbols to watchlist failed:', err);
+                                setMsg('Failed to add symbols to Watchlist');
+                              });
+                          }}
+                        >
+                          <Star className="mr-1 h-4 w-4" />
+                          Add to Watchlist
+                        </Button>
+                      ) : null}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          addReference({
+                            kind: 'alphaRadar',
+                            refId: `alphaRadar:${t.id}`,
+                            trendId: t.id,
+                            trendName: trendDisplayTitle(t),
+                            macroTheme: t.macroTheme ?? trendDisplayTitle(t),
+                            catalystGrade: trendCatalystGrade(t),
+                            driverType: t.driverType ?? undefined,
+                            eventFocus: t.eventFocus ?? t.catalyst ?? undefined,
+                            logicSummary: t.logicSummary ?? undefined,
+                            catalyst: t.catalyst,
+                            cnSymbols: t.cnSymbols,
+                            riskStatus: t.riskStatus,
+                            documentTitle: t.documentTitle,
+                            capturedAt: new Date().toISOString(),
                           });
-                      }}
-                    >
-                      <Star className="mr-1 h-4 w-4" />
-                      Add to Watchlist
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      addReference({
-                        kind: 'alphaRadar',
-                        refId: `alphaRadar:${t.id}`,
-                        trendId: t.id,
-                        trendName: trendDisplayTitle(t),
-                        macroTheme: t.macroTheme ?? trendDisplayTitle(t),
-                        catalystGrade: trendCatalystGrade(t),
-                        driverType: t.driverType ?? undefined,
-                        eventFocus: t.eventFocus ?? t.catalyst ?? undefined,
-                        logicSummary: t.logicSummary ?? undefined,
-                        catalyst: t.catalyst,
-                        cnSymbols: t.cnSymbols,
-                        riskStatus: t.riskStatus,
-                        documentTitle: t.documentTitle,
-                        capturedAt: new Date().toISOString(),
-                      });
-                      setMsg('Added trend to Agent context');
-                    }}
-                  >
-                    <Bot className="mr-1 h-4 w-4" />
-                    Ask Agent
-                  </Button>
-                </div>
-              </section>
-            );
-          })
-        )}
-      </div>
-      </>
+                          setMsg('Added trend to Agent context');
+                        }}
+                      >
+                        <Bot className="mr-1 h-4 w-4" />
+                        Ask Agent
+                      </Button>
+                    </div>
+                  </section>
+                );
+              })
+            )}
+          </div>
+        </>
       ) : viewTab === 'rss' ? (
         <div className="grid grid-cols-1 gap-3">
           {rssDocuments.length === 0 ? (
@@ -651,7 +676,9 @@ export function AlphaIncubatorPage() {
                         >
                           {article.catalystGrade || article.urgencyLevel}
                         </span>
-                        <span className="font-medium">{article.documentTitle || article.macroTheme || article.trendName}</span>
+                        <span className="font-medium">
+                          {article.documentTitle || article.macroTheme || article.trendName}
+                        </span>
                         <span className="text-xs text-[var(--k-muted)]">
                           相关度 {formatRelevancePct(article.relevance)}
                         </span>
@@ -670,7 +697,9 @@ export function AlphaIncubatorPage() {
                         {article.macroTheme || article.trendName}
                       </div>
                       {article.summary ? (
-                        <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">{article.summary}</p>
+                        <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">
+                          {article.summary}
+                        </p>
                       ) : null}
                       {article.publishedAt ? (
                         <div className="mt-1 text-xs text-[var(--k-muted)]">
@@ -688,7 +717,9 @@ export function AlphaIncubatorPage() {
                     onClick={() => {
                       void addSymbolsToWatchlist([
                         {
-                          symbol: stock.symbol.startsWith('CN:') ? stock.symbol : `CN:${stock.symbol}`,
+                          symbol: stock.symbol.startsWith('CN:')
+                            ? stock.symbol
+                            : `CN:${stock.symbol}`,
                           name: stock.name,
                           confidence: stock.catalystScore / 100,
                           rationale: `Catalyst score ${formatCatalystScore(stock.catalystScore)}`,

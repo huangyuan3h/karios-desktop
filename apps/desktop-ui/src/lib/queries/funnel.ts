@@ -4,8 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchFunnelHistory, type AutomationRun } from '@/lib/watchlist-automation';
 
-export const funnelHistoryKey = (limit: number) =>
-  ['watchlist', 'funnel-history', limit] as const;
+export const funnelHistoryKey = (limit: number) => ['watchlist', 'funnel-history', limit] as const;
 
 /** TIP-002 N-day funnel history (one row per trade_date, newest first). */
 export function useFunnelHistoryQuery(limit = 10) {

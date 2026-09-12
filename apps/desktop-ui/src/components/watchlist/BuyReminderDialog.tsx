@@ -37,7 +37,8 @@ export function BuyReminderDialog({
   }, [state]);
 
   const parsedTarget = targetPrice === '' ? null : Number(targetPrice);
-  const targetValid = targetPrice === '' || (PRICE_RE.test(targetPrice.trim()) && parsedTarget! > 0);
+  const targetValid =
+    targetPrice === '' || (PRICE_RE.test(targetPrice.trim()) && parsedTarget! > 0);
   const valid = targetValid;
 
   return createPortal(
@@ -62,7 +63,8 @@ export function BuyReminderDialog({
           </button>
         </div>
         <div className="mb-3 text-[11px] text-[var(--k-muted)]">
-          {state.name || '—'} · {suggestLabel} {suggestPct}%（确认后加入自选，行情/趋势/信号/体检自动盯盘）
+          {state.name || '—'} · {suggestLabel} {suggestPct}
+          %（确认后加入自选，行情/趋势/信号/体检自动盯盘）
         </div>
         <div className="space-y-2">
           <div>

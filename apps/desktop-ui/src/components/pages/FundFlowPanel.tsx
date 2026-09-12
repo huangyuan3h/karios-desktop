@@ -92,7 +92,9 @@ function MiniTooltip({
               <span
                 className={cn(
                   'font-mono',
-                  f.flag === 'gate' && raw ? 'text-red-600 dark:text-red-400' : 'text-[var(--k-text)]',
+                  f.flag === 'gate' && raw
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-[var(--k-text)]',
                 )}
               >
                 {text}
@@ -122,7 +124,11 @@ function MiniChart({
   return (
     <div className="h-[120px] w-full" data-testid={testId}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={rows as unknown as MiniDatum[]} syncId={syncId} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <LineChart
+          data={rows as unknown as MiniDatum[]}
+          syncId={syncId}
+          margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+        >
           <CartesianGrid stroke={FF_COLORS.grid} strokeOpacity={0.2} vertical={false} />
           <XAxis
             dataKey="date"
@@ -158,7 +164,9 @@ function SectionHeader({
             c.danger && 'rounded bg-red-500/15 px-1 text-red-700 dark:text-red-300',
           )}
         >
-          {c.color ? <span className="inline-block h-0.5 w-3" style={{ background: c.color }} /> : null}
+          {c.color ? (
+            <span className="inline-block h-0.5 w-3" style={{ background: c.color }} />
+          ) : null}
           {c.text}
         </span>
       ))}
@@ -201,32 +209,50 @@ export function FundFlowPanel({
 
   if (q.isLoading) {
     return (
-      <div className={cn('rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]', className)}>
+      <div
+        className={cn(
+          'rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]',
+          className,
+        )}
+      >
         资金流全景加载中…
       </div>
     );
   }
   if (q.isError || !rows.length) {
     return (
-      <div className={cn('rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]', className)}>
+      <div
+        className={cn(
+          'rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]',
+          className,
+        )}
+      >
         资金流数据不可用（需后端 ≥ 0043 迁移 + risk_state_sync 回填）
       </div>
     );
   }
 
   return (
-    <div className={cn('rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5', className)} data-testid="fund-flow-panel">
+    <div
+      className={cn('rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5', className)}
+      data-testid="fund-flow-panel"
+    >
       <div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[var(--k-muted)]">
         <span className="font-medium text-[var(--k-fg)]">资金流全景</span>
-        <span>国家队 {last?.etfShareYi != null ? `${last.etfShareYi} 亿份 · Δ20 ${fmtSigned(last.etfShareD20Pct, 1, '%')}` : '—'}</span>
+        <span>
+          国家队{' '}
+          {last?.etfShareYi != null
+            ? `${last.etfShareYi} 亿份 · Δ20 ${fmtSigned(last.etfShareD20Pct, 1, '%')}`
+            : '—'}
+        </span>
         {last?.gateOn ? (
-          <span className="rounded bg-red-500/15 px-1 text-red-700 dark:text-red-300">国家队撤退 (B 闸)</span>
+          <span className="rounded bg-red-500/15 px-1 text-red-700 dark:text-red-300">
+            国家队撤退 (B 闸)
+          </span>
         ) : null}
         <span>两融 {last?.marginTrillion != null ? `${last.marginTrillion} 万亿` : '—'}</span>
         <span>北向20日 {last?.northD20Yi != null ? fmtSigned(last.northD20Yi, 0, '亿') : '—'}</span>
-        <span>
-          三路20日 {last ? fmtSigned(flowTotalDaily20(last), 0, '亿') : '—'}
-        </span>
+        <span>三路20日 {last ? fmtSigned(flowTotalDaily20(last), 0, '亿') : '—'}</span>
         <span className="ml-auto flex items-center gap-1">
           {syncStart ? (
             <button
@@ -283,10 +309,34 @@ export function FundFlowPanel({
           content={
             <MiniTooltip
               fields={[
-                { key: 'natD20Yi', label: '国家队 20日', color: FF_COLORS.etf, digits: 0, unit: ' 亿' },
-                { key: 'marginD20Yi', label: '两融 20日', color: FF_COLORS.margin, digits: 0, unit: ' 亿' },
-                { key: 'northD20Yi', label: '北向 20日', color: FF_COLORS.northCum, digits: 0, unit: ' 亿' },
-                { key: 'totalD20Yi', label: '合计 20日', color: FF_COLORS.total, digits: 0, unit: ' 亿' },
+                {
+                  key: 'natD20Yi',
+                  label: '国家队 20日',
+                  color: FF_COLORS.etf,
+                  digits: 0,
+                  unit: ' 亿',
+                },
+                {
+                  key: 'marginD20Yi',
+                  label: '两融 20日',
+                  color: FF_COLORS.margin,
+                  digits: 0,
+                  unit: ' 亿',
+                },
+                {
+                  key: 'northD20Yi',
+                  label: '北向 20日',
+                  color: FF_COLORS.northCum,
+                  digits: 0,
+                  unit: ' 亿',
+                },
+                {
+                  key: 'totalD20Yi',
+                  label: '合计 20日',
+                  color: FF_COLORS.total,
+                  digits: 0,
+                  unit: ' 亿',
+                },
               ]}
             />
           }
@@ -346,9 +396,28 @@ export function FundFlowPanel({
           content={
             <MiniTooltip
               fields={[
-                { key: 'etfShareYi', label: '份额合计', color: FF_COLORS.etf, digits: 1, unit: ' 亿份' },
-                { key: 'etfShareD20Pct', label: '20日Δ', color: FF_COLORS.etf, digits: 2, unit: '%' },
-                { key: 'gateOn', label: 'B 闸', color: '#ef4444', digits: 0, unit: '', flag: 'gate' },
+                {
+                  key: 'etfShareYi',
+                  label: '份额合计',
+                  color: FF_COLORS.etf,
+                  digits: 1,
+                  unit: ' 亿份',
+                },
+                {
+                  key: 'etfShareD20Pct',
+                  label: '20日Δ',
+                  color: FF_COLORS.etf,
+                  digits: 2,
+                  unit: '%',
+                },
+                {
+                  key: 'gateOn',
+                  label: 'B 闸',
+                  color: '#ef4444',
+                  digits: 0,
+                  unit: '',
+                  flag: 'gate',
+                },
               ]}
             />
           }
@@ -377,7 +446,9 @@ export function FundFlowPanel({
 
       <SectionHeader
         title="两融余额（万亿元，全市场）"
-        chips={[{ text: `20日Δ ${fmtSigned(last?.marginD20Pct, 1, '%')}`, color: FF_COLORS.margin }]}
+        chips={[
+          { text: `20日Δ ${fmtSigned(last?.marginD20Pct, 1, '%')}`, color: FF_COLORS.margin },
+        ]}
       />
       <MiniChart rows={rows} tickDates={tickDates} testId="ff-margin" syncId={syncId}>
         <YAxis
@@ -392,8 +463,20 @@ export function FundFlowPanel({
           content={
             <MiniTooltip
               fields={[
-                { key: 'marginTrillion', label: '两融余额', color: FF_COLORS.margin, digits: 3, unit: ' 万亿' },
-                { key: 'marginD20Pct', label: '20日Δ', color: FF_COLORS.margin, digits: 2, unit: '%' },
+                {
+                  key: 'marginTrillion',
+                  label: '两融余额',
+                  color: FF_COLORS.margin,
+                  digits: 3,
+                  unit: ' 万亿',
+                },
+                {
+                  key: 'marginD20Pct',
+                  label: '20日Δ',
+                  color: FF_COLORS.margin,
+                  digits: 2,
+                  unit: '%',
+                },
               ]}
             />
           }
@@ -434,19 +517,43 @@ export function FundFlowPanel({
           tickLine={false}
           axisLine={false}
         />
-        <ReferenceLine yAxisId="daily" y={0} stroke={FF_COLORS.axis} strokeOpacity={0.4} strokeDasharray="2 3" />
+        <ReferenceLine
+          yAxisId="daily"
+          y={0}
+          stroke={FF_COLORS.axis}
+          strokeOpacity={0.4}
+          strokeDasharray="2 3"
+        />
         <RechartsTooltip
           content={
             <MiniTooltip
               fields={[
-                { key: 'northDailyYi', label: '当日净买', color: FF_COLORS.north, digits: 1, unit: ' 亿' },
-                { key: 'northD20Yi', label: '20日累计', color: FF_COLORS.northCum, digits: 0, unit: ' 亿' },
+                {
+                  key: 'northDailyYi',
+                  label: '当日净买',
+                  color: FF_COLORS.north,
+                  digits: 1,
+                  unit: ' 亿',
+                },
+                {
+                  key: 'northD20Yi',
+                  label: '20日累计',
+                  color: FF_COLORS.northCum,
+                  digits: 0,
+                  unit: ' 亿',
+                },
               ]}
             />
           }
           cursor={{ stroke: FF_COLORS.axis, strokeDasharray: '4 4' }}
         />
-        <Bar yAxisId="daily" dataKey="northDailyYi" fill={FF_COLORS.north} fillOpacity={0.55} isAnimationActive={false} />
+        <Bar
+          yAxisId="daily"
+          dataKey="northDailyYi"
+          fill={FF_COLORS.north}
+          fillOpacity={0.55}
+          isAnimationActive={false}
+        />
         <Line
           yAxisId="cum"
           type="linear"
@@ -474,7 +581,15 @@ export function FundFlowPanel({
         <RechartsTooltip
           content={
             <MiniTooltip
-              fields={[{ key: 'smNetPct', label: '小单净买占比', color: FF_COLORS.sm, digits: 2, unit: '%' }]}
+              fields={[
+                {
+                  key: 'smNetPct',
+                  label: '小单净买占比',
+                  color: FF_COLORS.sm,
+                  digits: 2,
+                  unit: '%',
+                },
+              ]}
             />
           }
           cursor={{ stroke: FF_COLORS.axis, strokeDasharray: '4 4' }}
@@ -490,7 +605,9 @@ export function FundFlowPanel({
       </MiniChart>
 
       <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
-        显示层 · 不影响交易 · 同步模式下十字线与上方 NAV 图联动（按 index 同步 → 同窗口才对齐）· 三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye、北向 = 日净买 · 份额 2021-22 起完整 · 两融 2021+ · 北向 2021+ · 小单 2023+（2025-09~2026-07 缺口已回填）
+        显示层 · 不影响交易 · 同步模式下十字线与上方 NAV 图联动（按 index 同步 → 同窗口才对齐）·
+        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye、北向 = 日净买 · 份额
+        2021-22 起完整 · 两融 2021+ · 北向 2021+ · 小单 2023+（2025-09~2026-07 缺口已回填）
       </div>
     </div>
   );

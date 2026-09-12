@@ -15,5 +15,3 @@ export const OrderRecipeSchema = z.object({
 });
 
 export type OrderRecipe = z.infer<typeof OrderRecipeSchema>;
-
-

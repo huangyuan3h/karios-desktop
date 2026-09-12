@@ -142,10 +142,7 @@ export const TwinStarSatSchema = z.object({
     z.literal(TWIN_STAR_CLIP4.coreIdlePct),
     z.literal(TWIN_STAR_CLIP4.coreSatActivePct),
   ]),
-  satTargetPct: z.union([
-    z.literal(0),
-    z.literal(TWIN_STAR_CLIP4.satSleevePct),
-  ]),
+  satTargetPct: z.union([z.literal(0), z.literal(TWIN_STAR_CLIP4.satSleevePct)]),
   book: TwinStarSatBookSchema.nullable().optional(),
 });
 export type TwinStarSat = z.infer<typeof TwinStarSatSchema>;

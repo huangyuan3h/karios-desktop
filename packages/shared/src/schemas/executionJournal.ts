@@ -61,9 +61,7 @@ export const ExecutionSnapshotIngestResponseSchema = z.object({
   snapshot: ExecutionSnapshotSchema.passthrough(),
   changes: z.array(ExecutionDecisionChangeSchema.passthrough()).default([]),
 });
-export type ExecutionSnapshotIngestResponse = z.infer<
-  typeof ExecutionSnapshotIngestResponseSchema
->;
+export type ExecutionSnapshotIngestResponse = z.infer<typeof ExecutionSnapshotIngestResponseSchema>;
 
 export const ExecutionSnapshotListResponseSchema = z.object({
   items: z.array(ExecutionSnapshotSchema.passthrough()),

@@ -16,7 +16,10 @@ import { describe, expect, it } from 'vitest';
 
 import type { HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
 
-import { parseInvestmentDailyReportResponse, renderInvestmentDailyPdfToBlob } from './investmentDailyPdf';
+import {
+  parseInvestmentDailyReportResponse,
+  renderInvestmentDailyPdfToBlob,
+} from './investmentDailyPdf';
 
 const longCn =
   '这是一段用于测试中文换行与版面是否越界的长文本，包含沪深指数收报与北向资金等常见表述，重复以占满一行并触发自动折行。';

@@ -81,9 +81,7 @@ export function TradingBriefCard() {
           <ReactMarkdown
             components={{
               p: ({ children }) => <p className="my-0.5">{children}</p>,
-              strong: ({ children }) => (
-                <strong className="text-[var(--k-fg)]">{children}</strong>
-              ),
+              strong: ({ children }) => <strong className="text-[var(--k-fg)]">{children}</strong>,
               li: ({ children }) => <li className="my-0.5">{children}</li>,
             }}
           >

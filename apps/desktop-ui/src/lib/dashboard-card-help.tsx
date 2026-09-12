@@ -291,7 +291,8 @@ export const DASHBOARD_HELP: Record<string, DashboardHelp> = {
     id: 'sync.step',
     label: '步骤',
     sub: 'Step',
-    short: '同步任务 step 名（industryFundFlow / marketSentiment / screeners / news / watchlist 等）。',
+    short:
+      '同步任务 step 名（industryFundFlow / marketSentiment / screeners / news / watchlist 等）。',
     detail: '同一字段也展示在同步过程中（带进度）。',
   },
   'sync.ok': {
@@ -372,9 +373,7 @@ export function buildDashboardHelpTooltipBody(h: DashboardHelp): ReactNode {
           {h.label}
           {h.sub ? <span className="ml-2 text-[var(--k-muted)]">{h.sub}</span> : null}
         </div>
-        {h.unit ? (
-          <div className="font-mono text-[var(--k-muted)]">unit: {h.unit}</div>
-        ) : null}
+        {h.unit ? <div className="font-mono text-[var(--k-muted)]">unit: {h.unit}</div> : null}
       </div>
       <div className="text-[var(--k-muted)]">{h.short}</div>
       <div className="mt-2 whitespace-pre-line text-[var(--k-text)]">{h.detail}</div>

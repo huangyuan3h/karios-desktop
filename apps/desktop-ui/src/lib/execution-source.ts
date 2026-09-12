@@ -51,9 +51,7 @@ export function buildSourceContext(payload: {
   alphaSymbols?: Iterable<string>;
 }): SourceContext {
   return {
-    tvSymbols: new Set<string>(
-      Array.from(payload.tvSymbols ?? []).map((s) => s.toUpperCase()),
-    ),
+    tvSymbols: new Set<string>(Array.from(payload.tvSymbols ?? []).map((s) => s.toUpperCase())),
     alphaSymbols: new Set<string>(
       Array.from(payload.alphaSymbols ?? []).map((s) => s.toUpperCase()),
     ),
@@ -139,8 +137,7 @@ export function formatSourceAttributionMarkdown(
   for (const name of rows) {
     const b = stats.bySource[name];
     const total = b.wins + b.losses;
-    const winRate =
-      total > 0 ? `${((b.wins / total) * 100).toFixed(1)}%` : '—';
+    const winRate = total > 0 ? `${((b.wins / total) * 100).toFixed(1)}%` : '—';
     const open = stats.openTradesBySource[name] ?? 0;
     lines.push(
       `| ${name} | ${b.buySignals} | ${b.closed} | ${b.wins} | ${b.losses} | ${winRate} | ${open} |`,

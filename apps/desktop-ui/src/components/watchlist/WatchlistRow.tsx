@@ -35,13 +35,7 @@ import {
   type WatchlistRiskAlert,
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
-import {
-  fmtBuyCell,
-  fmtNum,
-  fmtPrice,
-  fmtScore,
-  rowTone,
-} from '@/lib/watchlist-table-cells';
+import { fmtBuyCell, fmtNum, fmtPrice, fmtScore, rowTone } from '@/lib/watchlist-table-cells';
 
 const COST_PRICE_RE = /^\d+(\.\d{0,3})?$/;
 const POSITION_PCT_RE = /^\d+(\.\d{0,2})?$/;
@@ -123,18 +117,9 @@ function TrendOkCell({
   const status = String(t?.trendStatus || '')
     .trim()
     .toLowerCase();
-  const icon =
-    status === 'recovering'
-      ? '🔄'
-      : ok == null
-        ? '—'
-        : ok
-          ? '✅'
-          : '❌';
+  const icon = status === 'recovering' ? '🔄' : ok == null ? '—' : ok ? '✅' : '❌';
   const rsiNow =
-    typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14)
-      ? t.values.rsi14
-      : null;
+    typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14) ? t.values.rsi14 : null;
   const h4 =
     Array.isArray(t?.values?.macdHist4) && t?.values?.macdHist4?.length === 4
       ? t.values.macdHist4
@@ -278,7 +263,9 @@ function StopLossCell({
           {warnDisplay || '警告：MACD柱缩小但未转负，建议至少卖出一半'}
         </div>
       ) : null}
-      <div className="text-[var(--k-muted)]">Formula: max(final_support - atr_k×ATR14, hard_stop)</div>
+      <div className="text-[var(--k-muted)]">
+        Formula: max(final_support - atr_k×ATR14, hard_stop)
+      </div>
       <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1">
         <div className="mb-1 font-medium">立刻离场检查</div>
         <div className="text-[10px] text-[var(--k-muted)]">
@@ -768,13 +755,7 @@ function WatchlistRowInner({
       </td>
       <td
         className="px-3 py-2 font-mono"
-        title={
-          t?.asOfDate
-            ? `as of ${t.asOfDate}`
-            : t
-              ? 'as of latest cached daily bar'
-              : '—'
-        }
+        title={t?.asOfDate ? `as of ${t.asOfDate}` : t ? 'as of latest cached daily bar' : '—'}
       >
         {fmtPrice(currentPrice)}
       </td>
@@ -849,9 +830,7 @@ function WatchlistRowInner({
                       : `全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}% — 低于 50% 回测不建议买入（S-3：只买前 50%）`
                   }
                 >
-                  {inTopHalf
-                    ? `前${(pct * 100).toFixed(0)}%`
-                    : `前${(pct * 100).toFixed(0)}% 不买`}
+                  {inTopHalf ? `前${(pct * 100).toFixed(0)}%` : `前${(pct * 100).toFixed(0)}% 不买`}
                 </span>
               )}
             </span>
@@ -911,7 +890,10 @@ function WatchlistRowInner({
       >
         {formatPnLPct(computePnLPct(it.costPrice ?? null, rowMetrics.current))}
       </td>
-      <td className={watchlistStickyCellClass('score', { tone })} style={watchlistStickyCellStyle('score')}>
+      <td
+        className={watchlistStickyCellClass('score', { tone })}
+        style={watchlistStickyCellStyle('score')}
+      >
         <ScoreCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
       <td
@@ -919,9 +901,7 @@ function WatchlistRowInner({
         style={watchlistStickyCellStyle('exec')}
         title={[
           actionCard.why,
-          actionCard.mainlineOk
-            ? `mainline=${actionCard.mainlineTag || 'ok'}`
-            : 'mainline=no',
+          actionCard.mainlineOk ? `mainline=${actionCard.mainlineTag || 'ok'}` : 'mainline=no',
           typeof actionCard.suggestAddPct === 'number'
             ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'}${
                 actionCard.sizeStopDistancePct != null
@@ -1011,7 +991,6 @@ function WatchlistRowInner({
           </Button>
         </div>
       </td>
-
     </tr>
   );
 }

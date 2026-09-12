@@ -409,9 +409,13 @@ export function resolveWatchlistCurrentPrice(opts: {
   trendClose: number | null | undefined;
 }): number | null {
   const close =
-    typeof opts.trendClose === 'number' && Number.isFinite(opts.trendClose) ? opts.trendClose : null;
+    typeof opts.trendClose === 'number' && Number.isFinite(opts.trendClose)
+      ? opts.trendClose
+      : null;
   const qPrice =
-    typeof opts.quotePrice === 'number' && Number.isFinite(opts.quotePrice) ? opts.quotePrice : null;
+    typeof opts.quotePrice === 'number' && Number.isFinite(opts.quotePrice)
+      ? opts.quotePrice
+      : null;
   const qDate = tradeDateFromTradeTime(opts.quoteTradeTime ?? null);
   const trendDate = String(opts.trendAsOfDate ?? '').trim();
   const isCn = opts.symbol.toUpperCase().startsWith('CN:');
@@ -462,30 +466,45 @@ export function industryDisplayName(values: Record<string, unknown> | undefined 
   return '—';
 }
 
-export function isHotTop3Industry(t: { values?: Record<string, unknown> | null } | undefined | null): boolean {
+export function isHotTop3Industry(
+  t: { values?: Record<string, unknown> | null } | undefined | null,
+): boolean {
   const reasonsRaw = t?.values?.industryFlowReasons;
   const reasons = Array.isArray(reasonsRaw) ? reasonsRaw.map((x) => String(x ?? '')) : [];
   return reasons.includes('hotspots_today_top3');
 }
 
-export function formatHotTop3(t: { values?: Record<string, unknown> | null } | undefined | null): string {
+export function formatHotTop3(
+  t: { values?: Record<string, unknown> | null } | undefined | null,
+): string {
   return isHotTop3Industry(t) ? '✓' : '—';
 }
 
-export function formatRs(t: { rs?: number | null; values?: Record<string, unknown> | null } | undefined | null): string {
+export function formatRs(
+  t: { rs?: number | null; values?: Record<string, unknown> | null } | undefined | null,
+): string {
   const rs = t?.rs ?? (t?.values?.rsValue as number | undefined);
   if (typeof rs !== 'number' || !Number.isFinite(rs)) return '—';
   return `${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`;
 }
 
-export function tushareIndustryTooltip(values: Record<string, unknown> | undefined | null): string | null {
+export function tushareIndustryTooltip(
+  values: Record<string, unknown> | undefined | null,
+): string | null {
   const em = values?.emIndustry;
   const ts = values?.industry;
-  if (typeof em === 'string' && em.trim() && typeof ts === 'string' && ts.trim() && em.trim() !== ts.trim()) {
+  if (
+    typeof em === 'string' &&
+    em.trim() &&
+    typeof ts === 'string' &&
+    ts.trim() &&
+    em.trim() !== ts.trim()
+  ) {
     return `Tushare: ${ts.trim()}`;
   }
   if (typeof em === 'string' && em.trim()) return null;
-  if (typeof ts === 'string' && ts.trim()) return 'Tushare classification; may differ from East Money hotspot boards';
+  if (typeof ts === 'string' && ts.trim())
+    return 'Tushare classification; may differ from East Money hotspot boards';
   return null;
 }
 

@@ -40,10 +40,14 @@ export function StockChart({ data }: Props) {
     if (!priceEl || !volEl || !macdEl || !kdjEl) return;
     if (data.length === 0) return;
 
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--k-bg').trim() || '#fff';
-    const text = getComputedStyle(document.documentElement).getPropertyValue('--k-text').trim() || '#111';
-    const border = getComputedStyle(document.documentElement).getPropertyValue('--k-border').trim() || '#e5e7eb';
-    const muted = getComputedStyle(document.documentElement).getPropertyValue('--k-muted').trim() || '#6b7280';
+    const bg =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-bg').trim() || '#fff';
+    const text =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-text').trim() || '#111';
+    const border =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-border').trim() || '#e5e7eb';
+    const muted =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-muted').trim() || '#6b7280';
 
     const common = (el: HTMLElement) => {
       return createChart(el, {
@@ -133,12 +137,8 @@ export function StockChart({ data }: Props) {
         color: (hist[i] ?? 0) >= 0 ? 'rgba(22,163,74,0.55)' : 'rgba(220,38,38,0.55)',
       })),
     );
-    difLine.setData(
-      data.map((x, i) => ({ time: parseTime(x.time), value: dif[i] ?? 0 })),
-    );
-    deaLine.setData(
-      data.map((x, i) => ({ time: parseTime(x.time), value: dea[i] ?? 0 })),
-    );
+    difLine.setData(data.map((x, i) => ({ time: parseTime(x.time), value: dif[i] ?? 0 })));
+    deaLine.setData(data.map((x, i) => ({ time: parseTime(x.time), value: dea[i] ?? 0 })));
 
     kLine.setData(
       data.map((x, i) => ({ time: parseTime(x.time), value: clampNumber(k[i] ?? 50, 0, 100) })),
@@ -206,5 +206,3 @@ export function StockChart({ data }: Props) {
     </div>
   );
 }
-
-

@@ -14,10 +14,7 @@ import {
   translateWhy,
   type ExecAttentionLine,
 } from '@/lib/exec-attention';
-import {
-  buildExecutionSnapshotPayload,
-  filterLatestActionCards,
-} from '@/lib/execution-journal';
+import { buildExecutionSnapshotPayload, filterLatestActionCards } from '@/lib/execution-journal';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import {
@@ -274,9 +271,7 @@ export function DecisionJournalCard(props: {
 
       {latest ? (
         <div>
-          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
-            最新操作（变更）
-          </div>
+          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">最新操作（变更）</div>
           {latestActionCards.length === 0 ? (
             <div className="text-xs text-[var(--k-muted)]">
               今日暂无操作 / 触发 / 止损变更（静默 WATCH 已省略）。

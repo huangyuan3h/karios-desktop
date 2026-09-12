@@ -22,7 +22,14 @@ function foldWindow(messages: DecisionMessage[], cap: number): DecisionMessage[]
   const keep = messages.slice(-cap);
   const foldedCount = messages.length - cap;
   return [
-    { id: -1, sessionId: messages[0]?.sessionId ?? 0, role: 'user', content: `（略早前 ${foldedCount} 条消息已折叠）`, contextSnapshot: null, createdAt: messages[0]?.createdAt ?? '' },
+    {
+      id: -1,
+      sessionId: messages[0]?.sessionId ?? 0,
+      role: 'user',
+      content: `（略早前 ${foldedCount} 条消息已折叠）`,
+      contextSnapshot: null,
+      createdAt: messages[0]?.createdAt ?? '',
+    },
     ...keep,
   ];
 }
@@ -33,18 +40,25 @@ async function buildContextMd(): Promise<string> {
   try {
     const h = await fetchPortfolioHealth();
     lines.push(`# 当前快照（${h.tradeDate ?? '—'}）`);
-    lines.push(`- 市场 regime: ${h.regime ?? '—'} · 强度 ${h.strength ?? '—'} · 情绪 ${h.sentiment ?? '—'}`);
-    if (h.panicCooldown?.active) lines.push(`- ⚠ 恐慌冷却至 ${h.panicCooldown.cooldownEndDate ?? '—'}`);
+    lines.push(
+      `- 市场 regime: ${h.regime ?? '—'} · 强度 ${h.strength ?? '—'} · 情绪 ${h.sentiment ?? '—'}`,
+    );
+    if (h.panicCooldown?.active)
+      lines.push(`- ⚠ 恐慌冷却至 ${h.panicCooldown.cooldownEndDate ?? '—'}`);
     const cands = h.s3Candidates ?? [];
     if (cands.length) {
-      lines.push(`- 下午2点买入候选(${cands.length}): ${cands.map((c) => `${c.name ?? c.symbol}(score ${c.score ?? '—'})`).join('、')}`);
+      lines.push(
+        `- 下午2点买入候选(${cands.length}): ${cands.map((c) => `${c.name ?? c.symbol}(score ${c.score ?? '—'})`).join('、')}`,
+      );
     }
     const holdings = [
       ...(h.holdings ?? []).map((x) => ({ ...x, m: 'A股' })),
       ...(h.hkHealth?.holdings ?? []).map((x) => ({ ...x, m: '港股' })),
     ];
     if (holdings.length) {
-      lines.push(`- 持仓(${holdings.length}): ${holdings.map((x) => `${x.name ?? x.symbol}(${x.m}) pnl ${x.pnlPct ?? '—'}% 止损${x.stopLossLine ?? '—'}${x.action === 'EXIT' ? ' [EXIT]' : ''}`).join('；')}`);
+      lines.push(
+        `- 持仓(${holdings.length}): ${holdings.map((x) => `${x.name ?? x.symbol}(${x.m}) pnl ${x.pnlPct ?? '—'}% 止损${x.stopLossLine ?? '—'}${x.action === 'EXIT' ? ' [EXIT]' : ''}`).join('；')}`,
+      );
     }
   } catch {
     lines.push('# 当前快照（不可用）');
@@ -52,7 +66,12 @@ async function buildContextMd(): Promise<string> {
   return lines.join('\n');
 }
 
-const QUICK_QUESTIONS = ['当前市场怎么看？', '买入候选有哪些？', '持仓有什么风险？', '今天适合加仓吗？'];
+const QUICK_QUESTIONS = [
+  '当前市场怎么看？',
+  '买入候选有哪些？',
+  '持仓有什么风险？',
+  '今天适合加仓吗？',
+];
 
 /** 决策 Agent (mobile) — always-on chat with live context. §5.2 中频. */
 export function MobileDecisionPage() {
@@ -93,7 +112,14 @@ export function MobileDecisionPage() {
     const assistantId = -Date.now();
     setLocal((prev) => [
       ...prev,
-      { id: assistantId, sessionId: threadId, role: 'assistant', content: '', contextSnapshot: null, createdAt: new Date().toISOString() },
+      {
+        id: assistantId,
+        sessionId: threadId,
+        role: 'assistant',
+        content: '',
+        contextSnapshot: null,
+        createdAt: new Date().toISOString(),
+      },
     ]);
     try {
       const history = [...local, userMsg];
@@ -203,7 +229,13 @@ export function MobileDecisionPage() {
           )}
         </div>
         <div className="flex items-center gap-2 border-t border-[var(--k-border)] p-3">
-          <MobileButton variant="ghost" size="sm" onClick={() => void insertContext()} disabled={inserting || threadId == null} className="!h-10 shrink-0">
+          <MobileButton
+            variant="ghost"
+            size="sm"
+            onClick={() => void insertContext()}
+            disabled={inserting || threadId == null}
+            className="!h-10 shrink-0"
+          >
             <FileText size={14} /> 数据
           </MobileButton>
           <input
@@ -214,7 +246,11 @@ export function MobileDecisionPage() {
             placeholder={streaming ? '回复中…' : '输入问题'}
             className="h-[var(--m-tap)] min-w-0 flex-1 rounded-[var(--m-radius-md)] border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-[var(--m-text-base)] outline-none focus:border-[var(--k-accent)] disabled:opacity-50"
           />
-          <MobileButton onClick={() => void send(input)} disabled={streaming || !input.trim()} className="!h-[var(--m-tap)] shrink-0 px-4">
+          <MobileButton
+            onClick={() => void send(input)}
+            disabled={streaming || !input.trim()}
+            className="!h-[var(--m-tap)] shrink-0 px-4"
+          >
             <Send size={15} />
           </MobileButton>
         </div>

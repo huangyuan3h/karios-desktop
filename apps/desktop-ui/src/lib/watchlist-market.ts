@@ -28,9 +28,7 @@ type QuoteResp = {
  * limits); a single failed chunk previously zeroed out the whole quote map
  * and aborted "copy" syncs with "missing realtime quote". Retry once.
  */
-export async function fetchQuoteChunkWithRetry(
-  tsCodesPart: string,
-): Promise<QuoteResp | null> {
+export async function fetchQuoteChunkWithRetry(tsCodesPart: string): Promise<QuoteResp | null> {
   const url = `/quote?ts_codes=${encodeURIComponent(tsCodesPart)}`;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -101,9 +99,7 @@ export async function forceRefreshWatchlistBars(
   return { failures, total: supportedSymbols.length };
 }
 
-function mapQuoteItem(
-  it: NonNullable<QuoteResp['items']>[number],
-): WatchlistQuote {
+function mapQuoteItem(it: NonNullable<QuoteResp['items']>[number]): WatchlistQuote {
   const p = it.price != null ? Number(it.price) : NaN;
   const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
   const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
@@ -135,9 +131,7 @@ export async function fetchWatchlistQuotes(
     .filter(Boolean) as string[];
 
   const quoteParts = await Promise.all(
-    chunk(tsCodes, QUOTE_CHUNK_SIZE).map((part) =>
-      fetchQuoteChunkWithRetry(part.join(',')),
-    ),
+    chunk(tsCodes, QUOTE_CHUNK_SIZE).map((part) => fetchQuoteChunkWithRetry(part.join(','))),
   );
 
   for (const r of quoteParts) {

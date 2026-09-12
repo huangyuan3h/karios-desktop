@@ -89,7 +89,8 @@ function gateReasonZh(code: string): string {
 function sentimentTone(risk: string): 'open' | 'warn' | 'danger' | 'neutral' {
   if (risk === 'confirmed_uptrend' || risk === 'hot') return 'open';
   if (risk === 'caution') return 'warn';
-  if (risk === 'extreme_caution' || risk === 'no_new_positions' || risk === 'capitulation_v_bottom') return 'danger';
+  if (risk === 'extreme_caution' || risk === 'no_new_positions' || risk === 'capitulation_v_bottom')
+    return 'danger';
   return 'neutral';
 }
 
@@ -107,15 +108,13 @@ function GateCard({ label, gate }: { label: string; gate: JsonRecord | null }) {
   const allow = Boolean(gate.allowNewEntries);
   const regime = String(gate.marketRegime || '—');
   const light = String(gate.indexLight || '—');
-  const reasons: string[] = Array.isArray(gate.reasons) ? gate.reasons.map((x: unknown) => String(x)) : [];
+  const reasons: string[] = Array.isArray(gate.reasons)
+    ? gate.reasons.map((x: unknown) => String(x))
+    : [];
   const posHint = gate.positionRangeHint ? String(gate.positionRangeHint) : null;
   return (
     <MobileCard
-      className={
-        allow
-          ? 'p-3'
-          : 'border-[var(--k-danger)]/50 bg-[var(--k-danger)]/10 p-3'
-      }
+      className={allow ? 'p-3' : 'border-[var(--k-danger)]/50 bg-[var(--k-danger)]/10 p-3'}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -135,7 +134,9 @@ function GateCard({ label, gate }: { label: string; gate: JsonRecord | null }) {
             {light && light !== '—' ? ` · ${LIGHT_ZH[light] ?? light}灯` : ''}
           </div>
           {posHint ? (
-            <div className="mt-1 text-[var(--m-text-sm)] font-semibold text-[var(--k-warn)]">{posHint}</div>
+            <div className="mt-1 text-[var(--m-text-sm)] font-semibold text-[var(--k-warn)]">
+              {posHint}
+            </div>
           ) : null}
         </div>
       </div>
@@ -187,20 +188,29 @@ export function MobileDashboardPage() {
               {hk ? <GateBadge market="港股" open={!hkGate} /> : null}
             </div>
             <div className="flex gap-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">
-              {cn ? <StatusPill tone={cnGate ? 'closed' : 'open'}>{REGIME_ZH[String(cn.regime ?? '')] ?? cn.regime ?? '—'}</StatusPill> : null}
+              {cn ? (
+                <StatusPill tone={cnGate ? 'closed' : 'open'}>
+                  {REGIME_ZH[String(cn.regime ?? '')] ?? cn.regime ?? '—'}
+                </StatusPill>
+              ) : null}
               <StatusPill tone="neutral">强度 {cn?.strength ?? '—'}</StatusPill>
             </div>
           </div>
           <div className="mt-2 flex justify-between text-[var(--m-text-xs)] text-[var(--k-muted)]">
             <span>买入候选 {cn?.s3Candidates?.length ?? 0} 个</span>
-            <span>持仓 {cn?.holdings?.length ?? 0} + {(hk?.holdings?.length ?? 0) ? `${hk?.holdings?.length ?? 0} 港股` : ''}</span>
+            <span>
+              持仓 {cn?.holdings?.length ?? 0} +{' '}
+              {(hk?.holdings?.length ?? 0) ? `${hk?.holdings?.length ?? 0} 港股` : ''}
+            </span>
             <span>数据 {cn?.tradeDate ?? '—'}</span>
           </div>
         </MobileCard>
         {cn?.sentiment || cn?.panicCooldown?.active ? (
           <MobileCard className="border-[var(--k-warn)]/40 bg-[var(--k-warn)]/5 p-3 text-[var(--m-text-sm)] text-[var(--k-warn)]">
             {cn?.sentiment ? `市场情绪 ${cn.sentiment}` : ''}
-            {cn?.panicCooldown?.active ? ` · 恐慌冷却至 ${cn.panicCooldown.cooldownEndDate ?? '—'}` : ''}
+            {cn?.panicCooldown?.active
+              ? ` · 恐慌冷却至 ${cn.panicCooldown.cooldownEndDate ?? '—'}`
+              : ''}
           </MobileCard>
         ) : null}
       </MobileSection>
@@ -225,7 +235,10 @@ export function MobileDashboardPage() {
                   <span style={{ color: 'var(--k-down)' }}>↓{downCount}</span>
                 </div>
                 <div className="mt-0.5">
-                  溢价 {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                  溢价{' '}
+                  {Number.isFinite(sLatest?.yesterdayLimitUpPremium)
+                    ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%`
+                    : '—'}
                 </div>
                 <div className="mt-0.5">成交 {fmtAmountCn(sLatest?.marketTurnoverCny)}</div>
               </div>
@@ -247,7 +260,9 @@ export function MobileDashboardPage() {
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
                   <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
-                    {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                    {Number.isFinite(sLatest?.yesterdayLimitUpPremium)
+                      ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%`
+                      : '—'}
                   </div>
                 </div>
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
@@ -262,21 +277,28 @@ export function MobileDashboardPage() {
           {Array.isArray(sLatest?.rules) && sLatest.rules.length ? (
             <MobileCard className="p-3">
               <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
-                {sLatest.rules.slice(0, 3).map((x: unknown) => String(x)).join(' · ')}
+                {sLatest.rules
+                  .slice(0, 3)
+                  .map((x: unknown) => String(x))
+                  .join(' · ')}
               </div>
             </MobileCard>
           ) : null}
         </div>
       </MobileSection>
 
-      <MobileSection title={`买入候选${cn?.s3Candidates?.length ? `（${cn.s3Candidates.length}）` : ''}`}>
+      <MobileSection
+        title={`买入候选${cn?.s3Candidates?.length ? `（${cn.s3Candidates.length}）` : ''}`}
+      >
         {cn?.s3Candidates?.length ? (
           <div className="space-y-2">
             {cn.s3Candidates.slice(0, 8).map((c) => (
               <MobileCard key={c.symbol ?? c.ts_code} className="p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-[var(--m-text-base)] font-semibold">{c.name ?? c.symbol}</div>
+                    <div className="truncate text-[var(--m-text-base)] font-semibold">
+                      {c.name ?? c.symbol}
+                    </div>
                     <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {c.symbol}
                       {c.industry ? ` · ${c.industry}` : ''}
@@ -288,7 +310,9 @@ export function MobileDashboardPage() {
                       score {c.score != null ? c.score.toFixed(0) : '—'}
                     </div>
                     {c.rs != null ? (
-                      <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">RS 前 {Math.round(c.rs * 100)}%</div>
+                      <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                        RS 前 {Math.round(c.rs * 100)}%
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -308,7 +332,9 @@ export function MobileDashboardPage() {
         )}
       </MobileSection>
 
-      <MobileSection title={`持仓${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0) ? `（${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0)}）` : ''}`}>
+      <MobileSection
+        title={`持仓${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0) ? `（${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0)}）` : ''}`}
+      >
         {(() => {
           const holdings = [
             ...(cn?.holdings ?? []).map((h) => ({ ...h, market: 'A股' })),
@@ -329,7 +355,9 @@ export function MobileDashboardPage() {
                   <MobileCard key={h.symbol} className="p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="truncate text-[var(--m-text-base)] font-semibold">{h.name ?? h.symbol}</div>
+                        <div className="truncate text-[var(--m-text-base)] font-semibold">
+                          {h.name ?? h.symbol}
+                        </div>
                         <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
                           {h.symbol} · {h.market}
                           {h.holdingDays != null ? ` · 已持 ${h.holdingDays} 天` : ''}
@@ -338,9 +366,17 @@ export function MobileDashboardPage() {
                       <div className="shrink-0 text-right">
                         <div
                           className="font-mono text-[var(--m-text-base)] font-semibold tabular-nums"
-                          style={{ color: pnl > 0 ? 'var(--k-up)' : pnl < 0 ? 'var(--k-down)' : 'var(--k-muted)' }}
+                          style={{
+                            color:
+                              pnl > 0
+                                ? 'var(--k-up)'
+                                : pnl < 0
+                                  ? 'var(--k-down)'
+                                  : 'var(--k-muted)',
+                          }}
                         >
-                          {pnl > 0 ? '+' : ''}{pnl.toFixed(2)}%
+                          {pnl > 0 ? '+' : ''}
+                          {pnl.toFixed(2)}%
                         </div>
                         {h.action === 'EXIT' ? <StatusPill tone="danger">退出</StatusPill> : null}
                       </div>
@@ -386,11 +422,20 @@ export function MobileDashboardPage() {
                   <div className="shrink-0 text-right">
                     <span
                       className="text-[var(--m-text-base)] font-semibold"
-                      style={{ color: r.netInflow > 0 ? 'var(--k-up)' : r.netInflow < 0 ? 'var(--k-down)' : 'inherit' }}
+                      style={{
+                        color:
+                          r.netInflow > 0
+                            ? 'var(--k-up)'
+                            : r.netInflow < 0
+                              ? 'var(--k-down)'
+                              : 'inherit',
+                      }}
                     >
                       {fmtSignedAmountCn(r.netInflow)}
                     </span>
-                    <div className="mt-0.5 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">净流入</div>
+                    <div className="mt-0.5 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                      净流入
+                    </div>
                   </div>
                 </div>
               </MobileCard>

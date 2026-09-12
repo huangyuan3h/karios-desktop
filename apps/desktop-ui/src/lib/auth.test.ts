@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { clearGatewayKey, getGatewayKey, installFetchAuth, setGatewayKey, UNAUTHORIZED_EVENT } from './auth';
+import {
+  clearGatewayKey,
+  getGatewayKey,
+  installFetchAuth,
+  setGatewayKey,
+  UNAUTHORIZED_EVENT,
+} from './auth';
 
 describe('auth (Family Hub Phase 0)', () => {
   afterEach(() => {

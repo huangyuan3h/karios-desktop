@@ -67,10 +67,7 @@ describe('TwinStarNavOverlay (recharts)', () => {
   it('falls back to benchmark-only mode without sim fields', () => {
     render(
       <TwinStarNavOverlay
-        rows={[
-          row({ date: '2026-08-01' }),
-          row({ date: '2026-08-04', navSingleReturnPct: 12 }),
-        ]}
+        rows={[row({ date: '2026-08-01' }), row({ date: '2026-08-04', navSingleReturnPct: 12 })]}
       />,
     );
     expect(screen.getByText('双子星 +12.0%')).toBeDefined();

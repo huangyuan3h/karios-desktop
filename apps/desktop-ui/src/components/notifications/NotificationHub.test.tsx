@@ -82,7 +82,13 @@ describe('NotificationHub', () => {
     localStorage.setItem(
       'karios_buy_reminders',
       JSON.stringify([
-        { symbol: 'HK:02099', name: '中国黄金国际', targetPrice: 88.5, note: '等回踩', createdAt: '2026-08-12T00:00:00Z' },
+        {
+          symbol: 'HK:02099',
+          name: '中国黄金国际',
+          targetPrice: 88.5,
+          note: '等回踩',
+          createdAt: '2026-08-12T00:00:00Z',
+        },
       ]),
     );
     renderHub();

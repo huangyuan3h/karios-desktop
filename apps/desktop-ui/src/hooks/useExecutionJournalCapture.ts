@@ -15,10 +15,7 @@ import {
   isShanghaiTradingTime,
   isWeekdayShanghai,
 } from '@/lib/market-hours';
-import {
-  executionChangesKey,
-  executionSnapshotsKey,
-} from '@/lib/queries/execution-journal';
+import { executionChangesKey, executionSnapshotsKey } from '@/lib/queries/execution-journal';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 const POLL_MS = 5 * 60 * 1000;

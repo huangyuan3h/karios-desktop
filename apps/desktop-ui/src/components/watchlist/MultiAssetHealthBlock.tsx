@@ -58,10 +58,14 @@ export function MultiAssetHealthBlock({
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{twinStar ? '核心腿' : '择强单轨'}</span>
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
+          {twinStar ? '核心腿' : '择强单轨'}
+        </span>
         STOCK · 金 · 油 · 纳 · 债
         {pickKey ? (
-          <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">今日：{pickKey}</span>
+          <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">
+            今日：{pickKey}
+          </span>
         ) : null}
         {twinStar ? (
           <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
@@ -69,14 +73,23 @@ export function MultiAssetHealthBlock({
           </span>
         ) : null}
         {sleeve?.idlePct != null ? (
-          <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">闲置 {sleeve.idlePct}%</span>
+          <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+            闲置 {sleeve.idlePct}%
+          </span>
         ) : null}
       </div>
 
-      {twinStar && sleeve?.idlePct != null && sleeve.idlePct >= 1 && pickKey != null && (pickKey !== 'STOCK' || coreDestinationReady) ? (
+      {twinStar &&
+      sleeve?.idlePct != null &&
+      sleeve.idlePct >= 1 &&
+      pickKey != null &&
+      (pickKey !== 'STOCK' || coreDestinationReady) ? (
         <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
-          今日动作：用闲置 {sleeve.idlePct}% 买入 {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}，核心补足 {coreTargetPct}%
-          {coreTargetPct === 100 ? '（卫星关闸/无仓 → 核心 100%，闲置不是留现金）' : '（核心 50%，余下 50% 留给卫星）'}
+          今日动作：用闲置 {sleeve.idlePct}% 买入{' '}
+          {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}，核心补足 {coreTargetPct}%
+          {coreTargetPct === 100
+            ? '（卫星关闸/无仓 → 核心 100%，闲置不是留现金）'
+            : '（核心 50%，余下 50% 留给卫星）'}
         </div>
       ) : null}
 
@@ -84,8 +97,14 @@ export function MultiAssetHealthBlock({
         <div className="flex flex-col gap-1.5">
           {openHoldings.map((h) => {
             const key = holdingKey(h.symbol);
-            const meta = KEY_META[key] ?? { label: key, icon: '📦', color: 'border-[var(--k-border)] bg-[var(--k-surface)]' };
-            const md = (h as unknown as { marketData?: { close?: number; ma200?: number; above?: boolean } }).marketData;
+            const meta = KEY_META[key] ?? {
+              label: key,
+              icon: '📦',
+              color: 'border-[var(--k-border)] bg-[var(--k-surface)]',
+            };
+            const md = (
+              h as unknown as { marketData?: { close?: number; ma200?: number; above?: boolean } }
+            ).marketData;
             const pnl = (h as unknown as { pnlPct?: number }).pnlPct;
             const above = md?.above;
             const pos = typeof h.positionPct === 'number' ? h.positionPct : null;
@@ -100,21 +119,48 @@ export function MultiAssetHealthBlock({
             const adjust =
               trim != null
                 ? null
-                : twinStar && pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
+                : twinStar &&
+                    pickKey != null &&
+                    key !== pickKey &&
+                    key !== 'OTHER' &&
+                    pos != null &&
+                    pos > 0
                   ? pickKey === 'STOCK' && !coreDestinationReady
                     ? null
-                    : { label: '卖出', cls: 'bg-red-500/10 text-red-600', tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}` }
+                    : {
+                        label: '卖出',
+                        cls: 'bg-red-500/10 text-red-600',
+                        tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}`,
+                      }
                   : isPick
                     ? pos != null && pos < coreTargetPct - 1
-                      ? { label: '加仓', cls: 'bg-sky-500/10 text-sky-700', tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）` }
-                      : { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip ?? `今日 pick（mom_compare 定案）` }
+                      ? {
+                          label: '加仓',
+                          cls: 'bg-sky-500/10 text-sky-700',
+                          tip: `今日 pick · 目标 ${coreTargetPct}%（当前 ${pos.toFixed(1)}%）`,
+                        }
+                      : {
+                          label: '持有',
+                          cls: 'bg-emerald-500/10 text-emerald-700',
+                          tip: holdTip ?? `今日 pick（mom_compare 定案）`,
+                        }
                     : holdTip
                       ? { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip }
                       : null;
             return (
-              <div key={h.symbol} className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-2 text-xs', meta.color)}>
+              <div
+                key={h.symbol}
+                className={cn(
+                  'flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-2 text-xs',
+                  meta.color,
+                )}
+              >
                 <span>{meta.icon}</span>
-                <button type="button" onClick={() => onOpen?.(h.symbol)} className="font-medium hover:underline">
+                <button
+                  type="button"
+                  onClick={() => onOpen?.(h.symbol)}
+                  className="font-medium hover:underline"
+                >
                   {h.symbol}
                 </button>
                 {adjust ? (
@@ -125,7 +171,10 @@ export function MultiAssetHealthBlock({
                     {adjust.label}
                   </span>
                 ) : holdTip ? (
-                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700" title={holdTip}>
+                  <span
+                    className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                    title={holdTip}
+                  >
                     持有
                   </span>
                 ) : null}
@@ -139,9 +188,19 @@ export function MultiAssetHealthBlock({
                     减仓 {trim.navPct}%
                   </button>
                 ) : null}
-                <span className="text-[11px] text-[var(--k-muted)]">{meta.label} · 仓位 {pos?.toFixed(1) ?? '—'}%</span>
+                <span className="text-[11px] text-[var(--k-muted)]">
+                  {meta.label} · 仓位 {pos?.toFixed(1) ?? '—'}%
+                </span>
                 {typeof pnl === 'number' ? (
-                  <span className={cn('font-mono text-[11px]', pnl >= 0 ? 'text-emerald-600' : 'text-red-600')}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%</span>
+                  <span
+                    className={cn(
+                      'font-mono text-[11px]',
+                      pnl >= 0 ? 'text-emerald-600' : 'text-red-600',
+                    )}
+                  >
+                    {pnl >= 0 ? '+' : ''}
+                    {pnl.toFixed(2)}%
+                  </span>
                 ) : null}
                 {md?.close != null ? (
                   <span className="font-mono text-[11px] tabular-nums text-[var(--k-muted)]">
@@ -149,7 +208,12 @@ export function MultiAssetHealthBlock({
                   </span>
                 ) : null}
                 {!twinStar ? (
-                  <span className={cn('ml-auto rounded px-1.5 py-0.5 text-[10px]', above ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-600')}>
+                  <span
+                    className={cn(
+                      'ml-auto rounded px-1.5 py-0.5 text-[10px]',
+                      above ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-600',
+                    )}
+                  >
                     {above ? '持有' : '预警'}
                   </span>
                 ) : null}
@@ -166,8 +230,11 @@ export function MultiAssetHealthBlock({
       ) : null}
       {sleeve?.action && sleeve.action !== 'NONE' ? (
         <div className="text-[11px] text-[var(--k-muted)]">
-          动作：<span className="font-medium text-[var(--k-fg)]">{sleeve.label ?? sleeve.action}</span>
-          {pickKey ? ` · 择强 ${pickKey} mom60 ${(sleeve as unknown as { pick?: { mom60?: number } }).pick?.mom60 ?? ''}%` : ''}
+          动作：
+          <span className="font-medium text-[var(--k-fg)]">{sleeve.label ?? sleeve.action}</span>
+          {pickKey
+            ? ` · 择强 ${pickKey} mom60 ${(sleeve as unknown as { pick?: { mom60?: number } }).pick?.mom60 ?? ''}%`
+            : ''}
         </div>
       ) : null}
     </div>

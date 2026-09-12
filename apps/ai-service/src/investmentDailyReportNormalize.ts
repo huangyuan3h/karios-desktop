@@ -71,19 +71,33 @@ export function normalizeInvestmentDailyReportPayload(raw: unknown): unknown {
 
   return {
     trafficLightPositionAndSentiment: clip(
-      nonEmpty(String(pick('trafficLightPositionAndSentiment', 'traffic_light_position_and_sentiment') ?? ''), FALLBACK.traffic),
+      nonEmpty(
+        String(
+          pick('trafficLightPositionAndSentiment', 'traffic_light_position_and_sentiment') ?? '',
+        ),
+        FALLBACK.traffic,
+      ),
       8000,
     ),
     marketEnvironmentHighlights: clip(
-      nonEmpty(String(pick('marketEnvironmentHighlights', 'market_environment_highlights') ?? ''), FALLBACK.bullets),
+      nonEmpty(
+        String(pick('marketEnvironmentHighlights', 'market_environment_highlights') ?? ''),
+        FALLBACK.bullets,
+      ),
       4000,
     ),
     hotIndustriesFormalAnalysis: clip(
-      nonEmpty(String(pick('hotIndustriesFormalAnalysis', 'hot_industries_formal_analysis') ?? ''), FALLBACK.hot),
+      nonEmpty(
+        String(pick('hotIndustriesFormalAnalysis', 'hot_industries_formal_analysis') ?? ''),
+        FALLBACK.hot,
+      ),
       10000,
     ),
     capitalFlowAndMainline: clip(
-      nonEmpty(String(pick('capitalFlowAndMainline', 'capital_flow_and_mainline') ?? ''), FALLBACK.mainline),
+      nonEmpty(
+        String(pick('capitalFlowAndMainline', 'capital_flow_and_mainline') ?? ''),
+        FALLBACK.mainline,
+      ),
       12000,
     ),
     topStocks: fixStocks(pick('topStocks', 'top_stocks')),

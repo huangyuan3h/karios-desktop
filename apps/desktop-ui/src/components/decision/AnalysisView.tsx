@@ -80,9 +80,18 @@ const ACTION_STYLE: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  proposed: { label: '已建议', cls: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400' },
-  executed: { label: '已执行', cls: 'border-emerald-600/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
-  not_executed: { label: '未执行', cls: 'border-red-600/40 bg-red-500/10 text-red-700 dark:text-red-300' },
+  proposed: {
+    label: '已建议',
+    cls: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  },
+  executed: {
+    label: '已执行',
+    cls: 'border-emerald-600/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  },
+  not_executed: {
+    label: '未执行',
+    cls: 'border-red-600/40 bg-red-500/10 text-red-700 dark:text-red-300',
+  },
 };
 
 function ActionRow({ a }: { a: DecisionAction }) {
@@ -92,10 +101,17 @@ function ActionRow({ a }: { a: DecisionAction }) {
     <div className="rounded-md border border-[var(--k-border)] px-2 py-1.5">
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate font-mono text-[11px] font-semibold">{a.symbol}</span>
-        <span className={cn('rounded border px-1 py-0.5 text-[10px] font-semibold', ACTION_STYLE[a.action] ?? '')}>
+        <span
+          className={cn(
+            'rounded border px-1 py-0.5 text-[10px] font-semibold',
+            ACTION_STYLE[a.action] ?? '',
+          )}
+        >
           {a.action}
         </span>
-        <span className={cn('rounded border px-1 py-0.5 text-[10px]', status.cls)}>{status.label}</span>
+        <span className={cn('rounded border px-1 py-0.5 text-[10px]', status.cls)}>
+          {status.label}
+        </span>
         {a.confidence != null && (
           <span className="ml-auto text-[10px] tabular-nums text-[var(--k-muted)]">
             conf {a.confidence.toFixed(2)}
@@ -103,18 +119,47 @@ function ActionRow({ a }: { a: DecisionAction }) {
         )}
       </div>
       {a.rationale && (
-        <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[var(--k-muted)]">{a.rationale}</p>
+        <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[var(--k-muted)]">
+          {a.rationale}
+        </p>
       )}
       {a.outcome && (
         <div className="mt-1 flex gap-2 text-[10px] tabular-nums">
           <span className="text-[var(--k-muted)]">
-            +1d <span className={cn(pct(a.outcome.pct1).startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>{pct(a.outcome.pct1)}</span>
+            +1d{' '}
+            <span
+              className={cn(
+                pct(a.outcome.pct1).startsWith('+')
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-red-500',
+              )}
+            >
+              {pct(a.outcome.pct1)}
+            </span>
           </span>
           <span className="text-[var(--k-muted)]">
-            +3d <span className={cn(pct(a.outcome.pct3).startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>{pct(a.outcome.pct3)}</span>
+            +3d{' '}
+            <span
+              className={cn(
+                pct(a.outcome.pct3).startsWith('+')
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-red-500',
+              )}
+            >
+              {pct(a.outcome.pct3)}
+            </span>
           </span>
           <span className="text-[var(--k-muted)]">
-            +5d <span className={cn(pct(a.outcome.pct5).startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>{pct(a.outcome.pct5)}</span>
+            +5d{' '}
+            <span
+              className={cn(
+                pct(a.outcome.pct5).startsWith('+')
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-red-500',
+              )}
+            >
+              {pct(a.outcome.pct5)}
+            </span>
           </span>
           <span className="ml-auto text-[var(--k-muted)]">{a.createdAt.slice(5, 16)}</span>
         </div>
@@ -202,7 +247,11 @@ export function AnalysisView() {
       <div className="grid grid-cols-2 gap-1.5">
         <StatCard label="总交易" value={String(a.paper.total)} />
         <StatCard label="胜率" value={winRate} sub={`${a.paper.wins} 胜 / ${a.paper.losses} 负`} />
-        <StatCard label="平均盈亏" value={a.paper.avgPnlPct != null ? `${a.paper.avgPnlPct}%` : '—'} sub="扣费后净口径" />
+        <StatCard
+          label="平均盈亏"
+          value={a.paper.avgPnlPct != null ? `${a.paper.avgPnlPct}%` : '—'}
+          sub="扣费后净口径"
+        />
         <StatCard label="持仓中" value={String(a.paper.open)} sub={`已平仓 ${a.paper.closed}`} />
       </div>
 
@@ -258,9 +307,7 @@ export function AnalysisView() {
               </span>
             </div>
           ))}
-          {!a.sessions.length && (
-            <p className="text-[10px] text-[var(--k-muted)]">暂无会话</p>
-          )}
+          {!a.sessions.length && <p className="text-[10px] text-[var(--k-muted)]">暂无会话</p>}
         </div>
       </div>
 

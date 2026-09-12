@@ -86,10 +86,7 @@ function resolveFullIncludes(includeMacro?: boolean): DashboardSummaryIncludes {
   };
 }
 
-function includesMatch(
-  a: DashboardSummaryIncludes,
-  b: DashboardSummaryIncludes,
-): boolean {
+function includesMatch(a: DashboardSummaryIncludes, b: DashboardSummaryIncludes): boolean {
   const na = normalizeIncludes(a);
   const nb = normalizeIncludes(b);
   return (
@@ -346,7 +343,10 @@ export async function fetchWatchlistRiskRows(
   const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
     .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }))
-    .filter((x) => typeof x.positionPct === 'number' && Number.isFinite(x.positionPct) && x.positionPct > 0);
+    .filter(
+      (x) =>
+        typeof x.positionPct === 'number' && Number.isFinite(x.positionPct) && x.positionPct > 0,
+    );
   if (!items.length) return [];
 
   const symbols = items.map((x) => x.symbol);

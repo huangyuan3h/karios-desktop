@@ -8,7 +8,13 @@ import { MobileButton, MobileCard, MobileField, MobileSection, MobileSheet } fro
 
 /** Broker (mobile) — pingan account overview + positions. §5.2 低频. */
 
-type BrokerAccount = { id: string; broker: string; title: string; accountMasked: string | null; updatedAt: string };
+type BrokerAccount = {
+  id: string;
+  broker: string;
+  title: string;
+  accountMasked: string | null;
+  updatedAt: string;
+};
 type BrokerState = {
   accountId: string;
   overview: Record<string, unknown>;
@@ -40,7 +46,10 @@ export function MobileBrokerPage() {
   });
   const state = useQuery({
     queryKey: ['broker', 'state', 'pingan', accountId ?? ''],
-    queryFn: () => apiGetJson<BrokerState>(`/broker/pingan/accounts/${encodeURIComponent(accountId as string)}/state`),
+    queryFn: () =>
+      apiGetJson<BrokerState>(
+        `/broker/pingan/accounts/${encodeURIComponent(accountId as string)}/state`,
+      ),
     enabled: Boolean(accountId),
   });
 
@@ -51,7 +60,11 @@ export function MobileBrokerPage() {
   const create = async () => {
     if (!title.trim()) return;
     try {
-      await apiPostJson('/broker/accounts', { broker: 'pingan', title: title.trim(), accountMasked: masked.trim() || null });
+      await apiPostJson('/broker/accounts', {
+        broker: 'pingan',
+        title: title.trim(),
+        accountMasked: masked.trim() || null,
+      });
       await qc.invalidateQueries({ queryKey: ['broker'] });
       setCreating(false);
       setTitle('');
@@ -77,7 +90,11 @@ export function MobileBrokerPage() {
       <MobileSection
         title="券商账户"
         action={
-          <button type="button" onClick={() => setCreating(true)} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             + 新建
           </button>
         }
@@ -113,19 +130,25 @@ export function MobileBrokerPage() {
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2 py-1.5">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">总资产</div>
                   <div className="font-mono text-[var(--m-text-base)] tabular-nums">
-                    {toNum(st?.overview?.totalAssets) != null ? `${(toNum(st?.overview?.totalAssets) ?? 0).toFixed(2)} 万` : '—'}
+                    {toNum(st?.overview?.totalAssets) != null
+                      ? `${(toNum(st?.overview?.totalAssets) ?? 0).toFixed(2)} 万`
+                      : '—'}
                   </div>
                 </div>
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2 py-1.5">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">可用资金</div>
                   <div className="font-mono text-[var(--m-text-base)] tabular-nums">
-                    {toNum(st?.overview?.cashAvailable) != null ? `${(toNum(st?.overview?.cashAvailable) ?? 0).toFixed(2)} 万` : '—'}
+                    {toNum(st?.overview?.cashAvailable) != null
+                      ? `${(toNum(st?.overview?.cashAvailable) ?? 0).toFixed(2)} 万`
+                      : '—'}
                   </div>
                 </div>
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2 py-1.5">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">当日盈亏</div>
                   <div className="font-mono text-[var(--m-text-base)] tabular-nums">
-                    {toNum(st?.overview?.pnlToday) != null ? `${(toNum(st?.overview?.pnlToday) ?? 0).toFixed(2)} 万` : '—'}
+                    {toNum(st?.overview?.pnlToday) != null
+                      ? `${(toNum(st?.overview?.pnlToday) ?? 0).toFixed(2)} 万`
+                      : '—'}
                   </div>
                 </div>
               </div>
@@ -163,7 +186,10 @@ export function MobileBrokerPage() {
                       </div>
                       <div
                         className="text-[var(--m-text-sm)] font-medium"
-                        style={{ color: pnl > 0 ? 'var(--k-up)' : pnl < 0 ? 'var(--k-down)' : 'var(--k-muted)' }}
+                        style={{
+                          color:
+                            pnl > 0 ? 'var(--k-up)' : pnl < 0 ? 'var(--k-down)' : 'var(--k-muted)',
+                        }}
                       >
                         {pnl > 0 ? '▲' : pnl < 0 ? '▼' : ''}
                         {pnl ? `${Math.abs(pnl).toFixed(2)}%` : '—'}
@@ -178,7 +204,10 @@ export function MobileBrokerPage() {
 
         <MobileSection title="操作">
           <div className="flex gap-2">
-            <MobileButton variant="ghost" onClick={() => void qc.invalidateQueries({ queryKey: ['broker'] })}>
+            <MobileButton
+              variant="ghost"
+              onClick={() => void qc.invalidateQueries({ queryKey: ['broker'] })}
+            >
               刷新
             </MobileButton>
             {active ? (

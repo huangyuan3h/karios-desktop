@@ -15,5 +15,3 @@ export const PortfolioSnapshotSchema = z.object({
 });
 
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;
-
-

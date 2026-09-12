@@ -34,5 +34,3 @@ describe('chat request conversion', () => {
     expect(parts[1]).toMatchObject({ type: 'file' });
   });
 });
-
-

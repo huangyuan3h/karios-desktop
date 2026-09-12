@@ -34,7 +34,13 @@ export function MobileIndexPage() {
   const macroRows = snap.data?.macro ?? [];
   const etf = snap.data?.etfFlowSignal;
   const etfVerdictZh =
-    etf?.verdict === 'confirm' ? '确认净流入' : etf?.verdict === 'contradict' ? '背离净流出' : etf?.verdict === 'neutral' ? '中性' : '—';
+    etf?.verdict === 'confirm'
+      ? '确认净流入'
+      : etf?.verdict === 'contradict'
+        ? '背离净流出'
+        : etf?.verdict === 'neutral'
+          ? '中性'
+          : '—';
 
   return (
     <div className="space-y-4">
@@ -45,8 +51,17 @@ export function MobileIndexPage() {
               <div className="min-w-0">
                 <div className="text-[var(--m-text-base)] font-semibold">{etfVerdictZh}</div>
                 <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
-                  宽基 {etf.broadDirection === 'buy' ? '净买' : etf.broadDirection === 'outflow' ? '净流出' : etf.broadDirection === 'mixed' ? '分歧' : '—'}
-                  {etf.sectorDirection ? ` · 板块 ${etf.sectorDirection === 'buy' ? '净买' : etf.sectorDirection === 'outflow' ? '净流出' : etf.sectorDirection === 'mixed' ? '分歧' : '—'}` : ''}
+                  宽基{' '}
+                  {etf.broadDirection === 'buy'
+                    ? '净买'
+                    : etf.broadDirection === 'outflow'
+                      ? '净流出'
+                      : etf.broadDirection === 'mixed'
+                        ? '分歧'
+                        : '—'}
+                  {etf.sectorDirection
+                    ? ` · 板块 ${etf.sectorDirection === 'buy' ? '净买' : etf.sectorDirection === 'outflow' ? '净流出' : etf.sectorDirection === 'mixed' ? '分歧' : '—'}`
+                    : ''}
                 </div>
               </div>
               <div className="shrink-0 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">
@@ -65,7 +80,11 @@ export function MobileIndexPage() {
       <MobileSection
         title={`指数信号（${rows.length}）`}
         action={
-          <button type="button" onClick={() => void snap.refetch()} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => void snap.refetch()}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             刷新
           </button>
         }
@@ -90,7 +109,11 @@ export function MobileIndexPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[var(--m-text-base)] font-medium">
                     {r.name}
-                    {r.featured ? <span className="ml-1.5"><StatusPill tone="open">聚焦</StatusPill></span> : null}
+                    {r.featured ? (
+                      <span className="ml-1.5">
+                        <StatusPill tone="open">聚焦</StatusPill>
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
                     {signalZh(r.signal)}
@@ -133,14 +156,24 @@ export function MobileIndexPage() {
                     {r.name}
                     {r.signalLabel ? (
                       <span className="ml-1.5">
-                        <StatusPill tone={r.signal === 'up' || r.signal === 'buy' ? 'open' : r.signal === 'down' || r.signal === 'sell' ? 'danger' : 'neutral'}>
+                        <StatusPill
+                          tone={
+                            r.signal === 'up' || r.signal === 'buy'
+                              ? 'open'
+                              : r.signal === 'down' || r.signal === 'sell'
+                                ? 'danger'
+                                : 'neutral'
+                          }
+                        >
                           {r.signalLabel}
                         </StatusPill>
                       </span>
                     ) : null}
                   </div>
                   {r.why ? (
-                    <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">{r.why}</div>
+                    <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                      {r.why}
+                    </div>
                   ) : null}
                 </div>
                 <div className="shrink-0 text-right">

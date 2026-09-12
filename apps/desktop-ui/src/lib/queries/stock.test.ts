@@ -46,13 +46,34 @@ describe('fetchStockDetail', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       inflight.delete(url);
       if (url.includes('/bars')) {
-        return { symbol: 'CN:000001', market: 'CN', ticker: '000001', name: 'Test', currency: 'CNY', bars: [] };
+        return {
+          symbol: 'CN:000001',
+          market: 'CN',
+          ticker: '000001',
+          name: 'Test',
+          currency: 'CNY',
+          bars: [],
+        };
       }
       if (url.includes('/chips')) {
-        return { symbol: 'CN:000001', market: 'CN', ticker: '000001', name: 'Test', currency: 'CNY', items: [] };
+        return {
+          symbol: 'CN:000001',
+          market: 'CN',
+          ticker: '000001',
+          name: 'Test',
+          currency: 'CNY',
+          items: [],
+        };
       }
       if (url.includes('/fund-flow')) {
-        return { symbol: 'CN:000001', market: 'CN', ticker: '000001', name: 'Test', currency: 'CNY', items: [] };
+        return {
+          symbol: 'CN:000001',
+          market: 'CN',
+          ticker: '000001',
+          name: 'Test',
+          currency: 'CNY',
+          items: [],
+        };
       }
       if (url.includes('/quote')) {
         return { ok: true, items: [{ ts_code: '000001.SZ', price: '10' }] };

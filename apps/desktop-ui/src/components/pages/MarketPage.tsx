@@ -33,11 +33,7 @@ type MarketStocksResponse = {
   limit: number;
 };
 
-export function MarketPage({
-  onOpenStock,
-}: {
-  onOpenStock: (symbol: string) => void;
-}) {
+export function MarketPage({ onOpenStock }: { onOpenStock: (symbol: string) => void }) {
   const { addReference } = useChatStore();
   const [status, setStatus] = React.useState<MarketStatus | null>(null);
   const [data, setData] = React.useState<MarketStocksResponse | null>(null);
@@ -93,7 +89,9 @@ export function MarketPage({
           <div className="mt-1 text-sm text-[var(--k-muted)]">CN A-share stock universe.</div>
           <div className="mt-1 text-xs text-[var(--k-muted)]">
             Total: {data?.total ?? '—'}
-            {status?.lastSyncAt ? ` • Last sync: ${new Date(status.lastSyncAt).toLocaleString()}` : ''}
+            {status?.lastSyncAt
+              ? ` • Last sync: ${new Date(status.lastSyncAt).toLocaleString()}`
+              : ''}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -203,5 +201,3 @@ export function MarketPage({
     </div>
   );
 }
-
-

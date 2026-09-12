@@ -184,7 +184,9 @@ export function JournalPage() {
                     onClick={() => void loadOne(it.id)}
                   >
                     <div className="truncate font-medium">{it.title || 'Untitled'}</div>
-                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">{fmtTs(it.updatedAt)}</div>
+                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">
+                      {fmtTs(it.updatedAt)}
+                    </div>
                   </button>
                 );
               })}
@@ -246,4 +248,3 @@ export function JournalPage() {
     </div>
   );
 }
-

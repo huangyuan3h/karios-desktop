@@ -11,7 +11,7 @@ import { WebhookPage } from '@/components/pages/WebhookPage';
 export function SettingsPage() {
   const [tab, setTab] = React.useState<'models' | 'strategy' | 'logs' | 'webhook'>('models');
 
-    return (
+  return (
     <div className="mx-auto w-full max-w-4xl p-6">
       <Tabs value={tab} onValueChange={(v) => setTab(v as 'models' | 'strategy' | 'logs')}>
         <div className="mb-6">

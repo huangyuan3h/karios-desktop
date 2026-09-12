@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  classifyHoldingSymbol,
-  detectReplicaGaps,
-  holdingMatchesPick,
-} from './replica-gap';
+import { classifyHoldingSymbol, detectReplicaGaps, holdingMatchesPick } from './replica-gap';
 
 describe('replica-gap', () => {
   it('classifies symbols', () => {

@@ -74,11 +74,7 @@ function ToolbarButton({
   );
 }
 
-function PlateToolbar({
-  onReference,
-}: {
-  onReference?: (content: string) => void;
-}) {
+function PlateToolbar({ onReference }: { onReference?: (content: string) => void }) {
   // Plate's `useEditorRef` is intentionally generic; cast to access runtime editor APIs for toolbar.
   const editor = useEditorRef() as unknown as {
     undo: () => void;

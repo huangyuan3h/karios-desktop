@@ -14,9 +14,7 @@ import {
   type CatalystStock,
 } from './alpha-radar-catalyst';
 
-const sampleArticle = (
-  overrides: Partial<CatalystArticle> = {},
-): CatalystArticle => ({
+const sampleArticle = (overrides: Partial<CatalystArticle> = {}): CatalystArticle => ({
   trendId: 't1',
   trendName: 'Datacenter cooling',
   macroTheme: 'Optical Supercycle',
@@ -285,7 +283,9 @@ describe('buildCatalystStocksMarkdown', () => {
       }),
     });
     expect(eligible).toContain('====');
-    expect(eligible).toContain('- S · Optical Supercycle · Hyperscaler liquid-cooling demand rises.');
+    expect(eligible).toContain(
+      '- S · Optical Supercycle · Hyperscaler liquid-cooling demand rises.',
+    );
 
     const blocked = buildCatalystStocksMarkdown(resp, {
       mode: 'compact',
@@ -334,11 +334,31 @@ describe('filterRecentArticles', () => {
   it('keeps only articles within 72 hours and limits to 3', () => {
     const now = new Date('2026-06-15T12:00:00+00:00').getTime();
     const articles = [
-      sampleArticle({ documentId: 'd1', contribution: 0.9, publishedAt: '2026-06-14T12:00:00+00:00' }),
-      sampleArticle({ documentId: 'd2', contribution: 0.8, publishedAt: '2026-06-13T12:00:00+00:00' }),
-      sampleArticle({ documentId: 'd3', contribution: 0.7, publishedAt: '2026-06-12T12:00:00+00:00' }),
-      sampleArticle({ documentId: 'd4', contribution: 0.6, publishedAt: '2026-06-11T12:00:00+00:00' }),
-      sampleArticle({ documentId: 'old', contribution: 1.0, publishedAt: '2026-06-01T12:00:00+00:00' }),
+      sampleArticle({
+        documentId: 'd1',
+        contribution: 0.9,
+        publishedAt: '2026-06-14T12:00:00+00:00',
+      }),
+      sampleArticle({
+        documentId: 'd2',
+        contribution: 0.8,
+        publishedAt: '2026-06-13T12:00:00+00:00',
+      }),
+      sampleArticle({
+        documentId: 'd3',
+        contribution: 0.7,
+        publishedAt: '2026-06-12T12:00:00+00:00',
+      }),
+      sampleArticle({
+        documentId: 'd4',
+        contribution: 0.6,
+        publishedAt: '2026-06-11T12:00:00+00:00',
+      }),
+      sampleArticle({
+        documentId: 'old',
+        contribution: 1.0,
+        publishedAt: '2026-06-01T12:00:00+00:00',
+      }),
     ];
 
     const recent = filterRecentArticles(articles, 72, 3, now);

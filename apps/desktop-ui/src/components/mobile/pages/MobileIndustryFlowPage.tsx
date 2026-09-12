@@ -49,21 +49,39 @@ function RankLine({ flags }: { flags: MainlineScoreRow['flags'] }) {
   const flow = flags?.flow;
   if (!flow) return null;
   const parts: React.ReactNode[] = [
-    <span key="f5" className="font-mono">5日累计 {fmtAmountCn(flow.sum5d)}</span>,
-    <span key="f20" className="font-mono">20日累计 {fmtAmountCn(flow.sum20d)}</span>,
-    <span key="r5" className="font-mono">排名5日#{flow.rank5d}</span>,
-    <span key="r20" className="font-mono">排名20日#{flow.rank20d}</span>,
+    <span key="f5" className="font-mono">
+      5日累计 {fmtAmountCn(flow.sum5d)}
+    </span>,
+    <span key="f20" className="font-mono">
+      20日累计 {fmtAmountCn(flow.sum20d)}
+    </span>,
+    <span key="r5" className="font-mono">
+      排名5日#{flow.rank5d}
+    </span>,
+    <span key="r20" className="font-mono">
+      排名20日#{flow.rank20d}
+    </span>,
   ];
   return (
     <div className="mt-0.5 flex flex-wrap gap-x-2">
       {parts.map((p, i) => (
-        <span key={i} className="text-[var(--m-text-xs)] text-[var(--k-muted)]">{p}</span>
+        <span key={i} className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+          {p}
+        </span>
       ))}
     </div>
   );
 }
 
-function FlowRow({ row, name, sumLabel }: { row: IndustryFundFlowRow; name: string; sumLabel: string }) {
+function FlowRow({
+  row,
+  name,
+  sumLabel,
+}: {
+  row: IndustryFundFlowRow;
+  name: string;
+  sumLabel: string;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0">
       <div className="min-w-0 flex-1">
@@ -73,7 +91,10 @@ function FlowRow({ row, name, sumLabel }: { row: IndustryFundFlowRow; name: stri
       <div className="shrink-0 text-right">
         <div
           className="text-[var(--m-text-base)] font-semibold"
-          style={{ color: row.netInflow > 0 ? 'var(--k-up)' : row.netInflow < 0 ? 'var(--k-down)' : 'inherit' }}
+          style={{
+            color:
+              row.netInflow > 0 ? 'var(--k-up)' : row.netInflow < 0 ? 'var(--k-down)' : 'inherit',
+          }}
         >
           {fmtSignedAmountCn(row.netInflow)}
         </div>
@@ -94,7 +115,9 @@ export function MobileIndustryFlowPage() {
   const top = flow.data?.top ?? [];
   const inflow = [...top].sort((a, b) => b.netInflow - a.netInflow).slice(0, 5);
   const outflow = [...top].sort((a, b) => a.netInflow - b.netInflow).slice(0, 5);
-  const allScores = [...(mainline.data?.allScores ?? [])].sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
+  const allScores = [...(mainline.data?.allScores ?? [])]
+    .sort((a, b) => b.totalScore - a.totalScore)
+    .slice(0, 5);
 
   const sync = async () => {
     setSyncing(true);
@@ -111,8 +134,15 @@ export function MobileIndustryFlowPage() {
         title="行业资金流"
         action={
           <div className="flex items-center gap-2">
-            <span className="text-[var(--m-text-xs)] text-[var(--k-muted)]">{flow.data?.asOfDate ?? ''}</span>
-            <button type="button" onClick={() => void sync()} disabled={syncing} className="text-[var(--m-text-sm)] text-[var(--k-accent)] disabled:opacity-50">
+            <span className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+              {flow.data?.asOfDate ?? ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => void sync()}
+              disabled={syncing}
+              className="text-[var(--m-text-sm)] text-[var(--k-accent)] disabled:opacity-50"
+            >
               {syncing ? '同步中…' : '同步'}
             </button>
           </div>
@@ -128,21 +158,44 @@ export function MobileIndustryFlowPage() {
           {mainline.data?.currentMainline?.length ? (
             <MobileCard>
               {mainline.data.currentMainline.map((m) => (
-                <div key={m.industryName} className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0">
+                <div
+                  key={m.industryName}
+                  className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0"
+                >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[var(--m-text-base)] font-medium">{m.industryName}</div>
+                    <div className="truncate text-[var(--m-text-base)] font-medium">
+                      {m.industryName}
+                    </div>
                     <div className="mt-0.5 flex flex-wrap gap-x-2 text-[var(--m-text-xs)]">
-                      <span className={m.flags?.flow?.sum5d > 0 ? 'text-[var(--k-up)]' : 'text-[var(--k-down)]'}>
+                      <span
+                        className={
+                          m.flags?.flow?.sum5d > 0 ? 'text-[var(--k-up)]' : 'text-[var(--k-down)]'
+                        }
+                      >
                         资金{(m.flags?.flow?.sum5d ?? 0) > 0 ? '+' : '-'}
                       </span>
-                      <span className={m.flags?.breadth?.limitUpQualified ? 'text-[var(--k-up)]' : 'text-[var(--k-down)]'}>
+                      <span
+                        className={
+                          m.flags?.breadth?.limitUpQualified
+                            ? 'text-[var(--k-up)]'
+                            : 'text-[var(--k-down)]'
+                        }
+                      >
                         广度{m.flags?.breadth?.limitUpQualified ? '+' : '-'}
                       </span>
-                      <span className={m.flags?.trend?.indexAboveMa20 && m.flags?.trend?.ma20Up ? 'text-[var(--k-up)]' : 'text-[var(--k-down)]'}>
-                        趋势{(m.flags?.trend?.indexAboveMa20 && m.flags?.trend?.ma20Up) ? '↑' : '↓'}
+                      <span
+                        className={
+                          m.flags?.trend?.indexAboveMa20 && m.flags?.trend?.ma20Up
+                            ? 'text-[var(--k-up)]'
+                            : 'text-[var(--k-down)]'
+                        }
+                      >
+                        趋势{m.flags?.trend?.indexAboveMa20 && m.flags?.trend?.ma20Up ? '↑' : '↓'}
                       </span>
                       {m.flags?.flow?.positiveDays10d != null ? (
-                        <span className={m.flags.flow.positiveDays10d >= 7 ? 'text-[var(--k-up)]' : ''}>
+                        <span
+                          className={m.flags.flow.positiveDays10d >= 7 ? 'text-[var(--k-up)]' : ''}
+                        >
                           10日中{m.flags.flow.positiveDays10d}天正
                         </span>
                       ) : null}
@@ -150,7 +203,9 @@ export function MobileIndustryFlowPage() {
                     <RankLine flags={m.flags} />
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="font-mono text-[var(--m-text-base)] tabular-nums">{m.totalScore.toFixed(1)}</div>
+                    <div className="font-mono text-[var(--m-text-base)] tabular-nums">
+                      {m.totalScore.toFixed(1)}
+                    </div>
                     <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {m.flowScore.toFixed(1)}/{m.breadthScore.toFixed(1)}/{m.trendScore.toFixed(1)}
                     </div>
@@ -169,13 +224,20 @@ export function MobileIndustryFlowPage() {
           {allScores.length ? (
             <MobileCard>
               {allScores.map((s) => (
-                <div key={s.industryName} className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0">
+                <div
+                  key={s.industryName}
+                  className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0"
+                >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[var(--m-text-base)] font-medium">{s.industryName}</div>
+                    <div className="truncate text-[var(--m-text-base)] font-medium">
+                      {s.industryName}
+                    </div>
                     <RankLine flags={s.flags} />
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="font-mono text-[var(--m-text-base)] tabular-nums">{s.totalScore.toFixed(1)}</div>
+                    <div className="font-mono text-[var(--m-text-base)] tabular-nums">
+                      {s.totalScore.toFixed(1)}
+                    </div>
                     <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {s.flowScore.toFixed(1)}/{s.breadthScore.toFixed(1)}/{s.trendScore.toFixed(1)}
                     </div>
@@ -194,11 +256,18 @@ export function MobileIndustryFlowPage() {
           {inflow.length ? (
             <MobileCard>
               {inflow.map((r) => (
-                <FlowRow key={r.industryCode} row={r} name={r.industryName} sumLabel={`10 日累计 ${fmtAmountCn(r.sum10d)}`} />
+                <FlowRow
+                  key={r.industryCode}
+                  row={r}
+                  name={r.industryName}
+                  sumLabel={`10 日累计 ${fmtAmountCn(r.sum10d)}`}
+                />
               ))}
             </MobileCard>
           ) : (
-            <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无数据</MobileCard>
+            <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+              暂无数据
+            </MobileCard>
           )}
         </MobileSection>
 
@@ -206,11 +275,18 @@ export function MobileIndustryFlowPage() {
           {outflow.length ? (
             <MobileCard>
               {outflow.map((r) => (
-                <FlowRow key={r.industryCode} row={r} name={r.industryName} sumLabel={`10 日累计 ${fmtAmountCn(r.sum10d)}`} />
+                <FlowRow
+                  key={r.industryCode}
+                  row={r}
+                  name={r.industryName}
+                  sumLabel={`10 日累计 ${fmtAmountCn(r.sum10d)}`}
+                />
               ))}
             </MobileCard>
           ) : (
-            <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无数据</MobileCard>
+            <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+              暂无数据
+            </MobileCard>
           )}
         </MobileSection>
       </MobileSection>

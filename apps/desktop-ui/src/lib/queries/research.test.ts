@@ -58,9 +58,7 @@ describe('fetch functions', () => {
   it('fetchResearchReports uses defaults', async () => {
     mockedApiGetJson.mockResolvedValue({ ok: true, reports: [] });
     await fetchResearchReports();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/research/reports?limit=50&days=7',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/research/reports?limit=50&days=7');
   });
 
   it('fetchResearchReports uses custom params', async () => {
@@ -81,12 +79,7 @@ describe('fetch functions', () => {
 
 describe('query options', () => {
   it('wires stale time and keys', () => {
-    expect(researchReportsQueryOptions(7, 50).queryKey).toEqual([
-      'research',
-      'reports',
-      7,
-      50,
-    ]);
+    expect(researchReportsQueryOptions(7, 50).queryKey).toEqual(['research', 'reports', 7, 50]);
     expect(researchStatsQueryOptions().queryKey).toEqual(['research', 'stats']);
   });
 });

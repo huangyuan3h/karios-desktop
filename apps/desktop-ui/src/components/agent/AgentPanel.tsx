@@ -51,7 +51,10 @@ export function AgentPanel() {
             size="icon"
             className="h-8 w-8"
             onClick={() =>
-              setAgent((prev) => ({ ...prev, mode: prev.mode === 'docked' ? 'maximized' : 'docked' }))
+              setAgent((prev) => ({
+                ...prev,
+                mode: prev.mode === 'docked' ? 'maximized' : 'docked',
+              }))
             }
             title={mode === 'docked' ? 'Maximize' : 'Restore'}
           >
@@ -98,5 +101,3 @@ export function AgentPanel() {
     </div>
   );
 }
-
-

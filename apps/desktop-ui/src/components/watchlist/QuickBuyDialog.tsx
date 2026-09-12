@@ -106,8 +106,7 @@ export function QuickBuyDialog({
       <div className="w-full max-w-[340px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4 text-xs text-[var(--k-text)] shadow-lg">
         <div className="mb-1 flex items-center justify-between">
           <div className="text-sm font-medium">
-            {side === 'SELL' ? '卖出' : '买入'}{' '}
-            {state.name ? <span>{state.name}</span> : null}{' '}
+            {side === 'SELL' ? '卖出' : '买入'} {state.name ? <span>{state.name}</span> : null}{' '}
             <span className="font-mono text-[var(--k-muted)]">{state.symbol}</span>
           </div>
           <button
@@ -155,7 +154,9 @@ export function QuickBuyDialog({
           </div>
           {side === 'BUY' && (
             <div>
-              <div className="mb-1 text-[var(--k-muted)]">账本（卫星=双子星 body=3，核心=S-3 规则）</div>
+              <div className="mb-1 text-[var(--k-muted)]">
+                账本（卫星=双子星 body=3，核心=S-3 规则）
+              </div>
               <div className="grid grid-cols-2 gap-1 rounded-md border border-[var(--k-border)] p-1">
                 {(['sat', 's3'] as const).map((v) => (
                   <button
@@ -178,7 +179,13 @@ export function QuickBuyDialog({
           <Button
             size="sm"
             disabled={!valid || busy}
-            onClick={() => onConfirm(side === 'BUY' ? { price: parsedPrice, positionPct: parsedPct, leg } : { price: parsedPrice, positionPct: parsedPct })}
+            onClick={() =>
+              onConfirm(
+                side === 'BUY'
+                  ? { price: parsedPrice, positionPct: parsedPct, leg }
+                  : { price: parsedPrice, positionPct: parsedPct },
+              )
+            }
           >
             {busy ? '提交中…' : `确认${side === 'SELL' ? '卖出' : '买入'}`}
           </Button>

@@ -61,10 +61,7 @@ export function holdingDays(entryDate: string, sellDate: string): number {
 }
 
 /** Detect an ADD: item already has a cost + pct, and a new buy price differs. */
-export function isAddOnOpenPosition(
-  item: WatchlistItem,
-  newPrice: number | null,
-): boolean {
+export function isAddOnOpenPosition(item: WatchlistItem, newPrice: number | null): boolean {
   if (newPrice == null || !isOpenPosition(item)) return false;
   const oldCost = item.costPrice;
   if (typeof oldCost !== 'number' || !Number.isFinite(oldCost)) return false;

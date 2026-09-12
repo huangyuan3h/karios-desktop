@@ -74,7 +74,14 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     lineHeight: 1.25,
   },
-  metaLine: { fontSize: 10, color: '#333', marginBottom: 16, width: '100%', maxWidth: '100%', lineHeight: 1.35 },
+  metaLine: {
+    fontSize: 10,
+    color: '#333',
+    marginBottom: 16,
+    width: '100%',
+    maxWidth: '100%',
+    lineHeight: 1.35,
+  },
   h2: {
     fontSize: 12,
     fontWeight: 700,
@@ -215,142 +222,143 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         />
 
         <View style={styles.body}>
-        <Text style={styles.docTitle} hyphenationCallback={hyphenateCjkWord}>
-          投资要点日报
-        </Text>
-        <Text style={styles.metaLine} wrap hyphenationCallback={hyphenateCjkWord}>
-          数据日期：{asOfDate || '—'} · 导出：{subtitleTimeZh}
-        </Text>
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          一、市场环境要点
-        </Text>
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          要点提炼
-        </Text>
-        <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-          {report.marketEnvironmentHighlights}
-        </Text>
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          二、红绿灯 · 仓位与情绪
-        </Text>
-        {layout.sentimentIndexTable ? <PdfTableView block={layout.sentimentIndexTable} /> : null}
-        {layout.sentimentDailyTable ? <PdfTableView block={layout.sentimentDailyTable} /> : null}
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          规则与口径
-        </Text>
-        <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-          {layout.sentimentStaticNotes}
-        </Text>
-        {layout.sentimentRuleLines.map((line, i) => (
-          <Text key={`sr-${i}`} style={styles.bullet} wrap hyphenationCallback={hyphenateCjkWord}>
-            • {line}
+          <Text style={styles.docTitle} hyphenationCallback={hyphenateCjkWord}>
+            投资要点日报
           </Text>
-        ))}
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          投研解读
-        </Text>
-        <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-          {report.trafficLightPositionAndSentiment}
-        </Text>
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          三、热点行业与主线资金流向
-        </Text>
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          工作流规则（V4.0）
-        </Text>
-        {layout.hotStaticRules.map((r, i) => (
-          <Text key={`hr-${i}`} style={styles.bullet} wrap hyphenationCallback={hyphenateCjkWord}>
-            • {r}
+          <Text style={styles.metaLine} wrap hyphenationCallback={hyphenateCjkWord}>
+            数据日期：{asOfDate || '—'} · 导出：{subtitleTimeZh}
           </Text>
-        ))}
-        <PdfTableView block={layout.hotPicksTable} />
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          热点书面分析
-        </Text>
-        <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-          {report.hotIndustriesFormalAnalysis}
-        </Text>
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          主线与资金综合评述
-        </Text>
-        <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-          {report.capitalFlowAndMainline}
-        </Text>
 
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          四、本期重点标的（3）
-        </Text>
-        {report.topStocks.map((s, i) => (
-          <View key={`st-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
-            <Text
-              style={{ fontSize: 10, fontWeight: 700, width: '100%', maxWidth: '100%' }}
-              wrap
-              hyphenationCallback={hyphenateCjkWord}
-            >
-              {i + 1}. {s.symbol}（{s.name}）
-            </Text>
-            <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-              {s.rationale}
-            </Text>
-          </View>
-        ))}
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          五、重要资讯摘要（5）
-        </Text>
-        {report.topNews.map((n, i) => (
-          <View key={`nw-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
-            <Text
-              style={{ fontSize: 9.5, fontWeight: 700, width: '100%', maxWidth: '100%' }}
-              wrap
-              hyphenationCallback={hyphenateCjkWord}
-            >
-              {i + 1}. {n.title}
-            </Text>
-            <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
-              {n.summary}
-            </Text>
-          </View>
-        ))}
-
-        <Text style={styles.h2} minPresenceAhead={72} hyphenationCallback={hyphenateCjkWord}>
-          附录：环境与行业原始数据
-        </Text>
-        <Text style={styles.muted} wrap hyphenationCallback={hyphenateCjkWord}>
-          以下为 Dashboard 摘录的原文与原始表，便于核对；正文结论请以第一节「要点提炼」及后文分析为准。
-        </Text>
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          市场环境摘要（原文）
-        </Text>
-        {envZh ? (
-          <View style={styles.envBox}>
-            <Text style={styles.envText} wrap hyphenationCallback={hyphenateCjkWord}>
-              {envZh}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.prose} hyphenationCallback={hyphenateCjkWord}>
-            （暂无市场环境摘要原文）
+          <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
+            一、市场环境要点
           </Text>
-        )}
-        {layout.macroTable ? <PdfTableView block={layout.macroTable} /> : null}
-        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          行业资金（原始表）
-        </Text>
-        {hasIndustrySection ? (
-          <>
-            {layout.industryInflow ? <PdfTableView block={layout.industryInflow} /> : null}
-            {layout.industryOutflow ? <PdfTableView block={layout.industryOutflow} /> : null}
-            {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
-          </>
-        ) : (
-          <Text style={styles.muted} hyphenationCallback={hyphenateCjkWord}>
-            暂无行业日期矩阵 / 五日流向表数据。
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            要点提炼
           </Text>
-        )}
+          <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+            {report.marketEnvironmentHighlights}
+          </Text>
+
+          <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
+            二、红绿灯 · 仓位与情绪
+          </Text>
+          {layout.sentimentIndexTable ? <PdfTableView block={layout.sentimentIndexTable} /> : null}
+          {layout.sentimentDailyTable ? <PdfTableView block={layout.sentimentDailyTable} /> : null}
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            规则与口径
+          </Text>
+          <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+            {layout.sentimentStaticNotes}
+          </Text>
+          {layout.sentimentRuleLines.map((line, i) => (
+            <Text key={`sr-${i}`} style={styles.bullet} wrap hyphenationCallback={hyphenateCjkWord}>
+              • {line}
+            </Text>
+          ))}
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            投研解读
+          </Text>
+          <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+            {report.trafficLightPositionAndSentiment}
+          </Text>
+
+          <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
+            三、热点行业与主线资金流向
+          </Text>
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            工作流规则（V4.0）
+          </Text>
+          {layout.hotStaticRules.map((r, i) => (
+            <Text key={`hr-${i}`} style={styles.bullet} wrap hyphenationCallback={hyphenateCjkWord}>
+              • {r}
+            </Text>
+          ))}
+          <PdfTableView block={layout.hotPicksTable} />
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            热点书面分析
+          </Text>
+          <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+            {report.hotIndustriesFormalAnalysis}
+          </Text>
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            主线与资金综合评述
+          </Text>
+          <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+            {report.capitalFlowAndMainline}
+          </Text>
+
+          <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
+            四、本期重点标的（3）
+          </Text>
+          {report.topStocks.map((s, i) => (
+            <View key={`st-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
+              <Text
+                style={{ fontSize: 10, fontWeight: 700, width: '100%', maxWidth: '100%' }}
+                wrap
+                hyphenationCallback={hyphenateCjkWord}
+              >
+                {i + 1}. {s.symbol}（{s.name}）
+              </Text>
+              <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+                {s.rationale}
+              </Text>
+            </View>
+          ))}
+
+          <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
+            五、重要资讯摘要（5）
+          </Text>
+          {report.topNews.map((n, i) => (
+            <View key={`nw-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
+              <Text
+                style={{ fontSize: 9.5, fontWeight: 700, width: '100%', maxWidth: '100%' }}
+                wrap
+                hyphenationCallback={hyphenateCjkWord}
+              >
+                {i + 1}. {n.title}
+              </Text>
+              <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
+                {n.summary}
+              </Text>
+            </View>
+          ))}
+
+          <Text style={styles.h2} minPresenceAhead={72} hyphenationCallback={hyphenateCjkWord}>
+            附录：环境与行业原始数据
+          </Text>
+          <Text style={styles.muted} wrap hyphenationCallback={hyphenateCjkWord}>
+            以下为 Dashboard
+            摘录的原文与原始表，便于核对；正文结论请以第一节「要点提炼」及后文分析为准。
+          </Text>
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            市场环境摘要（原文）
+          </Text>
+          {envZh ? (
+            <View style={styles.envBox}>
+              <Text style={styles.envText} wrap hyphenationCallback={hyphenateCjkWord}>
+                {envZh}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.prose} hyphenationCallback={hyphenateCjkWord}>
+              （暂无市场环境摘要原文）
+            </Text>
+          )}
+          {layout.macroTable ? <PdfTableView block={layout.macroTable} /> : null}
+          <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+            行业资金（原始表）
+          </Text>
+          {hasIndustrySection ? (
+            <>
+              {layout.industryInflow ? <PdfTableView block={layout.industryInflow} /> : null}
+              {layout.industryOutflow ? <PdfTableView block={layout.industryOutflow} /> : null}
+              {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
+            </>
+          ) : (
+            <Text style={styles.muted} hyphenationCallback={hyphenateCjkWord}>
+              暂无行业日期矩阵 / 五日流向表数据。
+            </Text>
+          )}
         </View>
       </Page>
     </Document>

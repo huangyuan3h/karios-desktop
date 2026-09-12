@@ -4,10 +4,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { isShanghaiQuoteWindow } from '@/lib/market-hours';
-import {
-  fetchWatchlistMarketSnapshot,
-  type WatchlistMarketSnapshot,
-} from '@/lib/watchlist-market';
+import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 
 import { WATCHLIST_POLL_MS } from './intervals';
 

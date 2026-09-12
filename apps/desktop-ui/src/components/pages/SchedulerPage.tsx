@@ -38,7 +38,13 @@ type JobRunState = 'ok' | 'failed' | 'idle' | 'never' | 'untracked';
 
 const STATUS_META: Record<
   JobRunState,
-  { label: string; pill: string; dot: string; text: string; icon: React.ComponentType<{ className?: string }> }
+  {
+    label: string;
+    pill: string;
+    dot: string;
+    text: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
 > = {
   ok: {
     label: 'OK',
@@ -271,7 +277,10 @@ function JobCard({
             {todayRun ? fmtWhen(todayRun.sync_at) : state === 'untracked' ? '未记录' : '—'}
           </div>
           {todayRun?.error_message ? (
-            <div className="mt-1 line-clamp-2 text-[10px] text-red-700" title={todayRun.error_message}>
+            <div
+              className="mt-1 line-clamp-2 text-[10px] text-red-700"
+              title={todayRun.error_message}
+            >
               {todayRun.error_message}
             </div>
           ) : null}
@@ -403,7 +412,11 @@ function GroupSection({
   );
 }
 
-function AlphaRadarExtra({ alphaRadar }: { alphaRadar: NonNullable<SchedulerJobsResponse['alphaRadar']> }) {
+function AlphaRadarExtra({
+  alphaRadar,
+}: {
+  alphaRadar: NonNullable<SchedulerJobsResponse['alphaRadar']>;
+}) {
   const backlog = alphaRadar.rawBacklogCount ?? 0;
   const trends = alphaRadar.currentTrendCount ?? alphaRadar.lastTrendCount ?? 0;
   const accumulated = alphaRadar.accumulatedTrendCount ?? 0;
@@ -440,15 +453,19 @@ function AlphaRadarExtra({ alphaRadar }: { alphaRadar: NonNullable<SchedulerJobs
       </div>
       {alphaRadar.lastIngestStats ? (
         <div className="mt-2 text-[10px] text-[var(--k-muted)]">
-          上次抓取: stored={alphaRadar.lastIngestStats.stored ?? 0} ·
-          filtered={alphaRadar.lastIngestStats.filteredOut ?? 0}
+          上次抓取: stored={alphaRadar.lastIngestStats.stored ?? 0} · filtered=
+          {alphaRadar.lastIngestStats.filteredOut ?? 0}
         </div>
       ) : null}
     </div>
   );
 }
 
-function WatchlistAutomationExtra({ run }: { run: NonNullable<SchedulerJobsResponse['watchlistAutomation']> }) {
+function WatchlistAutomationExtra({
+  run,
+}: {
+  run: NonNullable<SchedulerJobsResponse['watchlistAutomation']>;
+}) {
   const created = run.createdAt ? fmtWhen(run.createdAt) : '—';
   const removed = Array.isArray(run.removeItems) ? run.removeItems.length : 0;
   const added = Array.isArray(run.alphaAdd) ? run.alphaAdd.length : 0;
@@ -492,7 +509,12 @@ function SchedulerBanner({
     success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
   }[tone];
   return (
-    <div className={cn('flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm', toneClass)}>
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm',
+        toneClass,
+      )}
+    >
       <div className="min-w-0 flex-1">{text}</div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -509,8 +531,10 @@ function friendlyCloseMessage(message: string | null | undefined): string | null
     if (m.includes('already up to date')) return '今天不是交易日，数据已是最新，已跳过。';
     return '今天不是交易日，已跳过收盘同步。';
   }
-  if (m.includes('non-trading day catchup')) return '非交易日补同步完成（已同步至最近一个交易日）。';
-  if (m.includes('already synced today') || m.includes('already up to date')) return '今天已同步，无需重复操作。';
+  if (m.includes('non-trading day catchup'))
+    return '非交易日补同步完成（已同步至最近一个交易日）。';
+  if (m.includes('already synced today') || m.includes('already up to date'))
+    return '今天已同步，无需重复操作。';
   if (m.includes('no trading dates in range')) return '交易日区间为空，请先同步交易日历。';
   return message;
 }
@@ -626,19 +650,15 @@ export function SchedulerPage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-[var(--k-muted)]">
-            管理所有自动同步脚本；调度器运行在 backend 进程内，如果服务停止或机器休眠，任务将不会执行。
+            管理所有自动同步脚本；调度器运行在 backend
+            进程内，如果服务停止或机器休眠，任务将不会执行。
           </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--k-muted)]">
             {lastSyncAt ? `最近更新 ${fmtRelative(lastSyncAt)}` : '暂无记录'}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isFetching}
-          >
+          <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={isFetching}>
             <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
             刷新
           </Button>
@@ -655,12 +675,7 @@ export function SchedulerPage() {
         />
         <StatTile label="今日成功" value={counts.ok} tone="ok" icon={CheckCircle2} />
         <StatTile label="今日失败" value={counts.failed} tone="failed" icon={AlertTriangle} />
-        <StatTile
-          label="今日未运行"
-          value={counts.never}
-          tone="idle"
-          icon={CircleDashed}
-        />
+        <StatTile label="今日未运行" value={counts.never} tone="idle" icon={CircleDashed} />
       </div>
 
       <div className="mb-4 space-y-2">
@@ -723,8 +738,8 @@ export function SchedulerPage() {
       )}
 
       <p className="mt-4 text-[11px] text-[var(--k-muted)]">
-        自动刷新间隔 {Math.round(SCHEDULER_POLL_MS / 1000)} 秒 ·
-        调度器运行在 data-sync-service 进程内；非交易日的 `stock_close_sync` 会被自动跳过。
+        自动刷新间隔 {Math.round(SCHEDULER_POLL_MS / 1000)} 秒 · 调度器运行在 data-sync-service
+        进程内；非交易日的 `stock_close_sync` 会被自动跳过。
       </p>
     </div>
   );

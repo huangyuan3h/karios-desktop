@@ -103,7 +103,8 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     id: 'execAction',
     label: '执行',
     sub: 'Action',
-    short: '执行动作: BUY / ADD / HOLD / TRIM / EXIT / PURGE / WATCH_SILENT + 买卖按钮 + Reference / Remove。',
+    short:
+      '执行动作: BUY / ADD / HOLD / TRIM / EXIT / PURGE / WATCH_SILENT + 买卖按钮 + Reference / Remove。',
     detail:
       '由 deriveActionCard() 综合 trend + gate + mainline + sleeve + sector + catalyst 给出。\n\n' +
       '- BUY: 评分达标 + 主流 + gate 允许\n' +
@@ -179,7 +180,8 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     label: '日内 %',
     sub: 'Intraday',
     short: '今日涨跌幅（quote 实时 / 收盘后取 pct_chg）。',
-    detail: '正值红色？no — Karios 约定 + 绿色 / - 红色（与 CN 散户视角相反）。>6% 标记为 surge 并触发阻断。',
+    detail:
+      '正值红色？no — Karios 约定 + 绿色 / - 红色（与 CN 散户视角相反）。>6% 标记为 surge 并触发阻断。',
     unit: '%',
   },
   volumeRatio: {
@@ -187,8 +189,7 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     label: '量比 VR',
     sub: 'Volume Ratio',
     short: '当前成交量 / 过去 5 日同时段均量（>=1.5 强势 / <1 弱势）。单位 x。',
-    detail:
-      '量比 = avgVol(5) / avgVol(30)。\n\n颜色:\n- 红: <1\n- 绿: >=1.5x\n- 默认: 1~1.5x',
+    detail: '量比 = avgVol(5) / avgVol(30)。\n\n颜色:\n- 红: <1\n- 绿: >=1.5x\n- 默认: 1~1.5x',
     unit: 'x',
   },
   instFlow: {
@@ -223,8 +224,7 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     label: '盈亏 %',
     sub: 'P&L',
     short: '持仓盈亏 = (现价 − 成本) / 成本 × 100。',
-    detail:
-      '颜色:\n- 绿: pnl ≥ 5%\n- 红: pnl ≤ 0%\n- 默认: 0% < pnl < 5%\n\n未填成本价时显示 —。',
+    detail: '颜色:\n- 绿: pnl ≥ 5%\n- 红: pnl ≤ 0%\n- 默认: 0% < pnl < 5%\n\n未填成本价时显示 —。',
     unit: '%',
   },
   score: {
@@ -289,9 +289,7 @@ export function buildWatchlistColumnTooltipBody(
           {h.label}
           {h.sub ? <span className="ml-2 text-[var(--k-muted)]">{h.sub}</span> : null}
         </div>
-        {h.unit ? (
-          <div className="font-mono text-[var(--k-muted)]">unit: {h.unit}</div>
-        ) : null}
+        {h.unit ? <div className="font-mono text-[var(--k-muted)]">unit: {h.unit}</div> : null}
       </div>
       <div className="text-[var(--k-muted)]">{h.short}</div>
       <div className="mt-2 whitespace-pre-line text-[var(--k-text)]">{h.detail}</div>

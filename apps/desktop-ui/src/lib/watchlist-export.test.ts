@@ -3,7 +3,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { buildWatchlistMarkdown } from './watchlist-export';
 
 const baseOptions = {
-  sortedItems: [{ symbol: 'CN:000001', name: 'Test', costPrice: 9.5, addedAt: '2026-06-18T00:00:00Z' }],
+  sortedItems: [
+    { symbol: 'CN:000001', name: 'Test', costPrice: 9.5, addedAt: '2026-06-18T00:00:00Z' },
+  ],
   trendUpdatedAt: null,
   tradingTime: true,
   todaySh: '2026-06-18',
@@ -59,7 +61,12 @@ describe('buildWatchlistMarkdown', () => {
       sortedItems: [
         { symbol: 'CN:000001', name: 'TestA', costPrice: 9.5, addedAt: '2026-06-18T00:00:00Z' },
         { symbol: 'HK:00700', name: 'Tencent', costPrice: 476, addedAt: '2026-06-18T00:00:00Z' },
-        { symbol: 'ETF:510300', name: '沪深300ETF', costPrice: 3.9, addedAt: '2026-06-18T00:00:00Z' },
+        {
+          symbol: 'ETF:510300',
+          name: '沪深300ETF',
+          costPrice: 3.9,
+          addedAt: '2026-06-18T00:00:00Z',
+        },
       ],
       trendSnap: {
         'CN:000001': {
@@ -100,9 +107,33 @@ describe('buildWatchlistMarkdown', () => {
         },
       },
       quotesSnap: {
-        'CN:000001': { tsCode: '000001.SZ', price: 10.2, tradeTime: '2026-06-18 14:30:00', amount: 1, volume: 1, preClose: 10, pctChg: 2 },
-        'HK:00700': { tsCode: '00700.HK', price: 480.5, tradeTime: '2026-06-18 15:30:00', amount: 1, volume: 1, preClose: 476, pctChg: 1 },
-        'ETF:510300': { tsCode: '510300.SH', price: 3.9, tradeTime: '2026-06-18 14:30:00', amount: 1, volume: 1, preClose: 3.9, pctChg: 0 },
+        'CN:000001': {
+          tsCode: '000001.SZ',
+          price: 10.2,
+          tradeTime: '2026-06-18 14:30:00',
+          amount: 1,
+          volume: 1,
+          preClose: 10,
+          pctChg: 2,
+        },
+        'HK:00700': {
+          tsCode: '00700.HK',
+          price: 480.5,
+          tradeTime: '2026-06-18 15:30:00',
+          amount: 1,
+          volume: 1,
+          preClose: 476,
+          pctChg: 1,
+        },
+        'ETF:510300': {
+          tsCode: '510300.SH',
+          price: 3.9,
+          tradeTime: '2026-06-18 14:30:00',
+          amount: 1,
+          volume: 1,
+          preClose: 3.9,
+          pctChg: 0,
+        },
       },
     });
 
@@ -131,14 +162,18 @@ describe('S-3 backtest candidate block', () => {
             regime: 'Strong',
             sentiment: 'normal',
             panicCooldown: { active: false },
-            s3Candidates: [{ symbol: 'CN:600001', name: '测试A', score: 72, rs: 0.8, ts_code: '600001.SH' }],
+            s3Candidates: [
+              { symbol: 'CN:600001', name: '测试A', score: 72, rs: 0.8, ts_code: '600001.SH' },
+            ],
             s3CandidateTotal: 1,
             s3Rules: { suggestedSizePct: 10 },
             holdings: [],
             hkHealth: {
               tradeDate: '2026-08-07',
               regime: 'Strong',
-              s3Candidates: [{ symbol: 'HK:00700', name: '腾讯控股', score: 99, rs: 0.9, ts_code: '00700.HK' }],
+              s3Candidates: [
+                { symbol: 'HK:00700', name: '腾讯控股', score: 99, rs: 0.9, ts_code: '00700.HK' },
+              ],
               s3CandidateTotal: 19,
               s3Rules: { suggestedSizePct: 10 },
               holdings: [],
@@ -175,12 +210,52 @@ describe('S-3 backtest candidate block', () => {
   };
 
   const items = [
-    { symbol: 'CN:600001', name: '测试A', addedAt: '2026-08-01', source: 'manual', color: '#000', positionPct: null, costPrice: null, maxPrice: null, entryDate: null },
-    { symbol: 'CN:600002', name: '测试B', addedAt: '2026-08-01', source: 'manual', color: '#000', positionPct: 5, costPrice: 10, maxPrice: null, entryDate: '2026-07-01' },
+    {
+      symbol: 'CN:600001',
+      name: '测试A',
+      addedAt: '2026-08-01',
+      source: 'manual',
+      color: '#000',
+      positionPct: null,
+      costPrice: null,
+      maxPrice: null,
+      entryDate: null,
+    },
+    {
+      symbol: 'CN:600002',
+      name: '测试B',
+      addedAt: '2026-08-01',
+      source: 'manual',
+      color: '#000',
+      positionPct: 5,
+      costPrice: 10,
+      maxPrice: null,
+      entryDate: '2026-07-01',
+    },
   ];
   const trend = {
-    'CN:600001': { symbol: 'CN:600001', score: 72, trendOk: true, asOfDate: '2026-08-07', values: { emIndustry: '计算机', close: 10 }, marketRegime: 'Strong', intradayChgPct: 0, gapUp: false, missingData: [] },
-    'CN:600002': { symbol: 'CN:600002', score: 80, trendOk: true, asOfDate: '2026-08-07', values: { emIndustry: '计算机', close: 12 }, marketRegime: 'Strong', intradayChgPct: 0, gapUp: false, missingData: [] },
+    'CN:600001': {
+      symbol: 'CN:600001',
+      score: 72,
+      trendOk: true,
+      asOfDate: '2026-08-07',
+      values: { emIndustry: '计算机', close: 10 },
+      marketRegime: 'Strong',
+      intradayChgPct: 0,
+      gapUp: false,
+      missingData: [],
+    },
+    'CN:600002': {
+      symbol: 'CN:600002',
+      score: 80,
+      trendOk: true,
+      asOfDate: '2026-08-07',
+      values: { emIndustry: '计算机', close: 12 },
+      marketRegime: 'Strong',
+      intradayChgPct: 0,
+      gapUp: false,
+      missingData: [],
+    },
   } as never;
   const quotes = { 'CN:600001': { price: 10 }, 'CN:600002': { price: 12 } } as never;
 

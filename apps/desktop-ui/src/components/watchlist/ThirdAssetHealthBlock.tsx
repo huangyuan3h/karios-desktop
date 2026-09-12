@@ -18,17 +18,24 @@ export function ThirdAssetHealthBlock({
   if (!holding?.active) {
     return null;
   }
-  const actionStyle = ({
-    HOLD: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    SELL_TO_A_SHARE: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    SELL_TO_REPO: 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300',
-  } as Record<string, string>)[holding.action ?? 'HOLD'] ?? 'border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-muted)]';
+  const actionStyle =
+    (
+      {
+        HOLD: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+        SELL_TO_A_SHARE: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+        SELL_TO_REPO: 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300',
+      } as Record<string, string>
+    )[holding.action ?? 'HOLD'] ??
+    'border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-muted)]';
 
-  const icon = ({
-    HOLD: '✅',
-    SELL_TO_A_SHARE: '🔔',
-    SELL_TO_REPO: '⚠️',
-  } as Record<string, string>)[holding.action ?? 'HOLD'] ?? '💼';
+  const icon =
+    (
+      {
+        HOLD: '✅',
+        SELL_TO_A_SHARE: '🔔',
+        SELL_TO_REPO: '⚠️',
+      } as Record<string, string>
+    )[holding.action ?? 'HOLD'] ?? '💼';
   const details = [
     holding.price != null ? `现价 ${holding.price}` : null,
     holding.ma200 != null ? `MA200 ${holding.ma200}` : null,
@@ -42,9 +49,13 @@ export function ThirdAssetHealthBlock({
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">US</span>
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
+          US
+        </span>
         择强 ETF 腿 · 纳指（历史 T6 回退）
-        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">{holding.asOfDate ?? '—'}</span>
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {holding.asOfDate ?? '—'}
+        </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <button
@@ -62,9 +73,13 @@ export function ThirdAssetHealthBlock({
           {holding.aboveMa200 ? '站上 200 日线' : '跌破 200 日线'}
         </span>
       </div>
-      {details ? <div className="text-[11px] tabular-nums text-[var(--k-muted)]">{details}</div> : null}
+      {details ? (
+        <div className="text-[11px] tabular-nums text-[var(--k-muted)]">{details}</div>
+      ) : null}
       {holding.message ? <div className="text-[11px] opacity-90">{holding.message}</div> : null}
-      {holding.note ? <div className="text-[11px] text-amber-700 dark:text-amber-300">{holding.note}</div> : null}
+      {holding.note ? (
+        <div className="text-[11px] text-amber-700 dark:text-amber-300">{holding.note}</div>
+      ) : null}
     </div>
   );
 }

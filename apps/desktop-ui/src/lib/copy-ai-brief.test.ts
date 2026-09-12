@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ExecutionDecisionChange } from '@karios/shared';
 
-import {
-  formatCondOrderDraftMarkdown,
-  formatSinceLastCopyMarkdown,
-} from './copy-ai-brief';
+import { formatCondOrderDraftMarkdown, formatSinceLastCopyMarkdown } from './copy-ai-brief';
 
 describe('formatSinceLastCopyMarkdown', () => {
   it('notes missing prior marker and lists action/mode changes', () => {
@@ -148,9 +145,7 @@ describe('formatCondOrderDraftMarkdown', () => {
       { allowNewEntries: false, tradingTime: false, phase: 'Weekend' },
     );
     expect(md).toContain('phase: Weekend — orders queue for next open');
-    expect(md).toContain(
-      '[Queue for Next Open] 改单 CN:002821 卖出/清仓条件 @ Exit_Stop=42.1',
-    );
+    expect(md).toContain('[Queue for Next Open] 改单 CN:002821 卖出/清仓条件 @ Exit_Stop=42.1');
   });
 
   it('skips T1_LOCK sell drafts and notes the skip', () => {

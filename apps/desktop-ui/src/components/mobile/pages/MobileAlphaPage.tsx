@@ -24,7 +24,11 @@ export function MobileAlphaPage() {
     setRunMsg(null);
     try {
       const res = await runAlphaRadarPipeline(false);
-      setRunMsg(res.skipped ? `跳过（冷却中 ${status.data?.cooldownHours ?? ''}h）` : `完成 · 新增 ${res.trendCount ?? 0} 个趋势`);
+      setRunMsg(
+        res.skipped
+          ? `跳过（冷却中 ${status.data?.cooldownHours ?? ''}h）`
+          : `完成 · 新增 ${res.trendCount ?? 0} 个趋势`,
+      );
       await invalidateAlphaRadarQueries(qc);
     } catch (e) {
       setRunMsg(e instanceof Error ? e.message : String(e));
@@ -51,7 +55,9 @@ export function MobileAlphaPage() {
               上次运行 {new Date(st.lastRunAt).toLocaleString('zh-CN')}
             </div>
           ) : null}
-          {runMsg ? <div className="mt-2 text-[var(--m-text-sm)] text-[var(--k-accent)]">{runMsg}</div> : null}
+          {runMsg ? (
+            <div className="mt-2 text-[var(--m-text-sm)] text-[var(--k-accent)]">{runMsg}</div>
+          ) : null}
           <div className="mt-3">
             <MobileButton block onClick={() => void run()} disabled={running}>
               {running ? '生成中…' : '生成趋势'}
@@ -88,7 +94,8 @@ export function MobileAlphaPage() {
                 ) : null}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {c.autoQaSignals?.length ? <StatusPill tone="warn">QA 信号</StatusPill> : null}
-                  {c.adjustedCatalystScore != null && c.adjustedCatalystScore !== c.catalystScore ? (
+                  {c.adjustedCatalystScore != null &&
+                  c.adjustedCatalystScore !== c.catalystScore ? (
                     <StatusPill tone="down">调整 {c.adjustedCatalystScore}</StatusPill>
                   ) : null}
                 </div>

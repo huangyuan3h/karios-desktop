@@ -48,5 +48,3 @@ export function ChatMessageList({ messages }: { messages: ChatMessage[] }) {
     </div>
   );
 }
-
-

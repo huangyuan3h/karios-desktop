@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import {
-  DEFAULT_STRATEGY_MODE,
-  getStrategyMode,
-  setStrategyMode,
-} from './strategy-settings';
+import { DEFAULT_STRATEGY_MODE, getStrategyMode, setStrategyMode } from './strategy-settings';
 
 afterEach(() => {
   window.localStorage.removeItem('karios.strategyMode');

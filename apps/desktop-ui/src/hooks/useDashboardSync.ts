@@ -196,9 +196,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                   })
                   .then((aiData) => {
                     const summaryText =
-                      typeof aiData?.summary === 'string'
-                        ? stripModelThinking(aiData.summary)
-                        : '';
+                      typeof aiData?.summary === 'string' ? stripModelThinking(aiData.summary) : '';
                     if (summaryText) {
                       const updatedAt = new Date().toISOString();
                       cb.setNewsSummary(summaryText);

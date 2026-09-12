@@ -146,7 +146,10 @@ describe('fetchSourceStats', () => {
   });
 
   it('throws on non-ok response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }),
+    );
     const { fetchSourceStats } = await import('./execution-source');
     await expect(fetchSourceStats('http://test', 30)).rejects.toThrow(/500/);
     vi.unstubAllGlobals();

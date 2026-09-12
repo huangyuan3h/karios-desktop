@@ -168,14 +168,20 @@ export function RecentDailyCompareCard() {
           <button
             type="button"
             onClick={() => setStrategy('twin_star')}
-            className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+            className={cn(
+              'px-2 py-0.5',
+              isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+            )}
           >
             机会双子星
           </button>
           <button
             type="button"
             onClick={() => setStrategy('pick_strong')}
-            className={cn('px-2 py-0.5', !isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+            className={cn(
+              'px-2 py-0.5',
+              !isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+            )}
           >
             单轨择强
           </button>
@@ -190,7 +196,9 @@ export function RecentDailyCompareCard() {
             title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（Live配方）；关=冻结T开盘收盘卖"
             className={cn(
               'rounded border px-1.5 py-0.5 text-[10px] font-normal',
-              habit ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-[var(--k-border)] text-[var(--k-muted)]',
+              habit
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+                : 'border-[var(--k-border)] text-[var(--k-muted)]',
             )}
           >
             {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
@@ -223,7 +231,9 @@ export function RecentDailyCompareCard() {
       <div className="mb-2 grid grid-cols-3 gap-2 text-[11px]">
         <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
           <div className="text-[var(--k-muted)]">{isTwin ? '机会双子星累计' : '单轨择优累计'}</div>
-          <div className={cn('font-semibold tabular-nums', tone(lastNav))}>{lastNav.toFixed(2)}%</div>
+          <div className={cn('font-semibold tabular-nums', tone(lastNav))}>
+            {lastNav.toFixed(2)}%
+          </div>
           <div className="text-[10px] text-[var(--k-muted)]">
             Timeline pick={last.pick ?? '—'}
             {isTwin ? ` · 目标${last.satActive ? 50 : 100}%` : ''} · live={livePick ?? '—'}
@@ -234,7 +244,10 @@ export function RecentDailyCompareCard() {
           <div className={cn('font-semibold tabular-nums', tone(avgOpsPnl))}>
             {avgOpsPnl != null ? `${avgOpsPnl.toFixed(2)}%` : '—'}
           </div>
-          <div className="truncate text-[10px] text-[var(--k-muted)]" title={holdings.map((h) => h.symbol).join(', ')}>
+          <div
+            className="truncate text-[10px] text-[var(--k-muted)]"
+            title={holdings.map((h) => h.symbol).join(', ')}
+          >
             {holdings.length} 票 · {holdings.map((h) => h.symbol).join(', ') || '无持仓'}
           </div>
         </div>
@@ -248,7 +261,9 @@ export function RecentDailyCompareCard() {
           >
             {avgOpsPnl != null ? `${(lastNav - avgOpsPnl).toFixed(2)}%` : '—'}
           </div>
-          <div className="text-[10px] text-[var(--k-muted)]">{isTwin ? '双子星' : '单轨'} − 最近操作</div>
+          <div className="text-[10px] text-[var(--k-muted)]">
+            {isTwin ? '双子星' : '单轨'} − 最近操作
+          </div>
         </div>
       </div>
 
@@ -277,11 +292,16 @@ export function RecentDailyCompareCard() {
               return (
                 <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                   <td className="py-1 pl-2 pr-2 font-mono">{r.date}</td>
-                  <td className="max-w-[200px] truncate py-1 pr-2 text-[11px]" title={optimalHolding}>
+                  <td
+                    className="max-w-[200px] truncate py-1 pr-2 text-[11px]"
+                    title={optimalHolding}
+                  >
                     {optimalHolding}
                   </td>
                   {isTwin ? (
-                    <td className="py-1 pr-2 text-[10px] text-[var(--k-muted)]">{r.satActive ? '50' : '100'}%</td>
+                    <td className="py-1 pr-2 text-[10px] text-[var(--k-muted)]">
+                      {r.satActive ? '50' : '100'}%
+                    </td>
                   ) : null}
                   <td
                     className="min-w-[220px] whitespace-normal break-words py-1 pr-2 text-[11px] text-[var(--k-muted)]"
@@ -289,7 +309,9 @@ export function RecentDailyCompareCard() {
                   >
                     {actualHolding}
                   </td>
-                  <td className={cn('py-1 pr-2 font-medium', tone(single))}>{single.toFixed(2)}%</td>
+                  <td className={cn('py-1 pr-2 font-medium', tone(single))}>
+                    {single.toFixed(2)}%
+                  </td>
                   <td className={cn('py-1 pr-2', tone(opsYield))}>
                     {opsYield != null ? `${opsYield.toFixed(2)}%` : '—'}
                   </td>
@@ -300,12 +322,13 @@ export function RecentDailyCompareCard() {
         </table>
       </div>
       <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
-        <strong>{isTwin ? '机会双子星' : '单轨择优'}</strong> = <code>GET /api/backtest/timeline?strategy={strategy}</code>
+        <strong>{isTwin ? '机会双子星' : '单轨择优'}</strong> ={' '}
+        <code>GET /api/backtest/timeline?strategy={strategy}</code>
         {isTwin
           ? `（opportunity v3 · satActive→50/50 · idle→核心100% · 与 Watchlist 同源${habit ? ' · 习惯C1+14:30卖（Live）' : ' · 冻结T开盘收盘卖'}）。`
           : '（pick_strong_track · mom_compare · 100% 硬切）。'}
-        <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产 ETF）相对成本的加权收益（bars）。
-        「现仓快照」每日行相同——不是历史逐日持仓回放。
+        <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产
+        ETF）相对成本的加权收益（bars）。 「现仓快照」每日行相同——不是历史逐日持仓回放。
       </p>
     </div>
   );

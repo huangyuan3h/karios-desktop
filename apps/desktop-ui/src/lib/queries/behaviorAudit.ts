@@ -36,10 +36,9 @@ export interface BehaviorAuditItem {
 export const behaviorAuditKey = 'behavior-audit';
 
 async function fetchLatestAudit(): Promise<BehaviorAuditItem[]> {
-  const res = await fetch(
-    `${DATA_SYNC_BASE_URL}/api/backtest/behavior-audit/latest?limit=2`,
-    { cache: 'no-store' },
-  );
+  const res = await fetch(`${DATA_SYNC_BASE_URL}/api/backtest/behavior-audit/latest?limit=2`, {
+    cache: 'no-store',
+  });
   if (!res.ok) {
     throw new Error(`behavior-audit latest failed: ${res.status}`);
   }

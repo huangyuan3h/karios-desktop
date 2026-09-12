@@ -13,10 +13,7 @@
  */
 import type { TrendOkResult } from '@/lib/api/types';
 
-export type WatchlistVisibilityTrend = Pick<
-  TrendOkResult,
-  'trendOk' | 'trendStatus' | 'score'
->;
+export type WatchlistVisibilityTrend = Pick<TrendOkResult, 'trendOk' | 'trendStatus' | 'score'>;
 
 export type WatchlistVisibilityItem = {
   symbol: string;
@@ -86,10 +83,7 @@ export function filterWatchlistForTable<T extends WatchlistVisibilityItem>(
 /**
  * Count hidden rows for note diagnostics. Always >= 0; safe to call.
  */
-export function countHiddenWatchlistRows(
-  total: number,
-  visible: number,
-): number {
+export function countHiddenWatchlistRows(total: number, visible: number): number {
   if (total < visible) return 0;
   return total - visible;
 }

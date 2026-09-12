@@ -83,7 +83,8 @@ function timingInfos(mode: ReplicaGapMode, corePct: number, satBudget: number): 
       id: 'timing_1430',
       severity: 'info',
       title: '时点：你约 14:30 操作 ≠ 回测收盘/次日开盘',
-      detail: '定案用 t−1 收盘算 pick，净值按日收益复利。下午盘中买卖会吃到当日剩余波动，与 Timeline 日线归因天然有差。',
+      detail:
+        '定案用 t−1 收盘算 pick，净值按日收益复利。下午盘中买卖会吃到当日剩余波动，与 Timeline 日线归因天然有差。',
     },
   ];
   if (mode === 'twin_star') {
@@ -91,26 +92,30 @@ function timingInfos(mode: ReplicaGapMode, corePct: number, satBudget: number): 
       id: 'clip4_structure',
       severity: 'info',
       title: `机会双子星 clip4：核心 ${corePct}% · 卫星套筒 ${satBudget}%（最多 4×${TWIN_STAR_CLIP4.satSlotNavPct}%）`,
-      detail: '开闸或隔夜卫星 = 50/50；关闸无仓 = 核心 100%。卫星股票不是偏离，不要用单轨 100% 硬切对照。',
+      detail:
+        '开闸或隔夜卫星 = 50/50；关闸无仓 = 核心 100%。卫星股票不是偏离，不要用单轨 100% 硬切对照。',
     });
     infos.push({
       id: 'conditional_orders',
       severity: 'info',
       title: '卫星纪律：第 3 个交易日14:30卖，中途不止损',
-      detail: '习惯卫星 C1+第3日14:30卖（sat-exit-hhmm beats_core）。−5% 保护止损已从 Live / paper 拿掉（2026-09-03 三窗拒收）。body 未到期的卫星仓关闸日也可以留着。',
+      detail:
+        '习惯卫星 C1+第3日14:30卖（sat-exit-hhmm beats_core）。−5% 保护止损已从 Live / paper 拿掉（2026-09-03 三窗拒收）。body 未到期的卫星仓关闸日也可以留着。',
     });
   } else {
     infos.push({
       id: 'conditional_orders',
       severity: 'info',
       title: '股票条件单 = 延迟/部分成交',
-      detail: '止损/移动/到期条件单按触发价成交，不是「收盘瞬间 100% 换仓」。这是纪律工具，但会拉开与硬切 NAV 的距离。',
+      detail:
+        '止损/移动/到期条件单按触发价成交，不是「收盘瞬间 100% 换仓」。这是纪律工具，但会拉开与硬切 NAV 的距离。',
     });
     infos.push({
       id: 'not_full_switch',
       severity: 'info',
       title: '未做 100% 硬切就会系统性跑输展示曲线',
-      detail: '展示收益假设每天把全部资金放在当日 pick。部分换仓、留底仓、多腿并存，都会让实盘无法「复制」那条曲线。',
+      detail:
+        '展示收益假设每天把全部资金放在当日 pick。部分换仓、留底仓、多腿并存，都会让实盘无法「复制」那条曲线。',
     });
   }
   return infos;
@@ -121,7 +126,13 @@ function finish(
   mode: ReplicaGapMode,
   corePct: number,
   satBudget: number,
-  weights: { targetWeightPct: number; stockWeightPct: number; etfWeightPct: number; idlePct: number; total: number },
+  weights: {
+    targetWeightPct: number;
+    stockWeightPct: number;
+    etfWeightPct: number;
+    idlePct: number;
+    total: number;
+  },
   reasons: ReplicaGapReason[],
 ): ReplicaGapReport {
   reasons.push(...timingInfos(mode, corePct, satBudget));
@@ -166,7 +177,13 @@ function finish(
 function detectSingleTrackGaps(
   pick: string,
   holdings: HoldingSnap[],
-  weights: { targetWeightPct: number; stockWeightPct: number; etfWeightPct: number; idlePct: number; total: number },
+  weights: {
+    targetWeightPct: number;
+    stockWeightPct: number;
+    etfWeightPct: number;
+    idlePct: number;
+    total: number;
+  },
 ): ReplicaGapReport {
   const reasons: ReplicaGapReason[] = [];
 
@@ -238,7 +255,8 @@ function detectSingleTrackGaps(
       id: 'stock_basket_vs_equal',
       severity: 'info',
       title: '股票腿 = 多票等权篮，不是一只龙头',
-      detail: 'Timeline 的 STOCK 收益是当日持仓篮等权日收益；条件单分批成交会导致权重/时点与回测不一致。',
+      detail:
+        'Timeline 的 STOCK 收益是当日持仓篮等权日收益；条件单分批成交会导致权重/时点与回测不一致。',
     });
   }
 
@@ -249,7 +267,13 @@ function detectTwinStarGaps(
   pick: string,
   holdings: HoldingSnap[],
   corePct: number,
-  weights: { targetWeightPct: number; stockWeightPct: number; etfWeightPct: number; idlePct: number; total: number },
+  weights: {
+    targetWeightPct: number;
+    stockWeightPct: number;
+    etfWeightPct: number;
+    idlePct: number;
+    total: number;
+  },
 ): ReplicaGapReport {
   const satBudget = Math.max(0, 100 - corePct);
   const reasons: ReplicaGapReason[] = [];
@@ -394,7 +418,11 @@ export function detectReplicaGaps(input: {
   }
 
   const weights = { targetWeightPct, stockWeightPct, etfWeightPct, idlePct, total };
-  const corePct = resolveCoreTargetPct({ mode, coreTargetPct: input.coreTargetPct, stockWeightPct });
+  const corePct = resolveCoreTargetPct({
+    mode,
+    coreTargetPct: input.coreTargetPct,
+    stockWeightPct,
+  });
 
   if (mode === 'twin_star') {
     return detectTwinStarGaps(pick, holdings, corePct, weights);

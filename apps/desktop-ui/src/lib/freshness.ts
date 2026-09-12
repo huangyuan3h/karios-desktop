@@ -32,7 +32,11 @@ function formatAge(ageMinutes: number | null): string {
  * itself instead of trusting a silent snapshot.
  */
 export function buildDataFreshnessMarkdown(sources: DataSourceFreshness[]): string {
-  const lines = ['## Data freshness', '', '- note: per-source last successful sync (agent: treat stale sources with caution)'];
+  const lines = [
+    '## Data freshness',
+    '',
+    '- note: per-source last successful sync (agent: treat stale sources with caution)',
+  ];
   if (!sources.length) {
     lines.push('- unavailable');
     return lines.join('\n');

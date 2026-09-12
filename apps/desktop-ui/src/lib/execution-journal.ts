@@ -40,12 +40,7 @@ import { normalizeCatalystSymbol } from '@/lib/alpha-radar-catalyst';
 const QUEUE_KEY = 'karios.executionJournal.queue.v1';
 
 /** Fields that qualify a symbol for Latest Actions (delta logging). */
-export const LATEST_ACTIONS_DELTA_FIELDS = new Set([
-  'action',
-  'trigger',
-  'hardStop',
-  'trailStop',
-]);
+export const LATEST_ACTIONS_DELTA_FIELDS = new Set(['action', 'trigger', 'hardStop', 'trailStop']);
 
 /**
  * Symbols whose Action / Trigger / HardStop / TrailStop changed.
@@ -121,7 +116,9 @@ export function buildExecutionSnapshotPayload(
     // Upstream defense (2026-08-07): only well-formed watchlist symbols may
     // enter the journal; malformed ones (e.g. CN:99{uuid} test rows) are
     // skipped here AND rejected by the backend ingest.
-    const sym = String(it.symbol ?? '').trim().toUpperCase();
+    const sym = String(it.symbol ?? '')
+      .trim()
+      .toUpperCase();
     if (!WATCHLIST_SYMBOL_RE.test(sym)) continue;
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -143,10 +140,7 @@ export function buildExecutionSnapshotPayload(
     });
     const card = deriveActionCard({
       symbol: it.symbol,
-      gate:
-        marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate
-          ? { ...gate, ...gate.hkGate }
-          : gate,
+      gate: marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate ? { ...gate, ...gate.hkGate } : gate,
       trendok: t ?? null,
       position: it,
       currentPrice: rowMetrics.current,

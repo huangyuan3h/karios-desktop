@@ -239,14 +239,17 @@ export function DecisionPage() {
     }
     const payload = { messages };
     const assistantId = -Date.now();
-    setLocalMessages((prev) => [...prev, {
-      id: assistantId,
-      sessionId: threadId,
-      role: 'assistant',
-      content: '',
-      contextSnapshot: null,
-      createdAt: new Date().toISOString(),
-    }]);
+    setLocalMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        sessionId: threadId,
+        role: 'assistant',
+        content: '',
+        contextSnapshot: null,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
     setStreaming(true);
     const ctrl = new AbortController();
     streamAbortRef.current = ctrl;
@@ -288,9 +291,7 @@ export function DecisionPage() {
             ? err.message
             : String(err);
       setLocalMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId ? { ...m, content: `⚠ 调用失败：${msg}` } : m,
-        ),
+        prev.map((m) => (m.id === assistantId ? { ...m, content: `⚠ 调用失败：${msg}` } : m)),
       );
     } finally {
       clearTimeout(timer);
@@ -326,8 +327,12 @@ export function DecisionPage() {
       // watchlist/screener data (invalidate resets their staleTime to 0),
       // without a global invalidate storm.
       await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
-      const newsItems = Array.isArray((summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } }).news?.items)
-        ? (summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } }).news?.items ?? []
+      const newsItems = Array.isArray(
+        (summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } }).news
+          ?.items,
+      )
+        ? ((summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } })
+            .news?.items ?? [])
         : [];
       const newsFallback = newsItems.length
         ? newsItems
@@ -431,14 +436,18 @@ export function DecisionPage() {
     setLocalMessages((prev) => prev.filter((m) => m.id !== messageId));
   }
 
-  const chatMessages: ChatMessage[] = localMessages.filter((m) => m.content).map((m) => ({
-    id: String(m.id),
-    role: m.role,
-    content: m.content,
-    createdAt: m.createdAt,
-  }));
+  const chatMessages: ChatMessage[] = localMessages
+    .filter((m) => m.content)
+    .map((m) => ({
+      id: String(m.id),
+      role: m.role,
+      content: m.content,
+      createdAt: m.createdAt,
+    }));
   const messageCount = chatMessages.length;
-  const windowCount = localMessages.filter((m) => m.role === 'user' || m.role === 'assistant').length;
+  const windowCount = localMessages.filter(
+    (m) => m.role === 'user' || m.role === 'assistant',
+  ).length;
 
   return (
     <div className="flex h-full min-h-0">
@@ -499,8 +508,8 @@ export function DecisionPage() {
               <div className="flex flex-col items-center justify-center gap-3 px-8 py-24 text-center">
                 <Bot size={36} className="text-[var(--k-muted)]" />
                 <p className="max-w-md text-sm leading-6 text-[var(--k-muted)]">
-                  决策主线程：所有对话集中在这里，context 由系统自动管理
-                  （活跃层实时装配 · 窗口自动折叠 · 18:00 归档）。
+                  决策主线程：所有对话集中在这里，context 由系统自动管理 （活跃层实时装配 ·
+                  窗口自动折叠 · 18:00 归档）。
                 </p>
               </div>
             ) : (
@@ -510,9 +519,8 @@ export function DecisionPage() {
                   const isDelta = m.content.startsWith('📈');
                   const isArchive = m.content.startsWith('# 归档引用');
                   if (isSnapshot || isDelta || isArchive) {
-                    const body = isSnapshot || isDelta
-                      ? m.content.replace(/^[📋📈][^\n]*\n+/, '')
-                      : m.content;
+                    const body =
+                      isSnapshot || isDelta ? m.content.replace(/^[📋📈][^\n]*\n+/, '') : m.content;
                     return (
                       <details
                         key={m.id}
@@ -586,7 +594,10 @@ export function DecisionPage() {
                 首次插入全量快照，之后只插入增量变更（完整表格由活跃层每次对话实时注入）；均不自动发送，在下方输入指令后发送
               </span>
             </div>
-            <ChatComposer onSend={(t) => void handleSend(t)} disabled={streaming || threadId == null} />
+            <ChatComposer
+              onSend={(t) => void handleSend(t)}
+              disabled={streaming || threadId == null}
+            />
             <p className="mt-1 px-1 text-[11px] text-[var(--k-muted)]">
               {streaming
                 ? 'Agent 生成中…'

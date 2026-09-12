@@ -5,11 +5,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { IndexDetailPage } from '@/components/pages/IndexDetailPage';
 import { EtfFundFlowCard } from '@/components/dashboard/EtfFundFlowCard';
-import {
-  useMacroSnapshotQuery,
-  type CnIndexSignal,
-  type MacroItem,
-} from '@/lib/queries/macro';
+import { useMacroSnapshotQuery, type CnIndexSignal, type MacroItem } from '@/lib/queries/macro';
 import { MACRO_POLL_MS } from '@/lib/queries/intervals';
 import { formatMacroWarning } from '@/lib/macro-warnings';
 
@@ -41,8 +37,7 @@ function SectionDivider({ children }: { children: React.ReactNode }) {
 
 function signalSurfaceClass(signal: string): string {
   const s = String(signal || 'unknown');
-  if (s === 'deep_green')
-    return 'border-emerald-500/35 bg-emerald-500/[0.07] shadow-emerald-900/5';
+  if (s === 'deep_green') return 'border-emerald-500/35 bg-emerald-500/[0.07] shadow-emerald-900/5';
   if (s === 'light_green' || s === 'green')
     return 'border-emerald-500/30 bg-emerald-500/[0.06] shadow-emerald-900/5';
   if (s === 'red') return 'border-red-500/35 bg-red-500/[0.06] shadow-red-900/5';
@@ -98,10 +93,18 @@ function IndexCard({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') onClick();
+            }
+          : undefined
+      }
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-semibold leading-tight tracking-tight text-[var(--k-fg)]">{title}</h3>
+        <h3 className="text-base font-semibold leading-tight tracking-tight text-[var(--k-fg)]">
+          {title}
+        </h3>
         <span className="shrink-0 rounded-md bg-[var(--k-surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--k-muted)]">
           {mode}
         </span>
@@ -129,7 +132,9 @@ function IndexCard({
           <span
             className={cn(
               'text-lg font-semibold tabular-nums',
-              pctChg! >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+              pctChg! >= 0
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400',
             )}
           >
             {pctChg! >= 0 ? '+' : ''}
@@ -208,7 +213,11 @@ export function IndexPage() {
       : snapshotQuery.error
         ? String(snapshotQuery.error)
         : null;
-  const [detail, setDetail] = React.useState<{ type: 'cn' | 'macro'; code: string; name: string } | null>(null);
+  const [detail, setDetail] = React.useState<{
+    type: 'cn' | 'macro';
+    code: string;
+    name: string;
+  } | null>(null);
 
   const cn = Array.isArray(data?.cnIndexSignals) ? data!.cnIndexSignals! : [];
   const macro = Array.isArray(data?.macro) ? data!.macro! : [];
@@ -285,11 +294,13 @@ export function IndexPage() {
             <IndexCard
               key={String(it?.tsCode ?? it?.name)}
               {...cnToCardProps(it)}
-              onClick={() => setDetail({
-                type: isMacroIndex ? 'macro' : 'cn',
-                code: tsCode,
-                name: String(it?.name ?? ''),
-              })}
+              onClick={() =>
+                setDetail({
+                  type: isMacroIndex ? 'macro' : 'cn',
+                  code: tsCode,
+                  name: String(it?.name ?? ''),
+                })
+              }
             />
           );
         })}
@@ -297,7 +308,13 @@ export function IndexPage() {
           <IndexCard
             key={m.seriesId ?? m.name}
             {...macroToCardProps(m)}
-            onClick={() => setDetail({ type: 'macro', code: String(m?.seriesId ?? ''), name: String(m?.name ?? '') })}
+            onClick={() =>
+              setDetail({
+                type: 'macro',
+                code: String(m?.seriesId ?? ''),
+                name: String(m?.name ?? ''),
+              })
+            }
           />
         ))}
       </div>
@@ -312,7 +329,9 @@ export function IndexPage() {
       ) : null}
 
       {!cn.length && !macro.length ? (
-        <div className="text-xs text-[var(--k-muted)]">No data — sync index/macro or check Tushare token.</div>
+        <div className="text-xs text-[var(--k-muted)]">
+          No data — sync index/macro or check Tushare token.
+        </div>
       ) : null}
     </div>
   );

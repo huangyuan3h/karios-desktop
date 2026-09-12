@@ -8,19 +8,9 @@ import { Button } from '@/components/ui/button';
 import { StockChart } from '@/components/stock/StockChart';
 import { useChatStore } from '@/lib/chat/store';
 import type { OHLCV } from '@/lib/indicators';
-import {
-  getLastDetailSyncMs,
-  refetchStockDetail,
-  useStockDetailQuery,
-} from '@/lib/queries/stock';
+import { getLastDetailSyncMs, refetchStockDetail, useStockDetailQuery } from '@/lib/queries/stock';
 
-export function StockPage({
-  symbol,
-  onBack,
-}: {
-  symbol: string;
-  onBack: () => void;
-}) {
+export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => void }) {
   const queryClient = useQueryClient();
   const { addReference } = useChatStore();
   const { data, error: queryError, isFetching, refetch } = useStockDetailQuery(symbol);
@@ -46,7 +36,13 @@ export function StockPage({
         const low = Number(b.low);
         const close = Number(b.close);
         const volume = Number(String(b.volume).replaceAll(',', ''));
-        if (!b.date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+        if (
+          !b.date ||
+          !Number.isFinite(open) ||
+          !Number.isFinite(high) ||
+          !Number.isFinite(low) ||
+          !Number.isFinite(close)
+        ) {
           return null;
         }
         return {
@@ -79,7 +75,9 @@ export function StockPage({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-            <div className="text-lg font-semibold">{bars ? `${bars.ticker} ${bars.name}` : symbol}</div>
+            <div className="text-lg font-semibold">
+              {bars ? `${bars.ticker} ${bars.name}` : symbol}
+            </div>
           </div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             {bars ? `${bars.market} • ${bars.currency}` : 'Loading...'}
@@ -154,8 +152,10 @@ export function StockPage({
           <>
             <div className="mt-2 text-sm text-[var(--k-muted)]">
               Latest: profitRatio={chips.items[chips.items.length - 1]?.profitRatio} • avgCost=
-              {chips.items[chips.items.length - 1]?.avgCost} • 70%[{chips.items[chips.items.length - 1]?.cost70Low},{' '}
-              {chips.items[chips.items.length - 1]?.cost70High}] • 90%[{chips.items[chips.items.length - 1]?.cost90Low},{' '}
+              {chips.items[chips.items.length - 1]?.avgCost} • 70%[
+              {chips.items[chips.items.length - 1]?.cost70Low},{' '}
+              {chips.items[chips.items.length - 1]?.cost70High}] • 90%[
+              {chips.items[chips.items.length - 1]?.cost90Low},{' '}
               {chips.items[chips.items.length - 1]?.cost90High}]
             </div>
             <div className="mt-3 overflow-hidden rounded-lg border border-[var(--k-border)]">
@@ -163,11 +163,13 @@ export function StockPage({
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 bg-[var(--k-surface-2)]">
                     <tr className="text-left text-xs text-[var(--k-muted)]">
-                      {['Date', 'Profit', 'Avg', '70% Low', '70% High', '90% Low', '90% High'].map((h) => (
-                        <th key={h} className="whitespace-nowrap px-3 py-2">
-                          {h}
-                        </th>
-                      ))}
+                      {['Date', 'Profit', 'Avg', '70% Low', '70% High', '90% Low', '90% High'].map(
+                        (h) => (
+                          <th key={h} className="whitespace-nowrap px-3 py-2">
+                            {h}
+                          </th>
+                        ),
+                      )}
                     </tr>
                   </thead>
                   <tbody>

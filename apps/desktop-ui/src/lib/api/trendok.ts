@@ -6,7 +6,10 @@ import type { TrendOkResult } from './types';
 const inflight = new Map<string, Promise<TrendOkResult[]>>();
 
 function trendOkRequestKey(symbols: string[], realtime: boolean): string {
-  const sorted = [...symbols].map((s) => s.trim().toUpperCase()).filter(Boolean).sort();
+  const sorted = [...symbols]
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .sort();
   return `${realtime ? 'rt1' : 'rt0'}:${sorted.join(',')}`;
 }
 

@@ -13,10 +13,7 @@ import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
-import {
-  shouldRequireRealtimeQuote,
-  tradeDateFromTradeTime,
-} from '@/lib/watchlist-metrics';
+import { shouldRequireRealtimeQuote, tradeDateFromTradeTime } from '@/lib/watchlist-metrics';
 import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import type { ExecutionGate } from '@karios/shared';
@@ -24,11 +21,7 @@ import type { CatalystPurgeHint } from '@/lib/execution-action';
 
 async function loadCatalystPurgeMap(): Promise<Map<string, CatalystPurgeHint> | null> {
   try {
-    const resp = await fetchCatalystStocks(
-      DATA_SYNC_BASE_URL,
-      50,
-      DEFAULT_CATALYST_MAX_AGE_DAYS,
-    );
+    const resp = await fetchCatalystStocks(DATA_SYNC_BASE_URL, 50, DEFAULT_CATALYST_MAX_AGE_DAYS);
     return buildCatalystPurgeMap(resp);
   } catch {
     return null;
@@ -129,8 +122,26 @@ export function validateWatchlistCopyData(options: {
 }
 
 async function fetchBacktestOverview(): Promise<{
-  cnBaseline?: { windows?: Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }>; tag?: string };
-  longWindowCN?: { window?: string; totalNetPnlPct?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number };
+  cnBaseline?: {
+    windows?: Record<
+      string,
+      {
+        totalNetPnlPct?: number;
+        winRate?: number;
+        maxDrawdownPct?: number;
+        sharpe?: number;
+        trades?: number;
+      }
+    >;
+    tag?: string;
+  };
+  longWindowCN?: {
+    window?: string;
+    totalNetPnlPct?: number;
+    maxDrawdownPct?: number;
+    sharpe?: number;
+    trades?: number;
+  };
 } | null> {
   try {
     const res = await fetch(`${DATA_SYNC_BASE_URL}/api/backtest/overview`, { cache: 'no-store' });
@@ -145,25 +156,48 @@ async function fetchBacktestOverview(): Promise<{
 function buildSystemAppendix(overview: Awaited<ReturnType<typeof fetchBacktestOverview>>): string {
   const lines: string[] = [];
   lines.push('## 策略体系（固化口径 · 可复现）');
-  lines.push('- S-3 定案（`docs/modules/strategy-params.md §1` · `service/paper_s3.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong日ATR×2） · 持有60天 · 不止盈 · 恐慌冷却2天 · 回撤熔断-25%（CN） · 单票10%×10=100%（mp10） · 入场次日开盘（回测） · 创业板300排除');
+  lines.push(
+    '- S-3 定案（`docs/modules/strategy-params.md §1` · `service/paper_s3.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong日ATR×2） · 持有60天 · 不止盈 · 恐慌冷却2天 · 回撤熔断-25%（CN） · 单票10%×10=100%（mp10） · 入场次日开盘（回测） · 创业板300排除',
+  );
   lines.push('- 港股 S-3（HK线）：regime闸 · RS前40% · trail-12% · 其余同A股；A/H独立核算');
   if (overview?.cnBaseline?.windows) {
-    const w = overview.cnBaseline.windows as Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }>;
+    const w = overview.cnBaseline.windows as Record<
+      string,
+      {
+        totalNetPnlPct?: number;
+        winRate?: number;
+        maxDrawdownPct?: number;
+        sharpe?: number;
+        trades?: number;
+      }
+    >;
     const fmt = (k: string) => {
       const v = w[k];
       if (!v) return `${k} —`;
       return `${k} ${v.totalNetPnlPct?.toFixed(1) ?? '—'}% / DD${v.maxDrawdownPct?.toFixed(1) ?? '—'}% / 胜率${v.winRate != null ? (v.winRate * 100).toFixed(1) + '%' : '—'} / ${v.trades ?? '—'}笔`;
     };
-    lines.push(`- 三窗（OOS2/train/valid · 100%现金≤1.0 +0.7亿流动性 · walk_forward_baseline.json ${overview.cnBaseline.tag ?? ''}）：${fmt('OOS2')} · ${fmt('train')} · ${fmt('valid')}`);
+    lines.push(
+      `- 三窗（OOS2/train/valid · 100%现金≤1.0 +0.7亿流动性 · walk_forward_baseline.json ${overview.cnBaseline.tag ?? ''}）：${fmt('OOS2')} · ${fmt('train')} · ${fmt('valid')}`,
+    );
   }
   if (overview?.longWindowCN) {
     const l = overview.longWindowCN;
-    lines.push(`- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔（全市场 5226 · 含回撤熔断）`);
+    lines.push(
+      `- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔（全市场 5226 · 含回撤熔断）`,
+    );
   }
-  lines.push('- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮 ∪ 金518880/油513350/纳指513100·513110/债511260 同权比 t-1 mom60（ETF须≥MA200），argmax 100%硬切，空档 GC001；LB60·MA200·hold1');
-  lines.push('- S-3 = 股票腿生成器（非终局产品）；多资产腿规则在 `multi_asset_sleeve.py`，live pick 同 mom_compare');
-  lines.push('- 形态因子（`ml_forecast/morphology.py strong_scoop_exhaustion`）：强股勺型耗尽顶≥80%（ret60>0.4+放量 89-92%胜率）· 方向判别层，不改S-3');
-  lines.push('- 数据：Postgres + Alembic（`alembic upgrade head`）· score全市场日更17:30/10:30/14:00 · TrendOK=信号真值');
+  lines.push(
+    '- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮 ∪ 金518880/油513350/纳指513100·513110/债511260 同权比 t-1 mom60（ETF须≥MA200），argmax 100%硬切，空档 GC001；LB60·MA200·hold1',
+  );
+  lines.push(
+    '- S-3 = 股票腿生成器（非终局产品）；多资产腿规则在 `multi_asset_sleeve.py`，live pick 同 mom_compare',
+  );
+  lines.push(
+    '- 形态因子（`ml_forecast/morphology.py strong_scoop_exhaustion`）：强股勺型耗尽顶≥80%（ret60>0.4+放量 89-92%胜率）· 方向判别层，不改S-3',
+  );
+  lines.push(
+    '- 数据：Postgres + Alembic（`alembic upgrade head`）· score全市场日更17:30/10:30/14:00 · TrendOK=信号真值',
+  );
   lines.push('');
   return lines.join('\n');
 }
@@ -293,7 +327,9 @@ async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> |
   if (!symbols.length) return null;
   try {
     const q = encodeURIComponent(symbols.join(','));
-    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, {
+      cache: 'no-store',
+    });
     if (!res.ok) return null;
     const d = (await res.json()) as { ranks?: Record<string, number> };
     return d.ranks ?? null;

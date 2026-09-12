@@ -268,7 +268,9 @@ describe('shouldRequireRealtimeQuote', () => {
 
 describe('industry helpers', () => {
   it('prefers emIndustry over tushare industry', () => {
-    expect(industryDisplayName({ emIndustry: '集成电路封测', industry: '元器件' })).toBe('集成电路封测');
+    expect(industryDisplayName({ emIndustry: '集成电路封测', industry: '元器件' })).toBe(
+      '集成电路封测',
+    );
   });
 
   it('detects HotTop3 from industryFlowReasons', () => {

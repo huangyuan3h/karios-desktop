@@ -120,18 +120,14 @@ alphaRadarRoutes.post('/extract', async (c) => {
     const failures: string[] = [];
     try {
       const obj = await runObject(m);
-      const out = AlphaRadarExtractResponseSchema.parse(
-        normalizeAlphaRadarExtract(obj, category),
-      );
+      const out = AlphaRadarExtractResponseSchema.parse(normalizeAlphaRadarExtract(obj, category));
       return { ...out, model: mid || out.model };
     } catch (e) {
       failures.push(e instanceof Error ? e.message : String(e));
     }
     try {
       const obj = await runText(m);
-      const out = AlphaRadarExtractResponseSchema.parse(
-        normalizeAlphaRadarExtract(obj, category),
-      );
+      const out = AlphaRadarExtractResponseSchema.parse(normalizeAlphaRadarExtract(obj, category));
       return { ...out, model: mid || out.model };
     } catch (e) {
       failures.push(e instanceof Error ? e.message : String(e));
@@ -241,10 +237,7 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
     return c.json(result);
   }
 
-  return c.json(
-    { error: failures.length ? failures.join(' | ') : 'extract-batch failed' },
-    500,
-  );
+  return c.json({ error: failures.length ? failures.join(' | ') : 'extract-batch failed' }, 500);
 });
 
 alphaRadarRoutes.post('/map-cn', async (c) => {
@@ -303,9 +296,7 @@ alphaRadarRoutes.post('/map-cn', async (c) => {
     const { text } = await generateText({
       model: m,
       system,
-      prompt:
-        instruction +
-        '\n\nOutput ONLY one JSON object. No markdown fences. No <think> tags.',
+      prompt: instruction + '\n\nOutput ONLY one JSON object. No markdown fences. No <think> tags.',
       temperature: 0,
       maxOutputTokens: 2000,
       ...generateTextJsonObjectModeOptions(looseStructuredOutputs),

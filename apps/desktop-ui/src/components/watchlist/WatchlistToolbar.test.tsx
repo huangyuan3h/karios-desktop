@@ -75,7 +75,11 @@ describe('WatchlistToolbar', () => {
     render(
       <WatchlistToolbar
         {...base({
-          automationSkipRun: { runId: 'r', tradeDate: '2026-08-07', skipReason: 'too_soon' } as never,
+          automationSkipRun: {
+            runId: 'r',
+            tradeDate: '2026-08-07',
+            skipReason: 'too_soon',
+          } as never,
           onForceAutomationFromSkip,
         })}
       />,
@@ -98,7 +102,6 @@ describe('WatchlistToolbar', () => {
     render(<WatchlistToolbar {...base({ error: 'boom' })} />);
     expect(screen.getByText('boom')).toHaveClass('text-red-600');
   });
-
 
   it('disables Run automation while automation busy', () => {
     render(<WatchlistToolbar {...base({ automationBusy: true })} />);

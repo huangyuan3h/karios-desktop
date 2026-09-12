@@ -143,27 +143,27 @@ export function ChatComposer({
                       ? `${r.symbol}${r.name ? ` ${r.name}` : ''} · watchlist @ ${new Date(r.capturedAt).toLocaleString()}`
                       : r.kind === 'watchlistTable'
                         ? `Watchlist table · ${r.items.length}/${r.total} @ ${new Date(r.capturedAt).toLocaleString()}`
-                    : r.kind === 'broker'
-                      ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
-                      : r.kind === 'brokerState'
-                        ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
-                          : r.kind === 'industryFundFlow'
-                            ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
-                            : r.kind === 'leaderStocks'
-                              ? `Leader stocks · last ${r.days}D`
-                              : r.kind === 'marketSentiment'
-                                ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
-                                : r.kind === 'rankList'
-                                  ? `CN rank (1-2D) · ${r.asOfDate || 'latest'} (top ${r.limit})`
-                                  : r.kind === 'intradayRankList'
-                                    ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
-                                    : r.kind === 'journal'
-                                      ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
-                                      : r.kind === 'dashboardAll'
-                                        ? `${r.title || 'Dashboard overview'} · ${r.asOfDate || '—'} @ ${new Date(r.capturedAt).toLocaleString()}`
-                                        : r.kind === 'alphaRadar'
-                                          ? `Alpha: ${r.trendName} · ${r.riskStatus}`
-                                          : 'Unknown reference'}
+                        : r.kind === 'broker'
+                          ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
+                          : r.kind === 'brokerState'
+                            ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
+                            : r.kind === 'industryFundFlow'
+                              ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
+                              : r.kind === 'leaderStocks'
+                                ? `Leader stocks · last ${r.days}D`
+                                : r.kind === 'marketSentiment'
+                                  ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
+                                  : r.kind === 'rankList'
+                                    ? `CN rank (1-2D) · ${r.asOfDate || 'latest'} (top ${r.limit})`
+                                    : r.kind === 'intradayRankList'
+                                      ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
+                                      : r.kind === 'journal'
+                                        ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
+                                        : r.kind === 'dashboardAll'
+                                          ? `${r.title || 'Dashboard overview'} · ${r.asOfDate || '—'} @ ${new Date(r.capturedAt).toLocaleString()}`
+                                          : r.kind === 'alphaRadar'
+                                            ? `Alpha: ${r.trendName} · ${r.riskStatus}`
+                                            : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"

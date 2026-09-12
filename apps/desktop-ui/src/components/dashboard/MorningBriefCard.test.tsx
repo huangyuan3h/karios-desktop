@@ -176,9 +176,7 @@ describe('MorningBriefCard', () => {
     fireEvent.click(screen.getByText('重新生成'));
     expect(onRegenerateNews).toHaveBeenCalled();
 
-    rerender(
-      <MorningBriefCard newsSummaryBusy onRegenerateNews={onRegenerateNews} />,
-    );
+    rerender(<MorningBriefCard newsSummaryBusy onRegenerateNews={onRegenerateNews} />);
     expect(screen.getByText('重新生成')).toBeDisabled();
   });
 });

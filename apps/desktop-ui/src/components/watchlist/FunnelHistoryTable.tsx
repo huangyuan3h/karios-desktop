@@ -3,10 +3,7 @@
 import * as React from 'react';
 
 import { useFunnelHistoryQuery } from '@/lib/queries/funnel';
-import {
-  funnelFromMeta,
-  type AutomationRun,
-} from '@/lib/watchlist-automation';
+import { funnelFromMeta, type AutomationRun } from '@/lib/watchlist-automation';
 
 type FunnelRow = {
   tradeDate: string;
@@ -105,9 +102,7 @@ export function FunnelHistoryTable({ limit = 10 }: { limit?: number }) {
                     {r.conversionPct !== null ? `${r.conversionPct}%` : '—'}
                   </td>
                   <td className={CELL}>
-                    {r.fallbackUsed
-                      ? `${r.fallbackHit}→OK ${r.fallbackTrendOk}`
-                      : '—'}
+                    {r.fallbackUsed ? `${r.fallbackHit}→OK ${r.fallbackTrendOk}` : '—'}
                   </td>
                 </tr>
               ))}

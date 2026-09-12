@@ -12,7 +12,10 @@ import {
 function mockShanghaiTime(isoLocal: string, weekday = 'Mon') {
   const date = new Date(isoLocal);
   vi.spyOn(globalThis, 'Date').mockImplementation(() => date as Date);
-  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+    locale?: string,
+    options?: Intl.DateTimeFormatOptions,
+  ) => {
     if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
       return {
         formatToParts: () => [
@@ -50,7 +53,10 @@ describe('market-hours', () => {
   });
 
   it('automation poll window on weekday evening', () => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
       if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
         return {
           formatToParts: () => [
@@ -67,7 +73,10 @@ describe('market-hours', () => {
   });
 
   it('isShanghaiPreMarket true before 09:30 on a weekday', () => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
       if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
         return {
           formatToParts: () => [
@@ -84,7 +93,10 @@ describe('market-hours', () => {
   });
 
   it('isShanghaiPreMarket false at 10:00 on a weekday (market open)', () => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
       if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
         return {
           formatToParts: () => [
@@ -101,7 +113,10 @@ describe('market-hours', () => {
   });
 
   it('isShanghaiPreMarket false on Saturday', () => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
       if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
         return {
           formatToParts: () => [
@@ -124,7 +139,10 @@ describe('satNamesVisible', () => {
   });
 
   function mockParts(weekday: string, hour: string, minute: string) {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((locale?: string, options?: Intl.DateTimeFormatOptions) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(((
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
       if (options?.timeZone === 'Asia/Shanghai' && options.weekday === 'short') {
         return {
           formatToParts: () => [

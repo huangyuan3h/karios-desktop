@@ -193,7 +193,10 @@ function pickColumns(headers: string[]) {
   return [...picked, ...rest].slice(0, 8);
 }
 
-async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClient): Promise<string> {
+async function buildReferenceBlock(
+  refs: ChatReference[],
+  queryClient: QueryClient,
+): Promise<string> {
   let out = '# Reference Context\n\n';
   for (const ref of refs) {
     if (ref.kind === 'tv') {
@@ -731,7 +734,11 @@ async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClie
         try {
           const wlItems = loadWatchlist();
           const symbols = (Array.isArray(wlItems) ? wlItems : [])
-            .map((it) => String(it?.symbol ?? '').trim().toUpperCase())
+            .map((it) =>
+              String(it?.symbol ?? '')
+                .trim()
+                .toUpperCase(),
+            )
             .filter(Boolean);
           if (symbols.length) {
             const snapshot = await queryClient.fetchQuery(watchlistMarketQueryOptions(symbols));
@@ -753,12 +760,9 @@ async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClie
               out += `|---|---|---:|---|---|\n`;
               for (const r of wlRows) {
                 const trendOkVal = r.trendOk;
-                const trendOkStr =
-                  trendOkVal === true ? '✅' : trendOkVal === false ? '❌' : '—';
+                const trendOkStr = trendOkVal === true ? '✅' : trendOkVal === false ? '❌' : '—';
                 const buy =
-                  r.buyMode && r.buyAction
-                    ? `${r.buyMode}/${r.buyAction}`
-                    : r.buyAction || '—';
+                  r.buyMode && r.buyAction ? `${r.buyMode}/${r.buyAction}` : r.buyAction || '—';
                 out += `| ${r.symbol} | ${r.name || '—'} | ${typeof r.score === 'number' && Number.isFinite(r.score) ? r.score.toFixed(2) : '—'} | ${trendOkStr} | ${buy} |\n`;
               }
               out += `\n`;

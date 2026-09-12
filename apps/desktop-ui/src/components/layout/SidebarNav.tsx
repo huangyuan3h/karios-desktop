@@ -111,7 +111,6 @@ export function SidebarNav({
           );
         })}
       </nav>
-
-      </aside>
+    </aside>
   );
 }

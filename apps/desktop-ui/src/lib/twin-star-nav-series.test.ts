@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TimelineRow } from './queries/backtest';
-import { buildTwinStarNavPoints, circuitRuns, extremeSentimentRuns, hasFlowLayer, satActiveRuns, satOccupancyLine } from './twin-star-nav-series';
+import {
+  buildTwinStarNavPoints,
+  circuitRuns,
+  extremeSentimentRuns,
+  hasFlowLayer,
+  satActiveRuns,
+  satOccupancyLine,
+} from './twin-star-nav-series';
 
 function row(over: Partial<TimelineRow>): TimelineRow {
   return {

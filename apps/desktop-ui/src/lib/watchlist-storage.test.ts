@@ -198,10 +198,7 @@ describe('ensureWatchlistHydrated', () => {
     vi.mocked(fetch).mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(
-            () => resolve(registryResponse([]) as Response),
-            10,
-          );
+          setTimeout(() => resolve(registryResponse([]) as Response), 10);
         }),
     );
 

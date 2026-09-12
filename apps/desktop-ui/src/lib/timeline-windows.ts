@@ -8,13 +8,7 @@
 
 export type TimelineWindowRole = 'gate' | 'display' | 'readonly';
 
-export type TimelineWindowId =
-  | 'trailing'
-  | 'product_year'
-  | 'OOS2'
-  | 'train'
-  | 'valid'
-  | 'holdout';
+export type TimelineWindowId = 'trailing' | 'product_year' | 'OOS2' | 'train' | 'valid' | 'holdout';
 
 export type TimelineWindow = {
   id: TimelineWindowId;

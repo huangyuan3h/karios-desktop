@@ -1,11 +1,6 @@
 import { z } from 'zod';
 
-export const ExecutionGateModeSchema = z.enum([
-  'ATTACK',
-  'WEAK_ATTACK',
-  'HOLD_ONLY',
-  'DEFEND',
-]);
+export const ExecutionGateModeSchema = z.enum(['ATTACK', 'WEAK_ATTACK', 'HOLD_ONLY', 'DEFEND']);
 export type ExecutionGateMode = z.infer<typeof ExecutionGateModeSchema>;
 
 export const MarketRegimeLabelSchema = z.enum(['Strong', 'Diverging', 'Weak']);

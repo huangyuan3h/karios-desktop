@@ -71,12 +71,16 @@ describe('buildTwinStarTradePlan', () => {
       parkKey: 'NASDAQ',
       momByKey: { NASDAQ: 5.16, OIL: 4.98 },
     });
-    expect(trims.map((t) => ({ key: t.holding.key, cut: t.cut }))).toEqual([{ key: 'OIL', cut: 25 }]);
+    expect(trims.map((t) => ({ key: t.holding.key, cut: t.cut }))).toEqual([
+      { key: 'OIL', cut: 25 },
+    ]);
   });
   it('sizes each satellite slot as 25% of the sat sleeve (12.5% of NAV at 50/50)', () => {
     const plan = buildTwinStarTradePlan(base());
     expect(plan.satSlotNavPct).toBe(12.5);
-    expect(plan.buys.some((r) => r.sleeve === 'sat' && r.symbol === 'CN:000712' && r.navPct === 12.5)).toBe(true);
+    expect(
+      plan.buys.some((r) => r.sleeve === 'sat' && r.symbol === 'CN:000712' && r.navPct === 12.5),
+    ).toBe(true);
     expect(satConclusionLine(plan, true)).toMatch(/买入 000712\.SZ · 每只总资产 12\.5%/);
   });
 
@@ -90,7 +94,7 @@ describe('buildTwinStarTradePlan', () => {
     expect(satConclusionLine(plan, true)).toMatch(/买入 锦江投资 · 每只总资产 12\.5%/);
   });
 
-  it('still fills today\'s gaps when the recipe replay is 4/4 but live satellite is empty', () => {
+  it("still fills today's gaps when the recipe replay is 4/4 but live satellite is empty", () => {
     const plan = buildTwinStarTradePlan(
       base({
         satHoldings: recipeBook(),
@@ -108,7 +112,10 @@ describe('buildTwinStarTradePlan', () => {
     expect(plan.recipeSatHeld).toBe(SAT_MAX_POS);
     expect(plan.satHeld).toBe(0);
     expect(plan.satFreeSlots).toBe(SAT_MAX_POS);
-    expect(plan.buys.filter((r) => r.kind === 'stock').map((r) => r.symbol)).toEqual(['CN:600352', 'CN:603339']);
+    expect(plan.buys.filter((r) => r.kind === 'stock').map((r) => r.symbol)).toEqual([
+      'CN:600352',
+      'CN:603339',
+    ]);
     expect(plan.holds.filter((r) => r.kind === 'stock')).toHaveLength(0);
     expect(plan.bookNote).toMatch(/对照，不是券商仓/);
     expect(plan.etfSparePct).toBe(40.6);
@@ -245,7 +252,9 @@ describe('buildTwinStarTradePlan', () => {
     expect(funds).toHaveLength(1);
     expect(funds[0]?.symbol).toBe('ETF:513350');
     expect(funds[0]?.navPct).toBe(25);
-    expect(plan.sells.some((r) => r.symbol === 'ETF:513110' && r.purpose === 'sat-fund')).toBe(false);
+    expect(plan.sells.some((r) => r.symbol === 'ETF:513110' && r.purpose === 'sat-fund')).toBe(
+      false,
+    );
     expect(plan.etfHeadline).toMatch(/先砍弱 ETF/);
   });
 
@@ -292,9 +301,19 @@ describe('buildTwinStarTradePlan', () => {
     );
     expect(plan.satHeld).toBe(4);
     expect(plan.satFreeSlots).toBe(0);
-    expect(plan.satHeldSymbols.sort()).toEqual(['CN:300413', 'CN:301012', 'CN:600540', 'CN:603318']);
+    expect(plan.satHeldSymbols.sort()).toEqual([
+      'CN:300413',
+      'CN:301012',
+      'CN:600540',
+      'CN:603318',
+    ]);
     expect(plan.buys.filter((r) => r.sleeve === 'sat')).toHaveLength(0);
-    expect(plan.holds.map((h) => h.name).sort()).toEqual(['扬电科技', '新赛股份', '水发燃气', '芒果超媒']);
+    expect(plan.holds.map((h) => h.name).sort()).toEqual([
+      '扬电科技',
+      '新赛股份',
+      '水发燃气',
+      '芒果超媒',
+    ]);
     expect(plan.satHeadline).toMatch(/你卫星仓满 4\/4 · 今日不买新票/);
     expect(satConclusionLine(plan, true)).not.toMatch(/603221/);
   });
@@ -387,7 +406,8 @@ describe('buildTwinStarTradePlan', () => {
     expect(satConditionalLine(row!)).toBe('芒果超媒 300413.SZ 到期2026-09-04 持有至到期14:30');
   });
 
-  it('sells a live satellite name on the 3rd weekday', () => {    const plan = buildTwinStarTradePlan(
+  it('sells a live satellite name on the 3rd weekday', () => {
+    const plan = buildTwinStarTradePlan(
       base({
         asOfDate: '2026-09-02',
         satCandidates: [],
@@ -502,7 +522,13 @@ describe('resolveSatBody', () => {
       resolveSatBody(
         {
           entryDate: '2026-09-02',
-          satBody: { heldDays: 2, daysLeft: 1, exitDue: '2026-09-07', due: false, missingEntry: false },
+          satBody: {
+            heldDays: 2,
+            daysLeft: 1,
+            exitDue: '2026-09-07',
+            due: false,
+            missingEntry: false,
+          },
         },
         '2026-09-03',
       ),

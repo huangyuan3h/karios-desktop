@@ -15,7 +15,12 @@
  *   core STOCK name = S-3 suggestedSizePct of the core sleeve
  */
 
-import { isCnWatchlistSymbol, isEtfWatchlistSymbol, toTsCodeFromSymbol, tsCodeToWatchlistSymbol } from '@/lib/symbols';
+import {
+  isCnWatchlistSymbol,
+  isEtfWatchlistSymbol,
+  toTsCodeFromSymbol,
+  tsCodeToWatchlistSymbol,
+} from '@/lib/symbols';
 import type { TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
 import { TWIN_STAR_CLIP4, TWIN_STAR_HABIT } from '@karios/shared';
 import type { PortfolioCandidate } from '@/lib/queries/portfolioHealth';
@@ -110,13 +115,28 @@ export type SatBodyProgress = {
   missingEntry: boolean;
 };
 
-export function satBodyProgress(entryDate: string | null | undefined, asOf: string | null | undefined): SatBodyProgress {
-  const empty: SatBodyProgress = { heldDays: null, daysLeft: null, exitDue: null, due: false, missingEntry: true };
+export function satBodyProgress(
+  entryDate: string | null | undefined,
+  asOf: string | null | undefined,
+): SatBodyProgress {
+  const empty: SatBodyProgress = {
+    heldDays: null,
+    daysLeft: null,
+    exitDue: null,
+    due: false,
+    missingEntry: true,
+  };
   if (!entryDate || !asOf || !ISO_DAY.test(entryDate) || !ISO_DAY.test(asOf)) return empty;
   const heldDays = countWeekdaysInclusive(entryDate, asOf);
   const exitDue = nthWeekdayInclusive(entryDate, TWIN_STAR_LIVE_RECIPE.body);
   const daysLeft = Math.max(0, TWIN_STAR_LIVE_RECIPE.body - heldDays);
-  return { heldDays, daysLeft, exitDue, due: heldDays >= TWIN_STAR_LIVE_RECIPE.body, missingEntry: false };
+  return {
+    heldDays,
+    daysLeft,
+    exitDue,
+    due: heldDays >= TWIN_STAR_LIVE_RECIPE.body,
+    missingEntry: false,
+  };
 }
 
 /** Prefer the backend calendar-aware satBody; fall back to the local Mon–Fri estimate. */
@@ -157,12 +177,17 @@ export function isLiveSatelliteStock(
 }
 
 /** Recipe + candidate ts codes from GET /api/backtest/twin-star/action. */
-export function satNameTsFromAction(sat: {
-  candidates?: Array<{ ts?: string | null }> | null;
-  blocked?: Array<{ ts?: string | null }> | null;
-  alternates?: Array<{ ts?: string | null }> | null;
-  book?: { holdings?: Array<{ ts?: string | null }> | null } | null;
-} | null | undefined): Set<string> {
+export function satNameTsFromAction(
+  sat:
+    | {
+        candidates?: Array<{ ts?: string | null }> | null;
+        blocked?: Array<{ ts?: string | null }> | null;
+        alternates?: Array<{ ts?: string | null }> | null;
+        book?: { holdings?: Array<{ ts?: string | null }> | null } | null;
+      }
+    | null
+    | undefined,
+): Set<string> {
   const names = new Set<string>();
   if (!sat) return names;
   for (const row of [
@@ -476,7 +501,9 @@ function pushRow(rows: TwinStarTradeRow[], row: Omit<TwinStarTradeRow, 'kind'>):
 
 export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarTradePlan {
   const coreTargetPct = Number.isFinite(input.coreTargetPct) ? input.coreTargetPct : 100;
-  const satTargetPct = Number.isFinite(input.satTargetPct) ? input.satTargetPct : Math.max(0, 100 - coreTargetPct);
+  const satTargetPct = Number.isFinite(input.satTargetPct)
+    ? input.satTargetPct
+    : Math.max(0, 100 - coreTargetPct);
   const satSlotNavPct = roundNavPct(satTargetPct * SAT_SLOT_OF_SLEEVE);
   const recipe = input.satHoldings ?? [];
   const recipeTs = new Set(recipe.map((h) => h.ts));
@@ -491,25 +518,35 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
   const liveSat = liveStocks.filter((h) =>
     isLiveSatelliteStock(h.symbol, { pickKey: input.pickKey, satNameTs }),
   );
-  const liveHeldTs = new Set(liveSat.map((h) => liveTsCode(h.symbol)).filter((ts): ts is string => Boolean(ts)));
+  const liveHeldTs = new Set(
+    liveSat.map((h) => liveTsCode(h.symbol)).filter((ts): ts is string => Boolean(ts)),
+  );
 
   const asOf = input.asOfDate ?? null;
-  const recipeExitTs = new Set((input.satExitsDue ?? []).filter((h) => liveHeldTs.has(h.ts)).map((h) => h.ts));
-  const satMeta = new Map<string, {
-    holding: TwinStarLiveStock;
-    body: SatBodyProgress;
-    protectStop: number | null;
-    lastClose: number | null;
-    pnlPct: number | null;
-    stopBreached: boolean;
-    recipe: TwinStarSatHolding | undefined;
-  }>();
+  const recipeExitTs = new Set(
+    (input.satExitsDue ?? []).filter((h) => liveHeldTs.has(h.ts)).map((h) => h.ts),
+  );
+  const satMeta = new Map<
+    string,
+    {
+      holding: TwinStarLiveStock;
+      body: SatBodyProgress;
+      protectStop: number | null;
+      lastClose: number | null;
+      pnlPct: number | null;
+      stopBreached: boolean;
+      recipe: TwinStarSatHolding | undefined;
+    }
+  >();
   const exitTs = new Set<string>();
   for (const h of liveSat) {
     const ts = liveTsCode(h.symbol);
     const id = ts ?? h.symbol;
     const recipeRow = ts ? recipe.find((r) => r.ts === ts) : undefined;
-    const body = resolveSatBody({ entryDate: h.entryDate ?? recipeRow?.entryDate, satBody: h.satBody }, asOf);
+    const body = resolveSatBody(
+      { entryDate: h.entryDate ?? recipeRow?.entryDate, satBody: h.satBody },
+      asOf,
+    );
     const protectStop = satProtectStop(h.costPrice ?? recipeRow?.entryPrice);
     const lastClose = h.lastClose ?? recipeRow?.close ?? null;
     satMeta.set(id, {
@@ -531,8 +568,7 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
 
   const liveEtfs = openEtfHoldings(input.etfHoldings);
   const etfTotalPct = roundNavPct(liveEtfs.reduce((s, h) => s + openPct(h.positionPct), 0));
-  const etfSparePct =
-    satTargetPct > 0 ? roundNavPct(Math.max(0, etfTotalPct - coreTargetPct)) : 0;
+  const etfSparePct = satTargetPct > 0 ? roundNavPct(Math.max(0, etfTotalPct - coreTargetPct)) : 0;
 
   const buys: TwinStarTradeRow[] = [];
   const holds: TwinStarTradeRow[] = [];
@@ -552,12 +588,14 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     // the low-vol 1/3 bucket (rejected replace/expand). Blocked names stay
     // skipped — do not pair them by index onto the primary list as 涨停换.
     const seen = new Set<string>();
-    const fill = (input.satCandidates ?? []).filter((c) => {
-      if (!c.ts || liveHeldTs.has(c.ts) || c.limitLocked) return false;
-      if (seen.has(c.ts)) return false;
-      seen.add(c.ts);
-      return true;
-    }).slice(0, satFreeSlots);
+    const fill = (input.satCandidates ?? [])
+      .filter((c) => {
+        if (!c.ts || liveHeldTs.has(c.ts) || c.limitLocked) return false;
+        if (seen.has(c.ts)) return false;
+        seen.add(c.ts);
+        return true;
+      })
+      .slice(0, satFreeSlots);
     const blockedN = (input.satBlocked ?? []).filter((c) => c.ts && !liveHeldTs.has(c.ts)).length;
     if (fill.length === 0) {
       satHeadline =
@@ -565,7 +603,10 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
           ? `R-wide 开闸 · 你卫星仓 ${satHeld}/${SAT_MAX_POS} · 今日无填槽候选（涨停跳过 ${blockedN} 只，strict 不补）`
           : `R-wide 开闸 · 你卫星仓 ${satHeld}/${SAT_MAX_POS} · 今日无填槽候选`;
     } else {
-      const names = fill.slice(0, 3).map((c) => satCandidateLabel(c)).join(', ');
+      const names = fill
+        .slice(0, 3)
+        .map((c) => satCandidateLabel(c))
+        .join(', ');
       const replayNote =
         recipeSatHeld >= SAT_MAX_POS && satHeld === 0 ? '（引擎模拟已满，你未跟，按空仓填）' : '';
       satHeadline = `R-wide 开闸 → 买入 ${names} · 每只总资产 ${satSlotNavPct}%${replayNote}`;
@@ -646,7 +687,8 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
   }
 
   const pickKey = input.pickKey;
-  const sleeveSize = input.suggestedSizePct != null && input.suggestedSizePct > 0 ? input.suggestedSizePct : 10;
+  const sleeveSize =
+    input.suggestedSizePct != null && input.suggestedSizePct > 0 ? input.suggestedSizePct : 10;
   const coreStockNavPct = roundNavPct(sleeveSize * (coreTargetPct / 100));
 
   const coreStocks: PortfolioCandidate[] = [];
@@ -659,7 +701,8 @@ export function buildTwinStarTradePlan(input: TwinStarTradePlanInput): TwinStarT
     .map((c) => ({ c, symbol: candidateSymbol(c) }))
     .filter((x) => x.symbol)
     .slice(0, maxCoreNames);
-  const coreBuyable = pickKey === 'STOCK' ? coreBuys.length > 0 : pickKey != null && pickKey !== 'REPO';
+  const coreBuyable =
+    pickKey === 'STOCK' ? coreBuys.length > 0 : pickKey != null && pickKey !== 'REPO';
 
   let coreHeadline: string;
   if (pickKey === 'STOCK') {

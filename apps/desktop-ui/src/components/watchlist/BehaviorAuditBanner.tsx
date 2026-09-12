@@ -61,7 +61,8 @@ export function BehaviorAuditBanner() {
   );
   const satExpected = rows.reduce((n, r) => n + (r.satExpected ?? 0), 0);
   const satActual = rows.reduce((n, r) => n + (r.actualSat ?? 0), 0);
-  const hasSatData = satExpected > 0 || satActual > 0 || satExtraRows.length > 0 || satMissingRows.length > 0;
+  const hasSatData =
+    satExpected > 0 || satActual > 0 || satExtraRows.length > 0 || satMissingRows.length > 0;
 
   const satPanel = hasSatData ? (
     <div className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[12px]">
@@ -75,7 +76,10 @@ export function BehaviorAuditBanner() {
             <div key={`${e.auditDate}-${e.symbol}`}>
               账外持有：<span className="font-mono">{e.symbol}</span>
               {e.name ? <span> {e.name}</span> : null}
-              <span className="text-[var(--k-muted)]"> · 引擎账本无（对照双子星，非 S-3 口径）</span>
+              <span className="text-[var(--k-muted)]">
+                {' '}
+                · 引擎账本无（对照双子星，非 S-3 口径）
+              </span>
             </div>
           ))}
         </div>
@@ -105,7 +109,13 @@ export function BehaviorAuditBanner() {
       <div className="mb-4">
         <div className="flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
           <span>✅ 行为对账（{latestDate}）：持仓与 S-3 回测口径一致</span>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
+            onClick={onRefresh}
+            disabled={refreshing || refresh.isPending}
+          >
             {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
           </Button>
         </div>
@@ -114,7 +124,13 @@ export function BehaviorAuditBanner() {
     ) : (
       <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
         <span>行为对账：暂无数据（第一次需手动刷新，回测模拟约 3-4 分钟）</span>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-[11px]"
+          onClick={onRefresh}
+          disabled={refreshing || refresh.isPending}
+        >
           {refreshing ? '回测模拟中…' : '开始对账'}
         </Button>
       </div>
@@ -129,9 +145,17 @@ export function BehaviorAuditBanner() {
         <div className="flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
           <span>
             ✅ 行为对账（{latestDate ?? '—'}）：无待操作提醒
-            {hiddenMissing.length ? ` — 闸门关闭 · 今日不可买入，已隐藏 ${hiddenMissing.length} 条该持没买` : ''}
+            {hiddenMissing.length
+              ? ` — 闸门关闭 · 今日不可买入，已隐藏 ${hiddenMissing.length} 条该持没买`
+              : ''}
           </span>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
+            onClick={onRefresh}
+            disabled={refreshing || refresh.isPending}
+          >
             {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
           </Button>
         </div>
@@ -146,7 +170,13 @@ export function BehaviorAuditBanner() {
         <span className="font-medium text-amber-800 dark:text-amber-200">
           ⚠ 行为与 S-3 回测不一致（{latestDate ?? '—'}）
         </span>
-        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-6 px-2 text-[11px]"
+          onClick={onRefresh}
+          disabled={refreshing || refresh.isPending}
+        >
           {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
         </Button>
       </div>
@@ -154,7 +184,13 @@ export function BehaviorAuditBanner() {
         <div className="mt-2 space-y-1 text-[12px]">
           {extraRows.map((e) => (
             <div key={`${e.auditDate}-${e.symbol}`} className="flex flex-wrap gap-x-2">
-              <span className={e.kind === 'exited' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300'}>
+              <span
+                className={
+                  e.kind === 'exited'
+                    ? 'text-red-700 dark:text-red-300'
+                    : 'text-orange-700 dark:text-orange-300'
+                }
+              >
                 {e.kind === 'exited' ? '🔴 该卖没卖' : '🟠 买了不该买'}
               </span>
               <span className="font-mono">{e.symbol}</span>

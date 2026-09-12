@@ -123,13 +123,14 @@ export function TradeStatsPanel() {
         />
       </div>
       <div className="mt-1 text-[11px] text-[var(--k-muted)]">
-        净期望值 = 胜率×平均盈利 − 败率×平均亏损 − {stats.roundTripCostPct}%
-        往返成本（毛期望值 {fmtPct(stats.expectancyPct)}）。样本不足 50
-        笔时仅作趋势参考，不要据此调参数。
+        净期望值 = 胜率×平均盈利 − 败率×平均亏损 − {stats.roundTripCostPct}% 往返成本（毛期望值{' '}
+        {fmtPct(stats.expectancyPct)}）。样本不足 50 笔时仅作趋势参考，不要据此调参数。
       </div>
       {sources.length > 0 ? (
         <div className="mt-3 space-y-1.5 border-t border-[var(--k-border)] pt-3">
-          <div className="text-[11px] font-medium text-[var(--k-muted)]">按来源（TIP-011 归因口径）</div>
+          <div className="text-[11px] font-medium text-[var(--k-muted)]">
+            按来源（TIP-011 归因口径）
+          </div>
           {sources.map(([source, s]) => (
             <SourceRow key={source} source={source} s={s} />
           ))}

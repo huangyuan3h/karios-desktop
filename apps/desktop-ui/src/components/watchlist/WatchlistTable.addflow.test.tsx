@@ -7,9 +7,8 @@ import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { WatchlistTable } from '@/components/watchlist/WatchlistTable';
 
 vi.mock('@/lib/watchlist-storage', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/watchlist-storage')>(
-    '@/lib/watchlist-storage',
-  );
+  const actual =
+    await vi.importActual<typeof import('@/lib/watchlist-storage')>('@/lib/watchlist-storage');
   return {
     ...actual,
     loadWatchlist: vi.fn(() => []),
@@ -30,19 +29,19 @@ vi.mock('@/lib/queries/userTrades', async () => {
 });
 
 vi.mock('@/lib/queries/backtest', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/queries/backtest')>(
-    '@/lib/queries/backtest',
-  );
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/backtest')>('@/lib/queries/backtest');
   return {
     ...actual,
-    useCorrelationStatusQuery: vi.fn(() => ({ data: { clusters: {}, overLimit: [], topPairs: [] } })),
+    useCorrelationStatusQuery: vi.fn(() => ({
+      data: { clusters: {}, overLimit: [], topPairs: [] },
+    })),
   };
 });
 
 vi.mock('@/lib/queries/watchlist', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/queries/watchlist')>(
-    '@/lib/queries/watchlist',
-  );
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/watchlist')>('@/lib/queries/watchlist');
   return {
     ...actual,
     useWatchlistRsRanksQuery: vi.fn(() => ({ data: null })),
@@ -50,9 +49,7 @@ vi.mock('@/lib/queries/watchlist', async () => {
 });
 
 vi.mock('@/lib/chat/store', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/chat/store')>(
-    '@/lib/chat/store',
-  );
+  const actual = await vi.importActual<typeof import('@/lib/chat/store')>('@/lib/chat/store');
   return {
     ...actual,
     useChatStore: vi.fn(() => ({ addReference: vi.fn() })),
@@ -132,7 +129,9 @@ describe('repro: add-trade modal updates the row', () => {
       expect(screen.getByRole('button', { name: /确认加仓/ })).toBeInTheDocument();
     });
 
-    const dialog = screen.getByRole('button', { name: /确认加仓/ }).closest('div[class*="fixed inset-0"]') as HTMLElement;
+    const dialog = screen
+      .getByRole('button', { name: /确认加仓/ })
+      .closest('div[class*="fixed inset-0"]') as HTMLElement;
     const pctInput = within(dialog).getByPlaceholderText('0');
     fireEvent.change(pctInput, { target: { value: '5' } });
     const priceInput = within(dialog).getByPlaceholderText('0.000');

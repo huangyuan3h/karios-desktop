@@ -53,7 +53,9 @@ describe('IndustryFundFlowCard', () => {
     const sameSig = SUMMARY.industryFundFlow.topByDate.map((t) => ({ ...t, top: ['X'] }));
     render(
       <IndustryFundFlowCard
-        summary={{ industryFundFlow: { dates: SUMMARY.industryFundFlow.dates, topByDate: sameSig } }}
+        summary={{
+          industryFundFlow: { dates: SUMMARY.industryFundFlow.dates, topByDate: sameSig },
+        }}
         hotIndustryPicks={[]}
         onAddReference={onAddReference}
         copyStatus={null}

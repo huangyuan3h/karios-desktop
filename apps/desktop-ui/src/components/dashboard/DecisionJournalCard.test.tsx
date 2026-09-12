@@ -5,13 +5,17 @@ import type { ExecutionGate } from '@karios/shared';
 
 import { DecisionJournalCard } from './DecisionJournalCard';
 
-const { useWatchlistMarketQuery, useExecutionChangesQuery, useExecutionSnapshotsQuery } = vi.hoisted(() => ({
-  useWatchlistMarketQuery: vi.fn(),
-  useExecutionChangesQuery: vi.fn(),
-  useExecutionSnapshotsQuery: vi.fn(),
-}));
+const { useWatchlistMarketQuery, useExecutionChangesQuery, useExecutionSnapshotsQuery } =
+  vi.hoisted(() => ({
+    useWatchlistMarketQuery: vi.fn(),
+    useExecutionChangesQuery: vi.fn(),
+    useExecutionSnapshotsQuery: vi.fn(),
+  }));
 vi.mock('@/lib/queries/watchlist', () => ({ useWatchlistMarketQuery }));
-vi.mock('@/lib/queries/execution-journal', () => ({ useExecutionChangesQuery, useExecutionSnapshotsQuery }));
+vi.mock('@/lib/queries/execution-journal', () => ({
+  useExecutionChangesQuery,
+  useExecutionSnapshotsQuery,
+}));
 
 const GATE = {
   mode: 'ATTACK',
@@ -105,7 +109,9 @@ describe('DecisionJournalCard', () => {
   it('disables snapshot button while capture busy and fires onSnapshotNow', () => {
     baseMocks();
     const onSnapshotNow = vi.fn();
-    const { rerender } = render(<DecisionJournalCard gate={GATE} captureBusy onSnapshotNow={onSnapshotNow} />);
+    const { rerender } = render(
+      <DecisionJournalCard gate={GATE} captureBusy onSnapshotNow={onSnapshotNow} />,
+    );
     expect(screen.getByText('保存中…')).toBeDisabled();
     rerender(<DecisionJournalCard gate={GATE} onSnapshotNow={onSnapshotNow} />);
     fireEvent.click(screen.getByText('立即快照'));

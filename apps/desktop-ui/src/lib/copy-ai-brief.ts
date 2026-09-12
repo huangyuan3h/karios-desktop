@@ -40,9 +40,7 @@ export function formatSinceLastCopyMarkdown(
     lines.push('- note: no prior copy marker');
   }
 
-  const list = changes
-    .filter((c) => c.field === 'action' || c.field === 'mode')
-    .slice(0, 15);
+  const list = changes.filter((c) => c.field === 'action' || c.field === 'mode').slice(0, 15);
   if (!list.length) {
     lines.push('- None');
   } else {
@@ -131,9 +129,7 @@ export function formatCondOrderDraftMarkdown(
   const quotes = opts?.quotes ?? {};
   const lines: string[] = [];
   lines.push(`${heading} Cond order draft`);
-  lines.push(
-    '- note: 非 BUY/ADD 的监控票若曾挂买入条件单则撤销；勿在回复中逐条罗列全部 WATCH',
-  );
+  lines.push('- note: 非 BUY/ADD 的监控票若曾挂买入条件单则撤销；勿在回复中逐条罗列全部 WATCH');
   lines.push(
     '- note: TRIGGER_HIT EXIT → Order_Price=当日跌停价（非 Exit_Stop），确保跳空低开可成交',
   );
@@ -150,9 +146,7 @@ export function formatCondOrderDraftMarkdown(
     (c) => String(c.why || '').toUpperCase() === 'ENTRY_DATE_MISSING',
   );
   if (t1Locked.length) {
-    lines.push(
-      `- note: T1_LOCK — skipped sell/exit drafts for ${t1Locked.length} same-day buy(s)`,
-    );
+    lines.push(`- note: T1_LOCK — skipped sell/exit drafts for ${t1Locked.length} same-day buy(s)`);
   }
   if (missingEntry.length) {
     lines.push(
@@ -207,9 +201,7 @@ export function formatCondOrderDraftMarkdown(
 
   if (allowNew) {
     for (const c of buys) {
-      lines.push(
-        `- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`,
-      );
+      lines.push(`- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`);
       wrote = true;
     }
   } else {
@@ -217,9 +209,7 @@ export function formatCondOrderDraftMarkdown(
       (c) => String(c.why || '').toUpperCase() === 'DEFENSIVE_SLEEVE_ALLOW',
     );
     for (const c of defensiveBuys) {
-      lines.push(
-        `- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`,
-      );
+      lines.push(`- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`);
       wrote = true;
     }
     const blockedOther = buys.length - defensiveBuys.length;

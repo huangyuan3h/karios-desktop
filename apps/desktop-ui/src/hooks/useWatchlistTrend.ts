@@ -3,10 +3,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import {
-  refetchWatchlistMarket,
-  useWatchlistMarketQuery,
-} from '@/lib/queries/watchlist';
+import { refetchWatchlistMarket, useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 export function useWatchlistTrend(

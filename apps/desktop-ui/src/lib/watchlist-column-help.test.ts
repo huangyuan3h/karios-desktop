@@ -69,7 +69,9 @@ describe('WATCHLIST_COLUMN_HELP registry', () => {
       if (categoricalIds.has(id)) continue;
       // We don't strictly require a unit, but short must mention unit/format hint.
       const blob = h.short + String(h.detail ?? '');
-      const hasUnit = /(元|¥|%|x|股|金额|价格|主力|实时|浮|位|级|0-100|score|积分|评分)/i.test(blob);
+      const hasUnit = /(元|¥|%|x|股|金额|价格|主力|实时|浮|位|级|0-100|score|积分|评分)/i.test(
+        blob,
+      );
       expect(hasUnit, `${id} should mention a unit or format`).toBe(true);
     }
   });

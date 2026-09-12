@@ -89,7 +89,9 @@ export async function fetchMacroSnapshot(): Promise<MacroSnapshot> {
     return (txt ? (JSON.parse(txt) as MacroSnapshot) : {}) as MacroSnapshot;
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s (check data-sync-service)`);
+      throw new Error(
+        `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s (check data-sync-service)`,
+      );
     }
     throw e;
   } finally {
@@ -97,9 +99,7 @@ export async function fetchMacroSnapshot(): Promise<MacroSnapshot> {
   }
 }
 
-export async function fetchMacroSnapshotCached(
-  queryClient: QueryClient,
-): Promise<MacroSnapshot> {
+export async function fetchMacroSnapshotCached(queryClient: QueryClient): Promise<MacroSnapshot> {
   const candidates = [
     queryClient.getQueryData<DashboardSummary>(dashboardSummaryQueryKey(true)),
     queryClient.getQueryData<DashboardSummary>(dashboardSummaryQueryKey(false)),

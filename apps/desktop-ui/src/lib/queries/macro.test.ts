@@ -3,10 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
-import {
-  dashboardSummaryQueryKey,
-  type DashboardSummary,
-} from './dashboard';
+import { dashboardSummaryQueryKey, type DashboardSummary } from './dashboard';
 import { fetchMacroSnapshotCached, macroSnapshotQueryKey } from './macro';
 
 vi.mock('@/lib/endpoints', () => ({
@@ -37,9 +34,11 @@ describe('fetchMacroSnapshotCached', () => {
 
   it('falls back to macro endpoint when dashboard cache is empty', async () => {
     const queryClient = new QueryClient();
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ macro: [{ seriesId: 'DXY' }] }), { status: 200 }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ macro: [{ seriesId: 'DXY' }] }), { status: 200 }),
+      );
 
     const result = await fetchMacroSnapshotCached(queryClient);
 

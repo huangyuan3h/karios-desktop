@@ -3,12 +3,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import { apiDeleteJson, apiGetJson, apiPatchJson, apiPostJson } from '@/lib/api/client';
-import type {
-  UserTrade,
-  UserTradePatch,
-  UserTradeRequest,
-  UserTradesStats,
-} from '@karios/shared';
+import type { UserTrade, UserTradePatch, UserTradeRequest, UserTradesStats } from '@karios/shared';
 
 export function userTradesListQueryKey(limit = 50) {
   return ['userTrades', 'list', limit] as const;
@@ -19,16 +14,12 @@ export function userTradesStatsQueryKey() {
 }
 
 export async function fetchUserTrades(limit = 50): Promise<UserTrade[]> {
-  const res = await apiGetJson<{ ok: boolean; trades: UserTrade[] }>(
-    `/trades?limit=${limit}`,
-  );
+  const res = await apiGetJson<{ ok: boolean; trades: UserTrade[] }>(`/trades?limit=${limit}`);
   return res.trades ?? [];
 }
 
 export async function fetchUserTradesStats(): Promise<UserTradesStats> {
-  const res = await apiGetJson<{ ok: boolean; stats: UserTradesStats }>(
-    '/trades/stats',
-  );
+  const res = await apiGetJson<{ ok: boolean; stats: UserTradesStats }>('/trades/stats');
   return res.stats;
 }
 
@@ -56,9 +47,7 @@ export function useUserTradesStatsQuery() {
   return useQuery(userTradesStatsQueryOptions());
 }
 
-export async function recordUserTrade(
-  req: UserTradeRequest,
-): Promise<UserTrade> {
+export async function recordUserTrade(req: UserTradeRequest): Promise<UserTrade> {
   const res = await apiPostJson<{ ok: boolean; trade: UserTrade }>('/trades', req);
   return res.trade;
 }
@@ -68,17 +57,12 @@ export async function deleteUserTrade(tradeId: string): Promise<void> {
 }
 
 /** OPT-150: correct a misfiled leg (side/symbol/date immutable on backend). */
-export async function patchUserTrade(
-  tradeId: string,
-  patch: UserTradePatch,
-): Promise<UserTrade> {
+export async function patchUserTrade(tradeId: string, patch: UserTradePatch): Promise<UserTrade> {
   const res = await apiPatchJson<{ ok: boolean; trade: UserTrade }>(`/trades/${tradeId}`, patch);
   return res.trade;
 }
 
-export async function invalidateUserTradesQueries(
-  queryClient: QueryClient,
-): Promise<void> {
+export async function invalidateUserTradesQueries(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['userTrades'] });
   // T6 (2026-08-20): a buy/add/sell changes the holdings shape (positionPct /
   // cost / third-asset sleeve) — refresh the portfolio-health surface so the

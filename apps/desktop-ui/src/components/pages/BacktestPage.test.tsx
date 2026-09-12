@@ -25,17 +25,53 @@ beforeEach(() => {
         cnBaseline: {
           generatedAt: '2026-08-12T02:25:19Z',
           windows: {
-            OOS2: { totalNetPnlPct: 112.654, winRate: 0.48, sharpe: 5.22, trades: null, maxDrawdownPct: 23.346 },
-            train: { totalNetPnlPct: 76.734, winRate: 0.435, sharpe: 3.31, trades: null, maxDrawdownPct: 16.637 },
-            valid: { totalNetPnlPct: 88.212, winRate: 0.613, sharpe: 8.8, trades: null, maxDrawdownPct: 11.778 },
+            OOS2: {
+              totalNetPnlPct: 112.654,
+              winRate: 0.48,
+              sharpe: 5.22,
+              trades: null,
+              maxDrawdownPct: 23.346,
+            },
+            train: {
+              totalNetPnlPct: 76.734,
+              winRate: 0.435,
+              sharpe: 3.31,
+              trades: null,
+              maxDrawdownPct: 16.637,
+            },
+            valid: {
+              totalNetPnlPct: 88.212,
+              winRate: 0.613,
+              sharpe: 8.8,
+              trades: null,
+              maxDrawdownPct: 11.778,
+            },
           },
         },
         hkBaseline: {
           generatedAt: '2026-08-10T13:35:04Z',
           windows: {
-            OOS2: { totalNetPnlPct: 267.987, winRate: 0.39, sharpe: 2.21, trades: null, maxDrawdownPct: 29.719 },
-            train: { totalNetPnlPct: 26.855, winRate: 0.414, sharpe: 1.91, trades: null, maxDrawdownPct: 18.863 },
-            valid: { totalNetPnlPct: 60.647, winRate: 0.417, sharpe: 6.32, trades: null, maxDrawdownPct: 8.329 },
+            OOS2: {
+              totalNetPnlPct: 267.987,
+              winRate: 0.39,
+              sharpe: 2.21,
+              trades: null,
+              maxDrawdownPct: 29.719,
+            },
+            train: {
+              totalNetPnlPct: 26.855,
+              winRate: 0.414,
+              sharpe: 1.91,
+              trades: null,
+              maxDrawdownPct: 18.863,
+            },
+            valid: {
+              totalNetPnlPct: 60.647,
+              winRate: 0.417,
+              sharpe: 6.32,
+              trades: null,
+              maxDrawdownPct: 8.329,
+            },
           },
         },
         rollingOos: {
@@ -44,8 +80,20 @@ beforeEach(() => {
           warning: true,
           warnings: ['HK: -8.5% dd=19.5% sharpe=-3.2 trades=55'],
           markets: {
-            CN: { closed: 1, winRate: 0.0, totalNetPnlPct: -0.633, maxDrawdownPct: 0.633, sharpe: null },
-            HK: { closed: 55, winRate: 0.255, totalNetPnlPct: -8.451, maxDrawdownPct: 19.497, sharpe: -3.2 },
+            CN: {
+              closed: 1,
+              winRate: 0.0,
+              totalNetPnlPct: -0.633,
+              maxDrawdownPct: 0.633,
+              sharpe: null,
+            },
+            HK: {
+              closed: 55,
+              winRate: 0.255,
+              totalNetPnlPct: -8.451,
+              maxDrawdownPct: 19.497,
+              sharpe: -3.2,
+            },
           },
         },
         longWindowCN: {
@@ -62,8 +110,26 @@ beforeEach(() => {
       return {
         ok: true,
         items: [
-          { reconDate: '2026-08-07', market: 'HK', window: 'valid', expected: 19, actual: 0, aligned: 0, missing: 19, extra: 0 },
-          { reconDate: '2026-08-07', market: 'CN', window: 'valid', expected: 0, actual: 0, aligned: 0, missing: 0, extra: 0 },
+          {
+            reconDate: '2026-08-07',
+            market: 'HK',
+            window: 'valid',
+            expected: 19,
+            actual: 0,
+            aligned: 0,
+            missing: 19,
+            extra: 0,
+          },
+          {
+            reconDate: '2026-08-07',
+            market: 'CN',
+            window: 'valid',
+            expected: 0,
+            actual: 0,
+            aligned: 0,
+            missing: 0,
+            extra: 0,
+          },
         ],
       };
     }

@@ -160,9 +160,7 @@ export function NewsPage() {
     (item.relevanceScore != null && item.relevanceScore >= 15) ||
     item.actionability === 'actionable';
   const filteredItems =
-    filterMode === 'important'
-      ? items.filter((i) => i.isImportant || isImportantEnough(i))
-      : items;
+    filterMode === 'important' ? items.filter((i) => i.isImportant || isImportantEnough(i)) : items;
   const regularItems = filteredItems.filter((i) => !i.isImportant);
 
   return (
@@ -536,12 +534,16 @@ function NewsItemCard({
                 </span>
               ))}
               {item.tickers.length > 5 ? (
-                <span className="text-[10px] text-[var(--k-muted)]">+{item.tickers.length - 5}</span>
+                <span className="text-[10px] text-[var(--k-muted)]">
+                  +{item.tickers.length - 5}
+                </span>
               ) : null}
             </div>
           ) : null}
           {item.aiSummary ? (
-            <div className="mt-1 text-xs text-[var(--k-muted)] italic line-clamp-1">{item.aiSummary}</div>
+            <div className="mt-1 text-xs text-[var(--k-muted)] italic line-clamp-1">
+              {item.aiSummary}
+            </div>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">

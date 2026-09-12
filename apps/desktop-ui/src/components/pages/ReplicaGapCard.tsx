@@ -14,11 +14,7 @@ import { cn } from '@/lib/utils';
 import { useReturnAttributionQuery } from '@/lib/queries/backtest';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useStrategyMode } from '@/lib/strategy-settings';
-import {
-  buildAttributionDiff,
-  type LegDiffRow,
-  type OpenHolding,
-} from '@/lib/attribution-diff';
+import { buildAttributionDiff, type LegDiffRow, type OpenHolding } from '@/lib/attribution-diff';
 
 const PICK_LABEL: Record<string, string> = {
   STOCK: '股票篮',
@@ -132,7 +128,8 @@ export function ReplicaGapCard({
           </>
         ) : (
           <>
-            不问「今天 OIL 够不够 100%」，问：<strong>单轨钱从哪条腿来，你的仓位/成交接到了没有</strong>。
+            不问「今天 OIL 够不够 100%」，问：
+            <strong>单轨钱从哪条腿来，你的仓位/成交接到了没有</strong>。
             退出机制可以改善单票结局，补不齐「主发动机腿长期欠配 / 次要腿超配」。
           </>
         )}
@@ -148,7 +145,9 @@ export function ReplicaGapCard({
         <div className="flex flex-col gap-3">
           <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2">
-              <div className="text-[10px] text-[var(--k-muted)]">{twinStar ? '核心腿区间几何' : '单轨区间几何'}</div>
+              <div className="text-[10px] text-[var(--k-muted)]">
+                {twinStar ? '核心腿区间几何' : '单轨区间几何'}
+              </div>
               <div className={cn('text-[15px] font-semibold tabular-nums', tone(ps.totalGeoPct))}>
                 {ps.totalGeoPct.toFixed(1)}%
               </div>
@@ -162,8 +161,7 @@ export function ReplicaGapCard({
                 {report.userTopWeight ? PICK_LABEL[report.userTopWeight] : '—'}
               </div>
               <div className="text-[10px] text-[var(--k-muted)]">
-                已实现平仓 {ut?.closedCount ?? 0} 笔
-                {ut?.insufficient ? ' · 样本少' : ''}
+                已实现平仓 {ut?.closedCount ?? 0} 笔{ut?.insufficient ? ' · 样本少' : ''}
               </div>
             </div>
             <div className="rounded border border-[var(--k-border)] px-2.5 py-2">
@@ -209,7 +207,11 @@ export function ReplicaGapCard({
               </thead>
               <tbody>
                 {report.rows
-                  .filter((r) => r.pick !== 'REPO' && (r.trackDays > 0 || r.openWeightPct > 0 || r.realizedCount > 0))
+                  .filter(
+                    (r) =>
+                      r.pick !== 'REPO' &&
+                      (r.trackDays > 0 || r.openWeightPct > 0 || r.realizedCount > 0),
+                  )
                   .map((r) => (
                     <tr key={r.pick} className="border-t border-[var(--k-border)]/50">
                       <td className="py-1 pl-2 pr-2 font-medium">{PICK_LABEL[r.pick]}</td>

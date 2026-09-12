@@ -106,7 +106,9 @@ export function displaySymbol(symbol: string): string {
 }
 
 export function normalizeCatalystSymbol(symbol: string): string {
-  const text = String(symbol || '').trim().toUpperCase();
+  const text = String(symbol || '')
+    .trim()
+    .toUpperCase();
   if (!text) return '';
   if (text.startsWith('CN:') || text.startsWith('HK:')) return text;
   if (/^\d{6}$/.test(text)) return `CN:${text}`;
@@ -159,8 +161,7 @@ export function formatCatalystStockSummaryLine(stock: CatalystStock): string {
   const gradePart = maxGrade ? `Max Grade: ${maxGrade.grade} (${maxGrade.theme})` : 'Max Grade: —';
   const penalty = typeof stock.autoQaPenalty === 'number' ? stock.autoQaPenalty : 0;
   const score =
-    typeof stock.adjustedCatalystScore === 'number' &&
-    Number.isFinite(stock.adjustedCatalystScore)
+    typeof stock.adjustedCatalystScore === 'number' && Number.isFinite(stock.adjustedCatalystScore)
       ? stock.adjustedCatalystScore
       : stock.catalystScore;
   const qaFlag = penalty > 0 ? ` · ⚠QA -${Math.round(penalty * 100)}%` : '';
@@ -209,14 +210,15 @@ export function isTechnicallyBroken(trend: CatalystTrendOkSnapshot | undefined |
   return trend?.trendOk === false;
 }
 
-export function isCatalystEligible(
-  symbol: string,
-  ctx: CatalystCopyContext,
-): boolean {
+export function isCatalystEligible(symbol: string, ctx: CatalystCopyContext): boolean {
   const sym = normalizeCatalystSymbol(symbol);
   if (ctx.watchlistSymbols.has(sym)) {
     const score = ctx.watchlistScores.get(sym);
-    if (typeof score === 'number' && Number.isFinite(score) && score > WATCHLIST_CATALYST_SCORE_THRESHOLD) {
+    if (
+      typeof score === 'number' &&
+      Number.isFinite(score) &&
+      score > WATCHLIST_CATALYST_SCORE_THRESHOLD
+    ) {
       return true;
     }
   }
@@ -288,9 +290,7 @@ export function formatStructuredTrendJson(trend: {
   });
 }
 
-function formatCnSymbols(
-  symbols: AlphaRadarTrendExport['cnSymbols'] | undefined,
-): string {
+function formatCnSymbols(symbols: AlphaRadarTrendExport['cnSymbols'] | undefined): string {
   if (!symbols?.length) return '—';
   return symbols
     .map((s) => `${s.name} (${displaySymbol(s.symbol)}, ${Math.round(s.confidence * 100)}%)`)
@@ -327,9 +327,7 @@ export function buildAlphaRadarTrendsMarkdown(
     const theme = trendMacroTheme(trend);
     const grade = trendCatalystGrade(trend);
     const driver = trend.driverType || 'Global_Tech';
-    lines.push(
-      `| ${theme} | ${driver} | ${grade} | ${formatCnSymbols(trend.cnSymbols)} |`,
-    );
+    lines.push(`| ${theme} | ${driver} | ${grade} | ${formatCnSymbols(trend.cnSymbols)} |`);
   }
   lines.push('');
 
@@ -397,7 +395,12 @@ export function buildCatalystStocksMarkdown(
       lines.push(formatCatalystStockSummaryLine(row));
       const ctx = opts?.context;
       if (ctx && shouldShowCatalystNews(row.symbol, ctx)) {
-        const recent = filterRecentArticles(row.articles, CATALYST_NEWS_MAX_HOURS, CATALYST_NEWS_MAX_ITEMS, now);
+        const recent = filterRecentArticles(
+          row.articles,
+          CATALYST_NEWS_MAX_HOURS,
+          CATALYST_NEWS_MAX_ITEMS,
+          now,
+        );
         if (recent.length) {
           lines.push('====');
           for (const article of recent) {
@@ -429,7 +432,9 @@ export function buildCatalystStocksMarkdown(
         const theme = trendMacroTheme(article);
         const grade = trendCatalystGrade(article);
         const title = article.documentTitle || theme;
-        lines.push(`- **${theme}** | Grade **${grade}** | ${title} (${formatRelevancePct(article.relevance)})`);
+        lines.push(
+          `- **${theme}** | Grade **${grade}** | ${title} (${formatRelevancePct(article.relevance)})`,
+        );
         lines.push(`  - structured: \`${formatStructuredTrendJson(article)}\``);
         if (article.driverType) lines.push(`  - driverType: ${article.driverType}`);
         if (article.eventFocus) lines.push(`  - eventFocus: ${article.eventFocus}`);

@@ -48,11 +48,7 @@ describe('WebhookPage', () => {
     expect(await screen.findByText('http://127.0.0.1:8001/hook')).toBeDefined();
     expect(screen.getAllByText('cron 失败').length).toBeGreaterThanOrEqual(1);
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText('http://127.0.0.1:8001/hook'),
-      ).toBeDefined(),
-    );
+    await waitFor(() => expect(screen.getByText('http://127.0.0.1:8001/hook')).toBeDefined());
   });
 
   it('creates a subscription and reveals the secret once', async () => {

@@ -3,10 +3,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import { apiDeleteJson, apiGetJson, apiPostJson } from '@/lib/api/client';
-import {
-  DEFAULT_CATALYST_MAX_AGE_DAYS,
-  type CatalystStock,
-} from '@/lib/alpha-radar-catalyst';
+import { DEFAULT_CATALYST_MAX_AGE_DAYS, type CatalystStock } from '@/lib/alpha-radar-catalyst';
 
 import { SCREENER_STALE_MS } from './intervals';
 
@@ -171,9 +168,7 @@ export function alphaRadarTrendsQueryOptions(scope: TrendsScope) {
   };
 }
 
-export function alphaRadarCatalystQueryOptions(
-  maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS,
-) {
+export function alphaRadarCatalystQueryOptions(maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS) {
   return {
     queryKey: alphaRadarCatalystQueryKey(maxAgeDays),
     queryFn: () => fetchAlphaRadarCatalyst(maxAgeDays),
@@ -197,9 +192,7 @@ export function useAlphaRadarTrendsQuery(scope: TrendsScope) {
   return useQuery(alphaRadarTrendsQueryOptions(scope));
 }
 
-export function useAlphaRadarCatalystQuery(
-  maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS,
-) {
+export function useAlphaRadarCatalystQuery(maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS) {
   return useQuery(alphaRadarCatalystQueryOptions(maxAgeDays));
 }
 
@@ -227,11 +220,10 @@ export async function runAlphaRadarPipeline(force = false): Promise<{
   return apiPostJson('/api/alpha-radar/run-pipeline', { force }, ALPHA_POST_OPTS);
 }
 
-export async function deleteAlphaRadarTrend(trendId: string): Promise<{ ok?: boolean; error?: string }> {
-  return apiDeleteJson(
-    `/api/alpha-radar/trends/${encodeURIComponent(trendId)}`,
-    ALPHA_DELETE_OPTS,
-  );
+export async function deleteAlphaRadarTrend(
+  trendId: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  return apiDeleteJson(`/api/alpha-radar/trends/${encodeURIComponent(trendId)}`, ALPHA_DELETE_OPTS);
 }
 
 export async function remapAlphaRadarTrend(trendId: string): Promise<{

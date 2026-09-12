@@ -6,9 +6,20 @@ import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
-import { fetchPortfolioHealth, isMarketGateClosed, type PortfolioHolding } from '@/lib/queries/portfolioHealth';
+import {
+  fetchPortfolioHealth,
+  isMarketGateClosed,
+  type PortfolioHolding,
+} from '@/lib/queries/portfolioHealth';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
-import { MobileButton, MobileCard, MobileField, MobileSection, PctText, StatusPill } from '../primitives';
+import {
+  MobileButton,
+  MobileCard,
+  MobileField,
+  MobileSection,
+  PctText,
+  StatusPill,
+} from '../primitives';
 
 /**
  * Watchlist tab — the single place to act: sell flags → 2pm buy list →
@@ -26,16 +37,12 @@ const TREND_STATUS_ZH: Record<string, string> = {
 function HoldingRow({ h, market }: { h: PortfolioHolding; market: string }) {
   const exit = h.action === 'EXIT';
   return (
-    <MobileCard
-      className={
-        exit
-          ? 'border-[var(--k-danger)]/40 bg-[var(--k-danger)]/5 p-3'
-          : 'p-3'
-      }
-    >
+    <MobileCard className={exit ? 'border-[var(--k-danger)]/40 bg-[var(--k-danger)]/5 p-3' : 'p-3'}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[var(--m-text-base)] font-semibold">{h.name ?? h.symbol}</div>
+          <div className="truncate text-[var(--m-text-base)] font-semibold">
+            {h.name ?? h.symbol}
+          </div>
           <div className="mt-0.5 truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
             {h.symbol} · {market} · 已持 {h.holdingDays ?? '—'} 天
           </div>
@@ -43,11 +50,22 @@ function HoldingRow({ h, market }: { h: PortfolioHolding; market: string }) {
         <div className="shrink-0 text-right">
           <div
             className="font-mono text-[var(--m-text-base)] font-semibold tabular-nums"
-            style={{ color: (h.pnlPct ?? 0) > 0 ? 'var(--k-up)' : (h.pnlPct ?? 0) < 0 ? 'var(--k-down)' : 'var(--k-muted)' }}
+            style={{
+              color:
+                (h.pnlPct ?? 0) > 0
+                  ? 'var(--k-up)'
+                  : (h.pnlPct ?? 0) < 0
+                    ? 'var(--k-down)'
+                    : 'var(--k-muted)',
+            }}
           >
             {fmtPct(h.pnlPct)}
           </div>
-          {exit ? <StatusPill tone="danger">退出</StatusPill> : <StatusPill tone="open">持有</StatusPill>}
+          {exit ? (
+            <StatusPill tone="danger">退出</StatusPill>
+          ) : (
+            <StatusPill tone="open">持有</StatusPill>
+          )}
         </div>
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5 text-[var(--m-text-xs)]">
@@ -67,21 +85,16 @@ function HoldingRow({ h, market }: { h: PortfolioHolding; market: string }) {
       {h.realtimeAlert ? (
         <div className="mt-2 text-[var(--m-text-sm)] text-[var(--k-warn)]">⚠ {h.realtimeAlert}</div>
       ) : null}
-      {h.reason ? <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">{h.reason}</div> : null}
+      {h.reason ? (
+        <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">{h.reason}</div>
+      ) : null}
     </MobileCard>
   );
 }
 
 export function MobileWatchlistPage() {
-  const {
-    items,
-    watchlistHydrating,
-    onRemove,
-    code,
-    setCode,
-    error,
-    addSymbolToWatchlist,
-  } = useWatchlistItems();
+  const { items, watchlistHydrating, onRemove, code, setCode, error, addSymbolToWatchlist } =
+    useWatchlistItems();
   const symbols = items.map((i) => i.symbol);
   const market = useWatchlistMarketQuery(symbols);
   const health = useQuery({
@@ -115,8 +128,12 @@ export function MobileWatchlistPage() {
   const refreshAudit = useRefreshBehaviorAudit();
   const [auditing, setAuditing] = React.useState(false);
   const auditRows = audit.data ?? [];
-  const auditExtra = auditRows.flatMap((r) => (r.extraList ?? []).map((e) => ({ ...e, market: r.market })));
-  const auditMissingAll = auditRows.flatMap((r) => (r.missingList ?? []).map((m) => ({ ...m, market: r.market })));
+  const auditExtra = auditRows.flatMap((r) =>
+    (r.extraList ?? []).map((e) => ({ ...e, market: r.market })),
+  );
+  const auditMissingAll = auditRows.flatMap((r) =>
+    (r.missingList ?? []).map((m) => ({ ...m, market: r.market })),
+  );
   // 闸门关闭的市场（regime Weak / panic cooldown / circuit breaker）今日不可开新仓，
   // 其"该持没买"建议不可执行——隐藏（与桌面 BehaviorAuditBanner 同口径）。
   const blockedMarkets = new Set<string>();
@@ -160,7 +177,9 @@ export function MobileWatchlistPage() {
               {auditDate ? (
                 <span>持仓与 S-3 回测口径一致</span>
               ) : (
-                <span className="text-[var(--k-muted)]">暂无数据，点「刷新对账」开始（回测模拟约 3-4 分钟）</span>
+                <span className="text-[var(--k-muted)]">
+                  暂无数据，点「刷新对账」开始（回测模拟约 3-4 分钟）
+                </span>
               )}
             </div>
           </MobileCard>
@@ -218,7 +237,9 @@ export function MobileWatchlistPage() {
       ) : null}
 
       {/* Act: 2pm buy list */}
-      <MobileSection title={`下午 2 点买入清单${candidates.length ? `（${candidates.length}）` : ''}`}>
+      <MobileSection
+        title={`下午 2 点买入清单${candidates.length ? `（${candidates.length}）` : ''}`}
+      >
         {candidates.length ? (
           <div className="space-y-2">
             <div className="px-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">
@@ -238,7 +259,9 @@ export function MobileWatchlistPage() {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="font-mono text-[var(--m-text-sm)] tabular-nums">score {c.score ?? '—'}</div>
+                    <div className="font-mono text-[var(--m-text-sm)] tabular-nums">
+                      score {c.score ?? '—'}
+                    </div>
                     {envScaleToday !== 1 ? (
                       <StatusPill tone="open">买 {suggestPct}%</StatusPill>
                     ) : null}
@@ -305,10 +328,14 @@ export function MobileWatchlistPage() {
                   }
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[var(--m-text-base)] font-medium">{it.name ?? it.symbol}</div>
+                    <div className="truncate text-[var(--m-text-base)] font-medium">
+                      {it.name ?? it.symbol}
+                    </div>
                     <div className="truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {it.symbol}
-                      {t?.trendStatus ? ` · ${TREND_STATUS_ZH[t.trendStatus] ?? t.trendStatus}` : ''}
+                      {t?.trendStatus
+                        ? ` · ${TREND_STATUS_ZH[t.trendStatus] ?? t.trendStatus}`
+                        : ''}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
@@ -319,10 +346,14 @@ export function MobileWatchlistPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     {t?.score != null ? (
-                      <div className="font-mono text-[var(--m-text-sm)] tabular-nums">score {t.score}</div>
+                      <div className="font-mono text-[var(--m-text-sm)] tabular-nums">
+                        score {t.score}
+                      </div>
                     ) : null}
                     {t?.buyAction ? (
-                      <div className="text-[var(--m-text-xs)] text-[var(--k-accent)]">{t.buyAction}</div>
+                      <div className="text-[var(--m-text-xs)] text-[var(--k-accent)]">
+                        {t.buyAction}
+                      </div>
                     ) : null}
                   </div>
                   <button
@@ -361,7 +392,9 @@ export function MobileWatchlistPage() {
               </MobileButton>
             </div>
           </MobileField>
-          {error ? <div className="text-[var(--m-text-sm)] text-[var(--k-danger)]">{error}</div> : null}
+          {error ? (
+            <div className="text-[var(--m-text-sm)] text-[var(--k-danger)]">{error}</div>
+          ) : null}
         </MobileCard>
       </MobileSection>
     </div>

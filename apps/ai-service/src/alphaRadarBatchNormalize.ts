@@ -102,10 +102,7 @@ export function normalizeAlphaRadarTrendRow(
     row.macro_theme ?? row.macroTheme ?? row.trend_name ?? row.trendName,
     'Unknown trend',
   );
-  const eventFocus = asString(
-    row.event_focus ?? row.eventFocus ?? row.catalyst,
-    macroTheme,
-  );
+  const eventFocus = asString(row.event_focus ?? row.eventFocus ?? row.catalyst, macroTheme);
   const logicSummary = normalizeLogicSummary(
     row.logic_summary ?? row.logicSummary,
     eventFocus.slice(0, 30),
@@ -117,7 +114,10 @@ export function normalizeAlphaRadarTrendRow(
     catalyst_grade: catalystGrade,
     event_focus: eventFocus.slice(0, 2000),
     a_share_mapping: normalizeShareMapping(
-      row.a_share_mapping ?? row.aShareMapping ?? row.keywords_for_mapping ?? row.keywordsForMapping,
+      row.a_share_mapping ??
+        row.aShareMapping ??
+        row.keywords_for_mapping ??
+        row.keywordsForMapping,
       macroTheme,
     ),
     hk_mapping: normalizeHkMapping(row.hk_mapping ?? row.hkMapping),

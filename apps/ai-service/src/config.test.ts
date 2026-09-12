@@ -108,7 +108,12 @@ describe('ai-service /config routes', () => {
     expect(create.status).toBe(200);
     const createJson = (await create.json()) as {
       activeProfileId: string | null;
-      profiles: Array<{ id: string; provider: string; modelId: string; openai?: { hasKey: boolean; keyLast4: string | null } }>;
+      profiles: Array<{
+        id: string;
+        provider: string;
+        modelId: string;
+        openai?: { hasKey: boolean; keyLast4: string | null };
+      }>;
     };
     expect(typeof createJson.activeProfileId).toBe('string');
     expect(createJson.profiles.length).toBe(1);
@@ -123,7 +128,12 @@ describe('ai-service /config routes', () => {
     const getJson = (await get.json()) as {
       source: string;
       activeProfileId: string | null;
-      profiles: Array<{ id: string; provider: string; modelId: string; openai?: { hasKey: boolean; keyLast4: string | null } }>;
+      profiles: Array<{
+        id: string;
+        provider: string;
+        modelId: string;
+        openai?: { hasKey: boolean; keyLast4: string | null };
+      }>;
     };
     expect(getJson.source).toBe('file');
     expect(getJson.activeProfileId).toBe(createJson.activeProfileId);
@@ -141,4 +151,3 @@ describe('ai-service /config routes', () => {
     expect(resp.status).toBe(400);
   });
 });
-

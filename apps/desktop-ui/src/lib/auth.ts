@@ -44,7 +44,8 @@ export function installFetchAuth(): void {
   if (typeof window === 'undefined') return;
   const orig = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const key = getGatewayKey();
     if (isKariosApi(url) && key) {
       const headers = new Headers(init?.headers);

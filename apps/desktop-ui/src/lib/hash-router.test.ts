@@ -4,9 +4,24 @@ import { buildHash, pageHref, parseHash } from './hash-router';
 
 describe('parseHash', () => {
   it('defaults to dashboard for empty or unknown hashes', () => {
-    expect(parseHash('')).toEqual({ page: 'dashboard', symbol: null, journalMode: null, journalId: null });
-    expect(parseHash('#/nope')).toEqual({ page: 'dashboard', symbol: null, journalMode: null, journalId: null });
-    expect(parseHash('#')).toEqual({ page: 'dashboard', symbol: null, journalMode: null, journalId: null });
+    expect(parseHash('')).toEqual({
+      page: 'dashboard',
+      symbol: null,
+      journalMode: null,
+      journalId: null,
+    });
+    expect(parseHash('#/nope')).toEqual({
+      page: 'dashboard',
+      symbol: null,
+      journalMode: null,
+      journalId: null,
+    });
+    expect(parseHash('#')).toEqual({
+      page: 'dashboard',
+      symbol: null,
+      journalMode: null,
+      journalId: null,
+    });
   });
 
   it('parses simple pages', () => {

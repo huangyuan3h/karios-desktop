@@ -79,7 +79,7 @@ describe('SCHEDULER_JOB_CATALOG', () => {
   });
 
   it('has no TradingView capture jobs (retired 2026-08-12)', () => {
-    const tv = SCHEDULER_JOB_CATALOG.filter((m) => m.group === 'tvScreener' as never);
+    const tv = SCHEDULER_JOB_CATALOG.filter((m) => m.group === ('tvScreener' as never));
     expect(tv).toHaveLength(0);
   });
 

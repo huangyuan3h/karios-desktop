@@ -14,9 +14,9 @@ describe('formatMacroWarning', () => {
   });
 
   it('joins multiple parts', () => {
-    expect(
-      formatMacroWarning('put_iv_fetch_failed; macro_data_stale: HSI'),
-    ).toBe('510300 Put IV unavailable · Offshore indices may be stale (HSI)');
+    expect(formatMacroWarning('put_iv_fetch_failed; macro_data_stale: HSI')).toBe(
+      '510300 Put IV unavailable · Offshore indices may be stale (HSI)',
+    );
   });
 
   it('passes through already-human messages', () => {

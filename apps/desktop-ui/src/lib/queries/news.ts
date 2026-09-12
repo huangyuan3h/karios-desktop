@@ -89,9 +89,7 @@ export function newsSourcesQueryKey() {
 }
 
 export async function fetchNewsItems(hours: number, limit = 100): Promise<NewsItemsResponse> {
-  return apiGetJson<NewsItemsResponse>(
-    `/api/news/items?limit=${limit}&hours=${hours}`,
-  );
+  return apiGetJson<NewsItemsResponse>(`/api/news/items?limit=${limit}&hours=${hours}`);
 }
 
 export async function fetchNewsSources(): Promise<NewsSourcesResponse> {
@@ -167,9 +165,7 @@ export async function fetchMorningBrief(): Promise<{ brief: MorningBrief | null 
   // 2026-08-12: the trading-session briefs (trading-open/midday/action) live in
   // the same table — the news brief card must NOT pick them up (different item
   // schema), so filter to the news briefs explicitly.
-  return apiGetJson<{ brief: MorningBrief | null }>(
-    '/api/news/brief/latest?brief_type=morning',
-  );
+  return apiGetJson<{ brief: MorningBrief | null }>('/api/news/brief/latest?brief_type=morning');
 }
 
 export function morningBriefQueryOptions() {

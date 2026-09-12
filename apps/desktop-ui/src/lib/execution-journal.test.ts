@@ -84,10 +84,7 @@ describe('filterLatestActionCards (delta logging)', () => {
       { scope: 'gate', symbol: null, field: 'mode' },
     ];
     expect([...symbolsWithLatestActionDeltas(changes)].sort()).toEqual(['CN:B', 'CN:C']);
-    expect(filterLatestActionCards(cards, changes).map((c) => c.symbol)).toEqual([
-      'CN:B',
-      'CN:C',
-    ]);
+    expect(filterLatestActionCards(cards, changes).map((c) => c.symbol)).toEqual(['CN:B', 'CN:C']);
   });
 
   it('returns empty when only silent why/positionPct churn', () => {

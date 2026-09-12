@@ -18,7 +18,8 @@
     "coverage": "turbo coverage && cd services/data-sync-service && uv run pytest",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "format": "prettier -w ."
+    "format": "prettier -w .",
+    "format:check": "prettier --check \"apps/*/src/**/*.{ts,tsx,js,mjs,css}\" \"packages/*/src/**/*.{ts,tsx,js,mjs,css}\""
   },
   "devDependencies": {
     "prettier": "^3.6.2",

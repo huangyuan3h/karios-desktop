@@ -8,14 +8,11 @@ const BIG_NUMBER_UNITS: Array<[number, string]> = [
 const TEXT_HEADERS =
   /^(symbol|ticker|name|sector|industry|country|flags|analyst|screen\s*title|currency)/i;
 
-const PERCENT_HEADERS =
-  /(change|chg|perf|yield|growth|eps|dividend|div\s*yield)/i;
+const PERCENT_HEADERS = /(change|chg|perf|yield|growth|eps|dividend|div\s*yield)/i;
 
-const BIG_NUMBER_HEADERS =
-  /^(avg\s*volume|volume|market\s*cap|cap|avg\s*vol)/i;
+const BIG_NUMBER_HEADERS = /^(avg\s*volume|volume|market\s*cap|cap|avg\s*vol)/i;
 
-const PRICE_LIKE_HEADERS =
-  /^(price|sma\d*|ema\d*|macd|close|open|low|high|high\s*52\s*w)/i;
+const PRICE_LIKE_HEADERS = /^(price|sma\d*|ema\d*|macd|close|open|low|high|high\s*52\s*w)/i;
 
 const RATIO_HEADERS = /^(rsi|p\/e|pe)\b/i;
 

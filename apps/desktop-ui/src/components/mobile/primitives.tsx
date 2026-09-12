@@ -10,12 +10,24 @@ import { cn } from '@/lib/utils';
 type Tone = 'open' | 'closed' | 'up' | 'down' | 'warn' | 'danger' | 'neutral';
 
 const TONE_STYLE: Record<Tone, React.CSSProperties> = {
-  open: { color: 'var(--k-accent)', background: 'color-mix(in srgb, var(--k-accent) 14%, transparent)' },
+  open: {
+    color: 'var(--k-accent)',
+    background: 'color-mix(in srgb, var(--k-accent) 14%, transparent)',
+  },
   closed: { color: 'var(--k-muted)', background: 'var(--k-surface-2)' },
   up: { color: 'var(--k-up)', background: 'color-mix(in srgb, var(--k-up) 14%, transparent)' },
-  down: { color: 'var(--k-down)', background: 'color-mix(in srgb, var(--k-down) 14%, transparent)' },
-  warn: { color: 'var(--k-warn)', background: 'color-mix(in srgb, var(--k-warn) 14%, transparent)' },
-  danger: { color: 'var(--k-danger)', background: 'color-mix(in srgb, var(--k-danger) 14%, transparent)' },
+  down: {
+    color: 'var(--k-down)',
+    background: 'color-mix(in srgb, var(--k-down) 14%, transparent)',
+  },
+  warn: {
+    color: 'var(--k-warn)',
+    background: 'color-mix(in srgb, var(--k-warn) 14%, transparent)',
+  },
+  danger: {
+    color: 'var(--k-danger)',
+    background: 'color-mix(in srgb, var(--k-danger) 14%, transparent)',
+  },
   neutral: { color: 'var(--k-muted)', background: 'var(--k-surface-2)' },
 };
 
@@ -55,8 +67,12 @@ export function MobileSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-2 px-0.5">
-        <h2 className="min-w-0 flex-1 truncate whitespace-nowrap text-[var(--m-text-lg)] font-semibold text-[var(--k-text)]">{title}</h2>
-        {action ? <div className="shrink-0 text-[var(--m-text-sm)] text-[var(--k-accent)]">{action}</div> : null}
+        <h2 className="min-w-0 flex-1 truncate whitespace-nowrap text-[var(--m-text-lg)] font-semibold text-[var(--k-text)]">
+          {title}
+        </h2>
+        {action ? (
+          <div className="shrink-0 text-[var(--m-text-sm)] text-[var(--k-accent)]">{action}</div>
+        ) : null}
       </div>
       {children}
     </section>
@@ -126,7 +142,13 @@ export function MobileRow({
   );
 }
 
-export function MobileList({ children, className }: { children: React.ReactNode; className?: string }) {
+export function MobileList({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <div className={cn('divide-y divide-[var(--k-border)]', className)}>{children}</div>;
 }
 
@@ -152,7 +174,10 @@ export function MobileButton({
 }) {
   const base =
     'inline-flex items-center justify-center rounded-[var(--m-radius-md)] font-medium transition-colors disabled:opacity-50';
-  const sizes = size === 'sm' ? 'h-9 px-3 text-[var(--m-text-sm)]' : 'h-[var(--m-tap)] px-4 text-[var(--m-text-base)]';
+  const sizes =
+    size === 'sm'
+      ? 'h-9 px-3 text-[var(--m-text-sm)]'
+      : 'h-[var(--m-tap)] px-4 text-[var(--m-text-base)]';
   const variants: Record<ButtonVariant, string> = {
     primary: 'bg-[var(--k-accent)] text-white',
     ghost: 'border border-[var(--k-accent)] text-[var(--k-accent)] bg-transparent',
@@ -199,7 +224,11 @@ export function MobileSheet({
         {title ? (
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-[var(--m-text-lg)] font-semibold">{title}</h3>
-            <button type="button" onClick={onClose} className="text-[var(--m-text-sm)] text-[var(--k-muted)]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[var(--m-text-sm)] text-[var(--k-muted)]"
+            >
               关闭
             </button>
           </div>
@@ -219,7 +248,15 @@ export function MobileField({ label, children }: { label: string; children: Reac
   );
 }
 
-export function SkeletonBlock({ h = 14, w = '100%', className }: { h?: number; w?: string | number; className?: string }) {
+export function SkeletonBlock({
+  h = 14,
+  w = '100%',
+  className,
+}: {
+  h?: number;
+  w?: string | number;
+  className?: string;
+}) {
   return <div className={cn('m-shimmer', className)} style={{ height: h, width: w }} />;
 }
 

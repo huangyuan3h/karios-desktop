@@ -20,7 +20,9 @@ export function notificationLane(n: LaneItem): NotificationLane {
   return 'trade';
 }
 
-export function groupNotifications<T extends LaneItem>(items: T[]): { lane: NotificationLane; items: T[] }[] {
+export function groupNotifications<T extends LaneItem>(
+  items: T[],
+): { lane: NotificationLane; items: T[] }[] {
   const buckets: Record<NotificationLane, T[]> = { trade: [], system: [], research: [] };
   for (const n of items) buckets[notificationLane(n)].push(n);
   return NOTIFICATION_LANE_ORDER.filter((lane) => buckets[lane].length > 0).map((lane) => ({

@@ -19,10 +19,7 @@ import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
-import {
-  buildCatalystPurgeMap,
-  DEFAULT_CATALYST_MAX_AGE_DAYS,
-} from '@/lib/alpha-radar-catalyst';
+import { buildCatalystPurgeMap, DEFAULT_CATALYST_MAX_AGE_DAYS } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { useStrategyMode } from '@/lib/strategy-settings';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
@@ -104,10 +101,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     enabled: true,
   });
 
-  const symbols = React.useMemo(
-    () => items.map((x) => x.symbol).filter(Boolean),
-    [items],
-  );
+  const symbols = React.useMemo(() => items.map((x) => x.symbol).filter(Boolean), [items]);
 
   const {
     trend,
@@ -140,7 +134,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
   const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
-
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
@@ -216,8 +209,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return {
           active: true,
           riskMode: String(checks.macroRiskMode ?? 'extreme_caution'),
-          downCount:
-            typeof checks.macroDownCount === 'number' ? checks.macroDownCount : undefined,
+          downCount: typeof checks.macroDownCount === 'number' ? checks.macroDownCount : undefined,
         };
       }
     }
@@ -355,14 +347,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <PickStrongAlignBanner />
         {showSingleTrack ? <EtfExecutionLogCard /> : null}
         {showSingleTrack ? (
-        <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
-          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">展开旧提醒（行为对账 / 轮动 / Gate 详情）</summary>
-          <div className="mt-3">
-            <BehaviorAuditBanner />
-            {showSingleTrack ? <ThirdAssetSleeveBanner /> : null}
-          </div>
-        </details>
-      ) : null}
+          <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
+            <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
+              展开旧提醒（行为对账 / 轮动 / Gate 详情）
+            </summary>
+            <div className="mt-3">
+              <BehaviorAuditBanner />
+              {showSingleTrack ? <ThirdAssetSleeveBanner /> : null}
+            </div>
+          </details>
+        ) : null}
         {executionGate && showSingleTrack ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
@@ -370,7 +364,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             <div className="font-medium">
               Execution Gate: {executionGate.mode}
               <span className="ml-2 text-xs font-normal opacity-90">
-                allowNewEntries={String(executionGate.allowNewEntries)} · {executionGate.marketRegime}
+                allowNewEntries={String(executionGate.allowNewEntries)} ·{' '}
+                {executionGate.marketRegime}
               </span>
             </div>
             <div className="mt-1 text-xs opacity-90">
@@ -380,9 +375,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               )}
             </div>
             <div className="mt-1 text-xs opacity-90">
-              S-2 操作口径：{['Strong', 'Diverging'].includes(String(executionGate.marketRegime ?? ''))
+              S-2 操作口径：
+              {['Strong', 'Diverging'].includes(String(executionGate.marketRegime ?? ''))
                 ? '✅ 非 Weak 可开仓'
-                : '⏸ Weak 空仓等待'} · score≥70 · RS 前 50% · 移动止损 -8%
+                : '⏸ Weak 空仓等待'}{' '}
+              · score≥70 · RS 前 50% · 移动止损 -8%
             </div>
             {(() => {
               const missingSize = countHeldMissingPositionPct(items);
@@ -427,11 +424,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         {showSingleTrack ? <TradingBriefCard /> : null}
 
-
         <WatchlistInsightsPanel>
           <TradeStatsPanel />
           <FunnelHistoryTable limit={10} />
-
         </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -469,19 +464,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </section>
 
         {showSingleTrack ? (
-        <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="text-sm font-medium">Score（0–100）计分说明</div>
-          <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
-            {scoreExplainZhLines().map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
-          </div>
-          <div className="mt-3 text-[11px] leading-relaxed text-[var(--k-muted)]">
-            鼠标悬停在列表「Score」数字上可查看该股各项得分（ema / macd / breakout / rsi / volume
-            及加扣分）。
-          </div>
-        </section>
-      ) : null}
+          <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+            <div className="text-sm font-medium">Score（0–100）计分说明</div>
+            <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
+              {scoreExplainZhLines().map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+            <div className="mt-3 text-[11px] leading-relaxed text-[var(--k-muted)]">
+              鼠标悬停在列表「Score」数字上可查看该股各项得分（ema / macd / breakout / rsi / volume
+              及加扣分）。
+            </div>
+          </section>
+        ) : null}
 
         <WatchlistTable
           sortedItems={sortedItems}

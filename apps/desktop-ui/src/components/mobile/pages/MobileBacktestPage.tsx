@@ -119,7 +119,13 @@ export function MobileBacktestPage() {
               </button>
             ))}
           </div>
-          <MobileButton block onClick={() => { setSubmitted({ ...params }); setAttempt((a) => a + 1); }}>
+          <MobileButton
+            block
+            onClick={() => {
+              setSubmitted({ ...params });
+              setAttempt((a) => a + 1);
+            }}
+          >
             {run.isFetching ? '回测中…' : '运行回测'}
           </MobileButton>
         </MobileCard>
@@ -139,16 +145,31 @@ export function MobileBacktestPage() {
                   累计 {summary.total_net_pnl_pct >= 0 ? '+' : ''}
                   {summary.total_net_pnl_pct.toFixed(2)}%
                 </StatusPill>
-                <StatusPill tone="neutral">年化 {summary.annual_net_pnl_pct?.toFixed(2) ?? '—'}%</StatusPill>
-                <StatusPill tone="neutral">超额 {summary.excess_vs_best_benchmark_pct?.toFixed(2) ?? '—'}%</StatusPill>
+                <StatusPill tone="neutral">
+                  年化 {summary.annual_net_pnl_pct?.toFixed(2) ?? '—'}%
+                </StatusPill>
+                <StatusPill tone="neutral">
+                  超额 {summary.excess_vs_best_benchmark_pct?.toFixed(2) ?? '—'}%
+                </StatusPill>
               </div>
             </MobileCard>
             <MobileCard className="grid grid-cols-3 gap-1.5 p-3">
               <Metric label="已平仓" value={String(summary.closed)} />
-              <Metric label="胜率" value={summary.win_rate != null ? `${summary.win_rate.toFixed(1)}%` : '—'} />
+              <Metric
+                label="胜率"
+                value={summary.win_rate != null ? `${summary.win_rate.toFixed(1)}%` : '—'}
+              />
               <Metric label="最大回撤" value={`${summary.max_drawdown_pct.toFixed(2)}%`} />
-              <Metric label="均净盈亏" value={summary.avg_net_pnl_pct != null ? `${summary.avg_net_pnl_pct.toFixed(2)}%` : '—'} />
-              <Metric label="夏普" value={summary.sharpe != null ? summary.sharpe.toFixed(2) : '—'} />
+              <Metric
+                label="均净盈亏"
+                value={
+                  summary.avg_net_pnl_pct != null ? `${summary.avg_net_pnl_pct.toFixed(2)}%` : '—'
+                }
+              />
+              <Metric
+                label="夏普"
+                value={summary.sharpe != null ? summary.sharpe.toFixed(2) : '—'}
+              />
               <Metric label="基准" value={summary.best_benchmark} />
             </MobileCard>
             {Object.keys(summary.by_score_bucket ?? {}).length ? (
@@ -158,11 +179,17 @@ export function MobileBacktestPage() {
                   {Object.entries(summary.by_score_bucket)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([bucket, s]) => (
-                      <div key={bucket} className="flex items-center justify-between text-[var(--m-text-sm)]">
+                      <div
+                        key={bucket}
+                        className="flex items-center justify-between text-[var(--m-text-sm)]"
+                      >
                         <span className="text-[var(--k-muted)]">score {bucket}</span>
                         <span>
-                          {s.trades} 笔 · 胜率 {s.winRate != null ? `${s.winRate.toFixed(0)}%` : '—'}
-                          {s.avgNet != null ? ` · 均 ${s.avgNet >= 0 ? '+' : ''}${s.avgNet.toFixed(2)}%` : ''}
+                          {s.trades} 笔 · 胜率{' '}
+                          {s.winRate != null ? `${s.winRate.toFixed(0)}%` : '—'}
+                          {s.avgNet != null
+                            ? ` · 均 ${s.avgNet >= 0 ? '+' : ''}${s.avgNet.toFixed(2)}%`
+                            : ''}
                         </span>
                       </div>
                     ))}
@@ -171,7 +198,9 @@ export function MobileBacktestPage() {
             ) : null}
             {Object.keys(summary.gated_blocks ?? {}).length ? (
               <MobileCard className="p-3">
-                <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">闸门阻断（未入场原因）</div>
+                <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                  闸门阻断（未入场原因）
+                </div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {Object.entries(summary.gated_blocks)
                     .sort((a, b) => b[1] - a[1])

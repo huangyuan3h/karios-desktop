@@ -92,7 +92,12 @@ export const STOCK_DETAIL_STALE_MS = 10 * 60_000;
 
 export function normalizeSymbol(symbol: string): string {
   const s = symbol.trim();
-  if (s.startsWith('主板:') || s.startsWith('中小板:') || s.startsWith('创业板:') || s.startsWith('科创板:')) {
+  if (
+    s.startsWith('主板:') ||
+    s.startsWith('中小板:') ||
+    s.startsWith('创业板:') ||
+    s.startsWith('科创板:')
+  ) {
     const parts = s.split(':', 2);
     if (parts.length >= 2) {
       return `CN:${parts[1].trim()}`;

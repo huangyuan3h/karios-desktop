@@ -3,10 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
-import type {
-  ExecutionChangeListResponse,
-  ExecutionSnapshotListResponse,
-} from '@karios/shared';
+import type { ExecutionChangeListResponse, ExecutionSnapshotListResponse } from '@karios/shared';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
 
 export function executionChangesKey(tradeDate: string) {
@@ -46,8 +43,7 @@ export function useExecutionSnapshotsQuery(tradeDate?: string, limit = 20) {
 export function useExecutionRecentSnapshotsQuery(limit = 30) {
   return useQuery({
     queryKey: ['execution', 'snapshots', 'recent', limit] as const,
-    queryFn: () =>
-      apiGetJson<ExecutionSnapshotListResponse>(`/execution/snapshots?limit=${limit}`),
+    queryFn: () => apiGetJson<ExecutionSnapshotListResponse>(`/execution/snapshots?limit=${limit}`),
     refetchInterval: 120_000,
     refetchIntervalInBackground: false,
   });

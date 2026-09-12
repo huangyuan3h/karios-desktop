@@ -41,20 +41,30 @@ export function MobileNewsPage() {
   return (
     <div className="space-y-4">
       <MobileSection
-        title={filterMode === 'important' ? `重要新闻（${items.length}）` : `最新新闻（${items.length}）`}
+        title={
+          filterMode === 'important' ? `重要新闻（${items.length}）` : `最新新闻（${items.length}）`
+        }
         action={
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setFilterMode('all')}
-              className={filterMode === 'all' ? 'font-semibold text-[var(--k-accent)]' : 'text-[var(--k-muted)]'}
+              className={
+                filterMode === 'all'
+                  ? 'font-semibold text-[var(--k-accent)]'
+                  : 'text-[var(--k-muted)]'
+              }
             >
               全部
             </button>
             <button
               type="button"
               onClick={() => setFilterMode('important')}
-              className={filterMode === 'important' ? 'font-semibold text-[var(--k-accent)]' : 'text-[var(--k-muted)]'}
+              className={
+                filterMode === 'important'
+                  ? 'font-semibold text-[var(--k-accent)]'
+                  : 'text-[var(--k-muted)]'
+              }
             >
               ⭐ 重要
             </button>
@@ -83,16 +93,26 @@ export function MobileNewsPage() {
                   >
                     <span className="line-clamp-2">{n.title}</span>
                   </a>
-                  <span className="shrink-0 text-[var(--m-text-xs)] text-[var(--k-muted)]">{fmtTime(n.publishedAt)}</span>
+                  <span className="shrink-0 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                    {fmtTime(n.publishedAt)}
+                  </span>
                 </div>
                 {n.aiSummary ? (
-                  <div className="mt-1.5 line-clamp-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">{n.aiSummary}</div>
+                  <div className="mt-1.5 line-clamp-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">
+                    {n.aiSummary}
+                  </div>
                 ) : n.summary ? (
-                  <div className="mt-1.5 line-clamp-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">{n.summary}</div>
+                  <div className="mt-1.5 line-clamp-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">
+                    {n.summary}
+                  </div>
                 ) : null}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {n.eventType ? <StatusPill tone="neutral">{n.eventType}</StatusPill> : null}
-                  {n.actionability ? <StatusPill tone={n.actionability === 'actionable' ? 'open' : 'neutral'}>{n.actionability}</StatusPill> : null}
+                  {n.actionability ? (
+                    <StatusPill tone={n.actionability === 'actionable' ? 'open' : 'neutral'}>
+                      {n.actionability}
+                    </StatusPill>
+                  ) : null}
                   {n.importance != null && n.importance >= 1 ? (
                     <StatusPill tone="warn">I{n.importance}</StatusPill>
                   ) : null}

@@ -2,14 +2,21 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { SCHEDULER_JOB_CATALOG, type SchedulerJobStatus, type SchedulerJobMeta } from '@karios/shared';
+import {
+  SCHEDULER_JOB_CATALOG,
+  type SchedulerJobStatus,
+  type SchedulerJobMeta,
+} from '@karios/shared';
 
 import { useSchedulerJobsQuery, triggerSchedulerAction } from '@/lib/queries/scheduler';
 import { MobileButton, MobileCard, MobileSection, StatusPill } from '../primitives';
 
 /** 任务调度 (mobile) — job cards + manual trigger. §5.2 低频. */
 
-function classifyJob(meta: SchedulerJobMeta, st: SchedulerJobStatus | undefined): { tone: 'open' | 'closed' | 'warn' | 'danger' | 'neutral'; label: string } {
+function classifyJob(
+  meta: SchedulerJobMeta,
+  st: SchedulerJobStatus | undefined,
+): { tone: 'open' | 'closed' | 'warn' | 'danger' | 'neutral'; label: string } {
   if (!st || !st.todayRun) {
     if (st?.lastSuccess) return { tone: 'neutral', label: '今日未运行' };
     if (!meta.tracked) return { tone: 'neutral', label: '未跟踪' };
@@ -42,7 +49,11 @@ export function MobileSchedulerPage() {
       if (res.error) {
         setMsg({ job: meta.jobType, text: res.error, ok: false });
       } else if (res.skipped) {
-        setMsg({ job: meta.jobType, text: String(res.skipReason ?? res.message ?? '已跳过'), ok: false });
+        setMsg({
+          job: meta.jobType,
+          text: String(res.skipReason ?? res.message ?? '已跳过'),
+          ok: false,
+        });
       } else if (res.updatedDailyRows != null) {
         setMsg({ job: meta.jobType, text: `完成 · 更新 ${res.updatedDailyRows} 行`, ok: true });
       } else {
@@ -61,7 +72,11 @@ export function MobileSchedulerPage() {
       <MobileSection
         title={`任务调度（${metas.length}）`}
         action={
-          <button type="button" onClick={() => void qc.refetchQueries({ queryKey: ['scheduler', 'jobs'] })} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => void qc.refetchQueries({ queryKey: ['scheduler', 'jobs'] })}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             刷新
           </button>
         }
@@ -83,7 +98,9 @@ export function MobileSchedulerPage() {
                 <MobileCard key={meta.jobType} className="p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-[var(--m-text-base)] font-medium">{meta.titleCn}</div>
+                      <div className="truncate text-[var(--m-text-base)] font-medium">
+                        {meta.titleCn}
+                      </div>
                       <div className="mt-0.5 truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
                         {meta.jobType}
                       </div>
@@ -95,23 +112,35 @@ export function MobileSchedulerPage() {
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
-                      上次成功 {st?.lastSuccess ? new Date(st.lastSuccess.sync_at).toLocaleString('zh-CN') : '—'}
+                      上次成功{' '}
+                      {st?.lastSuccess
+                        ? new Date(st.lastSuccess.sync_at).toLocaleString('zh-CN')
+                        : '—'}
                     </div>
                     {meta.action ? (
-                      <MobileButton size="sm" variant="ghost" onClick={() => void trigger(meta)} disabled={running != null}>
+                      <MobileButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void trigger(meta)}
+                        disabled={running != null}
+                      >
                         {running === meta.jobType ? '执行中…' : meta.action.label}
                       </MobileButton>
                     ) : null}
                   </div>
                   {st?.todayRun?.error_message ? (
-                    <div className="mt-1.5 text-[var(--m-text-xs)] text-[var(--k-danger)]">{st.todayRun.error_message}</div>
+                    <div className="mt-1.5 text-[var(--m-text-xs)] text-[var(--k-danger)]">
+                      {st.todayRun.error_message}
+                    </div>
                   ) : null}
                 </MobileCard>
               );
             })}
           </div>
         ) : (
-          <MobileCard className="px-3 py-8 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无任务</MobileCard>
+          <MobileCard className="px-3 py-8 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+            暂无任务
+          </MobileCard>
         )}
       </MobileSection>
     </div>

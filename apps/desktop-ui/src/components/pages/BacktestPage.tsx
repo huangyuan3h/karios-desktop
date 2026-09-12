@@ -14,11 +14,7 @@ import { SatBlotterCard } from '@/components/pages/SatBlotterCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { patchUserTrade } from '@/lib/queries/userTrades';
 import { cn } from '@/lib/utils';
-import {
-  resolveTimelineWindows,
-  roleBadge,
-  type TimelineWindowId,
-} from '@/lib/timeline-windows';
+import { resolveTimelineWindows, roleBadge, type TimelineWindowId } from '@/lib/timeline-windows';
 
 import {
   GATE_LEVELS,
@@ -86,14 +82,28 @@ function tone(v: number | null): string {
 }
 
 const CN_PARAMS = [
-  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%/ATR'],
-  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'full'], ['熔断', '-25%'],
-  ['恐慌冷却', '2d'], ['流动性', '≥0.7亿'],
+  ['score', '65'],
+  ['RS 前', '50%'],
+  ['止损', '-5%'],
+  ['移动', '-8%/ATR'],
+  ['持有', '≤60 天'],
+  ['仓位', '10%×10'],
+  ['入场', '次日开盘'],
+  ['闸门', 'full'],
+  ['熔断', '-25%'],
+  ['恐慌冷却', '2d'],
+  ['流动性', '≥0.7亿'],
 ];
 
 const HK_PARAMS = [
-  ['score', '65'], ['RS 前', '40%'], ['止损', '-5%'], ['移动', '-12%'],
-  ['持有', '≤60 天'], ['仓位', '10%×10'], ['入场', '次日开盘'], ['闸门', 'regime'],
+  ['score', '65'],
+  ['RS 前', '40%'],
+  ['止损', '-5%'],
+  ['移动', '-12%'],
+  ['持有', '≤60 天'],
+  ['仓位', '10%×10'],
+  ['入场', '次日开盘'],
+  ['闸门', 'regime'],
 ];
 
 function fmtDate(iso?: string | null): string {
@@ -101,13 +111,7 @@ function fmtDate(iso?: string | null): string {
   return iso.slice(0, 10);
 }
 
-function WindowRow({
-  name,
-  w,
-}: {
-  name: string;
-  w: BacktestOverviewWindow | undefined;
-}) {
+function WindowRow({ name, w }: { name: string; w: BacktestOverviewWindow | undefined }) {
   const winRate = w?.winRate != null ? `${(w.winRate * 100).toFixed(1)}%` : '—';
   return (
     <div className="flex items-center gap-2 border-t border-[var(--k-border)]/60 py-1 text-[11px] tabular-nums">
@@ -145,7 +149,9 @@ function BaselinePanel({
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
+          {tag}
+        </span>
         {title}
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           基线 {fmtDate(baseline?.generatedAt)}
@@ -176,7 +182,11 @@ function BaselinePanel({
   );
 }
 
-function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktestOverviewQuery>['data'] }) {
+function ConclusionBoard({
+  overview,
+}: {
+  overview: ReturnType<typeof useBacktestOverviewQuery>['data'];
+}) {
   const long = overview?.longWindowCN;
   const byYear = long?.byYear ?? {};
   return (
@@ -209,7 +219,10 @@ function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktest
                 <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] tabular-nums text-[var(--k-muted)]">
                   {Object.entries(byYear).map(([y, v]) => (
                     <span key={y}>
-                      {y} <span className={cn('font-mono', tone(v ?? null))}>{v != null ? `${v >= 0 ? '+' : ''}${v}` : '—'}</span>
+                      {y}{' '}
+                      <span className={cn('font-mono', tone(v ?? null))}>
+                        {v != null ? `${v >= 0 ? '+' : ''}${v}` : '—'}
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -292,17 +305,25 @@ function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
                 </span>
                 <button
                   type="button"
-                  disabled={!h.symbol || !(h.ops ?? []).some((o) => o.id) || !!movingLeg[h.symbol ?? '']}
+                  disabled={
+                    !h.symbol || !(h.ops ?? []).some((o) => o.id) || !!movingLeg[h.symbol ?? '']
+                  }
                   onClick={() => void moveHoldingLeg(h)}
                   title="把这票整条操作链挪到另一本账（记错腿时点）"
                   className="rounded border border-[var(--k-border)] px-1 text-[9px] text-[var(--k-muted)] hover:bg-[var(--k-surface-2)] disabled:opacity-40"
                 >
-                  {movingLeg[h.symbol ?? ''] ? '挪动中…' : h.leg === 'sat' ? '挪到核心' : '挪到卫星'}
+                  {movingLeg[h.symbol ?? '']
+                    ? '挪动中…'
+                    : h.leg === 'sat'
+                      ? '挪到核心'
+                      : '挪到卫星'}
                 </button>
                 <span>仓位 {h.positionPct ?? 0}%</span>
                 <span>成本 {h.costPrice ?? '—'}</span>
                 {h.pyramidTriggerLine != null && (
-                  <span className="text-[var(--k-muted)]">金字塔线 {h.pyramidTriggerLine} · {h.pyramidAdded ? '已加' : '未加'}</span>
+                  <span className="text-[var(--k-muted)]">
+                    金字塔线 {h.pyramidTriggerLine} · {h.pyramidAdded ? '已加' : '未加'}
+                  </span>
                 )}
               </div>
               <div className="mt-1 flex flex-col gap-1">
@@ -402,7 +423,11 @@ function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
   );
 }
 
-function RollingOosCard({ overview }: { overview: ReturnType<typeof useBacktestOverviewQuery>['data'] }) {
+function RollingOosCard({
+  overview,
+}: {
+  overview: ReturnType<typeof useBacktestOverviewQuery>['data'];
+}) {
   const ro = overview?.rollingOos;
   if (!ro) return null;
   const markets = ro.markets ?? {};
@@ -424,17 +449,30 @@ function RollingOosCard({ overview }: { overview: ReturnType<typeof useBacktestO
         {(['CN', 'HK'] as const).map((m) => {
           const r = markets[m];
           if (!r) return null;
-          const bad = r.closed === 0 || r.sharpe != null && r.sharpe < 0 || (r.totalNetPnlPct ?? 0) < 0;
+          const bad =
+            r.closed === 0 || (r.sharpe != null && r.sharpe < 0) || (r.totalNetPnlPct ?? 0) < 0;
           return (
-            <div key={m} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
-              <span className={cn('w-7 font-semibold', bad ? 'text-red-600 dark:text-red-400' : 'text-[var(--k-fg)]')}>
+            <div
+              key={m}
+              className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums"
+            >
+              <span
+                className={cn(
+                  'w-7 font-semibold',
+                  bad ? 'text-red-600 dark:text-red-400' : 'text-[var(--k-fg)]',
+                )}
+              >
                 {m === 'CN' ? 'A股' : '港股'}
               </span>
               <span className={cn('font-semibold', tone(r.totalNetPnlPct ?? null))}>
                 {r.totalNetPnlPct != null ? `${r.totalNetPnlPct.toFixed(1)}%` : '—'}
               </span>
-              <span className="text-[var(--k-muted)]">胜率 {r.winRate != null ? `${(r.winRate * 100).toFixed(1)}%` : '—'}</span>
-              <span className="text-[var(--k-muted)]">DD {r.maxDrawdownPct != null ? `${r.maxDrawdownPct.toFixed(1)}%` : '—'}</span>
+              <span className="text-[var(--k-muted)]">
+                胜率 {r.winRate != null ? `${(r.winRate * 100).toFixed(1)}%` : '—'}
+              </span>
+              <span className="text-[var(--k-muted)]">
+                DD {r.maxDrawdownPct != null ? `${r.maxDrawdownPct.toFixed(1)}%` : '—'}
+              </span>
               <span className="text-[var(--k-muted)]">夏普 {r.sharpe ?? '—'}</span>
               <span className="ml-auto text-[var(--k-muted)]">{r.closed ?? 0} 笔</span>
             </div>
@@ -459,7 +497,10 @@ function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuer
           const clean = r.missing === 0 && r.extra === 0;
           const market = r.market === 'HK' ? '港股' : 'A股';
           return (
-            <div key={`${r.reconDate}-${r.market}`} className="flex flex-wrap items-center gap-x-3 text-[11px] tabular-nums">
+            <div
+              key={`${r.reconDate}-${r.market}`}
+              className="flex flex-wrap items-center gap-x-3 text-[11px] tabular-nums"
+            >
               <span className={clean ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400'}>
                 {clean ? '✓' : '⚠'}
               </span>
@@ -468,7 +509,13 @@ function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuer
               <span className="text-[var(--k-muted)]">
                 回测应持 {r.expected} · 实持 {r.actual} · 一致 {r.aligned}
               </span>
-              <span className={r.missing + r.extra > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--k-muted)]'}>
+              <span
+                className={
+                  r.missing + r.extra > 0
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-[var(--k-muted)]'
+                }
+              >
                 缺 {r.missing} · 多 {r.extra}
               </span>
             </div>
@@ -513,10 +560,22 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
             {!settled && '（≥20 笔后出统计定论）'}
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <StatCard label="paper 胜率" value={winRate(summary?.paper?.winRate ?? null)} sub={`${summary?.paper?.closed ?? 0} 笔已平仓`} />
+            <StatCard
+              label="paper 胜率"
+              value={winRate(summary?.paper?.winRate ?? null)}
+              sub={`${summary?.paper?.closed ?? 0} 笔已平仓`}
+            />
             <StatCard label="paper 均盈亏" value={pct(summary?.paper?.avgPnlPct ?? null)} />
-            <StatCard label="回测匹配胜率" value={winRate(summary?.backtestMatched?.winRate ?? null)} sub={`${summary?.backtestMatched?.closed ?? 0} 笔有孪生`} />
-            <StatCard label="回测均盈亏" value={pct(summary?.backtestMatched?.avgPnlPct ?? null)} sub="孪生交易口径" />
+            <StatCard
+              label="回测匹配胜率"
+              value={winRate(summary?.backtestMatched?.winRate ?? null)}
+              sub={`${summary?.backtestMatched?.closed ?? 0} 笔有孪生`}
+            />
+            <StatCard
+              label="回测均盈亏"
+              value={pct(summary?.backtestMatched?.avgPnlPct ?? null)}
+              sub="孪生交易口径"
+            />
           </div>
           <div className="max-h-[320px] overflow-auto">
             <table className="w-full text-left text-xs tabular-nums">
@@ -538,15 +597,38 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
                   const bt = r.backtest;
                   const entryDiff = r.diff?.entryPriceDiffPct;
                   return (
-                    <tr key={`${r.symbol}-${r.entryDate}`} className="border-t border-[var(--k-border)]/60">
-                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.market === 'HK' ? '港股' : 'A股'}</td>
+                    <tr
+                      key={`${r.symbol}-${r.entryDate}`}
+                      className="border-t border-[var(--k-border)]/60"
+                    >
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">
+                        {r.market === 'HK' ? '港股' : 'A股'}
+                      </td>
                       <td className="py-1 pr-2 font-mono">{r.symbol}</td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">{r.entryDate}</td>
-                      <td className={cn('py-1 pr-2 font-medium', tone(r.paper?.pnlPct ?? null))}>{pct(r.paper?.pnlPct ?? null)}</td>
-                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.paper?.closeReason ?? '—'}</td>
-                      <td className={cn('py-1 pr-2', bt ? tone(bt.pnlPct ?? null) : 'text-[var(--k-muted)]')}>{bt ? pct(bt.pnlPct ?? null) : '未入场'}</td>
+                      <td className={cn('py-1 pr-2 font-medium', tone(r.paper?.pnlPct ?? null))}>
+                        {pct(r.paper?.pnlPct ?? null)}
+                      </td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">
+                        {r.paper?.closeReason ?? '—'}
+                      </td>
+                      <td
+                        className={cn(
+                          'py-1 pr-2',
+                          bt ? tone(bt.pnlPct ?? null) : 'text-[var(--k-muted)]',
+                        )}
+                      >
+                        {bt ? pct(bt.pnlPct ?? null) : '未入场'}
+                      </td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">{bt?.closeReason ?? '—'}</td>
-                      <td className={cn('py-1 pr-2', entryDiff != null && Math.abs(entryDiff) > 0.5 ? 'text-amber-600 dark:text-amber-400' : '')}>
+                      <td
+                        className={cn(
+                          'py-1 pr-2',
+                          entryDiff != null && Math.abs(entryDiff) > 0.5
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : '',
+                        )}
+                      >
                         {entryDiff != null ? pct(entryDiff, 2) : '—'}
                       </td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">{r.note ?? '—'}</td>
@@ -557,10 +639,9 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
             </table>
           </div>
           <p className="text-[10px] text-[var(--k-muted)]">
-            孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 ·
-            样本 &lt;20 笔不作统计结论（C4 未定案）。paper 入场已对齐回测
-            ``next_open``（信号日收盘定价 → 下一交易日开盘成交；开盘未到库时先占位，
-            ``run_update`` 回填）。
+            孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 · 样本
+            &lt;20 笔不作统计结论（C4 未定案）。paper 入场已对齐回测 ``next_open``（信号日收盘定价 →
+            下一交易日开盘成交；开盘未到库时先占位， ``run_update`` 回填）。
           </p>
         </div>
       ) : (
@@ -577,11 +658,19 @@ function TimelineCard() {
   const selected = windows.find((w) => w.id === windowId) ?? windows[0];
   const start = selected.start;
   const end = selected.end;
-  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong' | 'state_bucket'>('twin_star');
+  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong' | 'state_bucket'>(
+    'twin_star',
+  );
   const isTwin = strategy === 'twin_star';
   const isSgap = strategy === 'state_bucket';
   const [habit, setHabit] = React.useState(true);
-  const q = useTimelineQuery(start, end, strategy, true, isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined);
+  const q = useTimelineQuery(
+    start,
+    end,
+    strategy,
+    true,
+    isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined,
+  );
   const rows = q.data?.rows ?? [];
   const blotter = q.data?.blotter ?? [];
   const summary = q.data?.summary;
@@ -632,7 +721,9 @@ function TimelineCard() {
         <BarChart3 className="size-3.5" />
         Timeline（
         {isTwin
-          ? habit ? '机会双子星 · 习惯C1+14:30卖（Live）' : '机会双子星 v3.1 · 与 Watchlist 同源'
+          ? habit
+            ? '机会双子星 · 习惯C1+14:30卖（Live）'
+            : '机会双子星 v3.1 · 与 Watchlist 同源'
           : isSgap
             ? '状态分桶 S-gap · 可执行独立腿（涨停可能买不进）'
             : '择强单轨 · 全资产同权 · 100%'}
@@ -641,7 +732,10 @@ function TimelineCard() {
           <button
             type="button"
             onClick={() => setStrategy('twin_star')}
-            className={cn('px-2 py-0.5', isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+            className={cn(
+              'px-2 py-0.5',
+              isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+            )}
           >
             机会双子星
           </button>
@@ -650,7 +744,9 @@ function TimelineCard() {
             onClick={() => setStrategy('pick_strong')}
             className={cn(
               'px-2 py-0.5',
-              strategy === 'pick_strong' ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+              strategy === 'pick_strong'
+                ? 'bg-[var(--k-accent)] text-white'
+                : 'text-[var(--k-muted)]',
             )}
           >
             单轨择强
@@ -658,7 +754,10 @@ function TimelineCard() {
           <button
             type="button"
             onClick={() => setStrategy('state_bucket')}
-            className={cn('px-2 py-0.5', isSgap ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]')}
+            className={cn(
+              'px-2 py-0.5',
+              isSgap ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
+            )}
             title="独立 S-gap 腿 · 与双子星卫星同源 · skip_t1_limit 可执行口径"
           >
             状态分桶
@@ -671,7 +770,9 @@ function TimelineCard() {
             title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（sat-exit-hhmm Live配方）；关=冻结T开盘收盘卖"
             className={cn(
               'ml-2 rounded border px-1.5 py-0.5 text-[10px]',
-              habit ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-[var(--k-border)] text-[var(--k-muted)]',
+              habit
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+                : 'border-[var(--k-border)] text-[var(--k-muted)]',
             )}
           >
             {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
@@ -716,7 +817,12 @@ function TimelineCard() {
               ? '后端计算 S-gap 全市场截面（可执行口径），请稍后刷新'
               : '后端计算需 ~50s（S-3 全市场回放），请稍后刷新或改短周期'}
           </p>
-          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 h-7 text-xs"
+            onClick={() => q.refetch()}
+          >
             重试
           </Button>
         </div>
@@ -745,7 +851,10 @@ function TimelineCard() {
                 {rows.map((r) => (
                   <div
                     key={`sat-${r.date}`}
-                    className={cn('h-full flex-1', r.satActive ? 'bg-sky-500/80' : 'bg-[var(--k-surface-2)]')}
+                    className={cn(
+                      'h-full flex-1',
+                      r.satActive ? 'bg-sky-500/80' : 'bg-[var(--k-surface-2)]',
+                    )}
                     title={`${r.date} · ${r.satActive ? '卫星占用 · 核心50%/卫星50%' : '卫星闲置 · 核心100%'} · 仓${r.satSlots ?? r.satPositions ?? 0}`}
                   />
                 ))}
@@ -766,21 +875,27 @@ function TimelineCard() {
               const v = dist[k] ?? 0;
               return (
                 <span key={k} className="flex items-center gap-1">
-                  <span className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')} />
-                  {pickLabel[k] ?? k} {v}天 ({rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                  <span
+                    className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
+                  />
+                  {pickLabel[k] ?? k} {v}天 (
+                  {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
                 </span>
               );
             })}
             {dist['STOCK'] ? (
               <>
                 <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-red-500" />A股 {distMarket['A股'] ?? 0}天
+                  <span className="inline-block size-2 rounded-sm bg-red-500" />
+                  A股 {distMarket['A股'] ?? 0}天
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-orange-500" />港股 {distMarket['HK'] ?? 0}天
+                  <span className="inline-block size-2 rounded-sm bg-orange-500" />
+                  港股 {distMarket['HK'] ?? 0}天
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-purple-600" />A+H {distMarket['A+H'] ?? 0}天
+                  <span className="inline-block size-2 rounded-sm bg-purple-600" />
+                  A+H {distMarket['A+H'] ?? 0}天
                 </span>
               </>
             ) : null}
@@ -794,7 +909,8 @@ function TimelineCard() {
           </div>
           {isTwin ? (
             <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
-              {twinStarRecipeLine(twinSlotNavPct)} · satActive→50/50 · idle→核心100% · 非 PS-G50 静态对半 · 与 Watchlist「今日下单」同一冻结配方
+              {twinStarRecipeLine(twinSlotNavPct)} · satActive→50/50 · idle→核心100% · 非 PS-G50
+              静态对半 · 与 Watchlist「今日下单」同一冻结配方
             </div>
           ) : null}
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
@@ -812,7 +928,9 @@ function TimelineCard() {
                   </th>
                   {isTwin ? <th className="py-1 pr-2">核心NAV%</th> : null}
                   {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
-                  {isTwin || isSgap ? <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(槽)'}</th> : null}
+                  {isTwin || isSgap ? (
+                    <th className="py-1 pr-2">{isSgap ? '仓位' : '卫星NAV%(槽)'}</th>
+                  ) : null}
                   {isTwin || isSgap ? <th className="py-1 pr-2">候选</th> : null}
                   {isTwin || isSgap ? <th className="py-1 pr-2">跳过</th> : null}
                   {isTwin || isSgap ? <th className="py-1 pr-2">成交</th> : null}
@@ -826,9 +944,20 @@ function TimelineCard() {
                   const exits = r.exits ?? [];
                   const isStock = (r.pick ?? 'REPO') === 'STOCK';
                   const isSgapPick = (r.pick ?? '') === 'S-GAP';
-                  const pickSym = r.pick === 'GOLD' ? '518880' : r.pick === 'OIL' ? '513350' : r.pick === 'NASDAQ' ? '513110' : r.pick === 'BOND10' ? '511260' : r.pick === 'REPO' ? 'GC001' : r.pick ?? 'REPO';
+                  const pickSym =
+                    r.pick === 'GOLD'
+                      ? '518880'
+                      : r.pick === 'OIL'
+                        ? '513350'
+                        : r.pick === 'NASDAQ'
+                          ? '513110'
+                          : r.pick === 'BOND10'
+                            ? '511260'
+                            : r.pick === 'REPO'
+                              ? 'GC001'
+                              : (r.pick ?? 'REPO');
                   const syms = isStock
-                    ? ((r.stockSymbols ?? []).join(' ') || '—')
+                    ? (r.stockSymbols ?? []).join(' ') || '—'
                     : isSgapPick
                       ? `${r.satPositions ?? 0}仓`
                       : `${pickSym} 1票`;
@@ -838,7 +967,12 @@ function TimelineCard() {
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
                       <td className="py-1 pr-2">
-                        <span className={cn('rounded px-1 py-px text-[10px] text-white', isSgapPick ? 'bg-violet-600' : stockBarColor(r))}>
+                        <span
+                          className={cn(
+                            'rounded px-1 py-px text-[10px] text-white',
+                            isSgapPick ? 'bg-violet-600' : stockBarColor(r),
+                          )}
+                        >
                           {r.pick ?? 'REPO'}
                         </span>
                       </td>
@@ -856,10 +990,16 @@ function TimelineCard() {
                           <>{pickSym} 1票</>
                         )}
                       </td>
-                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]" title={syms}>
+                      <td
+                        className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]"
+                        title={syms}
+                      >
                         {syms}
                       </td>
-                      <td className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300" title={exits.join(' ')}>
+                      <td
+                        className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300"
+                        title={exits.join(' ')}
+                      >
                         {exits.length ? exits.join(' ') : '—'}
                       </td>
                       {!isSgap ? (
@@ -867,7 +1007,9 @@ function TimelineCard() {
                           {(r.navBaseReturnPct ?? 0).toFixed(2)}%
                         </td>
                       ) : null}
-                      <td className={cn('py-1 pr-2 font-semibold', tone(single))}>{single.toFixed(2)}%</td>
+                      <td className={cn('py-1 pr-2 font-semibold', tone(single))}>
+                        {single.toFixed(2)}%
+                      </td>
                       {isTwin ? (
                         <td className={cn('py-1 pr-2', tone(r.coreNavReturnPct ?? null))}>
                           {r.coreNavReturnPct != null ? `${r.coreNavReturnPct.toFixed(2)}%` : '—'}
@@ -882,7 +1024,11 @@ function TimelineCard() {
                                 ? 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
                                 : 'bg-[var(--k-surface-2)] text-[var(--k-muted)]',
                             )}
-                            title={r.satActive ? 'satActive · 含过夜或当日到期卖' : '卫星闲置 · 全日跟核心'}
+                            title={
+                              r.satActive
+                                ? 'satActive · 含过夜或当日到期卖'
+                                : '卫星闲置 · 全日跟核心'
+                            }
                           >
                             {coreTargetPct}%
                           </span>
@@ -894,10 +1040,13 @@ function TimelineCard() {
                             <span>{r.satPositions ?? 0}仓</span>
                           ) : r.satNavReturnPct != null ? (
                             <>
-                              <span className={cn(tone(r.satNavReturnPct))}>{r.satNavReturnPct.toFixed(2)}%</span>
+                              <span className={cn(tone(r.satNavReturnPct))}>
+                                {r.satNavReturnPct.toFixed(2)}%
+                              </span>
                               <span className="text-[10px]">
                                 {' '}
-                                ({satOcc}槽{r.satActive && (r.satPositions ?? 0) === 0 ? '·到期日' : ''})
+                                ({satOcc}槽
+                                {r.satActive && (r.satPositions ?? 0) === 0 ? '·到期日' : ''})
                               </span>
                             </>
                           ) : (
@@ -906,13 +1055,21 @@ function TimelineCard() {
                         </td>
                       ) : null}
                       {isTwin || isSgap ? (
-                        <td className="py-1 pr-2 text-[var(--k-muted)]" title="strict 桶（最低波 1/3）">
-                          {r.gateOpen ? r.strictCount ?? 0 : '—'}
+                        <td
+                          className="py-1 pr-2 text-[var(--k-muted)]"
+                          title="strict 桶（最低波 1/3）"
+                        >
+                          {r.gateOpen ? (r.strictCount ?? 0) : '—'}
                         </td>
                       ) : null}
                       {isTwin || isSgap ? (
                         <td
-                          className={cn('py-1 pr-2', ((r.skipT1Count ?? 0) > 0 || (r.skipC1Count ?? 0) > 0) ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--k-muted)]')}
+                          className={cn(
+                            'py-1 pr-2',
+                            (r.skipT1Count ?? 0) > 0 || (r.skipC1Count ?? 0) > 0
+                              ? 'text-amber-700 dark:text-amber-300'
+                              : 'text-[var(--k-muted)]',
+                          )}
                           title={`桶内 T-1 涨停 ${r.skipT1Count ?? 0} · C1 14:30涨超不买 ${r.skipC1Count ?? 0} · strict 不补`}
                         >
                           {r.gateOpen ? `T1 ${r.skipT1Count ?? 0} · C1 ${r.skipC1Count ?? 0}` : '—'}
@@ -920,7 +1077,7 @@ function TimelineCard() {
                       ) : null}
                       {isTwin || isSgap ? (
                         <td className="py-1 pr-2 text-[var(--k-muted)]" title="当日新开槽">
-                          {r.gateOpen ? r.filledToday ?? 0 : '—'}
+                          {r.gateOpen ? (r.filledToday ?? 0) : '—'}
                         </td>
                       ) : null}
                       {isTwin || isSgap ? (
@@ -949,7 +1106,11 @@ function TimelineCard() {
                   : '择强单轨（股票vs金/油/纳指/债 同池 mom60＞MA200）· 定案 docs/modules/pick-strong-track.md'}{' '}
               · 卖出=前日有今日无
             </p>
-            <button type="button" onClick={() => setShowAll((v) => !v)} className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60">
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+            >
               {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}
             </button>
           </div>
@@ -1013,17 +1174,25 @@ function ReturnAttributionCard({
         </span>
       </div>
       <p className="mb-2 text-[10px] text-[var(--k-muted)]">
-        只拆<strong>单轨</strong>各腿：加法贡献 / 几何袖 / 月度 / 极值日。与实盘对照请看上方「归因对照」。已实现成交附在表底仅作参考。
+        只拆<strong>单轨</strong>各腿：加法贡献 / 几何袖 / 月度 /
+        极值日。与实盘对照请看上方「归因对照」。已实现成交附在表底仅作参考。
       </p>
       {q.isError ? (
         <div className="text-xs">
           <p className="text-red-700">{String(q.error)}</p>
-          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={() => q.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 h-7 text-xs"
+            onClick={() => q.refetch()}
+          >
             重试
           </Button>
         </div>
       ) : q.isFetching && !ps ? (
-        <p className="text-xs text-[var(--k-muted)]">计算中…（首次约与 Timeline 同耗时，已共享缓存）</p>
+        <p className="text-xs text-[var(--k-muted)]">
+          计算中…（首次约与 Timeline 同耗时，已共享缓存）
+        </p>
       ) : !ps ? (
         <p className="text-xs text-[var(--k-muted)]">暂无数据</p>
       ) : (
@@ -1038,14 +1207,20 @@ function ReturnAttributionCard({
                   : `${ps.totalDays} 日`
               }
             />
-            <StatCard label="加法贡献合计" value={`${ps.totalAddPct.toFixed(1)}%`} sub="Σ日收益（非复利）" />
+            <StatCard
+              label="加法贡献合计"
+              value={`${ps.totalAddPct.toFixed(1)}%`}
+              sub="Σ日收益（非复利）"
+            />
             <StatCard
               label="最大贡献腿"
               value={(() => {
                 const best = pickOrder
                   .map((k) => [k, ps.byPick[k]?.contribAddPct ?? 0] as const)
                   .sort((a, b) => b[1] - a[1])[0];
-                return best ? `${PICK_LABELS[best[0]] ?? best[0]} ${best[1] >= 0 ? '+' : ''}${best[1].toFixed(1)}%` : '—';
+                return best
+                  ? `${PICK_LABELS[best[0]] ?? best[0]} ${best[1] >= 0 ? '+' : ''}${best[1].toFixed(1)}%`
+                  : '—';
               })()}
               sub="按加法贡献"
             />
@@ -1140,7 +1315,10 @@ function ReturnAttributionCard({
               <div className="mb-1 text-[11px] font-medium">极值日（|日收益| Top）</div>
               <ul className="grid gap-0.5 text-[11px] tabular-nums md:grid-cols-2">
                 {ps.topDays.map((d) => (
-                  <li key={d.date} className="flex gap-2 border-t border-[var(--k-border)]/30 py-0.5">
+                  <li
+                    key={d.date}
+                    className="flex gap-2 border-t border-[var(--k-border)]/30 py-0.5"
+                  >
                     <span className="text-[var(--k-muted)]">{d.date}</span>
                     <span>{PICK_LABELS[d.pick] ?? d.pick}</span>
                     <span className={cn('ml-auto font-medium', tone(d.dayRetPct))}>
@@ -1160,7 +1338,9 @@ function ReturnAttributionCard({
                 className="mb-1 flex items-center gap-1 text-[11px] font-medium"
                 onClick={() => setShowStock((v) => !v)}
               >
-                <ChevronDown className={cn('size-3 transition-transform', showStock && 'rotate-180')} />
+                <ChevronDown
+                  className={cn('size-3 transition-transform', showStock && 'rotate-180')}
+                />
                 STOCK 个股贡献（{ps.stockBreakdown.stockDays} 个股票日 · Top）
               </button>
               {showStock && (
@@ -1201,13 +1381,19 @@ function ReturnAttributionCard({
                 {ut.closedCount > 0 &&
                   ' · ' +
                     Object.entries(ut.byBucket)
-                      .map(([b, s]) => `${PICK_LABELS[b] ?? b} ${s.sumPnlPct >= 0 ? '+' : ''}${s.sumPnlPct.toFixed(1)}%`)
+                      .map(
+                        ([b, s]) =>
+                          `${PICK_LABELS[b] ?? b} ${s.sumPnlPct >= 0 ? '+' : ''}${s.sumPnlPct.toFixed(1)}%`,
+                      )
                       .join(' · ')}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2 text-[11px] tabular-nums">
                 {Object.entries(ut.byBucket).map(([b, s]) => (
-                  <span key={b} className={cn('rounded bg-[var(--k-bg)] px-1.5 py-0.5', tone(s.sumPnlPct))}>
+                  <span
+                    key={b}
+                    className={cn('rounded bg-[var(--k-bg)] px-1.5 py-0.5', tone(s.sumPnlPct))}
+                  >
                     {PICK_LABELS[b] ?? b} ×{s.count} {s.sumPnlPct >= 0 ? '+' : ''}
                     {s.sumPnlPct.toFixed(1)}%
                   </span>
@@ -1277,516 +1463,626 @@ export function BacktestPage() {
           <ConclusionBoard overview={overviewQ.data} />
           <RollingOosCard overview={overviewQ.data} />
 
-      {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
-      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
-        <button
-          type="button"
-          onClick={() => setAdvancedOn((v) => !v)}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] font-medium"
-        >
-          <ChevronDown className={cn('size-3.5 text-[var(--k-muted)] transition-transform', advancedOn && 'rotate-180')} />
-          高级：参数敏感度工具（单窗回测 / 网格 / 相关性 / 卖出归因）
-          <span className="text-[10px] font-normal text-[var(--k-muted)]">
-            仅研究用途 · 不作发布依据
-          </span>
-        </button>
-        {advancedOn && (
-          <div className="flex flex-col gap-4 px-3 pb-3">
-      {/* 参数区 */}
-      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-        <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-          <Activity className="size-3.5" />
-          回测 · 参数（信号 = 历史实际 TrendOK 分 · 平仓逻辑与 live paper 同码 · 默认=趋势跟随方案）
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            开始
-            <input
-              type="date"
-              className={INPUT_CLS}
-              value={params.start}
-              onChange={(e) => set('start', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            结束
-            <input
-              type="date"
-              className={INPUT_CLS}
-              value={params.end}
-              onChange={(e) => set('end', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            Score 阈值
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.scoreThreshold}
-              onChange={(e) => set('scoreThreshold', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            Max hold（天）
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.maxHoldDays}
-              onChange={(e) => set('maxHoldDays', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            止损 %
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.stopLossPct}
-              onChange={(e) => set('stopLossPct', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            移动止损 %
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.trailingStopPct}
-              placeholder="0=关闭"
-              onChange={(e) => set('trailingStopPct', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            单笔仓位
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              max="1"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.positionPct}
-              onChange={(e) => set('positionPct', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            持仓上限
-            <input
-              type="number"
-              min="1"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.maxPositions}
-              onChange={(e) => set('maxPositions', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            RS 排名过滤
-            <input
-              type="number"
-              step="0.05"
-              min="0"
-              max="1"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.rsRankMin}
-              placeholder="0=关闭"
-              onChange={(e) => set('rsRankMin', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            Diverging 仓位
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="1"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.divergingScale}
-              placeholder="0=不开仓"
-              onChange={(e) => set('divergingScale', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            止盈 %
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.targetPnlPct}
-              placeholder="100=不止盈"
-              onChange={(e) => set('targetPnlPct', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            Score 平仓线
-            <input
-              type="number"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.scoreFloor}
-              placeholder="0=不平仓"
-              onChange={(e) => set('scoreFloor', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            恐慌冷却（天）
-            <input
-              type="number"
-              min="0"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.panicCooldownDays}
-              placeholder="0=关闭"
-              onChange={(e) => set('panicCooldownDays', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            滑点 %
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              className={cn(INPUT_CLS, 'w-20')}
-              value={params.slippagePct}
-              placeholder="0=关闭"
-              onChange={(e) => set('slippagePct', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            排除板块（前缀逗号分隔，300=创业板）
-            <input
-              type="text"
-              className={cn(INPUT_CLS, 'w-28')}
-              value={params.excludeBoards}
-              placeholder="空=不过滤"
-              onChange={(e) => set('excludeBoards', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
-            入池闸门
-            <select
-              className={INPUT_CLS}
-              value={params.gates}
-              onChange={(e) => set('gates', e.target.value)}
+          {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
+          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
+            <button
+              type="button"
+              onClick={() => setAdvancedOn((v) => !v)}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] font-medium"
             >
-              {GATE_LEVELS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button
-            size="sm"
-            disabled={runQ.isFetching}
-            onClick={() => {
-              setSubmitted(params);
-              setAttempt((a) => a + 1);
-              setGridOn(false);
-            }}
-          >
-            {runQ.isFetching ? '计算中…' : '运行回测'}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setGridOn((g) => !g);
-              setSubmitted(DEFAULT_PARAMS);
-            }}
-          >
-            {gridOn ? '关闭网格' : '敏感度网格 (36)'}
-          </Button>
-        </div>
-        <div className="mt-2 text-[10px] text-[var(--k-muted)]">
-          净口径：已扣除往返成本（CN 0.30%）。入池闸门与实盘同规则：regime=指数红绿灯
-          全绿才开新仓；full=红绿灯 + 全行业资金流不转负 + 个股行业在 5D 净流入 Top3
-          ∪ 动量突破（历史数据缺失日降级为仅 regime）。RS 排名过滤=全市场 20 日相对强度
-          百分位（0.8 = 只买前 20% 强票；缺数据日 fail-closed）。单笔仓位×持仓上限=资金
-          模型。移动止损=峰值回撤平仓（0 关闭）。Diverging 仓位=震荡市开仓比例
-          （0=不开，0.5=半仓；Weak 始终不开仓）。仅参数敏感度参考，不作发布依据。
-        </div>
-      </div>
-
-      {/* 单配置结果 */}
-      {!gridOn && (
-        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-          <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-            <BarChart3 className="size-3.5" />
-            单配置结果
-            {runQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中…</span>}
-          </div>
-          {runQ.isError ? (
-            <p className="text-xs text-red-700">{String(runQ.error)}</p>
-          ) : s ? (
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
-              <StatCard label="已平仓交易" value={String(s.closed)} sub={`窗口 ${s.calendar_days} 个交易日`} />
-              <StatCard label="胜率（净）" value={winRate(s.win_rate)} sub={`${s.wins} 胜 / ${s.losses} 负`} />
-              <StatCard label="平均净盈亏" value={pct(s.avg_net_pnl_pct)} sub={`毛 ${pct(s.avg_gross_pnl_pct)} · 成本 ${pct(s.avg_costs_pct)}`} />
-              <StatCard label="最大回撤" value={pct(s.max_drawdown_pct, 1)} sub="累计净盈亏曲线" />
-              <StatCard label="累计净收益" value={pct(s.total_net_pnl_pct, 1)} sub={`按 ${params.positionPct * 100}% 仓位折算`} />
-              <StatCard label="窗口末持仓" value={String(s.open_at_end)} sub="无法定价的仓位" />
-              <StatCard
-                label="分档胜率"
-                value={Object.keys(s.by_score_bucket).length ? '分档' : '—'}
-                sub={Object.entries(s.by_score_bucket)
-                  .map(([b, v]) => `${b}:${(v.winRate ?? 0).toFixed(2)}`)
-                  .join(' · ')}
+              <ChevronDown
+                className={cn(
+                  'size-3.5 text-[var(--k-muted)] transition-transform',
+                  advancedOn && 'rotate-180',
+                )}
               />
-              <StatCard
-                label="闸门拦截"
-                value={String(Object.values(s.gated_blocks).reduce((a, b) => a + b, 0))}
-                sub={Object.entries(s.gated_blocks)
-                  .map(([k, v]) => `${k}×${v}`)
-                  .join(' · ')}
-              />
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--k-muted)]">点「运行回测」开始。</p>
-          )}
-        </div>
-      )}
-
-      {/* 基准 */}
-      {sensQ.data && sensQ.data.benchmarks.length > 0 && (
-        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-          <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-            <Activity className="size-3.5" />
-            基准对比（窗口年化 · 目标 = 最强指数 +10%）
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {sensQ.data.benchmarks.map((b) => (
-              <div key={b.ts_code} className="rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[11px]">
-                <span className="text-[var(--k-muted)]">{b.name}</span>{' '}
-                <span className={cn('font-semibold tabular-nums', b.annual_pct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-400')}>
-                  {pct(b.annual_pct, 1)}/年
-                </span>
-                <span className="text-[10px] text-[var(--k-muted)]">（窗口 {pct(b.total_return_pct, 1)}）</span>
-              </div>
-            ))}
-            {(() => {
-              const best = sensQ.data.benchmarks.reduce((a, b) => (b.annual_pct > a.annual_pct ? b : a), sensQ.data.benchmarks[0]);
-              return (
-                <div className="rounded-md border border-[var(--k-accent)]/50 bg-[var(--k-accent)]/5 px-2.5 py-1.5 text-[11px]">
-                  <span className="text-[var(--k-muted)]">目标线：</span>
-                  <span className="font-semibold tabular-nums">{best.name} +10% = {pct(best.annual_pct + 10, 1)}/年</span>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* 敏感度网格 */}
-      {gridOn && (
-        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-          <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-            <BarChart3 className="size-3.5" />
-            敏感度网格（score × hold × stop × 闸门 · 默认窗口 · 按胜率排序 · 点击行载入单配置）
-            {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>}
-          </div>
-          {sensQ.isError ? (
-            <p className="text-xs text-red-700">{String(sensQ.error)}</p>
-          ) : sensQ.data ? (
-            <div className="max-h-[480px] overflow-auto">
-              <table className="w-full text-left text-xs tabular-nums">
-                <thead className="sticky top-0 bg-[var(--k-surface)]">
-                  <tr className="text-[10px] text-[var(--k-muted)]">
-                    <th className="py-1 pr-2">闸门</th>
-                    <th className="py-1 pr-2">score</th>
-                    <th className="py-1 pr-2">hold</th>
-                    <th className="py-1 pr-2">stop</th>
-                    <th className="py-1 pr-2">trail</th>
-                    <th className="py-1 pr-2">trades</th>
-                    <th className="py-1 pr-2">胜率</th>
-                    <th className="py-1 pr-2">均净%</th>
-                    <th className="py-1 pr-2">年化%</th>
-                    <th className="py-1 pr-2">超额%</th>
-                    <th className="py-1 pr-2">夏普</th>
-                    <th className="py-1 pr-2">maxDD%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...sensQ.data.results]
-                    .sort((a, b) => (b.win_rate ?? -1) - (a.win_rate ?? -1))
-                    .map((r, i) => (
-                      <tr
-                        key={i}
-                        className="cursor-pointer border-t border-[var(--k-border)]/60 hover:bg-[var(--k-accent)]/5"
-                        onClick={() => {
-                          setParams((p) => ({
-                            ...p,
-                            scoreThreshold: r.config.score_threshold,
-                            maxHoldDays: r.config.max_hold_days,
-                            stopLossPct: r.config.stop_loss_pct,
-                            gates: r.config.gates,
-                          }));
-                          setSubmitted((p) => ({
-                            ...p,
-                            scoreThreshold: r.config.score_threshold,
-                            maxHoldDays: r.config.max_hold_days,
-                            stopLossPct: r.config.stop_loss_pct,
-                            gates: r.config.gates,
-                          }));
-                          setAttempt((a) => a + 1);
-                          setGridOn(false);
-                        }}
-                        title="点击 = 载入该配置到上方单配置回测并运行"
+              高级：参数敏感度工具（单窗回测 / 网格 / 相关性 / 卖出归因）
+              <span className="text-[10px] font-normal text-[var(--k-muted)]">
+                仅研究用途 · 不作发布依据
+              </span>
+            </button>
+            {advancedOn && (
+              <div className="flex flex-col gap-4 px-3 pb-3">
+                {/* 参数区 */}
+                <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                    <Activity className="size-3.5" />
+                    回测 · 参数（信号 = 历史实际 TrendOK 分 · 平仓逻辑与 live paper 同码 ·
+                    默认=趋势跟随方案）
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      开始
+                      <input
+                        type="date"
+                        className={INPUT_CLS}
+                        value={params.start}
+                        onChange={(e) => set('start', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      结束
+                      <input
+                        type="date"
+                        className={INPUT_CLS}
+                        value={params.end}
+                        onChange={(e) => set('end', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      Score 阈值
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.scoreThreshold}
+                        onChange={(e) => set('scoreThreshold', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      Max hold（天）
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.maxHoldDays}
+                        onChange={(e) => set('maxHoldDays', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      止损 %
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.stopLossPct}
+                        onChange={(e) => set('stopLossPct', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      移动止损 %
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.trailingStopPct}
+                        placeholder="0=关闭"
+                        onChange={(e) => set('trailingStopPct', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      单笔仓位
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max="1"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.positionPct}
+                        onChange={(e) => set('positionPct', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      持仓上限
+                      <input
+                        type="number"
+                        min="1"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.maxPositions}
+                        onChange={(e) => set('maxPositions', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      RS 排名过滤
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="1"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.rsRankMin}
+                        placeholder="0=关闭"
+                        onChange={(e) => set('rsRankMin', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      Diverging 仓位
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="1"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.divergingScale}
+                        placeholder="0=不开仓"
+                        onChange={(e) => set('divergingScale', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      止盈 %
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.targetPnlPct}
+                        placeholder="100=不止盈"
+                        onChange={(e) => set('targetPnlPct', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      Score 平仓线
+                      <input
+                        type="number"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.scoreFloor}
+                        placeholder="0=不平仓"
+                        onChange={(e) => set('scoreFloor', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      恐慌冷却（天）
+                      <input
+                        type="number"
+                        min="0"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.panicCooldownDays}
+                        placeholder="0=关闭"
+                        onChange={(e) => set('panicCooldownDays', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      滑点 %
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className={cn(INPUT_CLS, 'w-20')}
+                        value={params.slippagePct}
+                        placeholder="0=关闭"
+                        onChange={(e) => set('slippagePct', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      排除板块（前缀逗号分隔，300=创业板）
+                      <input
+                        type="text"
+                        className={cn(INPUT_CLS, 'w-28')}
+                        value={params.excludeBoards}
+                        placeholder="空=不过滤"
+                        onChange={(e) => set('excludeBoards', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+                      入池闸门
+                      <select
+                        className={INPUT_CLS}
+                        value={params.gates}
+                        onChange={(e) => set('gates', e.target.value)}
                       >
-                        <td className="py-1 pr-2 text-[var(--k-muted)]">{r.config.gates}</td>
-                        <td className="py-1 pr-2">{r.config.score_threshold.toFixed(0)}</td>
-                        <td className="py-1 pr-2">{r.config.max_hold_days}</td>
-                        <td className="py-1 pr-2">{r.config.stop_loss_pct.toFixed(0)}</td>
-                        <td className="py-1 pr-2">{r.config.trailing_stop_pct ? r.config.trailing_stop_pct.toFixed(0) : '—'}</td>
-                        <td className="py-1 pr-2">{r.closed}</td>
-                        <td className="py-1 pr-2 font-medium">{winRate(r.win_rate)}</td>
-                        <td className={cn('py-1 pr-2', tone(r.avg_net_pnl_pct))}>{pct(r.avg_net_pnl_pct)}</td>
-                        <td className={cn('py-1 pr-2 font-medium', tone(r.annual_net_pnl_pct))}>{pct(r.annual_net_pnl_pct, 1)}</td>
-                        <td className={cn('py-1 pr-2', r.excess_vs_best_benchmark_pct >= 10 ? 'font-semibold text-emerald-700 dark:text-emerald-300' : tone(r.excess_vs_best_benchmark_pct))}>
-                          {pct(r.excess_vs_best_benchmark_pct, 1)}
-                          {r.excess_vs_best_benchmark_pct >= 10 && ' ✓'}
-                        </td>
-                        <td className="py-1 pr-2">{r.sharpe ?? '—'}</td>
-                        <td className="py-1 pr-2">{pct(r.max_drawdown_pct, 1)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--k-muted)]">点「敏感度网格」运行（约 30s）。</p>
-          )}
-        </div>
-      )}
-
-      {/* 组合相关性（V7.0-01 · L3-P5） */}
-      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-        <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-          <ShieldAlert className="size-3.5" />
-          组合相关性防火墙（因子簇 ≥30% 拦新开仓 · 不强制平仓）
-          {corrQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中…</span>}
-        </div>
-        {corrQ.isError ? (
-          <p className="text-xs text-red-700">{String(corrQ.error)}</p>
-        ) : corrQ.data ? (
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-              {Object.entries(corrQ.data.clusters)
-                .sort((a, b) => b[1].exposurePct - a[1].exposurePct)
-                .filter(([, c]) => c.exposurePct > 0)
-                .map(([name, c]) => {
-                  const over = corrQ.data.overLimit.includes(name);
-                  return (
-                    <div
-                      key={name}
-                      className={cn(
-                        'rounded-md border px-2.5 py-2',
-                        over
-                          ? 'border-red-500/50 bg-red-500/5'
-                          : 'border-[var(--k-border)]',
-                      )}
+                        {GATE_LEVELS.map((g) => (
+                          <option key={g.value} value={g.value}>
+                            {g.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Button
+                      size="sm"
+                      disabled={runQ.isFetching}
+                      onClick={() => {
+                        setSubmitted(params);
+                        setAttempt((a) => a + 1);
+                        setGridOn(false);
+                      }}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-medium">{c.label}</span>
-                        <span className={cn('text-xs font-semibold tabular-nums', over ? 'text-red-600' : '')}>
-                          {c.exposurePct.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[10px] text-[var(--k-muted)]">
-                        {c.symbols.join(' · ')}
-                        {over && <span className="ml-1 text-red-600">（超限 · 新开仓被拦）</span>}
-                      </div>
+                      {runQ.isFetching ? '计算中…' : '运行回测'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setGridOn((g) => !g);
+                        setSubmitted(DEFAULT_PARAMS);
+                      }}
+                    >
+                      {gridOn ? '关闭网格' : '敏感度网格 (36)'}
+                    </Button>
+                  </div>
+                  <div className="mt-2 text-[10px] text-[var(--k-muted)]">
+                    净口径：已扣除往返成本（CN 0.30%）。入池闸门与实盘同规则：regime=指数红绿灯
+                    全绿才开新仓；full=红绿灯 + 全行业资金流不转负 + 个股行业在 5D 净流入 Top3 ∪
+                    动量突破（历史数据缺失日降级为仅 regime）。RS 排名过滤=全市场 20 日相对强度
+                    百分位（0.8 = 只买前 20% 强票；缺数据日 fail-closed）。单笔仓位×持仓上限=资金
+                    模型。移动止损=峰值回撤平仓（0 关闭）。Diverging 仓位=震荡市开仓比例
+                    （0=不开，0.5=半仓；Weak 始终不开仓）。仅参数敏感度参考，不作发布依据。
+                  </div>
+                </div>
+
+                {/* 单配置结果 */}
+                {!gridOn && (
+                  <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                      <BarChart3 className="size-3.5" />
+                      单配置结果
+                      {runQ.isFetching && (
+                        <span className="text-[10px] text-[var(--k-muted)]">计算中…</span>
+                      )}
                     </div>
-                  );
-                })}
-              {!Object.keys(corrQ.data.clusters).length && (
-                <p className="text-xs text-[var(--k-muted)]">无持仓数据。</p>
-              )}
-            </div>
-            {corrQ.data.topPairs.length > 0 && (
-              <div className="text-[11px] text-[var(--k-muted)]">
-                <span className="font-medium">高相关对（20 日收益率 r&gt;0.75）：</span>
-                {corrQ.data.topPairs.map(([a, b, r]) => (
-                  <span key={`${a}-${b}`} className="mr-3">
-                    {a} × {b} = <span className="tabular-nums">{r.toFixed(2)}</span>
-                  </span>
-                ))}
+                    {runQ.isError ? (
+                      <p className="text-xs text-red-700">{String(runQ.error)}</p>
+                    ) : s ? (
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
+                        <StatCard
+                          label="已平仓交易"
+                          value={String(s.closed)}
+                          sub={`窗口 ${s.calendar_days} 个交易日`}
+                        />
+                        <StatCard
+                          label="胜率（净）"
+                          value={winRate(s.win_rate)}
+                          sub={`${s.wins} 胜 / ${s.losses} 负`}
+                        />
+                        <StatCard
+                          label="平均净盈亏"
+                          value={pct(s.avg_net_pnl_pct)}
+                          sub={`毛 ${pct(s.avg_gross_pnl_pct)} · 成本 ${pct(s.avg_costs_pct)}`}
+                        />
+                        <StatCard
+                          label="最大回撤"
+                          value={pct(s.max_drawdown_pct, 1)}
+                          sub="累计净盈亏曲线"
+                        />
+                        <StatCard
+                          label="累计净收益"
+                          value={pct(s.total_net_pnl_pct, 1)}
+                          sub={`按 ${params.positionPct * 100}% 仓位折算`}
+                        />
+                        <StatCard
+                          label="窗口末持仓"
+                          value={String(s.open_at_end)}
+                          sub="无法定价的仓位"
+                        />
+                        <StatCard
+                          label="分档胜率"
+                          value={Object.keys(s.by_score_bucket).length ? '分档' : '—'}
+                          sub={Object.entries(s.by_score_bucket)
+                            .map(([b, v]) => `${b}:${(v.winRate ?? 0).toFixed(2)}`)
+                            .join(' · ')}
+                        />
+                        <StatCard
+                          label="闸门拦截"
+                          value={String(Object.values(s.gated_blocks).reduce((a, b) => a + b, 0))}
+                          sub={Object.entries(s.gated_blocks)
+                            .map(([k, v]) => `${k}×${v}`)
+                            .join(' · ')}
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[var(--k-muted)]">点「运行回测」开始。</p>
+                    )}
+                  </div>
+                )}
+
+                {/* 基准 */}
+                {sensQ.data && sensQ.data.benchmarks.length > 0 && (
+                  <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                      <Activity className="size-3.5" />
+                      基准对比（窗口年化 · 目标 = 最强指数 +10%）
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {sensQ.data.benchmarks.map((b) => (
+                        <div
+                          key={b.ts_code}
+                          className="rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[11px]"
+                        >
+                          <span className="text-[var(--k-muted)]">{b.name}</span>{' '}
+                          <span
+                            className={cn(
+                              'font-semibold tabular-nums',
+                              b.annual_pct >= 0
+                                ? 'text-emerald-700 dark:text-emerald-300'
+                                : 'text-red-700 dark:text-red-400',
+                            )}
+                          >
+                            {pct(b.annual_pct, 1)}/年
+                          </span>
+                          <span className="text-[10px] text-[var(--k-muted)]">
+                            （窗口 {pct(b.total_return_pct, 1)}）
+                          </span>
+                        </div>
+                      ))}
+                      {(() => {
+                        const best = sensQ.data.benchmarks.reduce(
+                          (a, b) => (b.annual_pct > a.annual_pct ? b : a),
+                          sensQ.data.benchmarks[0],
+                        );
+                        return (
+                          <div className="rounded-md border border-[var(--k-accent)]/50 bg-[var(--k-accent)]/5 px-2.5 py-1.5 text-[11px]">
+                            <span className="text-[var(--k-muted)]">目标线：</span>
+                            <span className="font-semibold tabular-nums">
+                              {best.name} +10% = {pct(best.annual_pct + 10, 1)}/年
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* 敏感度网格 */}
+                {gridOn && (
+                  <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                      <BarChart3 className="size-3.5" />
+                      敏感度网格（score × hold × stop × 闸门 · 默认窗口 · 按胜率排序 ·
+                      点击行载入单配置）
+                      {sensQ.isFetching && (
+                        <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>
+                      )}
+                    </div>
+                    {sensQ.isError ? (
+                      <p className="text-xs text-red-700">{String(sensQ.error)}</p>
+                    ) : sensQ.data ? (
+                      <div className="max-h-[480px] overflow-auto">
+                        <table className="w-full text-left text-xs tabular-nums">
+                          <thead className="sticky top-0 bg-[var(--k-surface)]">
+                            <tr className="text-[10px] text-[var(--k-muted)]">
+                              <th className="py-1 pr-2">闸门</th>
+                              <th className="py-1 pr-2">score</th>
+                              <th className="py-1 pr-2">hold</th>
+                              <th className="py-1 pr-2">stop</th>
+                              <th className="py-1 pr-2">trail</th>
+                              <th className="py-1 pr-2">trades</th>
+                              <th className="py-1 pr-2">胜率</th>
+                              <th className="py-1 pr-2">均净%</th>
+                              <th className="py-1 pr-2">年化%</th>
+                              <th className="py-1 pr-2">超额%</th>
+                              <th className="py-1 pr-2">夏普</th>
+                              <th className="py-1 pr-2">maxDD%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...sensQ.data.results]
+                              .sort((a, b) => (b.win_rate ?? -1) - (a.win_rate ?? -1))
+                              .map((r, i) => (
+                                <tr
+                                  key={i}
+                                  className="cursor-pointer border-t border-[var(--k-border)]/60 hover:bg-[var(--k-accent)]/5"
+                                  onClick={() => {
+                                    setParams((p) => ({
+                                      ...p,
+                                      scoreThreshold: r.config.score_threshold,
+                                      maxHoldDays: r.config.max_hold_days,
+                                      stopLossPct: r.config.stop_loss_pct,
+                                      gates: r.config.gates,
+                                    }));
+                                    setSubmitted((p) => ({
+                                      ...p,
+                                      scoreThreshold: r.config.score_threshold,
+                                      maxHoldDays: r.config.max_hold_days,
+                                      stopLossPct: r.config.stop_loss_pct,
+                                      gates: r.config.gates,
+                                    }));
+                                    setAttempt((a) => a + 1);
+                                    setGridOn(false);
+                                  }}
+                                  title="点击 = 载入该配置到上方单配置回测并运行"
+                                >
+                                  <td className="py-1 pr-2 text-[var(--k-muted)]">
+                                    {r.config.gates}
+                                  </td>
+                                  <td className="py-1 pr-2">
+                                    {r.config.score_threshold.toFixed(0)}
+                                  </td>
+                                  <td className="py-1 pr-2">{r.config.max_hold_days}</td>
+                                  <td className="py-1 pr-2">{r.config.stop_loss_pct.toFixed(0)}</td>
+                                  <td className="py-1 pr-2">
+                                    {r.config.trailing_stop_pct
+                                      ? r.config.trailing_stop_pct.toFixed(0)
+                                      : '—'}
+                                  </td>
+                                  <td className="py-1 pr-2">{r.closed}</td>
+                                  <td className="py-1 pr-2 font-medium">{winRate(r.win_rate)}</td>
+                                  <td className={cn('py-1 pr-2', tone(r.avg_net_pnl_pct))}>
+                                    {pct(r.avg_net_pnl_pct)}
+                                  </td>
+                                  <td
+                                    className={cn(
+                                      'py-1 pr-2 font-medium',
+                                      tone(r.annual_net_pnl_pct),
+                                    )}
+                                  >
+                                    {pct(r.annual_net_pnl_pct, 1)}
+                                  </td>
+                                  <td
+                                    className={cn(
+                                      'py-1 pr-2',
+                                      r.excess_vs_best_benchmark_pct >= 10
+                                        ? 'font-semibold text-emerald-700 dark:text-emerald-300'
+                                        : tone(r.excess_vs_best_benchmark_pct),
+                                    )}
+                                  >
+                                    {pct(r.excess_vs_best_benchmark_pct, 1)}
+                                    {r.excess_vs_best_benchmark_pct >= 10 && ' ✓'}
+                                  </td>
+                                  <td className="py-1 pr-2">{r.sharpe ?? '—'}</td>
+                                  <td className="py-1 pr-2">{pct(r.max_drawdown_pct, 1)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[var(--k-muted)]">
+                        点「敏感度网格」运行（约 30s）。
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* 组合相关性（V7.0-01 · L3-P5） */}
+                <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                    <ShieldAlert className="size-3.5" />
+                    组合相关性防火墙（因子簇 ≥30% 拦新开仓 · 不强制平仓）
+                    {corrQ.isFetching && (
+                      <span className="text-[10px] text-[var(--k-muted)]">计算中…</span>
+                    )}
+                  </div>
+                  {corrQ.isError ? (
+                    <p className="text-xs text-red-700">{String(corrQ.error)}</p>
+                  ) : corrQ.data ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                        {Object.entries(corrQ.data.clusters)
+                          .sort((a, b) => b[1].exposurePct - a[1].exposurePct)
+                          .filter(([, c]) => c.exposurePct > 0)
+                          .map(([name, c]) => {
+                            const over = corrQ.data.overLimit.includes(name);
+                            return (
+                              <div
+                                key={name}
+                                className={cn(
+                                  'rounded-md border px-2.5 py-2',
+                                  over
+                                    ? 'border-red-500/50 bg-red-500/5'
+                                    : 'border-[var(--k-border)]',
+                                )}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-medium">{c.label}</span>
+                                  <span
+                                    className={cn(
+                                      'text-xs font-semibold tabular-nums',
+                                      over ? 'text-red-600' : '',
+                                    )}
+                                  >
+                                    {c.exposurePct.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-[10px] text-[var(--k-muted)]">
+                                  {c.symbols.join(' · ')}
+                                  {over && (
+                                    <span className="ml-1 text-red-600">（超限 · 新开仓被拦）</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        {!Object.keys(corrQ.data.clusters).length && (
+                          <p className="text-xs text-[var(--k-muted)]">无持仓数据。</p>
+                        )}
+                      </div>
+                      {corrQ.data.topPairs.length > 0 && (
+                        <div className="text-[11px] text-[var(--k-muted)]">
+                          <span className="font-medium">高相关对（20 日收益率 r&gt;0.75）：</span>
+                          {corrQ.data.topPairs.map(([a, b, r]) => (
+                            <span key={`${a}-${b}`} className="mr-3">
+                              {a} × {b} = <span className="tabular-nums">{r.toFixed(2)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {corrQ.data.empiricalNote && (
+                        <p className="text-[10px] text-[var(--k-muted)]">
+                          {corrQ.data.empiricalNote}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+                  )}
+                </div>
+
+                {/* 卖出归因 */}
+                <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+                    <TrendingDown className="size-3.5" />
+                    卖出归因（平仓后 {exitQ.data?.days ?? 5} 个交易日前向收益 · 样本{' '}
+                    {exitQ.data?.withForwardCount ?? 0}）
+                  </div>
+                  {exitQ.isError ? (
+                    <p className="text-xs text-red-700">{String(exitQ.error)}</p>
+                  ) : exitQ.data && exitQ.data.insufficient ? (
+                    <p className="text-xs text-[var(--k-muted)]">
+                      {exitQ.data.closedCount === 0
+                        ? 'paper 暂无平仓记录——系统刚起步，继续积累后这里才会出数字。'
+                        : exitQ.data.hint}
+                    </p>
+                  ) : exitQ.data ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                        <StatCard
+                          label="总体前向均值"
+                          value={pct(exitQ.data.overall.avgFwdPct)}
+                          sub="卖后 N 日收益"
+                        />
+                        <StatCard
+                          label="卖早率"
+                          value={winRate(exitQ.data.overall.earlyRate)}
+                          sub={`≥ +2% 仍上涨 ${exitQ.data.overall.earlyCount} 笔`}
+                        />
+                        <StatCard
+                          label="卖对率"
+                          value={winRate(exitQ.data.overall.wellRate)}
+                          sub={`≤ -1% 卖出后下跌 ${exitQ.data.overall.wellCount} 笔`}
+                        />
+                        <StatCard
+                          label="最多同时持仓"
+                          value={String(exitQ.data.exposure.maxSimultaneous)}
+                          sub={
+                            exitQ.data.exposure.singleStockWeightFloorPct != null
+                              ? `单票权重下界 ${exitQ.data.exposure.singleStockWeightFloorPct}%（红线 15%/板块 30%）`
+                              : '—'
+                          }
+                        />
+                      </div>
+                      <div className="overflow-auto">
+                        <table className="w-full text-left text-xs tabular-nums">
+                          <thead>
+                            <tr className="text-[10px] text-[var(--k-muted)]">
+                              <th className="py-1 pr-3">平仓理由</th>
+                              <th className="py-1 pr-3">已平仓</th>
+                              <th className="py-1 pr-3">前向样本</th>
+                              <th className="py-1 pr-3">平均前向%</th>
+                              <th className="py-1 pr-3">卖早率</th>
+                              <th className="py-1 pr-3">卖对率</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(exitQ.data.byReason).map(([reason, b]) => (
+                              <tr key={reason} className="border-t border-[var(--k-border)]/60">
+                                <td className="py-1 pr-3">{b.label || reason}</td>
+                                <td className="py-1 pr-3">{b.count}</td>
+                                <td className="py-1 pr-3">{b.withForward ?? '—'}</td>
+                                <td className={cn('py-1 pr-3', tone(b.avgFwdPct ?? null))}>
+                                  {pct(b.avgFwdPct ?? null)}
+                                </td>
+                                <td className="py-1 pr-3">
+                                  {b.earlyRate != null ? `${(b.earlyRate * 100).toFixed(0)}%` : '—'}
+                                </td>
+                                <td className="py-1 pr-3">
+                                  {b.wellRate != null ? `${(b.wellRate * 100).toFixed(0)}%` : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                            {!Object.keys(exitQ.data.byReason).length && (
+                              <tr>
+                                <td colSpan={6} className="py-2 text-[var(--k-muted)]">
+                                  暂无归因数据。
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10px] text-[var(--k-muted)]">
+                        {exitQ.data.exposure.note}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+                  )}
+                </div>
               </div>
             )}
-            {corrQ.data.empiricalNote && (
-              <p className="text-[10px] text-[var(--k-muted)]">{corrQ.data.empiricalNote}</p>
-            )}
           </div>
-        ) : (
-          <p className="text-xs text-[var(--k-muted)]">加载中…</p>
-        )}
-      </div>
-
-      {/* 卖出归因 */}
-      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-        <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-          <TrendingDown className="size-3.5" />
-          卖出归因（平仓后 {exitQ.data?.days ?? 5} 个交易日前向收益 · 样本 {exitQ.data?.withForwardCount ?? 0}）
-        </div>
-        {exitQ.isError ? (
-          <p className="text-xs text-red-700">{String(exitQ.error)}</p>
-        ) : exitQ.data && exitQ.data.insufficient ? (
-          <p className="text-xs text-[var(--k-muted)]">
-            {exitQ.data.closedCount === 0
-              ? 'paper 暂无平仓记录——系统刚起步，继续积累后这里才会出数字。'
-              : exitQ.data.hint}
-          </p>
-        ) : exitQ.data ? (
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <StatCard label="总体前向均值" value={pct(exitQ.data.overall.avgFwdPct)} sub="卖后 N 日收益" />
-              <StatCard label="卖早率" value={winRate(exitQ.data.overall.earlyRate)} sub={`≥ +2% 仍上涨 ${exitQ.data.overall.earlyCount} 笔`} />
-              <StatCard label="卖对率" value={winRate(exitQ.data.overall.wellRate)} sub={`≤ -1% 卖出后下跌 ${exitQ.data.overall.wellCount} 笔`} />
-              <StatCard
-                label="最多同时持仓"
-                value={String(exitQ.data.exposure.maxSimultaneous)}
-                sub={
-                  exitQ.data.exposure.singleStockWeightFloorPct != null
-                    ? `单票权重下界 ${exitQ.data.exposure.singleStockWeightFloorPct}%（红线 15%/板块 30%）`
-                    : '—'
-                }
-              />
-            </div>
-            <div className="overflow-auto">
-              <table className="w-full text-left text-xs tabular-nums">
-                <thead>
-                  <tr className="text-[10px] text-[var(--k-muted)]">
-                    <th className="py-1 pr-3">平仓理由</th>
-                    <th className="py-1 pr-3">已平仓</th>
-                    <th className="py-1 pr-3">前向样本</th>
-                    <th className="py-1 pr-3">平均前向%</th>
-                    <th className="py-1 pr-3">卖早率</th>
-                    <th className="py-1 pr-3">卖对率</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(exitQ.data.byReason).map(([reason, b]) => (
-                    <tr key={reason} className="border-t border-[var(--k-border)]/60">
-                      <td className="py-1 pr-3">{b.label || reason}</td>
-                      <td className="py-1 pr-3">{b.count}</td>
-                      <td className="py-1 pr-3">{b.withForward ?? '—'}</td>
-                      <td className={cn('py-1 pr-3', tone(b.avgFwdPct ?? null))}>{pct(b.avgFwdPct ?? null)}</td>
-                      <td className="py-1 pr-3">{b.earlyRate != null ? `${(b.earlyRate * 100).toFixed(0)}%` : '—'}</td>
-                      <td className="py-1 pr-3">{b.wellRate != null ? `${(b.wellRate * 100).toFixed(0)}%` : '—'}</td>
-                    </tr>
-                  ))}
-                  {!Object.keys(exitQ.data.byReason).length && (
-                    <tr>
-                      <td colSpan={6} className="py-2 text-[var(--k-muted)]">
-                        暂无归因数据。
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[10px] text-[var(--k-muted)]">{exitQ.data.exposure.note}</p>
-          </div>
-        ) : (
-          <p className="text-xs text-[var(--k-muted)]">加载中…</p>
-        )}
-      </div>
-          </div>
-        )}
-      </div>
         </TabsContent>
       </Tabs>
     </div>

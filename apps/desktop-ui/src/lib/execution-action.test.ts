@@ -120,15 +120,21 @@ describe('evaluateNewEntryGates', () => {
     expect(isDefenseSector('银行')).toBe(true);
     expect(isDefenseSector('电力设备')).toBe(false);
     expect(isDefenseSector('电力')).toBe(true);
-    expect(evaluateNewEntryGates({ industryName: '股份制银行', mainlineAllow: allowSet([['股份制银行', '5D_TOP3']]) }).why).toBe(
-      'DEFENSE_SECTOR_BLOCK',
-    );
+    expect(
+      evaluateNewEntryGates({
+        industryName: '股份制银行',
+        mainlineAllow: allowSet([['股份制银行', '5D_TOP3']]),
+      }).why,
+    ).toBe('DEFENSE_SECTOR_BLOCK');
   });
 
   it('blocks missing industry', () => {
-    expect(evaluateNewEntryGates({ industryName: null, mainlineAllow: allowSet([['半导体', '5D_TOP3']]) }).why).toBe(
-      'MISSING_INDUSTRY',
-    );
+    expect(
+      evaluateNewEntryGates({
+        industryName: null,
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      }).why,
+    ).toBe('MISSING_INDUSTRY');
   });
 
   it('blocks when mainline data unavailable', () => {
@@ -327,13 +333,15 @@ describe('ETF exit behavior (rule isolation: TRIM over EXIT)', () => {
 
   it('deriveEtfFallbackStop derives drawdown stop from cost and armed peak', () => {
     // pnl 26.7% >= 10% → peak trail engaged: max(current*0.95, cost*0.95, peak*0.93)
-    expect(
-      deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 4.0, current: 3.8 }),
-    ).toBeCloseTo(3.72, 5);
+    expect(deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 4.0, current: 3.8 })).toBeCloseTo(
+      3.72,
+      5,
+    );
     // no profit → cost floor only
-    expect(
-      deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 3.05, current: 3.0 }),
-    ).toBeCloseTo(2.85, 5);
+    expect(deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 3.05, current: 3.0 })).toBeCloseTo(
+      2.85,
+      5,
+    );
     // missing cost → null (cannot derive a meaningful stop)
     expect(deriveEtfFallbackStop({ costPrice: null, maxPrice: 4.0, current: 3.0 })).toBeNull();
   });
@@ -346,7 +354,11 @@ describe('ETF exit behavior (rule isolation: TRIM over EXIT)', () => {
       trendok: {
         score: 60,
         stopLossPrice: 3.2,
-        stopLossParts: { exit_now: true, exit_reasons: ['trend_structure_break:close_below_ema20'], atr14: 0.1 },
+        stopLossParts: {
+          exit_now: true,
+          exit_reasons: ['trend_structure_break:close_below_ema20'],
+          atr14: 0.1,
+        },
       },
       currentPrice: 3.7,
     });
@@ -433,7 +445,10 @@ describe('ETF exit behavior (rule isolation: TRIM over EXIT)', () => {
 });
 
 describe('deriveActionCard', () => {
-  const mainline = allowSet([['半导体', '5D_TOP3'], ['AI应用', 'MOMENTUM']]);
+  const mainline = allowSet([
+    ['半导体', '5D_TOP3'],
+    ['AI应用', 'MOMENTUM'],
+  ]);
 
   it('marks BUY when attack + buy + score + mainline', () => {
     const card = deriveActionCard({
@@ -846,7 +861,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -864,7 +885,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: 'AI应用' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 10.5,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
@@ -882,7 +909,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 10.5,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
@@ -900,7 +933,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { warn_reduce_half: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 8, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 8,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -917,7 +956,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -935,7 +980,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -952,7 +1003,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -970,7 +1027,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -987,7 +1050,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: { ready: false, names: new Set(), byName: new Map() },
     });
@@ -1072,7 +1141,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       intradayChgPct: 6.1,
@@ -1132,7 +1207,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       intradayChgPct: 8,
@@ -1195,7 +1276,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -1305,7 +1392,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 5,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -1328,7 +1421,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 15, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 15,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -1347,7 +1446,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 14.9, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 14.9,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -1366,7 +1471,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 20,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -1384,7 +1495,13 @@ describe('deriveActionCard', () => {
         stopLossPrice: 0.55,
         stopLossParts: { atr14: 0.01 },
       },
-      position: { symbol: 'ETF:513180', costPrice: 0.5, positionPct: 27.9, maxPrice: 0.56, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'ETF:513180',
+        costPrice: 0.5,
+        positionPct: 27.9,
+        maxPrice: 0.56,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 0.57,
       mainlineAllow: mainline,
     });
@@ -1441,7 +1558,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 20,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -1459,7 +1582,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 20,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -1472,8 +1601,14 @@ describe('deriveActionCard', () => {
 
   it('blocks BUY when sector concentration >= 30%', () => {
     const exposure = buildSectorExposureByIndustry([
-      { industryName: '半导体', position: { symbol: 'CN:1', positionPct: 15, entryDate: '2026-07-01' } },
-      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 15, entryDate: '2026-07-01' } },
+      {
+        industryName: '半导体',
+        position: { symbol: 'CN:1', positionPct: 15, entryDate: '2026-07-01' },
+      },
+      {
+        industryName: '半导体',
+        position: { symbol: 'CN:2', positionPct: 15, entryDate: '2026-07-01' },
+      },
     ]);
     expect(exposure.get('半导体')).toBe(30);
     expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(true);
@@ -1509,7 +1644,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 10,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sectorExposureByIndustry: exposure,
@@ -1559,8 +1700,14 @@ describe('deriveActionCard', () => {
 
   it('excludes holdings without positionPct from sector sum', () => {
     const exposure = buildSectorExposureByIndustry([
-      { industryName: '半导体', position: { symbol: 'CN:1', costPrice: 10, entryDate: '2026-07-01' } },
-      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 10, entryDate: '2026-07-01' } },
+      {
+        industryName: '半导体',
+        position: { symbol: 'CN:1', costPrice: 10, entryDate: '2026-07-01' },
+      },
+      {
+        industryName: '半导体',
+        position: { symbol: 'CN:2', positionPct: 10, entryDate: '2026-07-01' },
+      },
     ]);
     expect(exposure.get('半导体')).toBe(10);
     expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(false);
@@ -1577,7 +1724,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 10,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sectorExposureByIndustry: new Map([['半导体', 40]]),
@@ -1704,7 +1857,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 10,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sleeveExposurePct: 60,
@@ -1781,7 +1940,13 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 10,
+        positionPct: 10,
+        maxPrice: 11,
+        entryDate: '2026-07-01',
+      },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sleeveExposurePct: 90,
@@ -1810,7 +1975,9 @@ describe('deriveActionCard', () => {
       ]),
     ).toBe(2);
     expect(isHeldMissingPositionPct({ symbol: 'CN:1', costPrice: 10 })).toBe(true);
-    expect(isHeldMissingPositionPct({ symbol: 'CN:2', costPrice: 10, positionPct: 15 })).toBe(false);
+    expect(isHeldMissingPositionPct({ symbol: 'CN:2', costPrice: 10, positionPct: 15 })).toBe(
+      false,
+    );
     expect(isHeldMissingPositionPct({ symbol: 'CN:3' })).toBe(false);
   });
 
@@ -1888,23 +2055,29 @@ describe('V7.0-02 risk-parity sizing (suggestFireSizePct)', () => {
     positionRangeHint: '50%-60%',
   };
   it('keeps 5% clip for wide-stop names (risk budget not binding)', () => {
-    expect(
-      suggestFireSizePct({ ...base, stopDistancePct: 5 }),
-    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: 5 });
+    expect(suggestFireSizePct({ ...base, stopDistancePct: 5 })).toEqual({
+      addPct: 5,
+      note: 'clip',
+      stopDistancePct: 5,
+    });
   });
 
   it('shrinks size when stop distance is wide (risk binds)', () => {
     // 0.5% budget / 12% stop = 4.17 → 4.2
-    expect(
-      suggestFireSizePct({ ...base, stopDistancePct: 12 }),
-    ).toEqual({ addPct: 4.2, note: 'risk', stopDistancePct: 12 });
+    expect(suggestFireSizePct({ ...base, stopDistancePct: 12 })).toEqual({
+      addPct: 4.2,
+      note: 'risk',
+      stopDistancePct: 12,
+    });
   });
 
   it('allows the floor size exactly at RISK_MIN_SIZE_PCT', () => {
     // 0.5 / 20% = 2.5 → allowed
-    expect(
-      suggestFireSizePct({ ...base, stopDistancePct: 20 }),
-    ).toEqual({ addPct: 2.5, note: 'risk', stopDistancePct: 20 });
+    expect(suggestFireSizePct({ ...base, stopDistancePct: 20 })).toEqual({
+      addPct: 2.5,
+      note: 'risk',
+      stopDistancePct: 20,
+    });
   });
 
   it('rejects the fire when risk size falls below the floor', () => {
@@ -1914,9 +2087,11 @@ describe('V7.0-02 risk-parity sizing (suggestFireSizePct)', () => {
 
   it('falls back to 2×ATR% when no stop distance is known', () => {
     // atr14=6 on ref 100 → 12% → risk binds → 4.2
-    expect(
-      suggestFireSizePct({ ...base, atr14: 6, referencePrice: 100 }),
-    ).toEqual({ addPct: 4.2, note: 'risk', stopDistancePct: 12 });
+    expect(suggestFireSizePct({ ...base, atr14: 6, referencePrice: 100 })).toEqual({
+      addPct: 4.2,
+      note: 'risk',
+      stopDistancePct: 12,
+    });
   });
 
   it('prefers actual stop distance over ATR fallback', () => {
@@ -1945,9 +2120,11 @@ describe('V7.0-02 risk-parity sizing (suggestFireSizePct)', () => {
 
   it('does not bind risk on ADD with near-zero cushion (stop above ref)', () => {
     // negative distance → no risk cap → clip
-    expect(
-      suggestFireSizePct({ ...base, stopDistancePct: -1 }),
-    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: null });
+    expect(suggestFireSizePct({ ...base, stopDistancePct: -1 })).toEqual({
+      addPct: 5,
+      note: 'clip',
+      stopDistancePct: null,
+    });
   });
 });
 
@@ -1989,7 +2166,13 @@ describe('V7.0-02 risk-parity sizing (deriveActionCard)', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 9, positionPct: 5, maxPrice: 10.5, entryDate: '2026-08-01' },
+      position: {
+        symbol: 'CN:600000',
+        costPrice: 9,
+        positionPct: 5,
+        maxPrice: 10.5,
+        entryDate: '2026-08-01',
+      },
       currentPrice: 10,
       mainlineAllow: mainline,
       sleeveExposurePct: 20,
@@ -2266,7 +2449,6 @@ describe('V6.2 TimeLock + Defensive Sleeve + Zero-Pos', () => {
   });
 });
 
-
 describe('V6.3 WEAK_ATTACK + TrendOK recovering', () => {
   const weakAttackGate: ExecutionGate = {
     ...attackGate,
@@ -2366,7 +2548,6 @@ describe('V6.3 WEAK_ATTACK + TrendOK recovering', () => {
 });
 
 describe('correlation cluster cap (V7.0-01 / L3-P5)', () => {
-
   it('blocks new entries when the cluster is at/over 30%', () => {
     expect(isCorrelationClusterBlocked(29.9)).toBe(false);
     expect(isCorrelationClusterBlocked(30)).toBe(true);

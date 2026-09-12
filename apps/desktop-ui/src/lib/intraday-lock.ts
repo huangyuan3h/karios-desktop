@@ -54,7 +54,9 @@ const LOCK_END_HK = 16 * 60; // HK close 16:00
 
 /** HK trading day ends at 16:00 — freeze the 14:00 snapshot until then. */
 function isHkSymbol(symbol: string): boolean {
-  return String(symbol || '').toUpperCase().startsWith('HK:');
+  return String(symbol || '')
+    .toUpperCase()
+    .startsWith('HK:');
 }
 
 /** Stable price used ONLY for action derivation (not display/PnL). */

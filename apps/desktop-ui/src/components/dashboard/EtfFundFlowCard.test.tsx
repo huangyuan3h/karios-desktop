@@ -64,7 +64,15 @@ describe('EtfFundFlowCard', () => {
     render(
       <EtfFundFlowCard
         etfFundFlow={{
-          items: [{ ...LIVE_ITEM, live: false, flowStatus: 'Stale', netFlow1d: null, flowAsOfDate: '2026-08-06' }],
+          items: [
+            {
+              ...LIVE_ITEM,
+              live: false,
+              flowStatus: 'Stale',
+              netFlow1d: null,
+              flowAsOfDate: '2026-08-06',
+            },
+          ],
         }}
       />,
     );

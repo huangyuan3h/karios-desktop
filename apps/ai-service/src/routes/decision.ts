@@ -41,8 +41,12 @@ export async function searchArchive(symbol: string): Promise<string> {
   }
   const lines = [`# 归档检索：${symbol}（${data.hits.length} 天命中）`, ''];
   for (const h of data.hits.slice(0, 10)) {
-    const fired = (h.outcome?.fired ?? []).filter((f) => String(f.symbol ?? '').includes(symbol.toUpperCase())).length;
-    lines.push(`- **${h.date}**（${h.status ?? 'open'}${fired ? ` · 开火 ${fired}` : ''}）：${String(h.matches?.[0] ?? '').slice(0, 120)}`);
+    const fired = (h.outcome?.fired ?? []).filter((f) =>
+      String(f.symbol ?? '').includes(symbol.toUpperCase()),
+    ).length;
+    lines.push(
+      `- **${h.date}**（${h.status ?? 'open'}${fired ? ` · 开火 ${fired}` : ''}）：${String(h.matches?.[0] ?? '').slice(0, 120)}`,
+    );
   }
   lines.push('');
   lines.push('- 提示：历史归档为判断记录，胜负统计以 outcome.fired/paper 为准。');
@@ -84,7 +88,11 @@ export async function queryHoldingsHealth(): Promise<string> {
       rs?: number;
       regime?: string | null;
     }> | null;
-    panicCooldown?: { lastPanicDate?: string | null; cooldownEndDate?: string | null; active?: boolean } | null;
+    panicCooldown?: {
+      lastPanicDate?: string | null;
+      cooldownEndDate?: string | null;
+      active?: boolean;
+    } | null;
     s3Rules?: Record<string, unknown>;
     thirdAssetSleeve?: {
       active?: boolean;
@@ -158,7 +166,9 @@ export async function queryHoldingsHealth(): Promise<string> {
           ` score=${c.score ?? '—'} · RS前50%=${c.rs ?? '—'} · 建议仓位 ~5%`,
       );
     }
-    lines.push('- 入池门槛：score≥65 · RS 前 50% · regime≠Weak · 行业在 5D 净流入 Top3 · 无恐慌冷却');
+    lines.push(
+      '- 入池门槛：score≥65 · RS 前 50% · regime≠Weak · 行业在 5D 净流入 Top3 · 无恐慌冷却',
+    );
   } else if (data.regime === 'Weak') {
     lines.push('', '- 今日 **无开仓候选**（regime=Weak：S-3 规定空仓观望，不新开仓）');
   } else {

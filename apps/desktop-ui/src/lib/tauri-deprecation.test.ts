@@ -25,9 +25,7 @@ describe('Tauri deprecation (OPT-060)', () => {
 
   it('root package.json does not depend on `concurrently` (only used by the removed `dev:tauri`)', () => {
     const pkg = readJson(ROOT_PACKAGE_JSON);
-    const devDeps = Object.keys(
-      (pkg.devDependencies ?? {}) as Record<string, string>,
-    );
+    const devDeps = Object.keys((pkg.devDependencies ?? {}) as Record<string, string>);
     expect(devDeps).not.toContain('concurrently');
   });
 
@@ -41,12 +39,8 @@ describe('Tauri deprecation (OPT-060)', () => {
   it('desktop-ui package.json has no @tauri-apps/* dependencies', () => {
     const pkg = readJson(DESKTOP_UI_PACKAGE_JSON);
     const deps = Object.keys((pkg.dependencies ?? {}) as Record<string, string>);
-    const devDeps = Object.keys(
-      (pkg.devDependencies ?? {}) as Record<string, string>,
-    );
-    const tauriDeps = [...deps, ...devDeps].filter((d) =>
-      d.startsWith('@tauri-apps/'),
-    );
+    const devDeps = Object.keys((pkg.devDependencies ?? {}) as Record<string, string>);
+    const tauriDeps = [...deps, ...devDeps].filter((d) => d.startsWith('@tauri-apps/'));
     expect(tauriDeps).toEqual([]);
   });
 

@@ -48,9 +48,7 @@ const HEALTH = {
   sentiment: 'caution',
   panicCooldown: { active: false },
   circuitBlocked: false,
-  s3Candidates: [
-    { symbol: 'CN:600801', name: '华新建材', score: 67.4 },
-  ],
+  s3Candidates: [{ symbol: 'CN:600801', name: '华新建材', score: 67.4 }],
   holdings: [
     {
       symbol: 'CN:300628',

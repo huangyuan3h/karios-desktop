@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FundFlowRow } from '@/lib/queries/backtest';
-import { flowLatest, flowSpanWindow, flowTickDates, flowTotalDaily20, fmtSigned, gateOnRuns } from '@/lib/fund-flow-series';
+import {
+  flowLatest,
+  flowSpanWindow,
+  flowTickDates,
+  flowTotalDaily20,
+  fmtSigned,
+  gateOnRuns,
+} from '@/lib/fund-flow-series';
 
 function row(over: Partial<FundFlowRow>): FundFlowRow {
   return {
@@ -57,7 +64,13 @@ describe('fund-flow-series', () => {
 
   it('spaces ticks evenly', () => {
     const rows = Array.from({ length: 10 }, (_, i) => row({ date: `2026-01-0${i + 1}` }));
-    expect(flowTickDates(rows, 5)).toEqual(['2026-01-01', '2026-01-03', '2026-01-05', '2026-01-07', '2026-01-09']);
+    expect(flowTickDates(rows, 5)).toEqual([
+      '2026-01-01',
+      '2026-01-03',
+      '2026-01-05',
+      '2026-01-07',
+      '2026-01-09',
+    ]);
   });
 
   it('formats signed values', () => {

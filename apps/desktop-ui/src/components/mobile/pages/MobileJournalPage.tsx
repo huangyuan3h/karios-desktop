@@ -33,7 +33,9 @@ export function MobileJournalPage() {
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiGetJson<{ total: number; items: TradeReview[] }>('/trade-reviews?limit=200&offset=0');
+      const res = await apiGetJson<{ total: number; items: TradeReview[] }>(
+        '/trade-reviews?limit=200&offset=0',
+      );
       setItems(res.items ?? []);
     } finally {
       setLoading(false);
@@ -49,7 +51,11 @@ export function MobileJournalPage() {
       <MobileSection
         title={`交易复盘（${items.length}）`}
         action={
-          <button type="button" onClick={() => void refresh()} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             刷新
           </button>
         }
@@ -70,7 +76,11 @@ export function MobileJournalPage() {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    {t.pnlPct != null ? <PctText value={t.pnlPct} /> : <StatusPill tone="neutral">未平仓</StatusPill>}
+                    {t.pnlPct != null ? (
+                      <PctText value={t.pnlPct} />
+                    ) : (
+                      <StatusPill tone="neutral">未平仓</StatusPill>
+                    )}
                   </div>
                 </div>
               </MobileCard>
@@ -83,13 +93,25 @@ export function MobileJournalPage() {
         )}
       </MobileSection>
 
-      <MobileSheet open={selected != null} onClose={() => setSelected(null)} title={`${selected?.stockName ?? selected?.symbol ?? ''} 复盘`}>
+      <MobileSheet
+        open={selected != null}
+        onClose={() => setSelected(null)}
+        title={`${selected?.stockName ?? selected?.symbol ?? ''} 复盘`}
+      >
         {selected ? (
           <div className="space-y-2.5">
             <div className="flex flex-wrap gap-1.5">
-              {selected.pnlPct != null ? <StatusPill tone={selected.pnlPct >= 0 ? 'up' : 'down'}>{selected.pnlPct.toFixed(2)}%</StatusPill> : null}
-              {selected.holdingDays != null ? <StatusPill tone="neutral">持有 {selected.holdingDays} 天</StatusPill> : null}
-              {selected.sellReason ? <StatusPill tone="warn">{selected.sellReason}</StatusPill> : null}
+              {selected.pnlPct != null ? (
+                <StatusPill tone={selected.pnlPct >= 0 ? 'up' : 'down'}>
+                  {selected.pnlPct.toFixed(2)}%
+                </StatusPill>
+              ) : null}
+              {selected.holdingDays != null ? (
+                <StatusPill tone="neutral">持有 {selected.holdingDays} 天</StatusPill>
+              ) : null}
+              {selected.sellReason ? (
+                <StatusPill tone="warn">{selected.sellReason}</StatusPill>
+              ) : null}
             </div>
             <MobileCard className="p-3 text-[var(--m-text-sm)]">
               <div className="grid grid-cols-2 gap-y-1.5 text-[var(--m-text-xs)]">
@@ -98,7 +120,9 @@ export function MobileJournalPage() {
                 <span className="text-[var(--k-muted)]">卖出价</span>
                 <span className="text-right font-mono">{selected.sellAvgPrice ?? '—'}</span>
                 <span className="text-[var(--k-muted)]">仓位</span>
-                <span className="text-right font-mono">{selected.positionPct != null ? `${selected.positionPct}%` : '—'}</span>
+                <span className="text-right font-mono">
+                  {selected.positionPct != null ? `${selected.positionPct}%` : '—'}
+                </span>
                 <span className="text-[var(--k-muted)]">盈亏额</span>
                 <span className="text-right font-mono">{selected.pnlAmount ?? '—'}</span>
               </div>
@@ -106,13 +130,17 @@ export function MobileJournalPage() {
             {selected.buyLogicNotes ? (
               <MobileCard className="p-3">
                 <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">买入逻辑</div>
-                <div className="mt-1 whitespace-pre-wrap text-[var(--m-text-sm)]">{selected.buyLogicNotes}</div>
+                <div className="mt-1 whitespace-pre-wrap text-[var(--m-text-sm)]">
+                  {selected.buyLogicNotes}
+                </div>
               </MobileCard>
             ) : null}
             {selected.executionNotes ? (
               <MobileCard className="p-3">
                 <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">执行备注</div>
-                <div className="mt-1 whitespace-pre-wrap text-[var(--m-text-sm)]">{selected.executionNotes}</div>
+                <div className="mt-1 whitespace-pre-wrap text-[var(--m-text-sm)]">
+                  {selected.executionNotes}
+                </div>
               </MobileCard>
             ) : null}
           </div>

@@ -61,17 +61,14 @@ export async function updateDecisionSession(
   sessionId: number,
   patch: { title?: string | null; systemPrompt?: string | null },
 ): Promise<DecisionSession> {
-  const resp = await fetch(
-    `${DATA_SYNC_BASE_URL}/api/decision/sessions/${sessionId}`,
-    {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: patch.title ?? null,
-        system_prompt: patch.systemPrompt ?? null,
-      }),
-    },
-  );
+  const resp = await fetch(`${DATA_SYNC_BASE_URL}/api/decision/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: patch.title ?? null,
+      system_prompt: patch.systemPrompt ?? null,
+    }),
+  });
   if (!resp.ok) throw new Error(`update session failed: ${resp.status}`);
   const data = (await resp.json()) as { ok: boolean; session: DecisionSession };
   return data.session;
@@ -95,8 +92,18 @@ export type DecisionSnapshot = {
   } | null;
   agentExchanges: Array<{ role: string; content: string; createdAt?: string }>;
   outcome: {
-    fired?: Array<{ symbol: string | null; field: string | null; newValue: string | null; source: string | null }>;
-    paper?: Array<{ symbol: string | null; side: string | null; status: string | null; pnlPct: number | null }>;
+    fired?: Array<{
+      symbol: string | null;
+      field: string | null;
+      newValue: string | null;
+      source: string | null;
+    }>;
+    paper?: Array<{
+      symbol: string | null;
+      side: string | null;
+      status: string | null;
+      pnlPct: number | null;
+    }>;
   } | null;
 };
 
@@ -108,7 +115,10 @@ export async function fetchDecisionSnapshot(date: string): Promise<DecisionSnaps
 }
 
 export function decisionSnapshotToMarkdown(snap: DecisionSnapshot): string {
-  const lines = [`# 归档引用 ${snap.snapshotDate}（${snap.status === 'reviewed' ? '已反馈' : '未反馈'}）`, ''];
+  const lines = [
+    `# 归档引用 ${snap.snapshotDate}（${snap.status === 'reviewed' ? '已反馈' : '未反馈'}）`,
+    '',
+  ];
   const fired = snap.outcome?.fired ?? [];
   if (fired.length) {
     lines.push(`## 当日开火（${fired.length}）`);
@@ -129,7 +139,9 @@ export function decisionSnapshotToMarkdown(snap: DecisionSnapshot): string {
   if (exchanges.length) {
     lines.push(`## 当日决策对话（${exchanges.length} 条，列最近 6 条）`);
     for (const ex of exchanges.slice(-6)) {
-      lines.push(`- **${ex.role}**(${String(ex.createdAt ?? '').slice(0, 16)}): ${String(ex.content ?? '').slice(0, 300)}`);
+      lines.push(
+        `- **${ex.role}**(${String(ex.createdAt ?? '').slice(0, 16)}): ${String(ex.content ?? '').slice(0, 300)}`,
+      );
     }
     lines.push('');
   }
@@ -158,14 +170,11 @@ export async function appendDecisionMessage(
     contextSnapshot?: Record<string, unknown> | null;
   },
 ): Promise<DecisionMessage> {
-  const resp = await fetch(
-    `${DATA_SYNC_BASE_URL}/api/decision/sessions/${sessionId}/messages`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(msg),
-    },
-  );
+  const resp = await fetch(`${DATA_SYNC_BASE_URL}/api/decision/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(msg),
+  });
   if (!resp.ok) throw new Error(`append message failed: ${resp.status}`);
   const data = (await resp.json()) as { ok: boolean; message: DecisionMessage };
   return data.message;

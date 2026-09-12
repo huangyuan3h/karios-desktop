@@ -7,10 +7,7 @@ import { Layers, RefreshCw } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import {
-  DECISION_BLOCK_DEFS,
-  type DecisionActiveLayer,
-} from '@/lib/decision-context';
+import { DECISION_BLOCK_DEFS, type DecisionActiveLayer } from '@/lib/decision-context';
 import type { DataSourceFreshness } from '@/lib/freshness';
 
 export const DECISION_TOKEN_BUDGET = 35_000;
@@ -43,7 +40,9 @@ function BlockRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-medium">{block.label}</div>
         {block.tokens != null && (
-          <div className="text-[10px] text-[var(--k-muted)]">{block.tokens.toLocaleString()} tok</div>
+          <div className="text-[10px] text-[var(--k-muted)]">
+            {block.tokens.toLocaleString()} tok
+          </div>
         )}
       </div>
       <Switch checked={enabled} onCheckedChange={onToggle} className="h-5 w-9 scale-90" />
@@ -62,7 +61,12 @@ function FreshnessRow({ source }: { source: DataSourceFreshness }) {
         )}
       />
       <span className="truncate">{source.label}</span>
-      <span className={cn('ml-auto tabular-nums', source.stale ? 'font-semibold text-red-600 dark:text-red-400' : 'text-[var(--k-muted)]')}>
+      <span
+        className={cn(
+          'ml-auto tabular-nums',
+          source.stale ? 'font-semibold text-red-600 dark:text-red-400' : 'text-[var(--k-muted)]',
+        )}
+      >
         {age} {source.stale ? '⚠' : ''}
       </span>
     </div>
@@ -185,7 +189,9 @@ export function ContextInspector({
             })}
           </div>
         ) : (
-          <p className="mt-0.5 text-[10px] text-[var(--k-muted)]">暂无归档快照（18:00 作业自动生成）</p>
+          <p className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+            暂无归档快照（18:00 作业自动生成）
+          </p>
         )}
       </div>
 
@@ -196,9 +202,7 @@ export function ContextInspector({
           {(layer?.freshness ?? []).map((s) => (
             <FreshnessRow key={s.source} source={s} />
           ))}
-          {!layer?.freshness?.length && (
-            <p className="text-[10px] text-[var(--k-muted)]">不可用</p>
-          )}
+          {!layer?.freshness?.length && <p className="text-[10px] text-[var(--k-muted)]">不可用</p>}
         </div>
       </div>
     </div>

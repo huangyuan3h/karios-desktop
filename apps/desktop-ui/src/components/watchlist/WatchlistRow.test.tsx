@@ -80,7 +80,13 @@ const baseProps = (over: Partial<WatchlistRowProps> = {}): WatchlistRowProps => 
 
 describe('WatchlistRow', () => {
   it('renders symbol, name and color flag', () => {
-    render(<table><tbody><WatchlistRow {...baseProps()} /></tbody></table>);
+    render(
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps()} />
+        </tbody>
+      </table>,
+    );
     expect(screen.getByText('CN:600519')).toBeInTheDocument();
     expect(screen.getByText('贵州茅台')).toBeInTheDocument();
     const flag = screen.getByLabelText('Set color flag');
@@ -89,14 +95,26 @@ describe('WatchlistRow', () => {
 
   it('opens stock on symbol click', () => {
     const onOpenStock = vi.fn();
-    render(<table><tbody><WatchlistRow {...baseProps({ onOpenStock })} /></tbody></table>);
+    render(
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ onOpenStock })} />
+        </tbody>
+      </table>,
+    );
     fireEvent.click(screen.getByLabelText('Open CN:600519'));
     expect(onOpenStock).toHaveBeenCalledWith('CN:600519');
   });
 
   it('shows color picker on flag click', () => {
     const showColorPicker = vi.fn();
-    render(<table><tbody><WatchlistRow {...baseProps({ showColorPicker })} /></tbody></table>);
+    render(
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ showColorPicker })} />
+        </tbody>
+      </table>,
+    );
     fireEvent.click(screen.getByLabelText('Set color flag'));
     expect(showColorPicker).toHaveBeenCalledWith(expect.anything(), 'CN:600519');
   });
@@ -105,9 +123,11 @@ describe('WatchlistRow', () => {
     const setItemPositionPctDraft = vi.fn();
     const commitItemPositionPctDraft = vi.fn();
     render(
-      <table><tbody><WatchlistRow
-        {...baseProps({ setItemPositionPctDraft, commitItemPositionPctDraft })}
-      /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ setItemPositionPctDraft, commitItemPositionPctDraft })} />
+        </tbody>
+      </table>,
     );
     const pos = screen.getByDisplayValue('10');
     fireEvent.change(pos, { target: { value: '12.5' } });
@@ -119,9 +139,11 @@ describe('WatchlistRow', () => {
   it('rejects invalid position pct input', () => {
     const setItemPositionPctDraft = vi.fn();
     render(
-      <table><tbody><WatchlistRow
-        {...baseProps({ setItemPositionPctDraft })}
-      /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ setItemPositionPctDraft })} />
+        </tbody>
+      </table>,
     );
     const pos = screen.getByDisplayValue('10');
     fireEvent.change(pos, { target: { value: 'abc' } });
@@ -132,9 +154,11 @@ describe('WatchlistRow', () => {
     const setItemCostPriceDraft = vi.fn();
     const setItemCostPriceValue = vi.fn();
     render(
-      <table><tbody><WatchlistRow
-        {...baseProps({ setItemCostPriceDraft, setItemCostPriceValue })}
-      /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ setItemCostPriceDraft, setItemCostPriceValue })} />
+        </tbody>
+      </table>,
     );
     const cost = screen.getByDisplayValue('1500.500');
     fireEvent.change(cost, { target: { value: '1490' } });
@@ -145,7 +169,11 @@ describe('WatchlistRow', () => {
   it('clears cost price value when emptied', () => {
     const setItemCostPriceValue = vi.fn();
     render(
-      <table><tbody><WatchlistRow {...baseProps({ setItemCostPriceValue })} /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ setItemCostPriceValue })} />
+        </tbody>
+      </table>,
     );
     const cost = screen.getByDisplayValue('1500.500');
     fireEvent.change(cost, { target: { value: '' } });
@@ -155,31 +183,52 @@ describe('WatchlistRow', () => {
   it('shows trade buttons: 加仓/卖出 for held positions, 买入 otherwise', () => {
     const onOpenTradeDialog = vi.fn();
     render(
-      <table><tbody><WatchlistRow {...baseProps({ onOpenTradeDialog })} /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ onOpenTradeDialog })} />
+        </tbody>
+      </table>,
     );
     expect(screen.getByText('加仓')).toBeInTheDocument();
     expect(screen.getByText('卖出')).toBeInTheDocument();
     fireEvent.click(screen.getByText('卖出'));
-    expect(onOpenTradeDialog).toHaveBeenCalledWith('sell', expect.objectContaining({ symbol: 'CN:600519' }));
+    expect(onOpenTradeDialog).toHaveBeenCalledWith(
+      'sell',
+      expect.objectContaining({ symbol: 'CN:600519' }),
+    );
   });
 
   it('shows 买入 for non-held positions', () => {
     const onOpenTradeDialog = vi.fn();
     render(
-      <table><tbody><WatchlistRow
-        {...baseProps({ onOpenTradeDialog, item: { ...ITEM, positionPct: null, entryDate: null, costPrice: null } as never })}
-      /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow
+            {...baseProps({
+              onOpenTradeDialog,
+              item: { ...ITEM, positionPct: null, entryDate: null, costPrice: null } as never,
+            })}
+          />
+        </tbody>
+      </table>,
     );
     expect(screen.getByText('买入')).toBeInTheDocument();
     fireEvent.click(screen.getByText('买入'));
-    expect(onOpenTradeDialog).toHaveBeenCalledWith('buy', expect.objectContaining({ symbol: 'CN:600519' }));
+    expect(onOpenTradeDialog).toHaveBeenCalledWith(
+      'buy',
+      expect.objectContaining({ symbol: 'CN:600519' }),
+    );
   });
 
   it('fires reference and remove actions', () => {
     const onAddReference = vi.fn();
     const onRemove = vi.fn();
     render(
-      <table><tbody><WatchlistRow {...baseProps({ onAddReference, onRemove })} /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ onAddReference, onRemove })} />
+        </tbody>
+      </table>,
     );
     fireEvent.click(screen.getByLabelText('Reference to chat'));
     expect(onAddReference).toHaveBeenCalled();
@@ -188,16 +237,24 @@ describe('WatchlistRow', () => {
   });
 
   it('renders green tone class for strong buy setup', () => {
-    render(<table><tbody><WatchlistRow {...baseProps()} /></tbody></table>);
+    render(
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps()} />
+        </tbody>
+      </table>,
+    );
     expect(screen.getByText('CN:600519').closest('tr')).toHaveClass('bg-emerald-50/60');
   });
 
   it('renders red tone when avoid action or blocking alerts', () => {
     const avoid = { ...TREND, buyAction: 'avoid' };
     render(
-      <table><tbody><WatchlistRow
-        {...baseProps({ trend: avoid as never })}
-      /></tbody></table>,
+      <table>
+        <tbody>
+          <WatchlistRow {...baseProps({ trend: avoid as never })} />
+        </tbody>
+      </table>,
     );
     expect(screen.getByText('CN:600519').closest('tr')).toHaveClass('bg-red-50/60');
   });

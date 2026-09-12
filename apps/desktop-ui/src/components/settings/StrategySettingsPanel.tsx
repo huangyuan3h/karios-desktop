@@ -2,11 +2,7 @@
 
 import * as React from 'react';
 
-import {
-  STRATEGY_MODE_LABELS,
-  useStrategyMode,
-  type StrategyMode,
-} from '@/lib/strategy-settings';
+import { STRATEGY_MODE_LABELS, useStrategyMode, type StrategyMode } from '@/lib/strategy-settings';
 import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: StrategyMode; title: string; desc: string }[] = [

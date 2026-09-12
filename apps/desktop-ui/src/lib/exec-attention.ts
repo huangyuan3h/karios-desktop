@@ -115,8 +115,18 @@ export function formatDecisionChangeLine(c: ExecutionDecisionChange): string {
   }
   const sym = c.symbol ?? '—';
   const field = c.field === 'action' ? '操作' : c.field === 'why' ? '原因' : c.field;
-  const oldVal = c.field === 'action' ? translateAction(c.oldValue ?? '') : c.field === 'why' ? translateWhy(c.oldValue) : (c.oldValue ?? '—');
-  const newVal = c.field === 'action' ? translateAction(c.newValue ?? '') : c.field === 'why' ? translateWhy(c.newValue) : (c.newValue ?? '—');
+  const oldVal =
+    c.field === 'action'
+      ? translateAction(c.oldValue ?? '')
+      : c.field === 'why'
+        ? translateWhy(c.oldValue)
+        : (c.oldValue ?? '—');
+  const newVal =
+    c.field === 'action'
+      ? translateAction(c.newValue ?? '')
+      : c.field === 'why'
+        ? translateWhy(c.newValue)
+        : (c.newValue ?? '—');
   return `${t}  ${sym}  ${field}: ${oldVal} → ${newVal}`;
 }
 
@@ -160,13 +170,12 @@ export function translateWarnReason(reason: string): string {
  * Trim reasons from TrendOK stop-loss parts (warn_reasons). Lets "Must act"
  * show why a held position gets a reduce-half warning, not just the label.
  */
-function warnReasonHint(
-  item: PositionLike,
-  why: string | null,
-): string | null {
+function warnReasonHint(item: PositionLike, why: string | null): string | null {
   if (why !== 'WARN_REDUCE_HALF') return null;
-  const parts = (item as { trendok?: { stopLossParts?: unknown } }).trendok
-    ?.stopLossParts as Record<string, unknown> | null | undefined;
+  const parts = (item as { trendok?: { stopLossParts?: unknown } }).trendok?.stopLossParts as
+    | Record<string, unknown>
+    | null
+    | undefined;
   const reasons = Array.isArray(parts?.warn_reasons) ? parts.warn_reasons : [];
   if (!reasons.length) return null;
   return reasons.map((r) => translateWarnReason(String(r))).join('；');
@@ -217,8 +226,7 @@ export function buildExecAttentionQueue(opts: {
         line.hint = trimHintBySymbol.get(line.symbol) ?? null;
       }
       trims.push(line);
-    }
-    else if (action === 'BUY' || action === 'ADD') fireCandidates.push(toLine(c));
+    } else if (action === 'BUY' || action === 'ADD') fireCandidates.push(toLine(c));
   }
 
   exits.sort(bySymbol);

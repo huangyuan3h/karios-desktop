@@ -77,11 +77,12 @@ const MobileSettings = React.lazy(() =>
   import('./pages/MobileSettingsPage').then((m) => ({ default: m.MobileSettingsPage })),
 );
 
-const TABS: { id: MobileTab; label: string; icon: typeof LayoutGrid; Comp: React.ComponentType }[] = [
-  { id: 'dashboard', label: '首页', icon: LayoutGrid, Comp: MobileDashboard },
-  { id: 'watchlist', label: '自选', icon: Star, Comp: MobileWatchlist },
-  { id: 'agent', label: 'Agent', icon: Bot, Comp: MobileDecision },
-];
+const TABS: { id: MobileTab; label: string; icon: typeof LayoutGrid; Comp: React.ComponentType }[] =
+  [
+    { id: 'dashboard', label: '首页', icon: LayoutGrid, Comp: MobileDashboard },
+    { id: 'watchlist', label: '自选', icon: Star, Comp: MobileWatchlist },
+    { id: 'agent', label: 'Agent', icon: Bot, Comp: MobileDecision },
+  ];
 
 /** Everything else — reachable from the animated 更多 panel in the header. */
 const MORE_SECTIONS: { label: string; items: PageDef[] }[] = [
@@ -185,7 +186,9 @@ export function MobileShell() {
               onClick={() => setMoreOpen((o) => !o)}
               aria-label="更多"
               className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                moreOpen ? 'bg-[var(--k-accent)]/10 text-[var(--k-accent)]' : 'text-[var(--k-text)] active:bg-[var(--k-surface-2)]'
+                moreOpen
+                  ? 'bg-[var(--k-accent)]/10 text-[var(--k-accent)]'
+                  : 'text-[var(--k-text)] active:bg-[var(--k-surface-2)]'
               }`}
             >
               {moreOpen ? <X size={20} /> : <Menu size={20} />}
@@ -211,7 +214,9 @@ export function MobileShell() {
                         className="flex flex-col items-center gap-1.5 rounded-[var(--m-radius-md)] border border-[var(--k-border)] bg-[var(--k-bg)] px-2 py-3 active:bg-[var(--k-surface-2)]"
                       >
                         <p.icon size={18} className="text-[var(--k-accent)]" />
-                        <span className="truncate text-[var(--m-text-xs)] font-medium">{p.label}</span>
+                        <span className="truncate text-[var(--m-text-xs)] font-medium">
+                          {p.label}
+                        </span>
                       </button>
                     ))}
                   </div>

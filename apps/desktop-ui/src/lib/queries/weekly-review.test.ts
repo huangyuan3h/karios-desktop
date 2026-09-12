@@ -43,9 +43,7 @@ describe('useWeeklyReviewQuery', () => {
     expect(opts.enabled).toBe(true);
     expect(opts.staleTime).toBe(5 * 60_000);
     await opts.queryFn();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/backtest/weekly-review',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/weekly-review');
   });
 
   it('honors disabled flag', () => {

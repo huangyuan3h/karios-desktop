@@ -48,14 +48,16 @@ function GateBadge({ label, gate }: { label: string; gate: any }) {
         <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
         <span className="text-xs opacity-90">
           {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)}
-          {gate.positionRangeHint
-            ? ` · 仓位 ${gate.positionRangeHint}`
-            : null}
+          {gate.positionRangeHint ? ` · 仓位 ${gate.positionRangeHint}` : null}
         </span>
       </div>
-      {gate.satelliteNote ? <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div> : null}
+      {gate.satelliteNote ? (
+        <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
+      ) : null}
       {gate.reasons?.length ? (
-        <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.map(translateReason).join(' · ')}</div>
+        <div className="mt-1 text-xs opacity-80">
+          原因: {gate.reasons.map(translateReason).join(' · ')}
+        </div>
       ) : null}
     </div>
   );
@@ -74,7 +76,8 @@ export function MarketSentimentCard({
   const items: any[] = Array.isArray(ms.items) ? ms.items : [];
   const latest = items.length ? items[items.length - 1] : null;
   const indexSignals: any[] = Array.isArray(ms.indexSignals) ? ms.indexSignals : [];
-  const summaryLine = buildIndexTrafficSummary(indexSignals);  const risk = String(latest?.riskMode ?? '—');
+  const summaryLine = buildIndexTrafficSummary(indexSignals);
+  const risk = String(latest?.riskMode ?? '—');
   const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
     ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
     : '—';
@@ -82,9 +85,7 @@ export function MarketSentimentCard({
     ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
     : '—';
   const turnover = fmtAmountCn(latest?.marketTurnoverCny);
-  const ratio = Number.isFinite(latest?.upDownRatio)
-    ? Number(latest.upDownRatio).toFixed(2)
-    : '—';
+  const ratio = Number.isFinite(latest?.upDownRatio) ? Number(latest.upDownRatio).toFixed(2) : '—';
   const up = Number(latest?.upCount ?? 0);
   const down = Number(latest?.downCount ?? 0);
   const flat = Number(latest?.flatCount ?? 0);
@@ -131,7 +132,10 @@ export function MarketSentimentCard({
           <div className="text-base font-bold">{translateRisk(risk)}</div>
           {Array.isArray(latest?.rules) && latest.rules.length ? (
             <div className="mt-1 text-[10px] opacity-80">
-              {latest.rules.slice(0, 2).map((x: any) => String(x)).join(' · ')}
+              {latest.rules
+                .slice(0, 2)
+                .map((x: any) => String(x))
+                .join(' · ')}
             </div>
           ) : null}
         </div>
@@ -187,7 +191,9 @@ export function MarketSentimentCard({
               : '中性';
         return (
           <div className={`rounded-lg border px-3 py-2 text-xs ${badgeCls}`}>
-            <div className="mb-1 font-medium uppercase tracking-wide opacity-60">资金确认 (ETF)</div>
+            <div className="mb-1 font-medium uppercase tracking-wide opacity-60">
+              资金确认 (ETF)
+            </div>
             <div className={`text-sm font-bold ${textCls}`}>{verdictZh}</div>
             <div className="mt-1 text-[10px] opacity-80">
               国家队 {broadZh} · 板块 {sectorZh}
@@ -213,7 +219,9 @@ export function MarketSentimentCard({
       {/* Market Breadth — compact stat grid */}
       <div
         className={`rounded-lg border px-3 py-2 text-xs ${
-          breadthPanic ? 'border-red-500/40 bg-red-500/10' : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
+          breadthPanic
+            ? 'border-red-500/40 bg-red-500/10'
+            : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
         }`}
       >
         <div className={`mb-2 font-medium ${breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'}`}>
@@ -222,7 +230,9 @@ export function MarketSentimentCard({
         <div className="grid grid-cols-4 gap-1 text-center sm:grid-cols-7">
           <div>
             <div className="text-[10px] opacity-60">涨</div>
-            <div className="whitespace-nowrap font-mono text-emerald-600">{up.toLocaleString()}</div>
+            <div className="whitespace-nowrap font-mono text-emerald-600">
+              {up.toLocaleString()}
+            </div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">跌</div>
@@ -230,7 +240,9 @@ export function MarketSentimentCard({
           </div>
           <div>
             <div className="text-[10px] opacity-60">平</div>
-            <div className="whitespace-nowrap font-mono text-[var(--k-muted)]">{flat.toLocaleString()}</div>
+            <div className="whitespace-nowrap font-mono text-[var(--k-muted)]">
+              {flat.toLocaleString()}
+            </div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">比</div>
@@ -288,7 +300,8 @@ export function MarketSentimentCard({
                   key={String(it?.tsCode ?? it?.name)}
                   className={`rounded-lg border px-3 py-2 text-xs ${signalBadge} ${
                     featured ? 'md:col-span-2' : ''
-                  }`}                >
+                  }`}
+                >
                   <div className="font-medium">
                     {featured ? '★ ' : ''}
                     {String(it?.name ?? it?.tsCode ?? '')}
@@ -301,8 +314,7 @@ export function MarketSentimentCard({
                     {Number.isFinite(it?.pctChg)
                       ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
                       : '—'}{' '}
-                    · 收盘{' '}
-                    {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} · MA5{' '}
+                    · 收盘 {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} · MA5{' '}
                     {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} · MA20{' '}
                     {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
                   </div>
@@ -390,7 +402,12 @@ export function MarketSentimentCard({
 
       {/* Action buttons */}
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="secondary" disabled={sentimentBusy} onClick={() => onSyncSentiment()}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={sentimentBusy}
+          onClick={() => onSyncSentiment()}
+        >
           {sentimentBusy ? (
             <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
           ) : (

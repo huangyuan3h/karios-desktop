@@ -91,7 +91,10 @@ describe('queryHoldingsHealth', () => {
   });
 
   it('falls back gracefully when the service is unreachable', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 })),
+    );
     const md = await queryHoldingsHealth();
     expect(md).toContain('暂不可用');
   });
@@ -102,7 +105,12 @@ describe('searchArchive', () => {
     mockFetchOk({
       ok: true,
       hits: [
-        { date: '2026-08-01', status: 'open', matches: ['BUY 腾讯'], outcome: { fired: [{ symbol: 'HK:00700' }] } },
+        {
+          date: '2026-08-01',
+          status: 'open',
+          matches: ['BUY 腾讯'],
+          outcome: { fired: [{ symbol: 'HK:00700' }] },
+        },
       ],
     });
     const md = await searchArchive('HK:00700');

@@ -26,10 +26,14 @@ export function SimCandleChart({ data, height = 200, showVolume = true }: Props)
     if (!priceEl || !volEl) return;
     if (data.length === 0) return;
 
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--k-bg').trim() || '#fff';
-    const text = getComputedStyle(document.documentElement).getPropertyValue('--k-text').trim() || '#111';
-    const border = getComputedStyle(document.documentElement).getPropertyValue('--k-border').trim() || '#e5e7eb';
-    const muted = getComputedStyle(document.documentElement).getPropertyValue('--k-muted').trim() || '#6b7280';
+    const bg =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-bg').trim() || '#fff';
+    const text =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-text').trim() || '#111';
+    const border =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-border').trim() || '#e5e7eb';
+    const muted =
+      getComputedStyle(document.documentElement).getPropertyValue('--k-muted').trim() || '#6b7280';
 
     const common = (el: HTMLElement, h: number) =>
       createChart(el, {

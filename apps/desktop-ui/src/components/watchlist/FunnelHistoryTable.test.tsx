@@ -60,7 +60,17 @@ describe('toFunnelRow', () => {
       runId: 'r',
       runAt: 't',
       tradeDate: '2026-08-07',
-      meta: { funnel: { tvHit: 0, passPullback: 0, passTrendOk: 0, addedNew: 0, fallbackUsed: false, fallbackHit: 0, fallbackTrendOk: 0 } },
+      meta: {
+        funnel: {
+          tvHit: 0,
+          passPullback: 0,
+          passTrendOk: 0,
+          addedNew: 0,
+          fallbackUsed: false,
+          fallbackHit: 0,
+          fallbackTrendOk: 0,
+        },
+      },
     } as never);
     expect(row?.conversionPct).toBeNull();
   });
@@ -94,13 +104,31 @@ describe('FunnelHistoryTable', () => {
           runId: 'r1',
           runAt: 't',
           tradeDate: '2026-08-07',
-          meta: { funnel: { tvHit: 10, passPullback: 6, passTrendOk: 4, addedNew: 3, fallbackUsed: false } },
+          meta: {
+            funnel: {
+              tvHit: 10,
+              passPullback: 6,
+              passTrendOk: 4,
+              addedNew: 3,
+              fallbackUsed: false,
+            },
+          },
         },
         {
           runId: 'r2',
           runAt: 't',
           tradeDate: '2026-08-06',
-          meta: { funnel: { tvHit: 0, passPullback: 0, passTrendOk: 0, addedNew: 0, fallbackUsed: true, fallbackHit: 7, fallbackTrendOk: 4 } },
+          meta: {
+            funnel: {
+              tvHit: 0,
+              passPullback: 0,
+              passTrendOk: 0,
+              addedNew: 0,
+              fallbackUsed: true,
+              fallbackHit: 7,
+              fallbackTrendOk: 4,
+            },
+          },
         },
       ],
     });

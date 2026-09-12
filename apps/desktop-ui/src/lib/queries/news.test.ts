@@ -67,9 +67,7 @@ describe('buildDashboardSummaryPath', () => {
   });
 
   it('omits macro when includeMacro is false', () => {
-    expect(buildDashboardSummaryPath(false)).toBe(
-      '/dashboard/summary?include_macro=false',
-    );
+    expect(buildDashboardSummaryPath(false)).toBe('/dashboard/summary?include_macro=false');
   });
 
   it('uses full path when all blocks are included', () => {
@@ -138,9 +136,7 @@ describe('news items/sources', () => {
   it('fetchNewsItems builds limit and hours params', async () => {
     mockedApiGetJson.mockResolvedValue({ total: 0, items: [] });
     await fetchNewsItems(24, 50);
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/news/items?limit=50&hours=24',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/news/items?limit=50&hours=24');
   });
 
   it('fetchNewsSources hits sources endpoint', async () => {
@@ -182,7 +178,9 @@ describe('morning brief', () => {
   it('fetchMorningBrief hits latest endpoint', async () => {
     mockedApiGetJson.mockResolvedValue({ brief: null });
     await fetchMorningBrief();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/news/brief/latest?brief_type=morning');
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
+      '/api/news/brief/latest?brief_type=morning',
+    );
   });
 
   it('morningBriefQueryOptions uses 60s stale', () => {

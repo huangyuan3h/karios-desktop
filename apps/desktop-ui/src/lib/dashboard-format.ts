@@ -252,8 +252,7 @@ export function formatExecutionGateMarkdown(
       ? gate.srvOverlapCount
       : null;
   const srvLevel = gate.srvLevel ? String(gate.srvLevel) : '—';
-  const srvLine =
-    overlap != null ? `${srvLevel} (overlap=${overlap})` : srvLevel;
+  const srvLine = overlap != null ? `${srvLevel} (overlap=${overlap})` : srvLevel;
   const reasons = Array.isArray(gate.reasons)
     ? gate.reasons.map((x) => String(x)).filter(Boolean)
     : [];
@@ -264,9 +263,7 @@ export function formatExecutionGateMarkdown(
   lines.push(`- srvLevel: ${srvLine}`);
   lines.push(
     `- downCount: ${
-      typeof gate.downCount === 'number' && Number.isFinite(gate.downCount)
-        ? gate.downCount
-        : '—'
+      typeof gate.downCount === 'number' && Number.isFinite(gate.downCount) ? gate.downCount : '—'
     }`,
   );
   if (gate.riskMode) lines.push(`- riskMode: ${String(gate.riskMode)}`);
@@ -282,9 +279,7 @@ export function formatExecutionGateMarkdown(
       typeof gate.overflowInflowYi === 'number' && Number.isFinite(gate.overflowInflowYi)
         ? gate.overflowInflowYi
         : '—';
-    lines.push(
-      `- overflow: ${gate.overflowSector ? String(gate.overflowSector) : '—'} ${yi}亿`,
-    );
+    lines.push(`- overflow: ${gate.overflowSector ? String(gate.overflowSector) : '—'} ${yi}亿`);
   }
   if (gate.hkGate) {
     const h = gate.hkGate;
@@ -371,8 +366,7 @@ export function dedupeShownDates(
 
 /** Build a {date -> top industry names[]} map from the dashboard topByDate array. */
 export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
-  const root =
-    summary && typeof summary === 'object' ? (summary as Record<string, unknown>) : null;
+  const root = summary && typeof summary === 'object' ? (summary as Record<string, unknown>) : null;
   const industryFundFlow =
     root?.industryFundFlow && typeof root.industryFundFlow === 'object'
       ? (root.industryFundFlow as Record<string, unknown>)
@@ -384,9 +378,7 @@ export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
   for (const it of arr) {
     const row = it && typeof it === 'object' ? (it as Record<string, unknown>) : null;
     const d = String(row?.date ?? '');
-    const top = Array.isArray(row?.top)
-      ? row.top.map((x: unknown) => String(x ?? ''))
-      : [];
+    const top = Array.isArray(row?.top) ? row.top.map((x: unknown) => String(x ?? '')) : [];
     if (d) map[d] = top;
   }
   return map;
@@ -394,7 +386,10 @@ export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
 
 const CN_INDEX_NAMES = new Set(['上证指数', '创业板指', '中证500']);
 
-export function buildIndexTrafficSummary(indexSignals: unknown[]): { title: string; detail: string } {
+export function buildIndexTrafficSummary(indexSignals: unknown[]): {
+  title: string;
+  detail: string;
+} {
   const items = Array.isArray(indexSignals) ? indexSignals : [];
   const cn = items.filter((x: unknown) => {
     const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;

@@ -119,11 +119,7 @@ describe('query options', () => {
       'trends',
       'batch',
     ]);
-    expect(alphaRadarCatalystQueryOptions(14).queryKey).toEqual([
-      'alphaRadar',
-      'catalyst',
-      14,
-    ]);
+    expect(alphaRadarCatalystQueryOptions(14).queryKey).toEqual(['alphaRadar', 'catalyst', 14]);
     expect(alphaRadarRssQueryOptions().queryKey).toEqual(['alphaRadar', 'rss']);
   });
 });
@@ -175,17 +171,13 @@ describe('mutations', () => {
   it('deleteAlphaRadarTrend deletes encoded id', async () => {
     mockedApiDeleteJson.mockResolvedValue({ ok: true });
     await deleteAlphaRadarTrend('t/1');
-    expect(String(mockedApiDeleteJson.mock.calls[0][0])).toBe(
-      '/api/alpha-radar/trends/t%2F1',
-    );
+    expect(String(mockedApiDeleteJson.mock.calls[0][0])).toBe('/api/alpha-radar/trends/t%2F1');
   });
 
   it('remapAlphaRadarTrend posts to remap endpoint', async () => {
     mockedApiPostJson.mockResolvedValue({ ok: true, cnSymbols: [] });
     await remapAlphaRadarTrend('t1');
-    expect(String(mockedApiPostJson.mock.calls[0][0])).toBe(
-      '/api/alpha-radar/trends/t1/remap',
-    );
+    expect(String(mockedApiPostJson.mock.calls[0][0])).toBe('/api/alpha-radar/trends/t1/remap');
   });
 });
 

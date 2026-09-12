@@ -139,9 +139,7 @@ describe('fetchDecisionMessages', () => {
     mockedApiGetJson.mockResolvedValue({ ok: true, messages: [{ id: 9 }] });
     const out = await fetchDecisionMessages(7);
     expect(out).toEqual([{ id: 9 }]);
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/decision/sessions/7/messages',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/decision/sessions/7/messages');
   });
 });
 
@@ -153,9 +151,7 @@ describe('fetchDecisionSnapshot', () => {
   it('returns snapshot when present', async () => {
     mockedApiGetJson.mockResolvedValue({ ok: true, snapshot: { snapshotDate: 'd' } });
     expect(await fetchDecisionSnapshot('2026-08-07')).toEqual({ snapshotDate: 'd' });
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/decision/snapshots/2026-08-07',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/decision/snapshots/2026-08-07');
   });
 
   it('returns null when missing', async () => {

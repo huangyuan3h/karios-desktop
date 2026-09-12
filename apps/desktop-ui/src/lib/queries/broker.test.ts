@@ -43,12 +43,7 @@ describe('query keys', () => {
   it('builds stable keys', () => {
     expect(brokerAccountsQueryKey()).toEqual(['broker', 'accounts', 'pingan']);
     expect(brokerAccountsQueryKey('xyz')).toEqual(['broker', 'accounts', 'xyz']);
-    expect(brokerAccountStateQueryKey('pingan', 'a1')).toEqual([
-      'broker',
-      'state',
-      'pingan',
-      'a1',
-    ]);
+    expect(brokerAccountStateQueryKey('pingan', 'a1')).toEqual(['broker', 'state', 'pingan', 'a1']);
   });
 });
 
@@ -60,18 +55,14 @@ describe('fetch functions', () => {
   it('fetchBrokerAccounts encodes broker name', async () => {
     mockedApiGetJson.mockResolvedValue([]);
     await fetchBrokerAccounts();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/broker/accounts?broker=pingan',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/broker/accounts?broker=pingan');
   });
 
   it('fetchBrokerAccountState builds state path', async () => {
     mockedApiGetJson.mockResolvedValue({ accountId: 'a1' });
     const out = await fetchBrokerAccountState('pingan', 'a1');
     expect(out.accountId).toBe('a1');
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/broker/pingan/accounts/a1/state',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/broker/pingan/accounts/a1/state');
   });
 });
 

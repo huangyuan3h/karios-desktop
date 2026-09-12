@@ -92,8 +92,7 @@ function keyLast4(key: string | undefined | null): string | null {
 }
 
 export function configPath(): string {
-  const base =
-    (process.env.KARIOS_APP_DATA_DIR ?? '').trim() || path.join(os.homedir(), '.karios');
+  const base = (process.env.KARIOS_APP_DATA_DIR ?? '').trim() || path.join(os.homedir(), '.karios');
   return path.join(base, 'ai-service.config.json');
 }
 
@@ -215,8 +214,10 @@ export function toPublicConfigFromEnv(): {
   configured: boolean;
   source: 'env' | 'default';
 } {
-  const provider = ((process.env.AI_PROVIDER ?? 'openai').trim().toLowerCase() ||
-    'openai') as 'openai' | 'google' | 'ollama';
+  const provider = ((process.env.AI_PROVIDER ?? 'openai').trim().toLowerCase() || 'openai') as
+    | 'openai'
+    | 'google'
+    | 'ollama';
   const modelId = (process.env.AI_MODEL ?? '').trim();
   const pid = modelId || 'unknown';
 
@@ -245,4 +246,3 @@ export function toPublicConfigFromEnv(): {
     modelId: pid,
   };
 }
-

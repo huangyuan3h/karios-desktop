@@ -77,7 +77,12 @@ describe('TwinStarActionResponseSchema', () => {
   it('accepts idle 100/0 core/sat split', () => {
     const idle = {
       ...GOLDEN,
-      sat: { ...GOLDEN.sat, gateOpen: false, coreTargetPct: 100 as const, satTargetPct: 0 as const },
+      sat: {
+        ...GOLDEN.sat,
+        gateOpen: false,
+        coreTargetPct: 100 as const,
+        satTargetPct: 0 as const,
+      },
     };
     expect(TwinStarActionResponseSchema.parse(idle).sat.coreTargetPct).toBe(100);
   });

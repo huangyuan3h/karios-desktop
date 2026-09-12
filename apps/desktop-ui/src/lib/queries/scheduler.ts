@@ -1,10 +1,7 @@
 'use client';
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import {
-  SchedulerJobsResponseSchema,
-  type SchedulerJobsResponse,
-} from '@karios/shared';
+import { SchedulerJobsResponseSchema, type SchedulerJobsResponse } from '@karios/shared';
 
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 

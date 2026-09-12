@@ -22,34 +22,26 @@ describe('formatScreenerCell', () => {
       expect(formatScreenerCell('Name', 'Midea Group Co. Ltd. Class A')).toBe(
         'Midea Group Co. Ltd. Class A',
       );
-      expect(formatScreenerCell('Sector', 'Health technology')).toBe(
-        'Health technology',
-      );
+      expect(formatScreenerCell('Sector', 'Health technology')).toBe('Health technology');
       expect(formatScreenerCell('Industry', 'Pharmaceuticals: Major')).toBe(
         'Pharmaceuticals: Major',
       );
       expect(formatScreenerCell('Country', 'China')).toBe('China');
       expect(formatScreenerCell('Flags', 'D')).toBe('D');
-      expect(formatScreenerCell('Analyst rating', 'Strong buy')).toBe(
-        'Strong buy',
-      );
+      expect(formatScreenerCell('Analyst rating', 'Strong buy')).toBe('Strong buy');
     });
 
     it('passes through already-formatted values', () => {
       expect(formatScreenerCell('Change %', '+3.82%')).toBe('+3.82%');
       expect(formatScreenerCell('Change %', '−0.55%')).toBe('−0.55%');
-      expect(formatScreenerCell('Market cap', '165.78 B USD')).toBe(
-        '165.78 B USD',
-      );
+      expect(formatScreenerCell('Market cap', '165.78 B USD')).toBe('165.78 B USD');
       expect(formatScreenerCell('Market cap', '7 B USD')).toBe('7 B USD');
       expect(formatScreenerCell('Avg Volume 10D', '11.06 M')).toBe('11.06 M');
       expect(formatScreenerCell('High 52W', '104.84 CNY')).toBe('104.84 CNY');
       expect(formatScreenerCell('Price', '44.00 CNY')).toBe('44.00 CNY');
       expect(formatScreenerCell('Div yield % TTM', '1.47%')).toBe('1.47%');
       expect(formatScreenerCell('Perf % 1M', '+7.08%')).toBe('+7.08%');
-      expect(
-        formatScreenerCell('EPS dil growth TTM YoY', '+24.02%'),
-      ).toBe('+24.02%');
+      expect(formatScreenerCell('EPS dil growth TTM YoY', '+24.02%')).toBe('+24.02%');
     });
 
     it('passes through non-parseable values', () => {
@@ -60,12 +52,8 @@ describe('formatScreenerCell', () => {
 
   describe('change / percentage columns', () => {
     it('formats raw change percent with 2 decimals and sign', () => {
-      expect(formatScreenerCell('Change %', '-1.5177065767285085')).toBe(
-        '-1.52%',
-      );
-      expect(formatScreenerCell('Change %', '5.699045480067381')).toBe(
-        '+5.70%',
-      );
+      expect(formatScreenerCell('Change %', '-1.5177065767285085')).toBe('-1.52%');
+      expect(formatScreenerCell('Change %', '5.699045480067381')).toBe('+5.70%');
       expect(formatScreenerCell('Change %', '0')).toBe('0.00%');
     });
 
@@ -89,15 +77,9 @@ describe('formatScreenerCell', () => {
     });
 
     it('formats Market Cap with B/M/K units', () => {
-      expect(formatScreenerCell('Market Cap', '97126646894.81198')).toBe(
-        '97.13B',
-      );
-      expect(formatScreenerCell('Market Cap', '51705889066.44177')).toBe(
-        '51.71B',
-      );
-      expect(formatScreenerCell('Market Cap', '36862319043.2121')).toBe(
-        '36.86B',
-      );
+      expect(formatScreenerCell('Market Cap', '97126646894.81198')).toBe('97.13B');
+      expect(formatScreenerCell('Market Cap', '51705889066.44177')).toBe('51.71B');
+      expect(formatScreenerCell('Market Cap', '36862319043.2121')).toBe('36.86B');
       expect(formatScreenerCell('Market cap', '165780000000')).toBe('165.78B');
     });
 
@@ -157,16 +139,7 @@ describe('formatScreenerCell', () => {
 
 describe('formatScreenerRow', () => {
   it('formats every value in a row according to its header', () => {
-    const headers = [
-      'Ticker',
-      'Name',
-      'Price',
-      'Change %',
-      'Volume',
-      'Market Cap',
-      'P/E',
-      'RSI',
-    ];
+    const headers = ['Ticker', 'Name', 'Price', 'Change %', 'Volume', 'Market Cap', 'P/E', 'RSI'];
     const row: Record<string, string> = {
       Ticker: '000333',
       Name: 'Midea Group Co. Ltd. Class A',

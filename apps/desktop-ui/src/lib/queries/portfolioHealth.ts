@@ -208,7 +208,13 @@ export interface PortfolioHealthResponse {
     entryDate?: string | null;
     ts_code?: string | null;
     isMulti?: boolean;
-    marketData?: { close?: number; ma200?: number; above?: boolean; ok?: boolean; n?: number } | null;
+    marketData?: {
+      close?: number;
+      ma200?: number;
+      above?: boolean;
+      ok?: boolean;
+      n?: number;
+    } | null;
   }> | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
@@ -221,7 +227,10 @@ export interface PortfolioHealthResponse {
  * (hide 该持没买 suggestions the user cannot act on).
  */
 export function isMarketGateClosed(
-  block: Pick<PortfolioHealthResponse, 'regime' | 'panicCooldown' | 'circuitBlocked'> | null | undefined,
+  block:
+    | Pick<PortfolioHealthResponse, 'regime' | 'panicCooldown' | 'circuitBlocked'>
+    | null
+    | undefined,
 ): boolean {
   return (
     block != null &&

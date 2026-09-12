@@ -123,9 +123,7 @@ describe('useExitAttributionQuery', () => {
     expect(opts.enabled).toBe(true);
     expect(opts.staleTime).toBe(30_000);
     await opts.queryFn();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/backtest/exit-attribution?days=5',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/exit-attribution?days=5');
   });
 
   it('uses custom days and disabled flag', async () => {

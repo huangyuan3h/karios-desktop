@@ -50,18 +50,13 @@ const INPUT_CLS =
 export function WebhookPage() {
   const qc = useQueryClient();
   const [url, setUrl] = React.useState('');
-  const [selected, setSelected] = React.useState<string[]>([
-    'twin_star_reminder',
-    'job_failed',
-  ]);
+  const [selected, setSelected] = React.useState<string[]>(['twin_star_reminder', 'job_failed']);
   const [newSecret, setNewSecret] = React.useState<string | null>(null);
 
   const listQ = useQuery({
     queryKey: ['webhook', 'subscriptions'],
     queryFn: () =>
-      apiGetJson<{ ok: boolean; items: WebhookSubscription[] }>(
-        '/api/webhook/subscriptions',
-      ),
+      apiGetJson<{ ok: boolean; items: WebhookSubscription[] }>('/api/webhook/subscriptions'),
     staleTime: 30_000,
   });
 
@@ -83,15 +78,12 @@ export function WebhookPage() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: number) =>
-      fetch(`/api/webhook/subscriptions/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => fetch(`/api/webhook/subscriptions/${id}`, { method: 'DELETE' }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['webhook'] }),
   });
 
   const toggleType = (t: string) =>
-    setSelected((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
-    );
+    setSelected((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
@@ -177,9 +169,7 @@ export function WebhookPage() {
                 </span>
                 <span
                   className={
-                    s.enabled
-                      ? 'text-[10px] text-emerald-600'
-                      : 'text-[10px] text-[var(--k-muted)]'
+                    s.enabled ? 'text-[10px] text-emerald-600' : 'text-[10px] text-[var(--k-muted)]'
                   }
                 >
                   {s.enabled ? '启用' : '停用'}
@@ -200,10 +190,9 @@ export function WebhookPage() {
       </div>
 
       <p className="text-[10px] leading-relaxed text-[var(--k-muted)]">
-        事件体：{'{'}event_id, event_type, payload, sent_at{'}'} · 签名头
-        X-Karios-Signature: sha256=HMAC-SHA256(body, secret) · 投递：5s 超时 ·
-        失败退避 5/15/60 分钟 ×3 · 单订阅 30 条/分钟限频。接收端示例见
-        docs/integrations/ai-agent-cookbook.md §9。
+        事件体：{'{'}event_id, event_type, payload, sent_at{'}'} · 签名头 X-Karios-Signature:
+        sha256=HMAC-SHA256(body, secret) · 投递：5s 超时 · 失败退避 5/15/60 分钟 ×3 · 单订阅 30
+        条/分钟限频。接收端示例见 docs/integrations/ai-agent-cookbook.md §9。
       </p>
     </div>
   );

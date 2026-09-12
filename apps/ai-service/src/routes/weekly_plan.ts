@@ -1,11 +1,7 @@
 import { Hono } from 'hono';
 import { streamText } from 'ai';
 
-import {
-  getResolvedModel,
-  getDecisionModelBundle,
-  type ResolvedModelBundle,
-} from '../model.js';
+import { getResolvedModel, getDecisionModelBundle, type ResolvedModelBundle } from '../model.js';
 import { ThinkingStreamStripper } from '../model_thinking.js';
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
@@ -83,26 +79,31 @@ weeklyPlanRoutes.post('/', async (c) => {
   const review = await fetchJson<{ markdown?: string; week?: { start?: string; end?: string } }>(
     `/api/backtest/weekly-review?end=${fridayStr}`,
   );
-  const health = await fetchJson<Record<string, unknown>>('/v1/agent/portfolio-health?markets=CN,HK');
+  const health = await fetchJson<Record<string, unknown>>(
+    '/v1/agent/portfolio-health?markets=CN,HK',
+  );
   const recon = await fetchJson<{ items?: Array<Record<string, unknown>> }>(
     '/api/backtest/recon/latest?limit=2',
   );
-  const overview = await fetchJson<{ rollingOos?: Record<string, unknown>; longWindowCN?: Record<string, unknown> }>(
-    '/api/backtest/overview',
-  );
+  const overview = await fetchJson<{
+    rollingOos?: Record<string, unknown>;
+    longWindowCN?: Record<string, unknown>;
+  }>('/api/backtest/overview');
 
   const context = [
-    review?.markdown ? `# 本周决策质量报告（${review.week?.start ?? '?'} ~ ${review.week?.end ?? '?'}）\n${review.markdown}` : '（周报聚合失败）',
-    health ? `# 实时持仓体检（CN+HK）\n${JSON.stringify(health, null, 1).slice(0, 6000)}` : '（体检获取失败）',
+    review?.markdown
+      ? `# 本周决策质量报告（${review.week?.start ?? '?'} ~ ${review.week?.end ?? '?'}）\n${review.markdown}`
+      : '（周报聚合失败）',
+    health
+      ? `# 实时持仓体检（CN+HK）\n${JSON.stringify(health, null, 1).slice(0, 6000)}`
+      : '（体检获取失败）',
     recon?.items?.length
       ? `# 回测 vs Paper 对账\n${JSON.stringify(recon.items, null, 1)}`
       : '（对账数据为空）',
     overview?.rollingOos
       ? `# 滚动 OOS\n${JSON.stringify(overview.rollingOos, null, 1)}`
       : '（滚动 OOS 数据为空）',
-    overview?.longWindowCN
-      ? `# 长窗定案\n${JSON.stringify(overview.longWindowCN, null, 1)}`
-      : '',
+    overview?.longWindowCN ? `# 长窗定案\n${JSON.stringify(overview.longWindowCN, null, 1)}` : '',
   ].join('\n\n');
 
   let primary: ResolvedModelBundle;

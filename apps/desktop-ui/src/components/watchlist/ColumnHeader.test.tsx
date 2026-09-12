@@ -7,12 +7,7 @@ describe('ColumnHeader', () => {
   it('renders a <span> with role=button when showTooltip is wired (so it can be safely nested inside another <button>)', () => {
     const html = renderToString(
       <button type="button" aria-label="outer">
-        <ColumnHeader
-          columnId="score"
-          showTooltip={vi.fn()}
-          hideTooltip={vi.fn()}
-          width={340}
-        />
+        <ColumnHeader columnId="score" showTooltip={vi.fn()} hideTooltip={vi.fn()} width={340} />
       </button>,
     );
     expect(html).not.toMatch(/<button[^>]*>[^<]*<button/i);
@@ -28,12 +23,7 @@ describe('ColumnHeader', () => {
 
   it('uses whitespace-nowrap on label and sub so bilingual headers stay single-line', () => {
     const html = renderToString(
-      <ColumnHeader
-        columnId="score"
-        showTooltip={vi.fn()}
-        hideTooltip={vi.fn()}
-        width={340}
-      />,
+      <ColumnHeader columnId="score" showTooltip={vi.fn()} hideTooltip={vi.fn()} width={340} />,
     );
     const nowrapCount = (html.match(/whitespace-nowrap/g) ?? []).length;
     expect(nowrapCount).toBeGreaterThanOrEqual(2);

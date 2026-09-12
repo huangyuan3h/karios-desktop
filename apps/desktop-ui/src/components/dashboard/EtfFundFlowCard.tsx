@@ -63,20 +63,29 @@ export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
               const live = it?.live === true || flowStatus === 'Live';
               const isMarketClosed = flowStatus === 'MarketClosed';
               const flow1dStale =
-                !live && !isMarketClosed && it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+                !live &&
+                !isMarketClosed &&
+                it?.netFlow1d == null &&
+                (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
               const flow1dDisplay = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
               const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
               const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
               const signalText = String(it?.signalDisplay ?? it?.signal ?? '—');
               const isDataLag = String(it?.signal ?? '') === 'Data Lag';
-              const realtimeAsOf = String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—');
+              const realtimeAsOf = String(
+                it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—',
+              );
               return (
                 <tr key={idx} className="border-t border-[var(--k-border)]">
                   <td className="px-2 py-2">{String(it?.name ?? '')}</td>
                   <td className="px-2 py-2 font-mono">{String(it?.symbol ?? '')}</td>
                   <td className="px-2 py-2 text-right font-mono">{flow1dDisplay}</td>
-                  <td className="px-2 py-2 text-right font-mono">{superLargeFlow}/{largeFlow}</td>
-                  <td className="px-2 py-2 text-right font-mono">{fmtSignedAmountCn(it?.netFlow3d)}</td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {superLargeFlow}/{largeFlow}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {fmtSignedAmountCn(it?.netFlow3d)}
+                  </td>
                   <td className="px-2 py-2 font-mono">{realtimeAsOf}</td>
                   <td className="px-2 py-2 font-mono">{String(it?.source ?? '—')}</td>
                   <td

@@ -250,7 +250,10 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
         await refreshList();
         await loadOne(created.id);
       } else {
-        await apiPutJson<TradeReview>(`/trade-reviews/${encodeURIComponent(selectedId)}`, buildPayload(form));
+        await apiPutJson<TradeReview>(
+          `/trade-reviews/${encodeURIComponent(selectedId)}`,
+          buildPayload(form),
+        );
         await refreshList();
         await loadOne(selectedId);
       }
@@ -295,7 +298,13 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
           <Button size="sm" variant="secondary" onClick={onBack}>
             Back to Journal
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => void onNew()} disabled={busy} className="gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onNew()}
+            disabled={busy}
+            className="gap-2"
+          >
             <Plus className="h-4 w-4" />
             New
           </Button>
@@ -430,7 +439,9 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
                   <input
                     className="mt-1 h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
                     value={form.totalCapitalImpactPct}
-                    onChange={(e) => setForm((x) => ({ ...x, totalCapitalImpactPct: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((x) => ({ ...x, totalCapitalImpactPct: e.target.value }))
+                    }
                     placeholder="Example: 0.9 (must be >= -2)"
                   />
                 </label>
@@ -475,7 +486,9 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
                   <input
                     className="mt-1 h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
                     value={form.initialDefensePrice}
-                    onChange={(e) => setForm((x) => ({ ...x, initialDefensePrice: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((x) => ({ ...x, initialDefensePrice: e.target.value }))
+                    }
                     placeholder="Example: 11.90"
                   />
                 </label>
@@ -494,7 +507,9 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
                   <input
                     type="checkbox"
                     checked={form.buyLogicFundResonance}
-                    onChange={(e) => setForm((x) => ({ ...x, buyLogicFundResonance: e.target.checked }))}
+                    onChange={(e) =>
+                      setForm((x) => ({ ...x, buyLogicFundResonance: e.target.checked }))
+                    }
                   />
                   Fund Resonance
                 </label>
@@ -502,7 +517,9 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
                   <input
                     type="checkbox"
                     checked={form.buyLogicPatternBreakout}
-                    onChange={(e) => setForm((x) => ({ ...x, buyLogicPatternBreakout: e.target.checked }))}
+                    onChange={(e) =>
+                      setForm((x) => ({ ...x, buyLogicPatternBreakout: e.target.checked }))
+                    }
                   />
                   Pattern Breakout
                 </label>
@@ -510,7 +527,9 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
                   <input
                     type="checkbox"
                     checked={form.buyLogicMacroSentiment}
-                    onChange={(e) => setForm((x) => ({ ...x, buyLogicMacroSentiment: e.target.checked }))}
+                    onChange={(e) =>
+                      setForm((x) => ({ ...x, buyLogicMacroSentiment: e.target.checked }))
+                    }
                   />
                   Macro / Sentiment
                 </label>
@@ -571,4 +590,3 @@ export function JournalTradeReviewPage({ onBack }: { onBack: () => void }) {
     </div>
   );
 }
-

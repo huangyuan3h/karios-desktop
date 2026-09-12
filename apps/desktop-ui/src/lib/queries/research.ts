@@ -51,13 +51,8 @@ export function researchStatsQueryKey() {
   return ['research', 'stats'] as const;
 }
 
-export async function fetchResearchReports(
-  days = 7,
-  limit = 50,
-): Promise<ResearchReportsResponse> {
-  return apiGetJson<ResearchReportsResponse>(
-    `/api/research/reports?limit=${limit}&days=${days}`,
-  );
+export async function fetchResearchReports(days = 7, limit = 50): Promise<ResearchReportsResponse> {
+  return apiGetJson<ResearchReportsResponse>(`/api/research/reports?limit=${limit}&days=${days}`);
 }
 
 export async function fetchResearchStats(): Promise<ResearchStatsResponse> {
@@ -92,8 +87,6 @@ export function useResearchStatsQuery() {
   return useQuery(researchStatsQueryOptions());
 }
 
-export async function invalidateResearchQueries(
-  queryClient: QueryClient,
-): Promise<void> {
+export async function invalidateResearchQueries(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['research'] });
 }

@@ -35,7 +35,7 @@ describe('jsonStringifyPretty', () => {
 
 describe('jsonStringifyCompact', () => {
   it('returns compact JSON string', () => {
-    expect(jsonStringifyCompact({ a: 1 })).toBe('{"a":1}');;;
+    expect(jsonStringifyCompact({ a: 1 })).toBe('{"a":1}');
   });
 
   it('returns string representation for non-serializable values', () => {

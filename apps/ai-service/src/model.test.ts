@@ -253,7 +253,6 @@ describe('getStrategyFallbackModelId', () => {
 
   afterEach(() => {
     process.env = originalEnv;
-
   });
 
   it('returns null when env not set', () => {
@@ -281,7 +280,6 @@ describe('getDecisionModelBundle', () => {
 
   afterEach(() => {
     process.env = originalEnv;
-
   });
 
   it('returns gemini model with explicit API key when GEMINI_API_KEY is set', async () => {

@@ -19,10 +19,7 @@ import {
   dashboardNewsQueryKey,
   useDashboardNewsQuery,
 } from '@/lib/queries/news';
-import {
-  dashboardSentimentQueryKey,
-  useDashboardSentimentQuery,
-} from '@/lib/queries/sentiment';
+import { dashboardSentimentQueryKey, useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { stripModelThinking } from '@/lib/strip-model-thinking';
 import { filterNewsByKeyword } from '@/lib/news-keyword-whitelist';
 
@@ -47,9 +44,7 @@ function buildNewsFallback(items: any[]): string | null {
   // Watchlist hits get a `★` prefix so the user sees what's relevant to
   // their holdings at a glance.
   const arr = Array.isArray(items) ? items : [];
-  const enriched = arr.filter(
-    (it) => it?.importance != null && it.importance >= 1,
-  );
+  const enriched = arr.filter((it) => it?.importance != null && it.importance >= 1);
   const unenriched = arr.filter((it) => it?.importance == null);
 
   const sortByPriority = (a: any, b: any) => {
@@ -143,13 +138,16 @@ export function useDashboardSummary() {
       screeners: next.screeners,
       marketEnvironmentZh: next.marketEnvironmentZh,
     }));
-    queryClient.setQueryData(dashboardSentimentQueryKey(), (prev: DashboardSummary | undefined) => ({
-      ...(prev ?? {}),
-      asOfDate: next.asOfDate,
-      marketSentiment: next.marketSentiment,
-      macroSnapshot: next.macroSnapshot,
-      marketEnvironmentZh: next.marketEnvironmentZh,
-    }));
+    queryClient.setQueryData(
+      dashboardSentimentQueryKey(),
+      (prev: DashboardSummary | undefined) => ({
+        ...(prev ?? {}),
+        asOfDate: next.asOfDate,
+        marketSentiment: next.marketSentiment,
+        macroSnapshot: next.macroSnapshot,
+        marketEnvironmentZh: next.marketEnvironmentZh,
+      }),
+    );
     queryClient.setQueryData(dashboardNewsQueryKey(), (prev: DashboardSummary | undefined) => ({
       ...(prev ?? {}),
       news: next.news,
@@ -178,8 +176,7 @@ export function useDashboardSummary() {
       const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
       if (!raw) return;
       const obj = JSON.parse(raw) as NewsBriefCache;
-      const cachedSummary =
-        typeof obj?.summary === 'string' ? stripModelThinking(obj.summary) : '';
+      const cachedSummary = typeof obj?.summary === 'string' ? stripModelThinking(obj.summary) : '';
       const updatedAt = typeof obj?.updatedAt === 'string' ? obj.updatedAt.trim() : '';
       const fallback = typeof obj?.fallback === 'string' ? obj.fallback.trim() : '';
       if (cachedSummary) setNewsSummary(cachedSummary);
@@ -191,11 +188,7 @@ export function useDashboardSummary() {
   }, []);
 
   async function refetchSummary() {
-    await Promise.all([
-      liteQuery.refetch(),
-      sentimentQuery.refetch(),
-      newsQuery.refetch(),
-    ]);
+    await Promise.all([liteQuery.refetch(), sentimentQuery.refetch(), newsQuery.refetch()]);
   }
 
   async function onSyncSentiment() {

@@ -42,7 +42,8 @@ const BrokerPage = dynamic(
   { loading: LazyPageFallback },
 );
 const JournalTradeReviewPage = dynamic(
-  () => import('@/components/pages/JournalTradeReviewPage').then((mod) => mod.JournalTradeReviewPage),
+  () =>
+    import('@/components/pages/JournalTradeReviewPage').then((mod) => mod.JournalTradeReviewPage),
   { loading: LazyPageFallback },
 );
 const JournalWritePage = dynamic(
@@ -142,7 +143,12 @@ function AppShellInner() {
 
   React.useEffect(() => {
     if (!appliedInitialHash.current) return;
-    const route: { page: string; symbol?: string | null; journalMode?: string | null; journalId?: string | null } = {
+    const route: {
+      page: string;
+      symbol?: string | null;
+      journalMode?: string | null;
+      journalId?: string | null;
+    } = {
       page: activePage,
     };
     if (activePage === 'stock') route.symbol = activeStockSymbol;

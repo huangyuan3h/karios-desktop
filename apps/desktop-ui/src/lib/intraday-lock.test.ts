@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  clearIntradaySnapshotCache,
-  resolveStableActionPrice,
-} from './intraday-lock';
+import { clearIntradaySnapshotCache, resolveStableActionPrice } from './intraday-lock';
 
 function sh(iso: string): Date {
   return new Date(iso);

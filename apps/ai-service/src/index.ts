@@ -36,4 +36,3 @@ if (!Number.isInteger(port) || port <= 0 || port > 65535) {
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`AI service listening on http://127.0.0.1:${info.port}`);
 });
-

@@ -40,16 +40,8 @@ function lastOptions(): CapturedOptions {
 
 describe('query keys', () => {
   it('builds stable keys', () => {
-    expect(executionChangesKey('2026-08-07')).toEqual([
-      'execution',
-      'changes',
-      '2026-08-07',
-    ]);
-    expect(executionSnapshotsKey('2026-08-07')).toEqual([
-      'execution',
-      'snapshots',
-      '2026-08-07',
-    ]);
+    expect(executionChangesKey('2026-08-07')).toEqual(['execution', 'changes', '2026-08-07']);
+    expect(executionSnapshotsKey('2026-08-07')).toEqual(['execution', 'snapshots', '2026-08-07']);
   });
 });
 
@@ -108,8 +100,6 @@ describe('useExecutionRecentSnapshotsQuery', () => {
     expect(opts.queryKey).toEqual(['execution', 'snapshots', 'recent', 30]);
     expect(opts.refetchInterval).toBe(120_000);
     await opts.queryFn();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/execution/snapshots?limit=30',
-    );
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/execution/snapshots?limit=30');
   });
 });

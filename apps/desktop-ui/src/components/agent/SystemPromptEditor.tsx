@@ -4,7 +4,13 @@ import * as React from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
@@ -96,9 +102,13 @@ export function SystemPromptEditor() {
           <div className="text-xs font-semibold uppercase tracking-wide text-[var(--k-muted)]">
             System prompt
           </div>
-          <div className="truncate text-xs text-[var(--k-text)]">{state.settings.systemPromptTitle}</div>
+          <div className="truncate text-xs text-[var(--k-text)]">
+            {state.settings.systemPromptTitle}
+          </div>
         </div>
-        <ChevronDown className={`h-4 w-4 text-[var(--k-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 text-[var(--k-muted)] transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </Button>
 
       {open ? (
@@ -282,7 +292,11 @@ export function SystemPromptEditor() {
                       setError(await resp.text().catch(() => 'Failed to save preset.'));
                       return;
                     }
-                    setSystemPromptLocal({ id: selectedId, title: title.trim() || 'Untitled', content: draft });
+                    setSystemPromptLocal({
+                      id: selectedId,
+                      title: title.trim() || 'Untitled',
+                      content: draft,
+                    });
                     await refreshList();
                     return;
                   }
@@ -315,5 +329,3 @@ export function SystemPromptEditor() {
     </div>
   );
 }
-
-

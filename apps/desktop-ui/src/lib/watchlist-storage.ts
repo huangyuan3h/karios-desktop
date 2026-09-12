@@ -320,7 +320,9 @@ export function resetWatchlistHydrationForTests(): void {
   hydratePromise = null;
 }
 
-export function normalizeWatchlistItem(item: Partial<WatchlistItem> & { symbol: string }): WatchlistItem {
+export function normalizeWatchlistItem(
+  item: Partial<WatchlistItem> & { symbol: string },
+): WatchlistItem {
   const [normalized] = normalizeWatchlistItems([item]);
   return (
     normalized ?? {
@@ -339,7 +341,11 @@ export function normalizeWatchlistItem(item: Partial<WatchlistItem> & { symbol: 
 }
 
 function hasHeldPosition(item: WatchlistItem): boolean {
-  return typeof item.positionPct === 'number' && Number.isFinite(item.positionPct) && item.positionPct > 0;
+  return (
+    typeof item.positionPct === 'number' &&
+    Number.isFinite(item.positionPct) &&
+    item.positionPct > 0
+  );
 }
 
 /**

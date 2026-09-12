@@ -31,8 +31,20 @@ describe('sortWatchlistItems', () => {
       item('CN:000004', null), // score 90, rs 0.8 (tie with 000003 → rs wins)
       item('CN:000005', 0), // position 0 → not held
     ];
-    const trend = trendWith({ 'CN:000001': 70, 'CN:000002': 60, 'CN:000003': 90, 'CN:000004': 90, 'CN:000005': 80 });
-    const rsRanks = { 'CN:000001': 0.5, 'CN:000002': 0.9, 'CN:000003': 0.4, 'CN:000004': 0.8, 'CN:000005': 0.3 };
+    const trend = trendWith({
+      'CN:000001': 70,
+      'CN:000002': 60,
+      'CN:000003': 90,
+      'CN:000004': 90,
+      'CN:000005': 80,
+    });
+    const rsRanks = {
+      'CN:000001': 0.5,
+      'CN:000002': 0.9,
+      'CN:000003': 0.4,
+      'CN:000004': 0.8,
+      'CN:000005': 0.3,
+    };
 
     const out = sortWatchlistItems(items, trend, true, 'desc', rsRanks).map((i) => i.symbol);
     expect(out[0]).toBe('CN:000002'); // held first even with lower score

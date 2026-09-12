@@ -64,9 +64,12 @@ export type PanicCooldownStatus = {
 /** Fetch S-3 panic cooldown from the backend (fail-open: null on any error). */
 export async function fetchPanicCooldown(): Promise<PanicCooldownStatus | null> {
   try {
-    const res = await fetch(`${DATA_SYNC_BASE_URL}/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3`, {
-      cache: 'no-store',
-    });
+    const res = await fetch(
+      `${DATA_SYNC_BASE_URL}/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3`,
+      {
+        cache: 'no-store',
+      },
+    );
     if (!res.ok) return null;
     return (await res.json()) as PanicCooldownStatus;
   } catch {
@@ -145,9 +148,7 @@ export function buildPositionsExecutionMarkdown(
     '- note: DEFEND/Weak 时段锁: BUY/ADD 仅 14:30–14:50(TIME_LOCK_WEAK_REGIME/MARKET_CLOSING_LOCK); 防御仓白名单+5D Top3+Score≥70→DEFENSIVE_SLEEVE_ALLOW(10% sleeve/5% 单票); V6.3 溢出: 单日净流入>500亿+涨>4000家+≥14:30→allowNewEntries≤5%',
   );
   if (sectorOutflowBlock) {
-    lines.push(
-      '- note: Mainline=no + SECTOR_OUTFLOW_BLOCK when all sectors net outflow',
-    );
+    lines.push('- note: Mainline=no + SECTOR_OUTFLOW_BLOCK when all sectors net outflow');
   }
   const sleeveExposurePct = buildSleeveExposurePct(items);
   const sleeveByMarket = buildSleeveExposureByMarket(items);
@@ -164,9 +165,7 @@ export function buildPositionsExecutionMarkdown(
   );
   const missingSize = countHeldMissingPositionPct(items);
   if (missingSize > 0) {
-    lines.push(
-      `- note: ${missingSize} held missing positionPct (sector/sleeve caps fail-open)`,
-    );
+    lines.push(`- note: ${missingSize} held missing positionPct (sector/sleeve caps fail-open)`);
   }
   const missingEntryDate = items.filter(
     (it) => isHeldPosition(it) && isMissingEntryDate(it.entryDate),
@@ -243,9 +242,7 @@ export function buildPositionsExecutionMarkdown(
     // CN/ETF rows against the CN sleeve (incl. ETFs). Position budgets are
     // evaluated against the market's own gate hint (hkGate for HK).
     const rowGate =
-      marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate
-        ? { ...gate, ...gate.hkGate }
-        : gate;
+      marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate ? { ...gate, ...gate.hkGate } : gate;
     const card: ExecutionActionCard = deriveActionCard({
       symbol: it.symbol,
       gate: rowGate,
@@ -269,10 +266,7 @@ export function buildPositionsExecutionMarkdown(
     }
     // Visibility filter (2026-08-01): drop silent dead rows (WATCH_SILENT & no signal)
     // but keep PURGE rows so the post-report GC can still remove them from storage.
-    if (
-      card.action !== 'PURGE' &&
-      !shouldShowInWatchlistTable(it, t ?? null, card.action)
-    ) {
+    if (card.action !== 'PURGE' && !shouldShowInWatchlistTable(it, t ?? null, card.action)) {
       hiddenRows += 1;
       continue;
     }
@@ -353,8 +347,10 @@ export function buildPositionsExecutionMarkdown(
     const hkCands = hkBlock?.s3Candidates ?? [];
     const cnRegime = String(health?.regime ?? '');
     const hkRegime = String(hkBlock?.regime ?? '');
-    const cnSize = Number((health?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
-    const hkSize = Number((hkBlock?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
+    const cnSize =
+      Number((health?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
+    const hkSize =
+      Number((hkBlock?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
     const hkTotal = hkBlock?.s3CandidateTotal;
     const cnTotal = health?.s3CandidateTotal;
     const anyCands = cnCands.length > 0 || hkCands.length > 0;
@@ -411,7 +407,9 @@ export function buildPositionsExecutionMarkdown(
       lines.push('');
     } else if (anyCands && !stockPickOk) {
       lines.push(`${heading} S-3 股票腿候选（今日不执行）`);
-      lines.push(`- 择强 pick=${pickKey} ≠ STOCK → A股候选 ${cnCands.length} · 港股候选 ${hkCands.length} 仅作参考，**不买入**`);
+      lines.push(
+        `- 择强 pick=${pickKey} ≠ STOCK → A股候选 ${cnCands.length} · 港股候选 ${hkCands.length} 仅作参考，**不买入**`,
+      );
       lines.push('');
     } else if (health && (cnRegime || hkRegime)) {
       lines.push(`${heading} S-3 股票腿买入候选`);
@@ -438,7 +436,9 @@ export function buildPositionsExecutionMarkdown(
     lines.push('');
   }
   if (hiddenRows > 0) {
-    lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<70 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
+    lines.push(
+      `- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<70 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`,
+    );
   }
   if (purgeSymbols.length) {
     lines.push(
@@ -466,13 +466,28 @@ export function buildS3Candidates(opts: {
   cnCap: number | null;
   sleeveExposurePct: number;
 }): Array<{ symbol: string; name: string; score: number; rsLabel: string; sizePct: string }> {
-  const { items, trend, rsRanks, gate, mainlineAllow, sectorOutflowBlock, cnCap, sleeveExposurePct } = opts;
+  const {
+    items,
+    trend,
+    rsRanks,
+    gate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    cnCap,
+    sleeveExposurePct,
+  } = opts;
   if (!gate || rsRanks == null || sectorOutflowBlock) return [];
   const regime = String(gate.marketRegime ?? '');
   if (regime !== 'Strong' && regime !== 'Diverging') return [];
   const maxSize = cnCap ?? 100;
   let remaining = Math.max(0, maxSize - sleeveExposurePct);
-  const out: Array<{ symbol: string; name: string; score: number; rsLabel: string; sizePct: string }> = [];
+  const out: Array<{
+    symbol: string;
+    name: string;
+    score: number;
+    rsLabel: string;
+    sizePct: string;
+  }> = [];
   for (const it of items) {
     if (marketOfSymbol(it.symbol) !== 'cn') continue;
     if (isHeldPosition(it)) continue;

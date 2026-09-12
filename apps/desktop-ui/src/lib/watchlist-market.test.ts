@@ -7,10 +7,7 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 import { apiGetJson } from '@/lib/api/client';
-import {
-  fetchWatchlistMarketSnapshot,
-  forceRefreshWatchlistBars,
-} from '@/lib/watchlist-market';
+import { fetchWatchlistMarketSnapshot, forceRefreshWatchlistBars } from '@/lib/watchlist-market';
 
 beforeEach(() => {
   resetTrendOkInflightForTests();

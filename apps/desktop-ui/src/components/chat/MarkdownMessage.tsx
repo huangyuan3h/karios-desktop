@@ -75,8 +75,12 @@ export function MarkdownMessage({ content, className }: { content: string; class
               {children}
             </th>
           ),
-          tbody: ({ children }) => <tbody className="divide-y divide-[var(--k-border)]">{children}</tbody>,
-          tr: ({ children }) => <tr className="odd:bg-[var(--k-surface)] even:bg-[var(--k-surface-2)]">{children}</tr>,
+          tbody: ({ children }) => (
+            <tbody className="divide-y divide-[var(--k-border)]">{children}</tbody>
+          ),
+          tr: ({ children }) => (
+            <tr className="odd:bg-[var(--k-surface)] even:bg-[var(--k-surface-2)]">{children}</tr>
+          ),
           td: ({ children }) => (
             <td className="align-top border-b border-[var(--k-border)] px-3 py-2 whitespace-normal break-words">
               {children}
@@ -84,7 +88,11 @@ export function MarkdownMessage({ content, className }: { content: string; class
           ),
           code: (props) => {
             // react-markdown's typings don't expose `inline` on this component prop, but it exists at runtime.
-            const p = props as unknown as { inline?: boolean; className?: string; children?: ReactNode };
+            const p = props as unknown as {
+              inline?: boolean;
+              className?: string;
+              children?: ReactNode;
+            };
             const inline = Boolean(p.inline);
             if (inline) {
               return (
@@ -93,7 +101,9 @@ export function MarkdownMessage({ content, className }: { content: string; class
                 </code>
               );
             }
-            return <code className={cn('text-xs text-[var(--k-text)]', p.className)}>{p.children}</code>;
+            return (
+              <code className={cn('text-xs text-[var(--k-text)]', p.className)}>{p.children}</code>
+            );
           },
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-[var(--k-border)] pl-3 text-[var(--k-muted)]">
@@ -107,5 +117,3 @@ export function MarkdownMessage({ content, className }: { content: string; class
     </div>
   );
 }
-
-

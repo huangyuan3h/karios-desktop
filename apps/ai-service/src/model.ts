@@ -48,9 +48,11 @@ export type ResolvedModelBundle = {
 /**
  * Extra options for `generateObject` on OpenAI-compatible servers that do not support json_schema.
  */
-export function generateObjectCompatOptions(looseStructuredOutputs: boolean): {
-  providerOptions: { openai: { structuredOutputs: false } };
-} | Record<string, never> {
+export function generateObjectCompatOptions(looseStructuredOutputs: boolean):
+  | {
+      providerOptions: { openai: { structuredOutputs: false } };
+    }
+  | Record<string, never> {
   if (!looseStructuredOutputs) return {};
   return { providerOptions: { openai: { structuredOutputs: false as const } } };
 }
@@ -58,9 +60,11 @@ export function generateObjectCompatOptions(looseStructuredOutputs: boolean): {
 /**
  * Hint OpenAI-compatible APIs to return JSON for `generateText` fallbacks when `json_schema` is unavailable.
  */
-export function generateTextJsonObjectModeOptions(looseStructuredOutputs: boolean): {
-  providerOptions: { openai: { responseFormat: { type: 'json_object' } } };
-} | Record<string, never> {
+export function generateTextJsonObjectModeOptions(looseStructuredOutputs: boolean):
+  | {
+      providerOptions: { openai: { responseFormat: { type: 'json_object' } } };
+    }
+  | Record<string, never> {
   if (!looseStructuredOutputs) return {};
   return {
     providerOptions: { openai: { responseFormat: { type: 'json_object' as const } } },
@@ -101,7 +105,10 @@ export function rewriteOpenAiCompatibleRequestBody(
       if (changed) parsed.messages = next;
     }
 
-    if (shouldEnableMiniMaxReasoningSplit(parsed, opts?.baseURL) && parsed.reasoning_split !== true) {
+    if (
+      shouldEnableMiniMaxReasoningSplit(parsed, opts?.baseURL) &&
+      parsed.reasoning_split !== true
+    ) {
       parsed.reasoning_split = true;
       changed = true;
     }
@@ -295,11 +302,13 @@ let geminiFetch: typeof fetch | null = null;
 function getGeminiFetch(): typeof fetch {
   if (geminiFetch) return geminiFetch;
   const hasProxy =
-    (process.env.https_proxy ??
+    (
+      process.env.https_proxy ??
       process.env.HTTPS_PROXY ??
       process.env.http_proxy ??
       process.env.HTTP_PROXY ??
-      '').trim().length > 0;
+      ''
+    ).trim().length > 0;
   if (!hasProxy) {
     geminiFetch = globalThis.fetch;
     return geminiFetch;

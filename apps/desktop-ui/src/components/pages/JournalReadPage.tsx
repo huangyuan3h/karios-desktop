@@ -85,7 +85,7 @@ export function JournalReadPage({
       const xs = await refreshList();
       const nextId = xs[0]?.id ?? null;
       setSelectedId(nextId);
-      setSelected(nextId ? xs.find((x) => x.id === nextId) ?? null : null);
+      setSelected(nextId ? (xs.find((x) => x.id === nextId) ?? null) : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -101,7 +101,7 @@ export function JournalReadPage({
         const xs = await refreshList();
         const nextId = selectedId || activeId || xs[0]?.id || null;
         setSelectedId(nextId);
-        const found = nextId ? xs.find((x) => x.id === nextId) ?? null : null;
+        const found = nextId ? (xs.find((x) => x.id === nextId) ?? null) : null;
         setSelected(found);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -117,7 +117,7 @@ export function JournalReadPage({
       setSelected(null);
       return;
     }
-    const found = selectedId ? items.find((x) => x.id === selectedId) ?? null : null;
+    const found = selectedId ? (items.find((x) => x.id === selectedId) ?? null) : null;
     setSelected(found);
   }, [items, selectedId]);
 
@@ -130,10 +130,22 @@ export function JournalReadPage({
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={onOpenTradeReview} disabled={busy} className="gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onOpenTradeReview}
+            disabled={busy}
+            className="gap-2"
+          >
             Trade Review
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => void onCreate()} disabled={busy} className="gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onCreate()}
+            disabled={busy}
+            className="gap-2"
+          >
             <Plus className="h-4 w-4" />
             New
           </Button>
@@ -194,7 +206,9 @@ export function JournalReadPage({
                     onClick={() => setSelectedId(it.id)}
                   >
                     <div className="truncate font-medium">{it.title || 'Untitled'}</div>
-                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">{fmtTsSimple(it.updatedAt)}</div>
+                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">
+                      {fmtTsSimple(it.updatedAt)}
+                    </div>
                   </button>
                 );
               })}
@@ -211,7 +225,8 @@ export function JournalReadPage({
               <div className="mb-2">
                 <div className="text-base font-semibold">{selected.title || 'Untitled'}</div>
                 <div className="mt-1 text-xs text-[var(--k-muted)]">
-                  Updated: {fmtTsSimple(selected.updatedAt)} • Created: {fmtTsSimple(selected.createdAt)}
+                  Updated: {fmtTsSimple(selected.updatedAt)} • Created:{' '}
+                  {fmtTsSimple(selected.createdAt)}
                 </div>
               </div>
               <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
@@ -226,4 +241,3 @@ export function JournalReadPage({
     </div>
   );
 }
-

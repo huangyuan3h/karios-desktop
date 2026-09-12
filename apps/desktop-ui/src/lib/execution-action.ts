@@ -232,9 +232,21 @@ const HK_INDEX_ETF_OVERRIDES: ReadonlySet<string> = new Set(['ETF:513180']);
 
 /** Market bucket of a symbol for sleeve accounting (ETF trades under the CN gate). */
 export function marketOfSymbol(symbol: string): 'cn' | 'hk' | 'etf' {
-  if (HK_INDEX_ETF_OVERRIDES.has(String(symbol || '').trim().toUpperCase())) return 'hk';
+  if (
+    HK_INDEX_ETF_OVERRIDES.has(
+      String(symbol || '')
+        .trim()
+        .toUpperCase(),
+    )
+  )
+    return 'hk';
   if (isEtfWatchlistSymbol(symbol)) return 'etf';
-  if (String(symbol || '').toUpperCase().startsWith('HK:')) return 'hk';
+  if (
+    String(symbol || '')
+      .toUpperCase()
+      .startsWith('HK:')
+  )
+    return 'hk';
   return 'cn';
 }
 
@@ -255,10 +267,7 @@ export function buildSleeveExposureByMarket(positions: PositionLike[]): SleeveEx
 }
 
 /** Sleeve exposure that applies to a symbol's own market (ETF → CN sleeve). */
-export function sleeveExposureForSymbol(
-  byMarket: SleeveExposureByMarket,
-  symbol: string,
-): number {
+export function sleeveExposureForSymbol(byMarket: SleeveExposureByMarket, symbol: string): number {
   const m = marketOfSymbol(symbol);
   return m === 'hk' ? byMarket.hk : byMarket.cn + byMarket.etf;
 }
@@ -392,11 +401,7 @@ export function suggestFireSizePct(opts: {
   if (Math.abs(room - roomSleeve) < eps) note = 'sleeve';
   else if (Math.abs(room - roomSector) < eps) note = 'sector';
   else if (Math.abs(room - roomSingle) < eps) note = 'single';
-  else if (
-    Number.isFinite(riskCap) &&
-    riskCap < clip &&
-    Math.abs(room - riskCap) < eps
-  ) {
+  else if (Number.isFinite(riskCap) && riskCap < clip && Math.abs(room - riskCap) < eps) {
     note = 'risk';
   } else if (
     Number.isFinite(roomCorrelation) &&
@@ -578,8 +583,7 @@ export function resolveDefensiveHardStop(opts: {
 }): number | null {
   const current = num(opts.currentPrice);
   const ema10 = num(opts.ema10);
-  const lossFloor =
-    current != null && current > 0 ? current * (1 - DEFENSIVE_MAX_LOSS_PCT) : null;
+  const lossFloor = current != null && current > 0 ? current * (1 - DEFENSIVE_MAX_LOSS_PCT) : null;
   if (ema10 != null && lossFloor != null) return Math.max(ema10, lossFloor);
   if (ema10 != null) return ema10;
   return lossFloor;
@@ -611,13 +615,7 @@ export function deriveTriggerAndTrail(opts: {
   let trailArmed = false;
   let trailStop: number | null = null;
 
-  if (
-    pnl != null &&
-    pnl >= CHANDELIER_ARM_PNL_PCT &&
-    peak != null &&
-    atr14 != null &&
-    atr14 > 0
-  ) {
+  if (pnl != null && pnl >= CHANDELIER_ARM_PNL_PCT && peak != null && atr14 != null && atr14 > 0) {
     trailArmed = true;
     trailStop = peak - CHANDELIER_ATR_MULT * atr14;
   }
@@ -639,10 +637,7 @@ function s3FixedHardStop(costPrice: number | null): number | null {
 }
 
 /** OPT-105: Strong-regime ATR stop line = cost × (1 − mult × ATR%). */
-function s3AtrHardStop(
-  costPrice: number | null,
-  atrPct: number | null,
-): number | null {
+function s3AtrHardStop(costPrice: number | null, atrPct: number | null): number | null {
   if (costPrice == null || !Number.isFinite(costPrice) || costPrice <= 0) {
     return null;
   }
@@ -677,10 +672,7 @@ function s3FixedTrail(opts: {
       ? s3PeakClose
       : maxPrice) ?? null;
   const trailPct = isHk ? S3_TRAILING_STOP_PCT_HK : S3_TRAILING_STOP_PCT;
-  const trailMult =
-    atrPct != null && atrPct > 0
-      ? (S3_ATR_STOP_MULT * atrPct) / 100
-      : trailPct;
+  const trailMult = atrPct != null && atrPct > 0 ? (S3_ATR_STOP_MULT * atrPct) / 100 : trailPct;
   const trailStop = peak != null ? peak * (1 - trailMult) : null;
   let exitStop: number | null = null;
   if (hardStop != null && trailStop != null) exitStop = Math.max(hardStop, trailStop);
@@ -719,8 +711,7 @@ export function deriveEtfFallbackStop(opts: {
   const cost = num(opts.costPrice);
   const current = num(opts.current);
   if (cost == null || current == null || current <= 0) return null;
-  const peak =
-    opts.maxPrice != null && Number.isFinite(opts.maxPrice) ? opts.maxPrice : null;
+  const peak = opts.maxPrice != null && Number.isFinite(opts.maxPrice) ? opts.maxPrice : null;
   const pnlPct = cost > 0 ? ((current - cost) / cost) * 100 : 0;
   let stop = Math.max(
     current * (1 - ETF_FALLBACK_MAX_LOSS_PCT),
@@ -761,8 +752,12 @@ export function daysBetweenDates(
   from: string | null | undefined,
   to: string | null | undefined,
 ): number {
-  const a = String(from || '').trim().slice(0, 10);
-  const b = String(to || '').trim().slice(0, 10);
+  const a = String(from || '')
+    .trim()
+    .slice(0, 10);
+  const b = String(to || '')
+    .trim()
+    .slice(0, 10);
   const ta = Date.parse(`${a}T00:00:00Z`);
   const tb = Date.parse(`${b}T00:00:00Z`);
   if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 0;
@@ -916,12 +911,7 @@ export function evaluateNewEntryGates(opts: {
       scoreParts,
     });
     const pct = typeof intradayChgPct === 'number' ? intradayChgPct : null;
-    if (
-      !eligible ||
-      pct == null ||
-      !Number.isFinite(pct) ||
-      pct > MOMENTUM_SURGE_ALLOW_MAX_PCT
-    ) {
+    if (!eligible || pct == null || !Number.isFinite(pct) || pct > MOMENTUM_SURGE_ALLOW_MAX_PCT) {
       return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
     }
     momentumSurgeAllow = true;
@@ -930,7 +920,11 @@ export function evaluateNewEntryGates(opts: {
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
-  if (!isEtf && !opts.isS3Candidate && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+  if (
+    !isEtf &&
+    !opts.isS3Candidate &&
+    isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)
+  ) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
@@ -1079,8 +1073,7 @@ export function deriveActionCard(opts: {
   const maxPrice = num(position.maxPrice);
   const isHk = marketOfSymbol(symbol) === 'hk';
   const atr14 = atrFromParts(parts);
-  const useDefensiveStop =
-    mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
+  const useDefensiveStop = mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
   // OPT-105 (2026-08-13 固化): regime-adaptive stops — Strong sessions use
   // the ATR% x S3_ATR_STOP_MULT line (let winners run), Diverging/Weak keep
   // the fixed -5%/-8% (cut fast). Mirrors the backtest S3_CONFIG and the
@@ -1090,8 +1083,7 @@ export function deriveActionCard(opts: {
     atr14 != null && atr14 > 0 && currentPrice != null && currentPrice > 0
       ? (atr14 / currentPrice) * 100
       : null;
-  const useAtrStop =
-    held && !isEtf && regime === 'Strong' && atrPct != null && atrPct > 0;
+  const useAtrStop = held && !isEtf && regime === 'Strong' && atrPct != null && atrPct > 0;
   const trendHardStop =
     held && !isEtf
       ? useAtrStop
@@ -1107,8 +1099,7 @@ export function deriveActionCard(opts: {
   // Prefer tighter (higher) stop when both exist.
   let hardStop = trendHardStop;
   if (defensiveStop != null) {
-    hardStop =
-      hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
+    hardStop = hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
   }
   // OPT-099: S-3 trailing peak = backtest-caliber CLOSE peak since entry
   // (intraday high) only when the backend value is absent.
@@ -1203,8 +1194,7 @@ export function deriveActionCard(opts: {
   const score = num(trendok?.score);
   const scoreOk = score != null && score >= BUY_SCORE_MIN;
   const wantsBuy = buyAction === 'buy' && scoreOk;
-  const trendOkFlag =
-    typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
+  const trendOkFlag = typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
   const isRecovering =
     String(trendok?.trendStatus || '')
       .trim()
@@ -1233,13 +1223,11 @@ export function deriveActionCard(opts: {
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
     industryName &&
-      !isDefenseSector(industryName) &&
-      mainlineAllow?.ready &&
-      mainlineAllow.names.has(industryName),
+    !isDefenseSector(industryName) &&
+    mainlineAllow?.ready &&
+    mainlineAllow.names.has(industryName),
   );
-  const mainlineTag = mainlineOk
-    ? (mainlineAllow!.byName.get(industryName!) ?? null)
-    : null;
+  const mainlineTag = mainlineOk ? (mainlineAllow!.byName.get(industryName!) ?? null) : null;
   const defensiveHolding = isDefensiveSectorWhitelist(industryName);
   const heldTrim = evaluateHeldTrimGates({
     mode,
@@ -1251,8 +1239,7 @@ export function deriveActionCard(opts: {
   });
 
   const defensiveUsed =
-    typeof defensiveSleeveExposurePct === 'number' &&
-    Number.isFinite(defensiveSleeveExposurePct)
+    typeof defensiveSleeveExposurePct === 'number' && Number.isFinite(defensiveSleeveExposurePct)
       ? defensiveSleeveExposurePct
       : 0;
   const defensiveEligible =
@@ -1271,18 +1258,13 @@ export function deriveActionCard(opts: {
 
   const lockedT1 = held && isLockedT1(position.entryDate, todaySh);
   const missingEntryDate = held && isMissingEntryDate(position.entryDate);
-  const entryBelowStop =
-    !held && isEntryAtOrBelowHardStop(entryTrigger, hardStop);
+  const entryBelowStop = !held && isEntryAtOrBelowHardStop(entryTrigger, hardStop);
   // OPT-099: max_hold_days=60 (engine / paper / health) — held beyond the
   // calendar-day cap exits regardless of price (backtested exit rule).
   const heldMaxHold =
     held && !missingEntryDate && daysBetweenDates(position.entryDate, todaySh) >= S3_MAX_HOLD_DAYS;
 
-  const blockSellWhy = missingEntryDate
-    ? 'ENTRY_DATE_MISSING'
-    : lockedT1
-      ? 'T1_LOCK'
-      : null;
+  const blockSellWhy = missingEntryDate ? 'ENTRY_DATE_MISSING' : lockedT1 ? 'T1_LOCK' : null;
 
   // 2026-08-12 (OPT-097): S-3-only exits for held positions. The trendok
   // structure signals (exit_now / warn_reduce_half) and the sector-flow
@@ -1329,9 +1311,7 @@ export function deriveActionCard(opts: {
   } else if (held) {
     action = 'HOLD';
     why = allowAttack ? 'HOLD' : 'GATE_BLOCK_NEW';
-  } else if (
-    isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })
-  ) {
+  } else if (isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })) {
     if (isRecovering) {
       action = 'WATCH';
       why = 'TREND_RECOVERING';
@@ -1392,8 +1372,7 @@ export function deriveActionCard(opts: {
     why = 'TREND_RECOVERING';
   } else {
     action = 'WATCH';
-    why =
-      !mainlineOk && sectorOutflowBlock ? 'SECTOR_OUTFLOW_BLOCK' : 'WATCH';
+    why = !mainlineOk && sectorOutflowBlock ? 'SECTOR_OUTFLOW_BLOCK' : 'WATCH';
   }
 
   let suggestAddPct: number | null = null;
@@ -1464,12 +1443,7 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const mode = String(o.mode || '');
-  if (
-    mode !== 'ATTACK' &&
-    mode !== 'WEAK_ATTACK' &&
-    mode !== 'HOLD_ONLY' &&
-    mode !== 'DEFEND'
-  ) {
+  if (mode !== 'ATTACK' && mode !== 'WEAK_ATTACK' && mode !== 'HOLD_ONLY' && mode !== 'DEFEND') {
     return null;
   }
   const regime = String(o.marketRegime || '');
@@ -1499,12 +1473,7 @@ function parseGateSubset(raw: unknown): ExecutionGate['hkGate'] {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const mode = String(o.mode || '');
-  if (
-    mode !== 'ATTACK' &&
-    mode !== 'WEAK_ATTACK' &&
-    mode !== 'HOLD_ONLY' &&
-    mode !== 'DEFEND'
-  ) {
+  if (mode !== 'ATTACK' && mode !== 'WEAK_ATTACK' && mode !== 'HOLD_ONLY' && mode !== 'DEFEND') {
     return null;
   }
   const regime = String(o.marketRegime || '');

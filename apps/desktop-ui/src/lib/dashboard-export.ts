@@ -80,17 +80,24 @@ import {
 } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
-import { fetchWatchlistMarketSnapshot, fetchQuoteChunkWithRetry, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
+import {
+  fetchWatchlistMarketSnapshot,
+  fetchQuoteChunkWithRetry,
+  type WatchlistMarketSnapshot,
+} from '@/lib/watchlist-market';
 import {
   parseQuoteNumber,
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 import { copyBlockingMissingData } from '@/lib/watchlist-export';
-import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/lib/watchlist-storage';
+import {
+  loadWatchlist,
+  ensureWatchlistHydrated,
+  type WatchlistItem,
+} from '@/lib/watchlist-storage';
 
 type DashboardSummary = any;
-
 
 type QuoteResp = {
   ok: boolean;
@@ -233,10 +240,7 @@ export function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'
   return lines.join('\n').trim() + '\n';
 }
 
-export function buildMarketAndMacroMarkdown(
-  s: DashboardSummary | null,
-  heading = '##',
-): string {
+export function buildMarketAndMacroMarkdown(s: DashboardSummary | null, heading = '##'): string {
   const summary2: any = s ?? {};
   const ms: any = summary2?.marketSentiment ?? {};
   const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
@@ -248,11 +252,20 @@ export function buildMarketAndMacroMarkdown(
   const lines: string[] = [];
   lines.push(`${heading} Market & Macro overview`);
   lines.push('');
-  lines.push(
-    '- note: 指数红绿灯 + 宏观商品/汇率 + 300ETF Put IV 一张表；避免散落重复',
-  );
+  lines.push('- note: 指数红绿灯 + 宏观商品/汇率 + 300ETF Put IV 一张表；避免散落重复');
 
-  const headers = ['Name', 'Kind', 'Signal', 'Pos', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
+  const headers = [
+    'Name',
+    'Kind',
+    'Signal',
+    'Pos',
+    'Chg%',
+    'Close',
+    'MA5',
+    'MA20',
+    'AsOfDate',
+    'Source',
+  ];
   const rows: unknown[][] = [];
 
   // B5: flag rows whose data is much older than the newest row (stale > 2 days).
@@ -306,11 +319,7 @@ export function buildMarketAndMacroMarkdown(
         ? `${Number(it.close).toFixed(1)}%`
         : Number(it.close).toFixed(2)
       : '—';
-    const signalStr = it?.signalLabel
-      ? it.signalLabel
-      : it?.signal
-        ? String(it.signal)
-        : '—';
+    const signalStr = it?.signalLabel ? it.signalLabel : it?.signal ? String(it.signal) : '—';
     const kind = isVol ? 'Vol (IV)' : 'Macro';
     const asOf = String(it?.asOfDate ?? '').slice(0, 10);
     const days = staleDays(asOf);
@@ -380,9 +389,7 @@ export function buildSentimentMarkdown(
     const up = Number(latest?.upCount ?? 0);
     const down = Number(latest?.downCount ?? 0);
     if (up > 0 || down > 0) {
-      lines.push(
-        `- Market Breadth: ${up.toLocaleString()} Up / ${down.toLocaleString()} Down`,
-      );
+      lines.push(`- Market Breadth: ${up.toLocaleString()} Up / ${down.toLocaleString()} Down`);
     }
     const total = fmtAmountCn(latest?.marketTurnoverCny);
     if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
@@ -398,7 +405,17 @@ export function buildSentimentMarkdown(
   }
 
   const last5 = (items || []).slice(-5);
-  const headers = ['date', 'up', 'down', 'flat', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
+  const headers = [
+    'date',
+    'up',
+    'down',
+    'flat',
+    'ratio',
+    'turnover',
+    'premium%',
+    'failed%',
+    'risk',
+  ];
   const rows: unknown[][] = last5.map((it: any) => [
     String(it?.date ?? ''),
     Number(it?.upCount ?? 0).toLocaleString(),
@@ -482,7 +499,28 @@ export function buildSentimentMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-async function fetchBacktestOverviewDash(): Promise<{ cnBaseline?: { tag?: string; windows?: Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }> }; longWindowCN?: { window?: string; totalNetPnlPct?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number } } | null> {
+async function fetchBacktestOverviewDash(): Promise<{
+  cnBaseline?: {
+    tag?: string;
+    windows?: Record<
+      string,
+      {
+        totalNetPnlPct?: number;
+        winRate?: number;
+        maxDrawdownPct?: number;
+        sharpe?: number;
+        trades?: number;
+      }
+    >;
+  };
+  longWindowCN?: {
+    window?: string;
+    totalNetPnlPct?: number;
+    maxDrawdownPct?: number;
+    sharpe?: number;
+    trades?: number;
+  };
+} | null> {
   try {
     const res = await fetch(`${DATA_SYNC_BASE_URL}/api/backtest/overview`, { cache: 'no-store' });
     if (!res.ok) return null;
@@ -491,26 +529,47 @@ async function fetchBacktestOverviewDash(): Promise<{ cnBaseline?: { tag?: strin
     return null;
   }
 }
-function buildStrategyAppendixDash(overview: Awaited<ReturnType<typeof fetchBacktestOverviewDash>>): string {
+function buildStrategyAppendixDash(
+  overview: Awaited<ReturnType<typeof fetchBacktestOverviewDash>>,
+): string {
   const lines: string[] = [];
   lines.push('## 策略体系（固化口径 · 可复现）');
-  lines.push('- S-3 定案（`docs/modules/strategy-params.md §1` · `service/paper_s3.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong ATR×2） · 持有60天 · 不止盈 · 恐慌冷却2天 · 回撤熔断-25%（CN） · 单票10%×10=100% mp10 · 入场次日开盘（回测） · 创业板300排除');
+  lines.push(
+    '- S-3 定案（`docs/modules/strategy-params.md §1` · `service/paper_s3.py`）：score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8%（Strong ATR×2） · 持有60天 · 不止盈 · 恐慌冷却2天 · 回撤熔断-25%（CN） · 单票10%×10=100% mp10 · 入场次日开盘（回测） · 创业板300排除',
+  );
   lines.push('- 港股 S-3（HK线）：regime闸 · RS前40% · trail-12% · 其余同A股；A/H独立');
   if (overview?.cnBaseline?.windows) {
-    const w = overview.cnBaseline.windows as Record<string, { totalNetPnlPct?: number; winRate?: number; maxDrawdownPct?: number; sharpe?: number; trades?: number }>;
+    const w = overview.cnBaseline.windows as Record<
+      string,
+      {
+        totalNetPnlPct?: number;
+        winRate?: number;
+        maxDrawdownPct?: number;
+        sharpe?: number;
+        trades?: number;
+      }
+    >;
     const fmt = (k: string) => {
       const v = w[k];
       if (!v) return `${k} —`;
       return `${k} ${v.totalNetPnlPct?.toFixed(1) ?? '—'}% / DD${v.maxDrawdownPct?.toFixed(1) ?? '—'}% / 胜率${v.winRate != null ? (v.winRate * 100).toFixed(1) + '%' : '—'} / ${v.trades ?? '—'}笔`;
     };
-    lines.push(`- 三窗（OOS2/train/valid · 100%现金≤1.0+0.7亿流动性 · ${overview.cnBaseline.tag ?? ''}）：${fmt('OOS2')} · ${fmt('train')} · ${fmt('valid')}`);
+    lines.push(
+      `- 三窗（OOS2/train/valid · 100%现金≤1.0+0.7亿流动性 · ${overview.cnBaseline.tag ?? ''}）：${fmt('OOS2')} · ${fmt('train')} · ${fmt('valid')}`,
+    );
   }
   if (overview?.longWindowCN) {
     const l = overview.longWindowCN;
-    lines.push(`- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔`);
+    lines.push(
+      `- 长窗 ${l.window ?? '2021-08~2026-08'}：${l.totalNetPnlPct ?? '—'}% / DD${l.maxDrawdownPct ?? '—'}% / 夏普${l.sharpe ?? '—'} / ${l.trades ?? '—'}笔`,
+    );
   }
-  lines.push('- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮∪金/油/纳/债同权比t-1 mom60（ETF≥MA200），argmax 100%硬切，空档GC001；LB60·MA200·hold1');
-  lines.push('- 多资产 sleeve：GOLD 518880·OIL 513350·NASDAQ 513100·BOND10 511260 · 多头轮动·可1.4×杠杆');
+  lines.push(
+    '- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮∪金/油/纳/债同权比t-1 mom60（ETF≥MA200），argmax 100%硬切，空档GC001；LB60·MA200·hold1',
+  );
+  lines.push(
+    '- 多资产 sleeve：GOLD 518880·OIL 513350·NASDAQ 513100·BOND10 511260 · 多头轮动·可1.4×杠杆',
+  );
   lines.push('- 形态：strong_scoop_exhaustion 勺型耗尽顶 89-92%（ret60>0.4+放量）· 方向判别层');
   lines.push('');
   return lines.join('\n');
@@ -540,11 +599,7 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
         ? `${Number(it.close).toFixed(1)}%`
         : Number(it.close).toFixed(2)
       : '—';
-    const signalStr = it?.signalLabel
-      ? it.signalLabel
-      : it?.signal
-        ? String(it.signal)
-        : '—';
+    const signalStr = it?.signalLabel ? it.signalLabel : it?.signal ? String(it.signal) : '—';
     return [
       String(it?.name ?? it?.seriesId ?? ''),
       closeStr,
@@ -615,9 +670,7 @@ export async function buildWatchlistMarkdown(
 
     const [trendMap, quoteResults] = await Promise.all([
       fetchTrendOkMap(syms, { realtime: quoteWindow }),
-      Promise.all(
-        tsCodesChunks.map((part) => fetchQuoteChunkWithRetry(part.join(','))),
-      ),
+      Promise.all(tsCodesChunks.map((part) => fetchQuoteChunkWithRetry(part.join(',')))),
     ]);
 
     trend = Object.fromEntries(trendMap);
@@ -729,9 +782,7 @@ export async function buildAlphaRadarCopyContext(
   const watchlistSymbols = loadWatchlistSymbols();
   // 2026-08-12: TV retired — no screener funnel symbols anymore.
   const catalystSymbols = catalystResp.items.map((row) => normalizeCatalystSymbol(row.symbol));
-  const allSymbols = [
-    ...new Set<string>([...watchlistSymbols, ...catalystSymbols]),
-  ];
+  const allSymbols = [...new Set<string>([...watchlistSymbols, ...catalystSymbols])];
 
   const trendMapRaw = await fetchTrendOkMap(allSymbols, {
     realtime: isShanghaiTradingTime(),
@@ -929,7 +980,14 @@ export async function buildDashboardCopyAllMarkdown(
 ): Promise<string> {
   await ensureWatchlistHydrated();
   let { summary: s } = options;
-  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full', forceFresh = false } = options;
+  const {
+    newsSummary,
+    newsSummaryUpdatedAt,
+    newsFallback,
+    queryClient,
+    mode = 'full',
+    forceFresh = false,
+  } = options;
   const compact = mode === 'compact';
   if (!s) {
     throw new Error('No data available. Please refresh first.');
@@ -990,7 +1048,13 @@ export async function buildDashboardCopyAllMarkdown(
   const tradingTime = isShanghaiTradingTime();
   const [watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd, strategyMd] =
     await Promise.all([
-      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock, forceFresh),
+      buildWatchlistMarkdown(
+        queryClient,
+        executionGate,
+        mainlineAllow,
+        sectorOutflowBlock,
+        forceFresh,
+      ),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then(({ items, scope }) =>
@@ -1033,9 +1097,7 @@ export async function buildDashboardCopyAllMarkdown(
         .then((ov) => buildStrategyAppendixDash(ov))
         .catch(() => ''),
     ]);
-  const autoQaMd = buildAutoQaMarkdown(
-    await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20),
-  );
+  const autoQaMd = buildAutoQaMarkdown(await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20));
   const attentionMd = execBundle.attentionMd;
   const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
     heading: '##',
@@ -1130,9 +1192,7 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push('## News brief');
   lines.push('');
   lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-  const newsItemsCount = Array.isArray((s as any)?.news?.items)
-    ? (s as any).news.items.length
-    : 0;
+  const newsItemsCount = Array.isArray((s as any)?.news?.items) ? (s as any).news.items.length : 0;
   const newsTotal = Number((s as any)?.news?.total ?? 0);
   const usingFallback = !newsSummary?.trim() && newsFallback?.trim();
   if (usingFallback) {
@@ -1193,13 +1253,9 @@ export async function buildCopyDeltaMarkdown(opts: {
     buildSinceLastCopyMarkdown().catch(() =>
       formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
     ),
-    fetchExecutionJournalMarkdown({ tradeDate: getShanghaiTodayIso(), days: 5 }).catch(
-      () => '',
-    ),
+    fetchExecutionJournalMarkdown({ tradeDate: getShanghaiTodayIso(), days: 5 }).catch(() => ''),
     fetchDataSourcesHealth()
-      .then((h) =>
-        buildDataFreshnessMarkdown(Array.isArray(h?.sources) ? h.sources : []),
-      )
+      .then((h) => buildDataFreshnessMarkdown(Array.isArray(h?.sources) ? h.sources : []))
       .catch(() => ''),
   ]);
   const execBundle = await buildExecutionCopyBundle({
@@ -1226,9 +1282,7 @@ export async function buildCopyDeltaMarkdown(opts: {
   }
   lines.push(
     formatExecutionGateMarkdown(
-      executionGate ??
-        ((s as any)?.marketSentiment?.executionGate as ExecutionGate | null) ??
-        null,
+      executionGate ?? ((s as any)?.marketSentiment?.executionGate as ExecutionGate | null) ?? null,
       '##',
     ).trim(),
   );
@@ -1264,7 +1318,9 @@ async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> |
   if (!symbols.length) return null;
   try {
     const q = encodeURIComponent(symbols.join(','));
-    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, {
+      cache: 'no-store',
+    });
     if (!res.ok) return null;
     const d = (await res.json()) as { ranks?: Record<string, number> };
     return d.ranks ?? null;

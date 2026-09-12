@@ -55,12 +55,19 @@ describe('SystemHealthBanner', () => {
     expect(screen.getByText(/ai-service（决策 Agent）不可达/)).toBeDefined();
   });
 
-    it('lists stale data sources and sync failures as warnings', async () => {
+  it('lists stale data sources and sync failures as warnings', async () => {
     fetchSystemHealth.mockResolvedValue({
       dataSyncOnline: true,
       aiOnline: true,
       datasources: [
-        { source: 'market', label: '行情', stale: true, ageMinutes: 30 * 60, thresholdMinutes: 24 * 60, lastSyncedAt: null },
+        {
+          source: 'market',
+          label: '行情',
+          stale: true,
+          ageMinutes: 30 * 60,
+          thresholdMinutes: 24 * 60,
+          lastSyncedAt: null,
+        },
         {
           source: 'twin_star_intraday',
           label: '双子星 · 盘中快照',
@@ -72,7 +79,12 @@ describe('SystemHealthBanner', () => {
         },
       ],
       failures: [
-        { jobType: 'cn_industry_post_close_sync', syncedAt: '2026-08-07T20:10:00+00:00', failures24h: 3, errorMessage: 'push2his down' },
+        {
+          jobType: 'cn_industry_post_close_sync',
+          syncedAt: '2026-08-07T20:10:00+00:00',
+          failures24h: 3,
+          errorMessage: 'push2his down',
+        },
       ],
       errorCount: 0,
       warnCount: 3,
@@ -118,10 +130,13 @@ describe('SystemHealthBanner', () => {
     screen.getByText(/0 项异常 · 1 项告警/).click();
     expect(await screen.findByText(/IP 熔断中（冷却 100s）/)).toBeDefined();
     expect(screen.getByText(/失败宿主 push2\.eastmoney\.com/)).toBeDefined();
-    expect(screen.getByText(/Tushare 配额 2 key · 最忙 …tAAA 分钟 150\/200 · 轮换 3 次/)).toBeDefined();
+    expect(
+      screen.getByText(/Tushare 配额 2 key · 最忙 …tAAA 分钟 150\/200 · 轮换 3 次/),
+    ).toBeDefined();
   });
 
-  it('re-checks on demand', async () => {    fetchSystemHealth.mockResolvedValue({
+  it('re-checks on demand', async () => {
+    fetchSystemHealth.mockResolvedValue({
       ...HEALTHY,
       errorCount: 1,
       warnCount: 0,

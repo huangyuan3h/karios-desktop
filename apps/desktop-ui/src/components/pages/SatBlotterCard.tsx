@@ -16,18 +16,24 @@ const KIND_LABEL: Record<string, string> = {
   open: '持仓中',
 };
 
-const KIND_ORDER = ['all', 'fill', 'skip_t1', 'skip_c1', 'skip_c2', 'skip_c3', 'skip_churn', 'skip_entry', 'open'] as const;
+const KIND_ORDER = [
+  'all',
+  'fill',
+  'skip_t1',
+  'skip_c1',
+  'skip_c2',
+  'skip_c3',
+  'skip_churn',
+  'skip_entry',
+  'open',
+] as const;
 
 function tone(v: number | null | undefined): string {
   if (v == null) return 'text-[var(--k-muted)]';
   return v >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-400';
 }
 
-export function SatBlotterCard({
-  rows,
-}: {
-  rows: SatBlotterRow[];
-}) {
+export function SatBlotterCard({ rows }: { rows: SatBlotterRow[] }) {
   const [kind, setKind] = React.useState<(typeof KIND_ORDER)[number]>('all');
   const [showAll, setShowAll] = React.useState(false);
   const filtered = rows.filter((r) => (kind === 'all' ? true : r.kind === kind));
@@ -35,9 +41,7 @@ export function SatBlotterCard({
   const countFor = (k: string) => rows.filter((r) => r.kind === k).length;
 
   if (!rows.length) {
-    return (
-      <p className="text-[10px] text-[var(--k-muted)]">本窗无卫星成交 / 跳过记录</p>
-    );
+    return <p className="text-[10px] text-[var(--k-muted)]">本窗无卫星成交 / 跳过记录</p>;
   }
 
   return (
@@ -80,7 +84,10 @@ export function SatBlotterCard({
           </thead>
           <tbody>
             {visible.map((r, i) => (
-              <tr key={`${r.kind}-${r.ts}-${r.date}-${i}`} className="border-t border-[var(--k-border)]/50">
+              <tr
+                key={`${r.kind}-${r.ts}-${r.date}-${i}`}
+                className="border-t border-[var(--k-border)]/50"
+              >
                 <td className="py-1 pl-2 pr-2 font-mono">{r.date}</td>
                 <td className="py-1 pr-2 font-mono">{r.ts}</td>
                 <td className="py-1 pr-2">{KIND_LABEL[r.kind] ?? r.kind}</td>
@@ -94,7 +101,9 @@ export function SatBlotterCard({
                   {r.pnlPct != null ? `${r.pnlPct >= 0 ? '+' : ''}${r.pnlPct.toFixed(1)}` : '—'}
                 </td>
                 <td className={cn('py-1 pr-2 font-medium', tone(r.contribPct))}>
-                  {r.contribPct != null ? `${r.contribPct >= 0 ? '+' : ''}${r.contribPct.toFixed(2)}` : '—'}
+                  {r.contribPct != null
+                    ? `${r.contribPct >= 0 ? '+' : ''}${r.contribPct.toFixed(2)}`
+                    : '—'}
                 </td>
               </tr>
             ))}

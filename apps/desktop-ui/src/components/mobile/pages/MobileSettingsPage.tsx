@@ -3,7 +3,11 @@
 import * as React from 'react';
 
 import { AI_BASE_URL } from '@/lib/endpoints';
-import { fetchSystemEvents, resolveSystemEvent, type SystemEvent } from '@/lib/queries/systemEvents';
+import {
+  fetchSystemEvents,
+  resolveSystemEvent,
+  type SystemEvent,
+} from '@/lib/queries/systemEvents';
 import { MobileButton, MobileCard, MobileSection, StatusPill } from '../primitives';
 
 /** 设置 (mobile) — theme switch + AI model profiles. §5.2 中频. */
@@ -79,7 +83,7 @@ export function MobileSettingsPage() {
         body: JSON.stringify({ profileId }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
-      setTestMsg(data.ok ? '连接正常' : data.error ?? '连接失败');
+      setTestMsg(data.ok ? '连接正常' : (data.error ?? '连接失败'));
     } catch (e) {
       setTestMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -97,7 +101,9 @@ export function MobileSettingsPage() {
               type="button"
               onClick={toggleTheme}
               className={`h-7 w-12 rounded-[var(--m-radius-pill)] transition-colors ${
-                theme === 'dark' ? 'bg-[var(--k-accent)]' : 'bg-[var(--k-surface-2)] border border-[var(--k-border)]'
+                theme === 'dark'
+                  ? 'bg-[var(--k-accent)]'
+                  : 'bg-[var(--k-surface-2)] border border-[var(--k-border)]'
               }`}
               aria-label="切换深色模式"
             >
@@ -114,13 +120,19 @@ export function MobileSettingsPage() {
       <MobileSection
         title="AI 模型"
         action={
-          <button type="button" onClick={() => void loadConfig()} className="text-[var(--m-text-sm)] text-[var(--k-accent)]">
+          <button
+            type="button"
+            onClick={() => void loadConfig()}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)]"
+          >
             刷新
           </button>
         }
       >
         {testMsg ? (
-          <MobileCard className="px-3 py-2 text-[var(--m-text-sm)] text-[var(--k-accent)]">{testMsg}</MobileCard>
+          <MobileCard className="px-3 py-2 text-[var(--m-text-sm)] text-[var(--k-accent)]">
+            {testMsg}
+          </MobileCard>
         ) : null}
         {config?.profiles.length ? (
           <div className="space-y-2">
@@ -131,12 +143,16 @@ export function MobileSettingsPage() {
                     <div className="truncate text-[var(--m-text-base)] font-medium">
                       {p.name}
                       {config.activeProfileId === p.id ? (
-                        <span className="ml-1.5"><StatusPill tone="open">当前</StatusPill></span>
+                        <span className="ml-1.5">
+                          <StatusPill tone="open">当前</StatusPill>
+                        </span>
                       ) : null}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {p.provider} · {p.modelId}
-                      {p.provider === 'openai' && p.openai?.keyLast4 ? ` · key ****${p.openai.keyLast4}` : ''}
+                      {p.provider === 'openai' && p.openai?.keyLast4
+                        ? ` · key ****${p.openai.keyLast4}`
+                        : ''}
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
@@ -145,7 +161,12 @@ export function MobileSettingsPage() {
                         启用
                       </MobileButton>
                     ) : null}
-                    <MobileButton size="sm" variant="ghost" onClick={() => void testProfile(p.id)} disabled={testing === p.id}>
+                    <MobileButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void testProfile(p.id)}
+                      disabled={testing === p.id}
+                    >
                       {testing === p.id ? '测试中…' : '测试'}
                     </MobileButton>
                   </div>
@@ -192,7 +213,12 @@ function SystemLogsMobile() {
     <div className="space-y-2">
       <div className="flex gap-1">
         {(['all', 'high', 'low'] as const).map((v) => (
-          <MobileButton key={v} size="sm" variant={filter === v ? 'primary' : 'ghost'} onClick={() => setFilter(v)}>
+          <MobileButton
+            key={v}
+            size="sm"
+            variant={filter === v ? 'primary' : 'ghost'}
+            onClick={() => setFilter(v)}
+          >
             {v === 'all' ? '全部' : v === 'high' ? '高' : '低'}
           </MobileButton>
         ))}
@@ -200,9 +226,13 @@ function SystemLogsMobile() {
           刷新
         </MobileButton>
       </div>
-      <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">高推 Bark，低仅落表 · 每周集中修复</div>
+      <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+        高推 Bark，低仅落表 · 每周集中修复
+      </div>
       {list.length === 0 ? (
-        <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无未处理事件</MobileCard>
+        <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+          暂无未处理事件
+        </MobileCard>
       ) : (
         <div className="space-y-2">
           {list.slice(0, 20).map((ev) => (
@@ -212,8 +242,12 @@ function SystemLogsMobile() {
                   <div className="truncate text-[var(--m-text-sm)] font-medium">
                     {ev.severity === 'high' ? '●' : '○'} {ev.title}
                   </div>
-                  <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">{ev.detail || JSON.stringify(ev.payload).slice(0, 60)}</div>
-                  <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">{new Date(ev.createdAt).toLocaleString('zh-CN')}</div>
+                  <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                    {ev.detail || JSON.stringify(ev.payload).slice(0, 60)}
+                  </div>
+                  <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                    {new Date(ev.createdAt).toLocaleString('zh-CN')}
+                  </div>
                 </div>
                 <MobileButton
                   size="sm"

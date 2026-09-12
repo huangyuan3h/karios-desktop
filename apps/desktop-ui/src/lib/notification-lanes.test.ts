@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { groupNotifications, notificationLane } from './notification-lanes';
 
 describe('notification lanes', () => {
-  it('maps recon and OOS to research so they do not mix with today\'s orders', () => {
+  it("maps recon and OOS to research so they do not mix with today's orders", () => {
     expect(notificationLane({ type: 'recon_missing' })).toBe('research');
     expect(notificationLane({ type: 'oos_warning' })).toBe('research');
     expect(notificationLane({ type: 'pyramid_trigger' })).toBe('trade');

@@ -203,7 +203,9 @@ function buildIndustryLayout(summary: unknown): {
 function buildMacroTable(summary: unknown): PdfTableBlock | null {
   const s = asRecord(summary);
   const macroSnapshot = asRecord(s.macroSnapshot);
-  const macroItems: unknown[] = Array.isArray(macroSnapshot.macro) ? (macroSnapshot.macro as unknown[]) : [];
+  const macroItems: unknown[] = Array.isArray(macroSnapshot.macro)
+    ? (macroSnapshot.macro as unknown[])
+    : [];
   if (!macroItems.length) return null;
   const headers = ['名称', '收盘', '涨跌%', 'MA5', 'MA20', '日期'];
   const rows: string[][] = macroItems.map((it) => {
@@ -235,7 +237,9 @@ function buildSentimentLayout(summary: unknown): {
   const items: unknown[] = Array.isArray(ms.items) ? (ms.items as unknown[]) : [];
   const latest = items.length ? asRecord(items[items.length - 1]) : null;
   const asOfDate = String(ms.asOfDate ?? s.asOfDate ?? '').trim();
-  const indexSignals: unknown[] = Array.isArray(ms.indexSignals) ? (ms.indexSignals as unknown[]) : [];
+  const indexSignals: unknown[] = Array.isArray(ms.indexSignals)
+    ? (ms.indexSignals as unknown[])
+    : [];
 
   let sentimentIndexTable: PdfTableBlock | null = null;
   if (indexSignals.length) {
@@ -274,7 +278,9 @@ function buildSentimentLayout(summary: unknown): {
         Number.isFinite(x.yesterdayLimitUpPremium as number)
           ? `${Number(x.yesterdayLimitUpPremium).toFixed(2)}%`
           : '—',
-        Number.isFinite(x.failedLimitUpRate as number) ? `${Number(x.failedLimitUpRate).toFixed(1)}%` : '—',
+        Number.isFinite(x.failedLimitUpRate as number)
+          ? `${Number(x.failedLimitUpRate).toFixed(1)}%`
+          : '—',
         translateRiskModeForPdf(x.riskMode),
       ];
     });
@@ -302,20 +308,22 @@ function buildSentimentLayout(summary: unknown): {
 
 function buildHotPicksTable(picks: HotIndustryPick[]): PdfTableBlock {
   const headers = ['#', '行业', '1D 排名', '5D 排名', '1D 净流入', '5D 合计', '排名变化', '信号'];
-  const rows: string[][] = (picks.length ? picks : []).slice(0, 3).map((p, idx) => [
-    String(idx + 1),
-    p.industryName || '—',
-    typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
-    typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
-    fmtAmountCn(p.netInflow ?? null),
-    fmtAmountCn(p.sum5d ?? null),
-    typeof p.rankChange === 'number'
-      ? p.rankChange > 0
-        ? `+${p.rankChange}`
-        : String(p.rankChange)
-      : '—',
-    p.momentumSignal ? '动量突破' : '—',
-  ]);
+  const rows: string[][] = (picks.length ? picks : [])
+    .slice(0, 3)
+    .map((p, idx) => [
+      String(idx + 1),
+      p.industryName || '—',
+      typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
+      typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
+      fmtAmountCn(p.netInflow ?? null),
+      fmtAmountCn(p.sum5d ?? null),
+      typeof p.rankChange === 'number'
+        ? p.rankChange > 0
+          ? `+${p.rankChange}`
+          : String(p.rankChange)
+        : '—',
+      p.momentumSignal ? '动量突破' : '—',
+    ]);
   if (!rows.length) {
     return {
       title: '当前观测行业',
@@ -368,15 +376,25 @@ export function parseInvestmentDailyReportResponse(data: unknown): InvestmentDai
   const b = o.capitalFlowAndMainline;
   const stocks = o.topStocks;
   const news = o.topNews;
-  if (typeof a !== 'string' || typeof mh !== 'string' || typeof hi !== 'string' || typeof b !== 'string') {
+  if (
+    typeof a !== 'string' ||
+    typeof mh !== 'string' ||
+    typeof hi !== 'string' ||
+    typeof b !== 'string'
+  ) {
     throw new Error('Invalid AI response: text sections');
   }
-  if (!Array.isArray(stocks) || stocks.length !== 3) throw new Error('Invalid AI response: topStocks');
+  if (!Array.isArray(stocks) || stocks.length !== 3)
+    throw new Error('Invalid AI response: topStocks');
   if (!Array.isArray(news) || news.length !== 5) throw new Error('Invalid AI response: topNews');
   const topStocks = stocks.map((row, i) => {
     if (!row || typeof row !== 'object') throw new Error(`Invalid topStocks[${i}]`);
     const r = row as Record<string, unknown>;
-    if (typeof r.symbol !== 'string' || typeof r.name !== 'string' || typeof r.rationale !== 'string') {
+    if (
+      typeof r.symbol !== 'string' ||
+      typeof r.name !== 'string' ||
+      typeof r.rationale !== 'string'
+    ) {
       throw new Error(`Invalid topStocks[${i}] fields`);
     }
     return { symbol: r.symbol, name: r.name, rationale: r.rationale };
@@ -424,7 +442,9 @@ export async function renderInvestmentDailyPdfToBlob(
 /**
  * Vector PDF via @react-pdf/renderer (multi-page text flow, smaller than rasterized HTML).
  */
-export async function downloadInvestmentDailyPdf(args: DownloadInvestmentDailyPdfArgs): Promise<void> {
+export async function downloadInvestmentDailyPdf(
+  args: DownloadInvestmentDailyPdfArgs,
+): Promise<void> {
   const blob = await renderInvestmentDailyPdfToBlob(args);
   const name = args.filename.endsWith('.pdf') ? args.filename : `${args.filename}.pdf`;
   const url = URL.createObjectURL(blob);

@@ -56,9 +56,8 @@ type TwinStarQuery = ReturnType<typeof import('@/lib/queries/backtest').useTwinS
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const useTwinStarActionQueryMock = twinStarMock.useTwinStarActionQuery as any;
 vi.mock('@/lib/queries/backtest', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/queries/backtest')>(
-    '@/lib/queries/backtest',
-  );
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/backtest')>('@/lib/queries/backtest');
   return { ...actual, useTwinStarActionQuery: twinStarMock.useTwinStarActionQuery };
 });
 
@@ -68,16 +67,26 @@ const watchlistMarketMock = vi.hoisted(() => ({
     quotes: Object.fromEntries(
       symbols.map((s) => [
         s.toUpperCase(),
-        { tsCode: s, price: 10.5, tradeTime: null, amount: null, volume: null, preClose: null, pctChg: null },
+        {
+          tsCode: s,
+          price: 10.5,
+          tradeTime: null,
+          amount: null,
+          volume: null,
+          preClose: null,
+          pctChg: null,
+        },
       ]),
     ),
   })),
 }));
 vi.mock('@/lib/watchlist-market', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/watchlist-market')>(
-    '@/lib/watchlist-market',
-  );
-  return { ...actual, fetchWatchlistMarketSnapshot: watchlistMarketMock.fetchWatchlistMarketSnapshot };
+  const actual =
+    await vi.importActual<typeof import('@/lib/watchlist-market')>('@/lib/watchlist-market');
+  return {
+    ...actual,
+    fetchWatchlistMarketSnapshot: watchlistMarketMock.fetchWatchlistMarketSnapshot,
+  };
 });
 
 const sentimentMock = vi.hoisted(() => ({
@@ -91,9 +100,8 @@ const sentimentMock = vi.hoisted(() => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const useDashboardSentimentQueryMock = sentimentMock.useDashboardSentimentQuery as any;
 vi.mock('@/lib/queries/sentiment', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/queries/sentiment')>(
-    '@/lib/queries/sentiment',
-  );
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/sentiment')>('@/lib/queries/sentiment');
   return { ...actual, useDashboardSentimentQuery: sentimentMock.useDashboardSentimentQuery };
 });
 
@@ -189,11 +197,11 @@ describe('PortfolioHealthCard', () => {
     });
     renderCard();
     expect(await screen.findByText(/单轨择优 · 今日复刻/)).toBeDefined();
-    expect(await screen.findByText("Weak · 空仓观望")).toBeDefined();
-    expect(await screen.findByText("Strong · 进攻")).toBeDefined();
-    expect(await screen.findByText("腾讯控股")).toBeDefined();
-    expect(await screen.findByText("✅ 持有")).toBeDefined();
-    expect(await screen.findByText("2026-08-07")).toBeDefined();
+    expect(await screen.findByText('Weak · 空仓观望')).toBeDefined();
+    expect(await screen.findByText('Strong · 进攻')).toBeDefined();
+    expect(await screen.findByText('腾讯控股')).toBeDefined();
+    expect(await screen.findByText('✅ 持有')).toBeDefined();
+    expect(await screen.findByText('2026-08-07')).toBeDefined();
     const exp = screen.queryByText('展开');
     if (exp) fireEvent.click(exp);
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
@@ -315,7 +323,9 @@ describe('PortfolioHealthCard', () => {
       regime: 'Strong',
       sentiment: 'normal',
       s3Candidates: [],
-      holdings: [{ ...HOLDING, action: 'EXIT', reason: 'trailing_stop（峰值回撤8.5% >= 8% 阈值）' }],
+      holdings: [
+        { ...HOLDING, action: 'EXIT', reason: 'trailing_stop（峰值回撤8.5% >= 8% 阈值）' },
+      ],
     });
     renderCard();
     expect(await screen.findByText('🔴 卖出')).toBeDefined();
@@ -432,7 +442,9 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/每票建议 12.5%（10% × 今日环境×1.25 · 已含 D3 环境仓位）/)).toBeDefined();
+    expect(
+      await screen.findByText(/每票建议 12.5%（10% × 今日环境×1.25 · 已含 D3 环境仓位）/),
+    ).toBeDefined();
     expect(screen.getAllByText('买 12.5%').length).toBe(2);
   });
 
@@ -512,8 +524,8 @@ describe('PortfolioHealthCard', () => {
     await screen.findByText(/买入提醒（1）/);
     expect(screen.getByText(/目标价 88.5/)).toBeDefined();
 
-    const registryBody = fetchMock.mock.calls.find(
-      (c: unknown[]) => String(c[0]).includes('/watchlist/registry'),
+    const registryBody = fetchMock.mock.calls.find((c: unknown[]) =>
+      String(c[0]).includes('/watchlist/registry'),
     )?.[1] as { method?: string; body?: string };
     expect(registryBody).toBeDefined();
     expect(registryBody.method).toBe('POST');
@@ -535,7 +547,13 @@ describe('PortfolioHealthCard', () => {
     localStorage.setItem(
       'karios_buy_reminders',
       JSON.stringify([
-        { symbol: 'HK:02099', name: '中国黄金国际', targetPrice: 88.5, note: '等回踩', createdAt: '2026-08-12T00:00:00.000Z' },
+        {
+          symbol: 'HK:02099',
+          name: '中国黄金国际',
+          targetPrice: 88.5,
+          note: '等回踩',
+          createdAt: '2026-08-12T00:00:00.000Z',
+        },
       ]),
     );
     fetchPortfolioHealth.mockResolvedValue({
@@ -606,8 +624,8 @@ describe('PortfolioHealthCard', () => {
     await waitFor(() => expect(screen.queryByText('确认买入')).toBeNull());
     expect(screen.getByText('✓ 已买入')).toBeDefined();
 
-    const tradeBody = fetchMock.mock.calls.find(
-      (c: unknown[]) => String(c[0]).includes('/trades'),
+    const tradeBody = fetchMock.mock.calls.find((c: unknown[]) =>
+      String(c[0]).includes('/trades'),
     )?.[1] as { method?: string; body?: string } | undefined;
     expect(tradeBody).toBeDefined();
     expect(tradeBody!.method).toBe('POST');
@@ -649,8 +667,20 @@ describe('PortfolioHealthCard', () => {
                 extra: 0,
                 alignedReturnDiffPct: null,
                 detail: [
-                  { type: 'missing', symbol: 'HK:02099', entry: '2026-08-05', score: 88.0, positionPct: 0.1 },
-                  { type: 'missing', symbol: 'HK:00081', entry: '2026-08-05', score: 79.0, positionPct: 0.1 },
+                  {
+                    type: 'missing',
+                    symbol: 'HK:02099',
+                    entry: '2026-08-05',
+                    score: 88.0,
+                    positionPct: 0.1,
+                  },
+                  {
+                    type: 'missing',
+                    symbol: 'HK:00081',
+                    entry: '2026-08-05',
+                    score: 79.0,
+                    positionPct: 0.1,
+                  },
                 ],
               },
               {
@@ -964,7 +994,7 @@ describe('PortfolioHealthCard', () => {
     expect((await screen.findAllByText(/买入 锦江投资/)).length).toBeGreaterThan(0);
   });
 
-  it('lists today\'s gap buys when recipe replay is 4/4 but live satellite is empty', async () => {
+  it("lists today's gap buys when recipe replay is 4/4 but live satellite is empty", async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
     useTwinStarActionQueryMock.mockReturnValue({
       data: {
@@ -1115,7 +1145,9 @@ describe('PortfolioHealthCard', () => {
 
   it('writes a satellite gap buy onto the watchlist with cost and size', async () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
-    const save = vi.spyOn(watchlistStorage, 'saveWatchlist').mockResolvedValue({ ok: true, synced: true });
+    const save = vi
+      .spyOn(watchlistStorage, 'saveWatchlist')
+      .mockResolvedValue({ ok: true, synced: true });
     vi.spyOn(watchlistStorage, 'loadWatchlist').mockReturnValue([]);
     vi.spyOn(userTrades, 'recordUserTrade').mockResolvedValue({ id: 't1' } as never);
     fetchPortfolioHealth.mockResolvedValue({
@@ -1145,7 +1177,12 @@ describe('PortfolioHealthCard', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '确认买入' }));
     await waitFor(() => expect(save).toHaveBeenCalled());
-    const written = save.mock.calls[0]?.[0] as Array<{ symbol: string; positionPct?: number; costPrice?: number; name?: string | null }>;
+    const written = save.mock.calls[0]?.[0] as Array<{
+      symbol: string;
+      positionPct?: number;
+      costPrice?: number;
+      name?: string | null;
+    }>;
     expect(written[0]?.symbol).toBe('CN:000712');
     expect(written[0]?.positionPct).toBe(12.5);
     expect(written[0]?.costPrice).toBe(10.5);
@@ -1193,10 +1230,50 @@ describe('PortfolioHealthCard', () => {
       infoSummary: { holdingsCount: 4, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
       s3Candidates: [],
       holdings: [
-        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:603318', name: '水发燃气', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:600540', name: '新赛股份', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:301012', name: '扬电科技', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        {
+          ...HOLDING,
+          symbol: 'CN:300413',
+          name: '芒果超媒',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:603318',
+          name: '水发燃气',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:600540',
+          name: '新赛股份',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:301012',
+          name: '扬电科技',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
       ],
       multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
       hkHealth: null,
@@ -1252,16 +1329,58 @@ describe('PortfolioHealthCard', () => {
       infoSummary: { holdingsCount: 4, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
       s3Candidates: [],
       holdings: [
-        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:603318', name: '水发燃气', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:600540', name: '新赛股份', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
-        { ...HOLDING, symbol: 'CN:301012', name: '扬电科技', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        {
+          ...HOLDING,
+          symbol: 'CN:300413',
+          name: '芒果超媒',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:603318',
+          name: '水发燃气',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:600540',
+          name: '新赛股份',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
+        {
+          ...HOLDING,
+          symbol: 'CN:301012',
+          name: '扬电科技',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
       ],
       multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/卫星仓 4\/4：芒果超媒、水发燃气、新赛股份、扬电科技/)).toBeDefined();
+    expect(
+      await screen.findByText(/卫星仓 4\/4：芒果超媒、水发燃气、新赛股份、扬电科技/),
+    ).toBeDefined();
     expect(screen.getByText('卫星仓')).toBeDefined();
     expect(screen.getByText('芒果超媒')).toBeDefined();
     expect(screen.getByText('水发燃气')).toBeDefined();
@@ -1288,7 +1407,17 @@ describe('PortfolioHealthCard', () => {
       infoSummary: { holdingsCount: 1, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
       s3Candidates: [],
       holdings: [
-        { ...HOLDING, symbol: 'CN:300413', name: '芒果超媒', positionPct: 12.5, action: 'HOLD', costPrice: 20, entryDate: '2026-09-02', lastClose: 21, pnlPct: 5 },
+        {
+          ...HOLDING,
+          symbol: 'CN:300413',
+          name: '芒果超媒',
+          positionPct: 12.5,
+          action: 'HOLD',
+          costPrice: 20,
+          entryDate: '2026-09-02',
+          lastClose: 21,
+          pnlPct: 5,
+        },
       ],
       multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 51.5, name: '原油' }],
       hkHealth: null,
@@ -1331,7 +1460,15 @@ describe('PortfolioHealthCard', () => {
                 missing: 19,
                 extra: 0,
                 alignedReturnDiffPct: null,
-                detail: [{ type: 'missing', symbol: 'HK:02099', entry: '2026-08-05', score: 88.0, positionPct: 0.1 }],
+                detail: [
+                  {
+                    type: 'missing',
+                    symbol: 'HK:02099',
+                    entry: '2026-08-05',
+                    score: 88.0,
+                    positionPct: 0.1,
+                  },
+                ],
               },
             ],
           }),

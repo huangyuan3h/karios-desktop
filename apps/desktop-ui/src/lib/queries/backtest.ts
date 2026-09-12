@@ -4,10 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { getShanghaiMinutes, isWeekdayShanghai } from '@/lib/market-hours';
-import {
-  parseTwinStarAction,
-  type TwinStarAction,
-} from '@karios/shared';
+import { parseTwinStarAction, type TwinStarAction } from '@karios/shared';
 
 export type BacktestSummary = {
   config: {
@@ -44,7 +41,10 @@ export type BacktestSummary = {
   sharpe: number | null;
   excess_vs_best_benchmark_pct: number;
   best_benchmark: string;
-  by_score_bucket: Record<string, { trades: number; wins: number; winRate: number | null; avgNet: number | null }>;
+  by_score_bucket: Record<
+    string,
+    { trades: number; wins: number; winRate: number | null; avgNet: number | null }
+  >;
   gated_blocks: Record<string, number>;
 };
 
@@ -197,7 +197,10 @@ export function useFundFlowSeriesQuery(start: string, end: string, enabled = tru
   const q = new URLSearchParams({ start, end });
   return useQuery({
     queryKey: ['backtest', 'flow-series', start, end],
-    queryFn: () => apiGetJson<FundFlowResponse>(`/api/backtest/flow-series?${q.toString()}`, { timeoutMs: 60_000 }),
+    queryFn: () =>
+      apiGetJson<FundFlowResponse>(`/api/backtest/flow-series?${q.toString()}`, {
+        timeoutMs: 60_000,
+      }),
     staleTime: 5 * 60_000,
     enabled,
   });
@@ -216,7 +219,8 @@ export function useSensitivityQuery(start: string, end: string, enabled: boolean
 export function useExitAttributionQuery(days = 5, enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'exit-attribution', days],
-    queryFn: () => apiGetJson<ExitAttributionResponse>(`/api/backtest/exit-attribution?days=${days}`),
+    queryFn: () =>
+      apiGetJson<ExitAttributionResponse>(`/api/backtest/exit-attribution?days=${days}`),
     staleTime: 30_000,
     enabled,
   });
@@ -292,8 +296,7 @@ export type ReconResponse = { ok: boolean; items: ReconItem[] };
 export function useBacktestReconQuery(limit = 2, enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'recon', limit],
-    queryFn: () =>
-      apiGetJson<ReconResponse>(`/api/backtest/recon/latest?limit=${limit}`),
+    queryFn: () => apiGetJson<ReconResponse>(`/api/backtest/recon/latest?limit=${limit}`),
     staleTime: 60_000,
     enabled,
   });
@@ -529,7 +532,15 @@ export type TimelineRow = {
   gateOpen?: boolean | null;
 };
 
-export type SatBlotterKind = 'fill' | 'skip_t1' | 'skip_c1' | 'skip_c2' | 'skip_c3' | 'skip_churn' | 'skip_entry' | 'open';
+export type SatBlotterKind =
+  | 'fill'
+  | 'skip_t1'
+  | 'skip_c1'
+  | 'skip_c2'
+  | 'skip_c3'
+  | 'skip_churn'
+  | 'skip_entry'
+  | 'open';
 
 export type SatBlotterRow = {
   kind: SatBlotterKind | string;
@@ -596,12 +607,16 @@ export function useTimelineQuery(
     if (satOpts.satExit) q.set('sat_exit', satOpts.satExit);
     if (satOpts.c1Pct != null) q.set('c1_pct', String(satOpts.c1Pct));
   }
-  const keySuffix = strategy === 'twin_star' && satOpts
-    ? [satOpts.satFill ?? '', satOpts.satExit ?? '', satOpts.c1Pct ?? '']
-    : [];
+  const keySuffix =
+    strategy === 'twin_star' && satOpts
+      ? [satOpts.satFill ?? '', satOpts.satExit ?? '', satOpts.c1Pct ?? '']
+      : [];
   return useQuery({
     queryKey: ['backtest', 'timeline', start, end, strategy, ...keySuffix],
-    queryFn: () => apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, { timeoutMs: 300_000 }),
+    queryFn: () =>
+      apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, {
+        timeoutMs: 300_000,
+      }),
     staleTime: 5 * 60_000,
     enabled,
   });
@@ -621,9 +636,10 @@ export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
 export function useTwinStarActionQuery(enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'twin-star', 'action'],
-    queryFn: async () => parseTwinStarAction(
-      await apiGetJson<unknown>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
-    ),
+    queryFn: async () =>
+      parseTwinStarAction(
+        await apiGetJson<unknown>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
+      ),
     staleTime: 15_000,
     refetchInterval: () => twinStarRefetchIntervalMs(),
     enabled,
@@ -632,7 +648,9 @@ export function useTwinStarActionQuery(enabled = true) {
 
 export async function refreshTwinStarAction(): Promise<TwinStarAction> {
   return parseTwinStarAction(
-    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, { timeoutMs: 300_000 }),
+    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, {
+      timeoutMs: 300_000,
+    }),
   );
 }
 
@@ -721,7 +739,11 @@ export type PaperVsBacktestReport = {
   rows: PaperVsBacktestRow[];
   summary?: {
     paper?: { closed?: number | null; winRate?: number | null; avgPnlPct?: number | null };
-    backtestMatched?: { closed?: number | null; winRate?: number | null; avgPnlPct?: number | null };
+    backtestMatched?: {
+      closed?: number | null;
+      winRate?: number | null;
+      avgPnlPct?: number | null;
+    };
   } | null;
 };
 

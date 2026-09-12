@@ -6,10 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAutomationPendingQuery } from '@/lib/queries/automation';
 import { watchlistRiskQueryKey } from '@/lib/queries/dashboard';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
-import {
-  applyAutomationRun,
-  isAutomationPollWindow,
-} from '@/lib/watchlist-automation';
+import { applyAutomationRun, isAutomationPollWindow } from '@/lib/watchlist-automation';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 
 const ACK_STORAGE_KEY = 'karios.watchlist.automation.ackedRunId';
@@ -35,7 +32,11 @@ function setAckedRunId(runId: string): void {
 function watchlistSymbolsFromStorage(): string[] {
   const items = loadWatchlist();
   return (Array.isArray(items) ? items : [])
-    .map((x) => String(x?.symbol ?? '').trim().toUpperCase())
+    .map((x) =>
+      String(x?.symbol ?? '')
+        .trim()
+        .toUpperCase(),
+    )
     .filter(Boolean);
 }
 

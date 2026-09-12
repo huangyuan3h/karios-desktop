@@ -83,7 +83,9 @@ function userBucketToPick(bucket: string): TrackPick | null {
   return null;
 }
 
-export function buildOpenByPick(holdings: OpenHolding[]): Record<TrackPick, { weight: number; pnlPoints: number }> {
+export function buildOpenByPick(
+  holdings: OpenHolding[],
+): Record<TrackPick, { weight: number; pnlPoints: number }> {
   const out = Object.fromEntries(
     TRACK_PICKS.map((p) => [p, { weight: 0, pnlPoints: 0 }]),
   ) as Record<TrackPick, { weight: number; pnlPoints: number }>;
@@ -101,9 +103,10 @@ export function buildOpenByPick(holdings: OpenHolding[]): Record<TrackPick, { we
 export function buildRealizedByPick(
   byBucket: Record<string, UserBucketStat> | undefined,
 ): Record<TrackPick, { count: number; sumPnlPct: number }> {
-  const out = Object.fromEntries(
-    TRACK_PICKS.map((p) => [p, { count: 0, sumPnlPct: 0 }]),
-  ) as Record<TrackPick, { count: number; sumPnlPct: number }>;
+  const out = Object.fromEntries(TRACK_PICKS.map((p) => [p, { count: 0, sumPnlPct: 0 }])) as Record<
+    TrackPick,
+    { count: number; sumPnlPct: number }
+  >;
   if (!byBucket) return out;
   for (const [bucket, st] of Object.entries(byBucket)) {
     const pick = userBucketToPick(bucket);
@@ -161,8 +164,8 @@ export function buildAttributionDiff(input: {
   });
 
   const trackEngine =
-    [...rows].filter((r) => r.pick !== 'REPO').sort((a, b) => b.trackAddPct - a.trackAddPct)[0]?.pick ??
-    null;
+    [...rows].filter((r) => r.pick !== 'REPO').sort((a, b) => b.trackAddPct - a.trackAddPct)[0]
+      ?.pick ?? null;
   const userTopWeight =
     [...rows].filter((r) => r.pick !== 'REPO').sort((a, b) => b.openWeightPct - a.openWeightPct)[0]
       ?.pick ?? null;
@@ -226,7 +229,8 @@ function buildInsights(
       id: 'engine_mismatch',
       priority: 90,
       title: `结构错位：单轨发动机 ${trackEngine} ≠ 你最重仓 ${userTopWeight}`,
-      detail: '这是归因对照的核心结论——不是「今日 pick 提示你没满仓」，而是区间收益来源与实盘风险预算不一致。',
+      detail:
+        '这是归因对照的核心结论——不是「今日 pick 提示你没满仓」，而是区间收益来源与实盘风险预算不一致。',
     });
   }
 
@@ -236,7 +240,8 @@ function buildInsights(
       id: `drag_${r.pick}`,
       priority: 70,
       title: `单轨在 ${r.pick} 上加法为负（${fmt(r.trackAddPct)}），你仍持有 ${r.openWeightPct}%`,
-      detail: '若浮盈/已实现也为负，说明共担了拖累腿；若你已通过退出做成正已实现，说明纪律在这条腿上优于「死扛硬切日」。',
+      detail:
+        '若浮盈/已实现也为负，说明共担了拖累腿；若你已通过退出做成正已实现，说明纪律在这条腿上优于「死扛硬切日」。',
     });
   }
 
@@ -244,7 +249,8 @@ function buildInsights(
     id: 'method',
     priority: 1,
     title: '口径（必读）',
-    detail: '单轨列 = 100% 硬切日收益归因。你的列 = 现仓权重/浮盈点 + 区间已实现毛盈亏。两者不是同一 NAV，但足够回答「钱主要从哪条腿来、你有没有接到」。14:30/条件单是残差，排在结构错位之后。',
+    detail:
+      '单轨列 = 100% 硬切日收益归因。你的列 = 现仓权重/浮盈点 + 区间已实现毛盈亏。两者不是同一 NAV，但足够回答「钱主要从哪条腿来、你有没有接到」。14:30/条件单是残差，排在结构错位之后。',
   });
 
   return out.sort((a, b) => b.priority - a.priority);

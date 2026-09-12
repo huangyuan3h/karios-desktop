@@ -135,10 +135,7 @@ export function BrokerPage() {
         },
       );
       setImages([]);
-      queryClient.setQueryData(
-        brokerAccountStateQueryKey('pingan', accountId),
-        st,
-      );
+      queryClient.setQueryData(brokerAccountStateQueryKey('pingan', accountId), st);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -176,7 +173,9 @@ export function BrokerPage() {
     setBusy(true);
     setError(null);
     try {
-      await apiPutJson<{ ok: boolean }>(`/broker/accounts/${encodeURIComponent(accountId)}`, { title });
+      await apiPutJson<{ ok: boolean }>(`/broker/accounts/${encodeURIComponent(accountId)}`, {
+        title,
+      });
       setShowRenameAccount(false);
       await refresh();
     } catch (e) {
@@ -271,7 +270,11 @@ export function BrokerPage() {
                 >
                   Cancel
                 </Button>
-                <Button size="sm" onClick={() => void onRenameAccount()} disabled={busy || !renameAccountTitle.trim()}>
+                <Button
+                  size="sm"
+                  onClick={() => void onRenameAccount()}
+                  disabled={busy || !renameAccountTitle.trim()}
+                >
                   Save
                 </Button>
               </div>
@@ -442,7 +445,6 @@ export function BrokerPage() {
               )}
             </div>
           </div>
-
         </section>
       ) : null}
 

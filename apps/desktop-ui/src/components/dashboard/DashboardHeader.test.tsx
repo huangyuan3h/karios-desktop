@@ -22,12 +22,7 @@ describe('DashboardHeader', () => {
   });
 
   it('accepts an explicit help prop override', () => {
-    render(
-      <DashboardHeader
-        helpId="etf.name"
-        help={{ label: '自定义', short: 's' } as never}
-      />,
-    );
+    render(<DashboardHeader helpId="etf.name" help={{ label: '自定义', short: 's' } as never} />);
     expect(screen.getByText('自定义')).toBeInTheDocument();
   });
 
@@ -51,7 +46,14 @@ describe('DashboardHeader', () => {
   });
 
   it('positions tooltip right-aligned against the rect right edge', () => {
-    const elRect = { left: 500, right: 700, bottom: 800, top: 790, width: 200, height: 10 } as DOMRect;
+    const elRect = {
+      left: 500,
+      right: 700,
+      bottom: 800,
+      top: 790,
+      width: 200,
+      height: 10,
+    } as DOMRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(elRect);
     render(<DashboardHeader helpId="etf.mainFlow" align="right" width={340} />);
     const el = screen.getByLabelText(/主力净流入/);

@@ -23,10 +23,22 @@ import {
   type PortfolioHealthResponse,
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
-import { useBacktestReconQuery, useSleeveReconQuery, useTwinStarActionQuery, refreshTwinStarAction, type ReconItem, type SleeveRecon } from '@/lib/queries/backtest';
+import {
+  useBacktestReconQuery,
+  useSleeveReconQuery,
+  useTwinStarActionQuery,
+  refreshTwinStarAction,
+  type ReconItem,
+  type SleeveRecon,
+} from '@/lib/queries/backtest';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { useStrategyMode } from '@/lib/strategy-settings';
-import { getShanghaiMinutes, getShanghaiTodayIso, isShanghaiTradingTime, satNamesVisible } from '@/lib/market-hours';
+import {
+  getShanghaiMinutes,
+  getShanghaiTodayIso,
+  isShanghaiTradingTime,
+  satNamesVisible,
+} from '@/lib/market-hours';
 import { cn } from '@/lib/utils';
 import { isCnWatchlistSymbol, toTsCodeFromSymbol } from '@/lib/symbols';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
@@ -65,13 +77,25 @@ function fmtPct(v: number | null | undefined, digits = 2): string {
 function regimeBadge(regime: string | null | undefined): { label: string; cls: string } {
   switch (regime) {
     case 'Weak':
-      return { label: 'Weak · 空仓观望', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300' };
+      return {
+        label: 'Weak · 空仓观望',
+        cls: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      };
     case 'Strong':
-      return { label: 'Strong · 进攻', cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' };
+      return {
+        label: 'Strong · 进攻',
+        cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      };
     case 'Diverging':
-      return { label: 'Diverging · 满仓进攻', cls: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300' };
+      return {
+        label: 'Diverging · 满仓进攻',
+        cls: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+      };
     default:
-      return { label: String(regime ?? '—'), cls: 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]' };
+      return {
+        label: String(regime ?? '—'),
+        cls: 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]',
+      };
   }
 }
 
@@ -127,7 +151,8 @@ function PickStrongOpsPanel({
           : `核心腿 ${corePct}% 目标股票篮，但今日 0 只可执行 → 不要为 STOCK 清空 ETF`
         : '今日资金 100% → 股票篮（下方展开篮内买卖）',
     );
-    if (sleeve?.holding && (coreBuyable || !twinStar)) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
+    if (sleeve?.holding && (coreBuyable || !twinStar))
+      steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
   } else if (isEtf) {
     steps.push(
       twinStar
@@ -143,9 +168,11 @@ function PickStrongOpsPanel({
           : `现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`,
       );
     }
-    if (action === 'ROTATE' || action === 'BUY') steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
+    if (action === 'ROTATE' || action === 'BUY')
+      steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
     if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
-    if (action === 'SELL_TO_REPO') steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
+    if (action === 'SELL_TO_REPO')
+      steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
     steps.push(
       twinStar
@@ -218,8 +245,7 @@ function PickStrongOpsPanel({
                   : 'border-[var(--k-border)]',
               )}
             >
-              {k} {v}%
-              {sleeve.pick?.all_above?.[k] === false ? ' ✗MA' : ''}
+              {k} {v}%{sleeve.pick?.all_above?.[k] === false ? ' ✗MA' : ''}
             </span>
           ))}
         </div>
@@ -228,16 +254,27 @@ function PickStrongOpsPanel({
   );
 }
 
-export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: string) => void }) {
+export function HoldingRow({
+  h,
+  onOpen,
+}: {
+  h: PortfolioHolding;
+  onOpen?: (symbol: string) => void;
+}) {
   const exit = h.action === 'EXIT';
-  const pnlTone = (h.pnlPct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
+  const pnlTone =
+    (h.pnlPct ?? 0) >= 0
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-red-600 dark:text-red-400';
   return (
     <div
       role={onOpen ? 'button' : undefined}
       onClick={onOpen ? () => onOpen(h.symbol) : undefined}
       className={cn(
         'rounded-lg border px-3 py-2',
-        exit ? 'border-red-500/40 bg-red-500/5' : 'border-[var(--k-border)] bg-[var(--k-surface-2)]',
+        exit
+          ? 'border-red-500/40 bg-red-500/5'
+          : 'border-[var(--k-border)] bg-[var(--k-surface-2)]',
         onOpen && 'cursor-pointer transition-colors hover:border-[var(--k-accent)]/60',
       )}
     >
@@ -272,9 +309,16 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
             ⚠ 盘中预警
           </span>
         )}
-        {(h as unknown as { nearStop?: boolean; nearStopLabel?: string; nearStopDistancePct?: number }).nearStop && (
+        {(
+          h as unknown as {
+            nearStop?: boolean;
+            nearStopLabel?: string;
+            nearStopDistancePct?: number;
+          }
+        ).nearStop && (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-            ⚠ 临近{(h as unknown as { nearStopLabel?: string }).nearStopLabel} { (h as unknown as { nearStopDistancePct?: number }).nearStopDistancePct}% · 需更新条件单
+            ⚠ 临近{(h as unknown as { nearStopLabel?: string }).nearStopLabel}{' '}
+            {(h as unknown as { nearStopDistancePct?: number }).nearStopDistancePct}% · 需更新条件单
           </span>
         )}
       </div>
@@ -298,7 +342,7 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
           </span>
         )}
       </div>
-      {(((h.alphaEvents?.length ?? 0) > 0) || h.industryFlow != null) && (
+      {((h.alphaEvents?.length ?? 0) > 0 || h.industryFlow != null) && (
         <div className="mt-1 flex flex-col gap-0.5 text-[10.5px]">
           {h.alphaEvents?.map((e, i) => (
             <div
@@ -324,16 +368,20 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
                   : 'text-red-600 dark:text-red-400'
               }
             >
-              🧭 {h.industryFlow.industry} 5日{' '}
-              {(h.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
-              {h.industryFlow.netInflow5d ?? 0}亿（第{h.industryFlow.rank5d}/{h.industryFlow.total}）
+              🧭 {h.industryFlow.industry} 5日 {(h.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
+              {h.industryFlow.netInflow5d ?? 0}亿（第{h.industryFlow.rank5d}/{h.industryFlow.total}
+              ）
             </div>
           )}
         </div>
       )}
-      {h.reason && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">触发：{h.reason}</div>}
+      {h.reason && (
+        <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">触发：{h.reason}</div>
+      )}
       {h.realtimeAlert && !h.reason && (
-        <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">⚠ {h.realtimeAlert}</div>
+        <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+          ⚠ {h.realtimeAlert}
+        </div>
       )}
       {h.note && <div className="mt-1 text-[11px] text-[var(--k-muted)]">{h.note}</div>}
     </div>
@@ -358,7 +406,9 @@ function TwinStarDayPlaybook({
       <ol className="flex flex-col gap-1">
         {steps.map((s) => (
           <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
-            <span className="w-10 shrink-0 font-mono text-[10px] text-[var(--k-muted)]">{s.clock}</span>
+            <span className="w-10 shrink-0 font-mono text-[10px] text-[var(--k-muted)]">
+              {s.clock}
+            </span>
             <span className="font-medium">{s.title}</span>
             <DayStepBadge status={s.status} />
             <span className="min-w-0 text-[var(--k-muted)]">{s.detail}</span>
@@ -380,7 +430,9 @@ function DayStepBadge({ status }: { status: TwinStarDayStep['status'] }) {
         : status === 'idle'
           ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]'
           : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-  return <span className={cn('rounded border px-1 py-px text-[9px] font-semibold', cls)}>{label}</span>;
+  return (
+    <span className={cn('rounded border px-1 py-px text-[9px] font-semibold', cls)}>{label}</span>
+  );
 }
 
 function BuyList({
@@ -415,7 +467,9 @@ function BuyList({
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>下午 2 点 · 股票篮买入（{twinStar ? '核心腿' : '单轨'} pick=STOCK · score 前 5）</span>
+        <span>
+          下午 2 点 · 股票篮买入（{twinStar ? '核心腿' : '单轨'} pick=STOCK · score 前 5）
+        </span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -432,10 +486,14 @@ function BuyList({
           const bought = boughtSymbols.has(symbol);
           return (
             <div key={symbol} className="flex flex-wrap items-center gap-x-2 text-[12px]">
-              <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{i + 1}</span>
+              <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">
+                {i + 1}
+              </span>
               <span className="font-medium">{c.name ?? symbol}</span>
               <span className="text-[10px] tabular-nums text-[var(--k-muted)]">{symbol}</span>
-              <span className="ml-auto font-mono text-[10.5px] tabular-nums">score={c.score ?? '—'}</span>
+              <span className="ml-auto font-mono text-[10.5px] tabular-nums">
+                score={c.score ?? '—'}
+              </span>
               {typeof c.rs === 'number' && (
                 <span className="font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
                   RS 前{Math.round(c.rs * 100)}%
@@ -464,8 +522,10 @@ function BuyList({
                   }
                   title="行业 5 日主力净流入（SW L1 · 展示层，不参与 S-3 门槛）"
                 >
-                  🧭 {c.industryFlow.industry} 5日{(c.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
-                  {c.industryFlow.netInflow5d ?? 0}亿（第{c.industryFlow.rank5d}/{c.industryFlow.total}）
+                  🧭 {c.industryFlow.industry} 5日
+                  {(c.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
+                  {c.industryFlow.netInflow5d ?? 0}亿（第{c.industryFlow.rank5d}/
+                  {c.industryFlow.total}）
                 </span>
               )}
               {bought ? (
@@ -530,16 +590,19 @@ function ReconBlock({
   const hasGap = recon.missing > 0 || recon.extra > 0;
   const missingRows = (recon.detail ?? [])
     .filter((d) => d.type === 'missing')
-    .slice(0, 20) as Array<{ symbol?: string; score?: unknown; entry?: unknown; positionPct?: unknown }>;
+    .slice(0, 20) as Array<{
+    symbol?: string;
+    score?: unknown;
+    entry?: unknown;
+    positionPct?: unknown;
+  }>;
   const clean = !hasGap;
   return (
     <div id={blockId} className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
         <span
           className={
-            clean
-              ? 'text-emerald-700 dark:text-emerald-300'
-              : 'text-amber-700 dark:text-amber-300'
+            clean ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'
           }
         >
           {clean ? '✓' : '⚠'}
@@ -563,9 +626,7 @@ function ReconBlock({
           {missingRows.map((m) => {
             const symbol = String(m.symbol ?? '');
             const score =
-              typeof m.score === 'number' && Number.isFinite(m.score)
-                ? m.score.toFixed(1)
-                : '—';
+              typeof m.score === 'number' && Number.isFinite(m.score) ? m.score.toFixed(1) : '—';
             const pct = (() => {
               const raw = m.positionPct;
               if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
@@ -748,8 +809,7 @@ function SatStockRow({
   const { code, pretty } = satRowPretty(r);
   const isSell = r.side === 'SELL';
   const dueLabel = r.exitDue ?? '—';
-  const heldLabel =
-    r.heldDays != null ? `${r.heldDays}/3` : r.missingEntry ? '缺入场日' : '—';
+  const heldLabel = r.heldDays != null ? `${r.heldDays}/3` : r.missingEntry ? '缺入场日' : '—';
   const live = satLiveMetrics(r.symbol, quotes, trend);
   const key = r.symbol.toUpperCase();
   const q = quotes[r.symbol] ?? quotes[key];
@@ -762,7 +822,9 @@ function SatStockRow({
     <div className="flex flex-col gap-0.5 border-b border-sky-500/10 py-1.5 last:border-b-0">
       <div className="flex flex-wrap items-center gap-x-2 text-[12px]">
         {index != null ? (
-          <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{index}</span>
+          <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">
+            {index}
+          </span>
         ) : null}
         <span
           className={
@@ -775,7 +837,9 @@ function SatStockRow({
         </span>
         {pretty ? <span className="font-medium">{pretty}</span> : null}
         <span className="font-mono text-[11px] text-[var(--k-muted)]">{code}</span>
-        <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums">{r.navPct}%</span>
+        <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums">
+          {r.navPct}%
+        </span>
         {isSell && !bought ? (
           <button
             type="button"
@@ -795,11 +859,23 @@ function SatStockRow({
         </span>
         {price != null ? <span>现价 {fmtPrice(price)}</span> : null}
         {chgPct != null ? (
-          <span className={chgPct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}>
+          <span
+            className={
+              chgPct >= 0
+                ? 'text-emerald-700 dark:text-emerald-300'
+                : 'text-red-600 dark:text-red-400'
+            }
+          >
             {formatIntradayChgPct(chgPct)}
           </span>
         ) : showCostPnl && r.pnlPct != null ? (
-          <span className={r.pnlPct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}>
+          <span
+            className={
+              r.pnlPct >= 0
+                ? 'text-emerald-700 dark:text-emerald-300'
+                : 'text-red-600 dark:text-red-400'
+            }
+          >
             {fmtPct(r.pnlPct)}
           </span>
         ) : null}
@@ -838,7 +914,7 @@ function SatSleevePanel({
   const empty = holds.length === 0 && sells.length === 0 && buys.length === 0;
   const copyAllRows = [...sells, ...holds];
   const slotPct =
-    plan.satSlotNavPct > 0 ? plan.satSlotNavPct : holds.find((r) => r.navPct > 0)?.navPct ?? null;
+    plan.satSlotNavPct > 0 ? plan.satSlotNavPct : (holds.find((r) => r.navPct > 0)?.navPct ?? null);
   return (
     <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
       <div className="mb-1 flex flex-wrap items-center gap-x-2 text-[11px] font-medium text-sky-800 dark:text-sky-200">
@@ -884,24 +960,40 @@ function SatSleevePanel({
       {holds.length > 0 ? (
         <div className="mb-1">
           {holds.map((r) => (
-            <SatStockRow key={`hold-${r.symbol}`} r={r} bought={false} onAct={onAct} quotes={quotes} trend={trend} />
+            <SatStockRow
+              key={`hold-${r.symbol}`}
+              r={r}
+              bought={false}
+              onAct={onAct}
+              quotes={quotes}
+              trend={trend}
+            />
           ))}
         </div>
       ) : null}
       {buys.length > 0 ? (
         <div>
-          <div className="mb-1 text-[11px] font-medium text-sky-800 dark:text-sky-200">卫星缺口买入</div>
+          <div className="mb-1 text-[11px] font-medium text-sky-800 dark:text-sky-200">
+            卫星缺口买入
+          </div>
           <div className="flex flex-col gap-1">
             {buys.map((r, i) => {
               const done = boughtSymbols.has(r.symbol);
               const { code, pretty } = satRowPretty(r);
               return (
-                <div key={`buy-${r.symbol}`} className="flex flex-wrap items-center gap-x-2 text-[12px]">
-                  <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{i + 1}</span>
+                <div
+                  key={`buy-${r.symbol}`}
+                  className="flex flex-wrap items-center gap-x-2 text-[12px]"
+                >
+                  <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">
+                    {i + 1}
+                  </span>
                   <span className="font-semibold text-emerald-700">买</span>
                   {pretty ? <span className="font-medium">{pretty}</span> : null}
                   <span className="font-mono text-[11px] text-[var(--k-muted)]">{code}</span>
-                  <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums">{r.navPct}%</span>
+                  <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums">
+                    {r.navPct}%
+                  </span>
                   {r.swapFrom ? <span className="text-[10px] text-amber-700">涨停换</span> : null}
                   {done ? (
                     <span className="text-[10px] text-[var(--k-muted)]">已记</span>
@@ -970,7 +1062,9 @@ function HealthPanel({
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
+          {tag}
+        </span>
         {title}
         {rotateOutStocks && holdings.length > 0 && (
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
@@ -1007,7 +1101,9 @@ function HealthPanel({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>{regime.label}</span>
+        <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>
+          {regime.label}
+        </span>
         {block?.strength != null && (
           <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 tabular-nums">
             strength {block.strength.toFixed(1)}
@@ -1078,7 +1174,9 @@ function HealthPanel({
                   ? {
                       ...h,
                       action: 'EXIT',
-                      reason: h.reason ?? `${twinStar ? '核心腿' : '单轨'}今日 pick=${sleevePick}，股票篮应轮出`,
+                      reason:
+                        h.reason ??
+                        `${twinStar ? '核心腿' : '单轨'}今日 pick=${sleevePick}，股票篮应轮出`,
                     }
                   : h
               }
@@ -1091,8 +1189,13 @@ function HealthPanel({
         <BuyList
           candidates={candidates}
           total={block?.s3CandidateTotal}
-          suggestedSizePct={Number((block?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || null}
-          envScaleToday={Number((block?.s3Rules as Record<string, unknown> | undefined)?.envScaleToday) || null}
+          suggestedSizePct={
+            Number((block?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) ||
+            null
+          }
+          envScaleToday={
+            Number((block?.s3Rules as Record<string, unknown> | undefined)?.envScaleToday) || null
+          }
           remindedSymbols={remindedSymbols}
           boughtSymbols={boughtSymbols}
           onRemind={onRemind}
@@ -1102,7 +1205,8 @@ function HealthPanel({
         />
       ) : !allowStockBuys && candidates.length > 0 ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-          {twinStar ? '核心腿' : '单轨'} pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选 {candidates.length} 只<strong>不执行买入</strong>
+          {twinStar ? '核心腿' : '单轨'} pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选{' '}
+          {candidates.length} 只<strong>不执行买入</strong>
         </div>
       ) : allowStockBuys && block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
@@ -1174,10 +1278,7 @@ export function PortfolioHealthCard({
   const [reminders, setReminders] = React.useState<BuyReminder[]>([]);
   const [reminderError, setReminderError] = React.useState<string | null>(null);
 
-  const remindedSymbols = React.useMemo(
-    () => new Set(reminders.map((r) => r.symbol)),
-    [reminders],
-  );
+  const remindedSymbols = React.useMemo(() => new Set(reminders.map((r) => r.symbol)), [reminders]);
 
   React.useEffect(() => {
     setReminders(loadBuyReminders());
@@ -1229,7 +1330,9 @@ export function PortfolioHealthCard({
       hkCandidates: hk?.s3Candidates ?? [],
       cnAllowBuys: Boolean(cn && !isMarketGateClosed(cn)),
       hkAllowBuys: Boolean(hk && !isMarketGateClosed(hk)),
-      suggestedSizePct: (Number.isFinite(cnSize) && cnSize > 0 ? cnSize : null) ?? (Number.isFinite(hkSize) && hkSize > 0 ? hkSize : 10),
+      suggestedSizePct:
+        (Number.isFinite(cnSize) && cnSize > 0 ? cnSize : null) ??
+        (Number.isFinite(hkSize) && hkSize > 0 ? hkSize : 10),
       etfHoldings: (data?.multiAssetHoldings ?? []).map((h) => ({
         symbol: h.symbol,
         key: etfSleeveKey(h.symbol),
@@ -1275,9 +1378,7 @@ export function PortfolioHealthCard({
   }, [twinStar, tradePlan, data, pickKey, satNameTs]);
   const liveCnSatHoldings = React.useMemo(
     () =>
-      (data?.holdings ?? []).filter((h) =>
-        isLiveSatelliteStock(h.symbol, { pickKey, satNameTs }),
-      ),
+      (data?.holdings ?? []).filter((h) => isLiveSatelliteStock(h.symbol, { pickKey, satNameTs })),
     [data, pickKey, satNameTs],
   );
   const satHoldingNames = liveCnSatHoldings.map((h) => (h.name ?? '').trim() || h.symbol);
@@ -1459,8 +1560,12 @@ export function PortfolioHealthCard({
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">{twinStar ? '机会双子星 · 今日决策' : '单轨择优 · 今日复刻（mom_compare）'}</span>
-        <span className="text-[10px] text-[var(--k-muted)]">{twinStar ? '关闸/无仓 → 核心 100% · 开闸或持仓才切 50%' : '100% 硬切 · 与 Timeline 同源'}</span>
+        <span className="text-[12px] font-semibold">
+          {twinStar ? '机会双子星 · 今日决策' : '单轨择优 · 今日复刻（mom_compare）'}
+        </span>
+        <span className="text-[10px] text-[var(--k-muted)]">
+          {twinStar ? '关闸/无仓 → 核心 100% · 开闸或持仓才切 50%' : '100% 硬切 · 与 Timeline 同源'}
+        </span>
         {twinStar ? (
           <span
             className={cn(
@@ -1502,7 +1607,9 @@ export function PortfolioHealthCard({
             {reminders.map((r) => (
               <div key={r.symbol} className="flex flex-wrap items-center gap-x-2 text-[11px]">
                 <span className="font-medium">{r.name ?? r.symbol}</span>
-                <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">{r.symbol}</span>
+                <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+                  {r.symbol}
+                </span>
                 {r.targetPrice != null && (
                   <span className="rounded bg-sky-500/10 px-1 py-0.5 font-mono text-[10px] text-sky-700 dark:text-sky-300">
                     目标价 {r.targetPrice}
@@ -1544,7 +1651,12 @@ export function PortfolioHealthCard({
                     : !twinStarQ.data.sat.gateOpen
                       ? `R-wide 关闸（breadth ${twinStarQ.data.sat.breadth} < 0.5，今日不开仓）`
                       : afterSatWindow
-                        ? `R-wide 开闸 → 14:30价买入候选 ${(twinStarQ.data.sat.candidates ?? []).slice(0, 3).map((c) => c.ts).join(', ') || '—'}`
+                        ? `R-wide 开闸 → 14:30价买入候选 ${
+                            (twinStarQ.data.sat.candidates ?? [])
+                              .slice(0, 3)
+                              .map((c) => c.ts)
+                              .join(', ') || '—'
+                          }`
                         : 'R-wide 开闸 · 候选 14:30 后公布（当日近似）'}
               </span>
             ) : null}
@@ -1553,7 +1665,8 @@ export function PortfolioHealthCard({
                 {twinStarQ.data.sat.gateOpen
                   ? `卫星闸 · R-wide 开闸 breadth ${twinStarQ.data.sat.breadth}（> 0.5 开仓） · ${twinStarQ.data.sat.gapCount ?? 0} 只缺口`
                   : `卫星闸 · R-wide 关闸 breadth ${twinStarQ.data.sat.breadth}（< 0.5 不开仓）`}
-                {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日 {twinStarQ.data.sat.asOf}
+                {twinStarQ.data.sat.note ? ` · ${twinStarQ.data.sat.note}` : ''} · 信号日{' '}
+                {twinStarQ.data.sat.asOf}
                 {twinStarQ.data.sat.approx
                   ? ` · 盘中近似${
                       twinStarQ.data.sat.snapshotAt?.includes('T')
@@ -1579,9 +1692,13 @@ export function PortfolioHealthCard({
             ⚠ 今日盘中快照失败 → 卫星名单不可用（东财 clist）。14:30 不要按 T-1 名单下单。
           </div>
         ) : null}
-        {twinStar && q.data?.tradeDate && twinStarQ.data?.sat?.asOf != null && twinStarQ.data.sat.asOf < q.data.tradeDate ? (
+        {twinStar &&
+        q.data?.tradeDate &&
+        twinStarQ.data?.sat?.asOf != null &&
+        twinStarQ.data.sat.asOf < q.data.tradeDate ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
-            ⚠ 卫星信号滞后：信号日 {twinStarQ.data.sat.asOf} &lt; 体检数据 {q.data.tradeDate}——卫星判断可能不是最新，请检查数据同步。
+            ⚠ 卫星信号滞后：信号日 {twinStarQ.data.sat.asOf} &lt; 体检数据 {q.data.tradeDate}
+            ——卫星判断可能不是最新，请检查数据同步。
           </div>
         ) : null}
 
@@ -1606,7 +1723,9 @@ export function PortfolioHealthCard({
                 <TwinStarTradePlanPanel
                   plan={tradePlan}
                   snapshotAt={twinStarQ.data?.sat?.snapshotAt}
-                  frozen={Boolean(twinStarQ.data?.sat?.frozen || twinStarQ.data?.sat?.heldOvernight)}
+                  frozen={Boolean(
+                    twinStarQ.data?.sat?.frozen || twinStarQ.data?.sat?.heldOvernight,
+                  )}
                   snapshotFailed={satSnapFailed}
                   onRefresh={() => void handleRefreshSat()}
                   refreshing={refreshingSat}
@@ -1662,7 +1781,9 @@ export function PortfolioHealthCard({
 
         {twinStar ? (
           <details className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
-            <summary className="cursor-pointer px-3 py-2 text-[11px] text-[var(--k-muted)]">择强 / 篮 / 对账细节</summary>
+            <summary className="cursor-pointer px-3 py-2 text-[11px] text-[var(--k-muted)]">
+              择强 / 篮 / 对账细节
+            </summary>
             <div className="flex flex-col gap-2 border-t border-[var(--k-border)] p-2.5">
               {sleeve ? (
                 <PickStrongOpsPanel
@@ -1695,7 +1816,9 @@ export function PortfolioHealthCard({
                 <details className="text-[10px] text-[var(--k-muted)]">
                   <summary className="cursor-pointer">引擎模拟名单（对照）</summary>
                   <div className="mt-1 font-mono leading-relaxed">
-                    {tradePlan.recipeNames.map((h) => `${h.ts}${h.daysLeft != null ? `(剩${h.daysLeft}d)` : ''}`).join(' · ')}
+                    {tradePlan.recipeNames
+                      .map((h) => `${h.ts}${h.daysLeft != null ? `(剩${h.daysLeft}d)` : ''}`)
+                      .join(' · ')}
                   </div>
                 </details>
               ) : null}
@@ -1732,9 +1855,15 @@ export function PortfolioHealthCard({
               >
                 <span>股票篮细节（仅 pick=STOCK 时开仓）</span>
                 <span className="text-[10px] font-normal text-[var(--k-muted)]">
-                  {allowStockBuys ? '今日可执行' : pickKey ? `今日 pick=${pickKey} · 只看仓/轮出` : '等待 pick'}
+                  {allowStockBuys
+                    ? '今日可执行'
+                    : pickKey
+                      ? `今日 pick=${pickKey} · 只看仓/轮出`
+                      : '等待 pick'}
                 </span>
-                <span className="ml-auto text-[10px] text-[var(--k-muted)]">{stockOpen ? '收起' : '展开'}</span>
+                <span className="ml-auto text-[10px] text-[var(--k-muted)]">
+                  {stockOpen ? '收起' : '展开'}
+                </span>
               </button>
               {stockOpen ? (
                 <div className="flex flex-col gap-2 border-t border-[var(--k-border)] p-2.5">
@@ -1810,9 +1939,7 @@ export function PortfolioHealthCard({
       {reminderError && (
         <div className="mt-2 text-[11px] text-red-500">加入自选失败：{reminderError}</div>
       )}
-      {buyError && (
-        <div className="mt-2 text-[11px] text-red-500">记录交易失败：{buyError}</div>
-      )}
+      {buyError && <div className="mt-2 text-[11px] text-red-500">记录交易失败：{buyError}</div>}
     </div>
   );
 }

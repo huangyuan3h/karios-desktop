@@ -88,11 +88,7 @@ export function MorningBriefCard(props: {
   const brief = briefQ.data?.brief;
 
   if (briefQ.isPending) {
-    return (
-      <div className="text-sm text-[var(--k-muted)]">
-        加载简报中…
-      </div>
-    );
+    return <div className="text-sm text-[var(--k-muted)]">加载简报中…</div>;
   }
 
   if (!brief) {
@@ -136,10 +132,7 @@ export function MorningBriefCard(props: {
               </div>
               <div className="space-y-0.5 pl-3">
                 {items.map((item, idx) => (
-                  <BriefItemRow
-                    key={item.id ?? `${item.title ?? 'item'}-${idx}`}
-                    item={item}
-                  />
+                  <BriefItemRow key={item.id ?? `${item.title ?? 'item'}-${idx}`} item={item} />
                 ))}
               </div>
             </div>

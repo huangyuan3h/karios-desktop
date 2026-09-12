@@ -4,7 +4,10 @@ export type FlowSpan = '6m' | '1y' | '3y';
 
 export type FlowRun = { start: number; end: number };
 
-export function flowSpanWindow(span: FlowSpan, now: Date = new Date()): { start: string; end: string } {
+export function flowSpanWindow(
+  span: FlowSpan,
+  now: Date = new Date(),
+): { start: string; end: string } {
   const end = now.toISOString().slice(0, 10);
   const days = span === '6m' ? 183 : span === '1y' ? 365 : 1095;
   const start = new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);

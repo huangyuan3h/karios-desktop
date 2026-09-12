@@ -15,16 +15,12 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          'bg-[var(--k-text)] text-[var(--k-surface)] hover:opacity-90',
-        secondary:
-          'bg-[var(--k-surface-2)] text-[var(--k-text)] hover:bg-[var(--k-border)]',
+        default: 'bg-[var(--k-text)] text-[var(--k-surface)] hover:opacity-90',
+        secondary: 'bg-[var(--k-surface-2)] text-[var(--k-text)] hover:bg-[var(--k-border)]',
         outline:
           'border border-[var(--k-border)] bg-transparent text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
-        ghost:
-          'bg-transparent text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
-        link:
-          'bg-transparent p-0 text-[var(--k-muted)] underline-offset-4 hover:underline hover:text-[var(--k-text)]',
+        ghost: 'bg-transparent text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
+        link: 'bg-transparent p-0 text-[var(--k-muted)] underline-offset-4 hover:underline hover:text-[var(--k-text)]',
       },
       size: {
         default: 'h-10 px-4 py-2',
@@ -60,5 +56,3 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   },
 );
 Button.displayName = 'Button';
-
-

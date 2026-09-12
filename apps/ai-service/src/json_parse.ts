@@ -5,7 +5,10 @@ export function tryParseJsonObject(text: string): unknown {
   // Strip common markdown code fences if present.
   const t =
     t0.startsWith('```') && t0.endsWith('```')
-      ? t0.replace(/^```[a-zA-Z0-9_-]*\s*/m, '').replace(/```$/m, '').trim()
+      ? t0
+          .replace(/^```[a-zA-Z0-9_-]*\s*/m, '')
+          .replace(/```$/m, '')
+          .trim()
       : t0;
   try {
     return JSON.parse(t);
@@ -20,5 +23,3 @@ export function tryParseJsonObject(text: string): unknown {
     throw new Error('Failed to parse JSON');
   }
 }
-
-

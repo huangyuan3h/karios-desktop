@@ -6,11 +6,7 @@ import {
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
-import {
-  buildTopByDateMap,
-  dedupeShownDates,
-  fmtAmountCn,
-} from '@/lib/dashboard-format';
+import { buildTopByDateMap, dedupeShownDates, fmtAmountCn } from '@/lib/dashboard-format';
 
 type CopyStatus = { ok: boolean; text: string } | null;
 
@@ -181,11 +177,7 @@ export function IndustryFundFlowCard({
         </Button>
       </div>
       {copyStatus ? (
-        <div
-          className={`mt-2 text-xs ${
-            copyStatus.ok ? 'text-emerald-600' : 'text-red-600'
-          }`}
-        >
+        <div className={`mt-2 text-xs ${copyStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
           {copyStatus.text}
         </div>
       ) : null}

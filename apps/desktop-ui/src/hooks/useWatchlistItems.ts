@@ -83,28 +83,25 @@ export function useWatchlistItems() {
     [],
   );
 
-  const applyResolvedNames = React.useCallback(
-    (rows: MarketStockBasicRow[]) => {
-      if (!rows.length) return;
-      const bySym = new Map<string, MarketStockBasicRow>();
-      for (const r of rows) bySym.set(r.symbol, r);
-      setItems((prev) => {
-        const next = prev.map((it) => {
-          if (it.name || it.nameStatus === 'resolved' || it.nameStatus === 'not_found') {
-            return it;
-          }
-          const hit = bySym.get(it.symbol);
-          if (hit) return { ...it, name: hit.name, nameStatus: 'resolved' as const };
-          return { ...it, nameStatus: 'not_found' as const };
-        });
-        // Avoid writing identical arrays to localStorage.
-        const changed = next.some((x, i) => x !== prev[i]);
-        if (changed) void saveWatchlist(next);
-        return next;
+  const applyResolvedNames = React.useCallback((rows: MarketStockBasicRow[]) => {
+    if (!rows.length) return;
+    const bySym = new Map<string, MarketStockBasicRow>();
+    for (const r of rows) bySym.set(r.symbol, r);
+    setItems((prev) => {
+      const next = prev.map((it) => {
+        if (it.name || it.nameStatus === 'resolved' || it.nameStatus === 'not_found') {
+          return it;
+        }
+        const hit = bySym.get(it.symbol);
+        if (hit) return { ...it, name: hit.name, nameStatus: 'resolved' as const };
+        return { ...it, nameStatus: 'not_found' as const };
       });
-    },
-    [],
-  );
+      // Avoid writing identical arrays to localStorage.
+      const changed = next.some((x, i) => x !== prev[i]);
+      if (changed) void saveWatchlist(next);
+      return next;
+    });
+  }, []);
 
   React.useEffect(() => {
     function onExternalUpdate() {
@@ -279,9 +276,7 @@ export function useWatchlistItems() {
       if (opening && !entryDate) entryDate = todaySh;
       return {
         ...base,
-        ...(nextValCost != null
-          ? { costPrice: nextValCost, maxPrice: nextValCost }
-          : {}),
+        ...(nextValCost != null ? { costPrice: nextValCost, maxPrice: nextValCost } : {}),
         entryDate,
       };
     });

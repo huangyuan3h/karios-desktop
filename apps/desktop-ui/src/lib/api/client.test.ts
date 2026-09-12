@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  apiDeleteJson,
-  apiGetJson,
-  apiPostJson,
-  apiPutJson,
-} from './client';
+import { apiDeleteJson, apiGetJson, apiPostJson, apiPutJson } from './client';
 
 const BASE = 'http://127.0.0.1:4330';
 
@@ -28,7 +23,10 @@ describe('apiGetJson', () => {
 
     const out = await apiGetJson<{ ok: boolean }>('/healthz');
     expect(out.ok).toBe(true);
-    expect(fetch).toHaveBeenCalledWith(`${BASE}/healthz`, expect.objectContaining({ method: 'GET' }));
+    expect(fetch).toHaveBeenCalledWith(
+      `${BASE}/healthz`,
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('uses custom baseUrl', async () => {

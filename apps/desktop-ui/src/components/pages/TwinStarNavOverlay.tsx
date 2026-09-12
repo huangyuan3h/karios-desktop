@@ -61,7 +61,7 @@ type FlowDatum = {
   date: string;
   'ETF份额Δ%': number | null;
   '两融Δ%': number | null;
-  '北向20日累计': number | null;
+  北向20日累计: number | null;
   '小单净买占比%': number | null;
 };
 
@@ -72,7 +72,12 @@ const FLOW_COLORS = {
   sm: '#f97316',
 } as const;
 
-const FLOW_FIELDS: Array<{ key: keyof Omit<FlowDatum, 'date'>; label: string; color: string; unit: string }> = [
+const FLOW_FIELDS: Array<{
+  key: keyof Omit<FlowDatum, 'date'>;
+  label: string;
+  color: string;
+  unit: string;
+}> = [
   { key: 'ETF份额Δ%', label: 'ETF份额 20日Δ', color: FLOW_COLORS.etf, unit: '%' },
   { key: '两融Δ%', label: '两融余额 20日Δ', color: FLOW_COLORS.margin, unit: '%' },
   { key: '北向20日累计', label: '北向 20日累计', color: FLOW_COLORS.north, unit: '亿' },
@@ -192,7 +197,9 @@ function FlowTooltip({
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: f.color }} />
               {f.label}
             </span>
-            <span className="font-mono text-[var(--k-text)]">{fmtFlowVal(datum[f.key], f.unit)}</span>
+            <span className="font-mono text-[var(--k-text)]">
+              {fmtFlowVal(datum[f.key], f.unit)}
+            </span>
           </div>
         ))}
       </div>
@@ -214,7 +221,7 @@ export function TwinStarNavOverlay({ rows }: { rows: TimelineRow[] }) {
       points.map((p) => ({
         date: p.date,
         双子星: sim ? p.twinSimPct : p.twinPct,
-        核心: sim ? p.coreSimPct ?? p.corePct : p.corePct,
+        核心: sim ? (p.coreSimPct ?? p.corePct) : p.corePct,
         卫星: p.satPct,
         基准: sim ? p.twinPct : null,
         satActive: p.satActive,
@@ -237,15 +244,15 @@ export function TwinStarNavOverlay({ rows }: { rows: TimelineRow[] }) {
         date: p.date,
         'ETF份额Δ%': p.flow?.etfShareD20Pct ?? null,
         '两融Δ%': p.flow?.marginD20Pct ?? null,
-        '北向20日累计': p.flow?.northD20 ?? null,
+        北向20日累计: p.flow?.northD20 ?? null,
         '小单净买占比%': p.flow?.smNetPct ?? null,
       })),
     [points],
   );
   const flowShow = showFlow && flowAvailable;
   const last = points[n - 1];
-  const twinMain = sim ? last?.twinSimPct ?? null : last?.twinPct ?? null;
-  const coreMain = sim ? last?.coreSimPct ?? last?.corePct ?? null : last?.corePct ?? null;
+  const twinMain = sim ? (last?.twinSimPct ?? null) : (last?.twinPct ?? null);
+  const coreMain = sim ? (last?.coreSimPct ?? last?.corePct ?? null) : (last?.corePct ?? null);
 
   if (!n) return null;
 
@@ -293,7 +300,11 @@ export function TwinStarNavOverlay({ rows }: { rows: TimelineRow[] }) {
       <div className="h-[300px] w-full" data-testid="twin-nav-chart">
         {/* OPT-152: recharts for hover crosshair + tooltip; bands = satActive runs. */}
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} syncId="twin-star-nav" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <LineChart
+            data={data}
+            syncId="twin-star-nav"
+            margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+          >
             <CartesianGrid stroke={COLORS.grid} strokeOpacity={0.25} vertical={false} />
             <XAxis
               dataKey="date"
@@ -398,7 +409,9 @@ export function TwinStarNavOverlay({ rows }: { rows: TimelineRow[] }) {
       {flowShow ? (
         <div className="mt-1" data-testid="twin-flow-chart">
           <div className="mb-0.5 flex flex-wrap items-center gap-2 text-[9px] text-[var(--k-muted)]">
-            <span className="font-medium text-[var(--k-fg)]">资金流（20 日口径 · 显示层，不影响交易）</span>
+            <span className="font-medium text-[var(--k-fg)]">
+              资金流（20 日口径 · 显示层，不影响交易）
+            </span>
             <span className="flex items-center gap-1">
               <span className="inline-block h-0.5 w-3" style={{ background: FLOW_COLORS.etf }} />
               ETF份额Δ%
@@ -418,7 +431,11 @@ export function TwinStarNavOverlay({ rows }: { rows: TimelineRow[] }) {
           </div>
           <div className="h-[110px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={flowData} syncId="twin-star-nav" margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <LineChart
+                data={flowData}
+                syncId="twin-star-nav"
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
                 <CartesianGrid stroke={COLORS.grid} strokeOpacity={0.2} vertical={false} />
                 <XAxis
                   dataKey="date"
