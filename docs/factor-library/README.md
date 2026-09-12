@@ -55,6 +55,8 @@
 | KDJ | 多 | ETF + CN1500 · 2023–26 | 📝噪音 | [technical](technical.md#kdj) |
 | Bollinger %b/带宽 | 多 | ETF + CN1500 · 2023–26 | 📝无统一edge | [technical](technical.md#bollinger) |
 | SuperTrend/Fib/PA | 多 | 笔记 | 📝笔记 | [technical](technical.md#supertrend-fibonacci-price-action) |
+| Alpha101 全集 (1–101) | 多/空 | 全市场 · 三窗 | ❌ 成本不可交易（A16/A13 S1 存活） | [technical](technical.md#alpha101-101) |
+| GTJA 191 全集 | 多/空 | 全市场 · 三窗 | ❌ 无新轴（同价量相关族） | [technical](technical.md#gtja-191国泰君安价量因子库) |
 
 ### 基本面（财务）
 
@@ -70,6 +72,8 @@
 | 慢价值独立套筒 V2 | 多 | 5 vintage 2021–25 | ❌ | [fundamental](fundamental.md#v2-慢价值套筒) |
 | **投资因子 asset_growth** | 负 | 年报 2008–24 | ⚠️ INCUBATE | [fundamental](fundamental.md#投资因子-asset_growth) |
 | **应计 accruals** | 负 | 年报 2008–24 | ⚠️ INCUBATE | [fundamental](fundamental.md#应计-accruals) |
+| 投资/应计 composite sleeve | 多 | 年报 2008–24 · 月频 | ⚠️ INCUBATE / 独立化 PARK（smart-beta） | [fundamental](fundamental.md#投资应计-composite长持-sleeve-原型) |
+| GARP（质量+便宜） | 多 | 年报 2008–24 | ❌ CLOSE（质量无增量） | [fundamental](fundamental.md#garp质量--便宜) |
 | Piotroski F-score | 多 | 年报 2008–24 | ❌ A股失效 | [fundamental](fundamental.md#f-score) |
 | 营收/净利增长、毛利率 | 多 | 年报 2008–24 | ❌ | [fundamental](fundamental.md#营收--净利增长--毛利率) |
 

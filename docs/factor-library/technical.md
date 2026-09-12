@@ -92,3 +92,18 @@
 - **定义**：SuperTrend（ATR 跟踪）、Fibonacci 回撤、K 线 price action。
 - **结果**：无新回测。SuperTrend ≈ MA+波动（MA200+−8% trail 同族，天花板 +1~2%）；Fibonacci 主观、已测 edge <1%、不单测；PA 已覆盖到顶（pin 1.6% / box +1.4% / 长突破 +3.5%，均未到 win70%）。
 - **判定**：📝 笔记（SuperTrend 低优可试，其余不扩）。源：[`indicator-supertrend-fibonacci-priceaction-notes.md`](../backtests/factors/indicator-supertrend-fibonacci-priceaction-notes.md)。
+
+## Alpha101 (1–101)
+- **定义**：WorldQuant《101 Formulaic Alphas》全集，日频横截面价量/动量/反转/波动因子；`scripts/alpha101_screen.py` 向量化实现。
+- **数据/方法**：CN 主板/创业板/科创板（剔 ST/北交所/HK），20 日均额 ≥0.7 亿；三窗 OOS2/train/valid；h=1/5/10（主判 h=5）RankIC + 五分位 + 换手/成本；`vwap` 已做 qfq 对齐；`IndNeutralize` 用当前行业映射近似。
+- **结果**：**PASS 0 / CANDIDATE 11 / REJECT 90**。11 条候选全是**同一家族**＝价量协方差反向（A13/A16/A44/A26/A15/A50/A3/A6/A55/A2/A27）：放量上涨 5 日反转，毛价差 +0.1~+0.7%/5d、三窗 ICIR 0.4~1.0，但日均换手 0.4–0.9 → **净价差全部 < 0**。有效独立因子数 ≈ 1。
+- **S1 正交化（2026-09-12 增补）**：代表 A16（A13 复算同形）对 size/流动性/反转/动量/波动/行业做逐日横截面残差后，三窗残差 ICIR **+0.79/+0.98/+0.65**（均 ≥0.5、同号）→ **S1 `SURVIVOR`**，独立于已知维度。
+- **S2 可交易性（2026-09-12 增补）**：非重叠 h∈{5,10,20}，唯一三窗净为正的 `ls_h20` 净 IR 仅 +0.01/+0.24/+0.69（OOS2/train <0.3）→ **`S2-REJECT`**；h=5/10 三窗全负。**统计独立但不可交易（30bp 下无可用形态）。**
+- **判定**：❌ REJECT（作为可交易 alpha / 双子星增量，方向终结）。源：[`alpha101-l0-screen-2026-09-12.md`](../backtests/factors/alpha101-l0-screen-2026-09-12.md) §8–§9。
+
+## GTJA 191（国泰君安价量因子库）
+- **定义**：国泰君安《基于短周期价量特征的多因子选股体系》191 条；`scripts/gtja191_screen.py` 面板化实现（168 条可算）。
+- **数据/方法**：同 Alpha101 L0（全 A 流动宇宙、三窗、h=5 主判、qfq vwap、benchmark 中证300）；校验 GTJA139=A6 / 105=A3 / 099=A13 逐数吻合。
+- **结果**：**0 PASS / 16 CANDIDATE / 152 REJECT**。16 候选 = **同一价量相关家族**（099/062/083/005/032/090/105/139/016/036/064/176）+ 量/额波动（070/097）+ 中期反转（071/025），**净价差全部 <0**。点名的新轴（075/182 抗跌、021 趋势显著性、172/186 DMI、093/187 缺口）**全部 REJECT**。23 条参考实现未实现。
+- **判定**：❌ REJECT（无新独立轴；与 Alpha101 同族、成本不可交易）。源：[`gtja191-l0-screen-2026-09-12.md`](../backtests/factors/gtja191-l0-screen-2026-09-12.md)。
+

@@ -90,6 +90,11 @@
 | [`factors/alt-alpha-screen-2026-09-11.md`](factors/alt-alpha-screen-2026-09-11.md) | 另类数据 alpha 速筛（股东户数/陆股通/大单资金流） | ❌ REJECT（无增量） |
 | [`factors/intraday-microstructure-2026-09-11.md`](factors/intraday-microstructure-2026-09-11.md) | 5 分钟日内微结构探针（尾盘/隔夜反转） | ❌ REJECT（成本） |
 | [`factors/fund-investment-accruals-2026-09-11.md`](factors/fund-investment-accruals-2026-09-11.md) | 长史基本面 投资/应计 composite + 行业中性 + 长持 sleeve 原型 | ⚠️ INCUBATE |
+| [`factors/alpha101-l0-screen-2026-09-12.md`](factors/alpha101-l0-screen-2026-09-12.md) | Alpha101 全集 L0 + §8 S0/S1 正交化 + §9 S2 可交易性 | ❌ REJECT（终结；S1 统计独立但 S2 三窗成本不过） |
+| [`factors/fund-sleeve-standalone-2026-09-12.md`](factors/fund-sleeve-standalone-2026-09-12.md) | X3 投资/应计 sleeve 独立化（月频 + 波动率层 + 容量/成本/OOS） | ⏸️ PARK（超额 +2.2%/年真实但 Sharpe 0.33/DD−58%，无可用风险层） |
+| [`factors/garp-sleeve-2026-09-12.md`](factors/garp-sleeve-2026-09-12.md) | GARP（质量+便宜）sleeve pilot（长史 17 年 × 三臂） | ❌ CLOSE（GARP≈value，质量无增量） |
+| [`factors/gtja191-l0-screen-2026-09-12.md`](factors/gtja191-l0-screen-2026-09-12.md) | GTJA 191 全集 L0（168 条 × 三窗；无新轴） | ❌ REJECT（同价量相关族，成本不可交易） |
+| [`factors/README.md`](factors/README.md) | **因子档案总台账**（101/191 + 全部历史因子一眼判定） | ✅ 索引 |
 
 ### 早期与专题（结论已定 · 有事才翻）
 

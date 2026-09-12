@@ -72,7 +72,14 @@
 - **未决**：行业映射**非 PIT**、波动大、未与 S-3 组合验证。估值折（2020+）value+inv+accr IC+0.112（n=5）。
 - **稳健性（2026-09-11）**：tushare **独立行业分类**复现（+2.08% ≈ 东财 +2.24%）；**安慰剂（打乱分组）无效**（+1.01 ≈ raw +1.16）；**市值中性不提升**（+0.61）；**两期都正**（08-15 +2.1 / 16-24 +2.3）。→ 增量来自真实行业结构，非快照/分组机制假象。
 - **与 S-3 组合（2026-09-11）**：sleeve **只从 2024 起**评估时 w0.3 看似三窗变好；**延到 2021（=S-3 5 年长窗）后反转**——sleeve 自 DD **−40%**、组合收益/Sharpe↓、DD 几乎不变 → **组合 ❌ REJECT**（样本起点选择偏差，吃了 2024–25 牛市）。教训：**组合验证必须用与对腿等长的重叠样本**。
-- **判定**：⚠️ **INCUBATE（sleeve 本体）/ 组合 REJECT**。源：[`fund-investment-accruals`](../backtests/factors/fund-investment-accruals-2026-09-11.md) §2–8。
+- **独立化 / 可部署性（2026-09-12 · X3）**：月频净 NAV（2008-05~2024-04）：策略净 **+5.5%/年**、vol 30.5%、maxDD **−58%**、Sharpe **0.33**（流动池 0.26 / 中证500 0.28）；成本 30→50bp 只掉 0.2pt；容量 = 头档 Feb-Apr 日均额×10% = **19~177 亿元**。超额全窗 **+2.2%/年（76% 胜）**、OOS 2016-2024 **+2.6%/年（89% 胜）**。**参数无关波动率层无效**（Sharpe/DD 不动）→ 回撤是满仓 beta，不是波动聚集。
+- **判定**：⚠️ **INCUBATE（sleeve 本体）/ 组合 REJECT / 独立化 PARK**——超额真实、容量成本无碍，但 Sharpe 0.33 + DD−58% 无可用风险层，**smart-beta 边而非独立引擎**。源：[`fund-investment-accruals`](../backtests/factors/fund-investment-accruals-2026-09-11.md) §2–8 · [`fund-sleeve-standalone`](../backtests/factors/fund-sleeve-standalone-2026-09-12.md)。
+
+## GARP（质量 + 便宜）
+- **定义**：`value = rank(E/P) + rank(B/P)`、`quality = rank(ROE) + rank(现金含量)`、`GARP = 四者合成`（均行业中性）。
+- **数据/方法**：年报 as-of 2008–2024（17 formation）；`raw_price = qfq × adj_latest/adj(t)`；BPS 由 `净利/基本EPS` 反推（与 `cn_financial.bps` 校验 Spearman **0.976**）；流动池头档等权、年调仓、30bp。
+- **结果**：**GARP +2.6%/年（71% 胜）≈ value +2.6%（71%）；quality 仅 +0.5%（59%）**。GARP 与 value 年度超额相关 **+0.93**。两期：garp +0.3%/+4.6%、value +0.5%/+4.4%、quality −0.3%/+1.3%。
+- **判定**：❌ **CLOSE（质量对纯价值无增量）**——GARP 只是"便宜"的换皮；保留慢价值 V1。源：[`garp-sleeve`](../backtests/factors/garp-sleeve-2026-09-12.md)。
 
 ## F-score
 - **定义**：Piotroski 9 项财务健康打分。
