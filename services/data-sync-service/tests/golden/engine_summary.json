@@ -1,0 +1,50 @@
+{
+  "annual_net_pnl_pct": 1496.817,
+  "avg_costs_pct": 0.3,
+  "avg_gross_pnl_pct": 0.475,
+  "avg_loss_pct": -2.75,
+  "avg_net_pnl_pct": 0.175,
+  "avg_win_pct": 3.1,
+  "best_benchmark": "",
+  "by_score_bucket": {
+    "70-80": {
+      "avgNet": 1.7,
+      "trades": 1,
+      "winRate": 1.0,
+      "wins": 1
+    },
+    "80-85": {
+      "avgNet": -2.1,
+      "trades": 1,
+      "winRate": 0.0,
+      "wins": 0
+    },
+    "85-90": {
+      "avgNet": -3.4,
+      "trades": 1,
+      "winRate": 0.0,
+      "wins": 0
+    },
+    ">=90": {
+      "avgNet": 4.5,
+      "trades": 1,
+      "winRate": 1.0,
+      "wins": 1
+    }
+  },
+  "calendar_days": 6,
+  "closed": 4,
+  "excess_vs_best_benchmark_pct": 0.0,
+  "gated_blocks": {
+    "limit_up": 3,
+    "st": 1
+  },
+  "losses": 2,
+  "max_drawdown_pct": 2.0,
+  "open_at_end": 2,
+  "sharpe": 6.35,
+  "total_net_pnl_pct": 8.0,
+  "trades": 4,
+  "win_rate": 0.5,
+  "wins": 2
+}
