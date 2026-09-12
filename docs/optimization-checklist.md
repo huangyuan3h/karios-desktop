@@ -1,7 +1,7 @@
 # Karios Desktop 优化 Checklist
 
 > 工程执行栈（OPT-xxx）：架构 / 性能 / 兼容 / 工程债怎么做。编号 `OPT-001 ~ OPT-173`（重号见文末）。
-> **正文 10 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
+> **正文 9 条未完成 + 3 条冬眠**；已完成 117 条按天归档 [`archive/`](archive/)（见文末索引表）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 未完成（10 条 · 2026-09-11 工程盘点立）
+## 未完成（9 条 · 2026-09-11 工程盘点立）
 
 > 来源：2026-09-11 工程健康盘点。**一 OPT 一会话，只改列出的范围，补测试，不扩 scope。**
 > 顺序建议：A → B →（按需）C/D；E 策略实现准确度建议与 B 同期。
@@ -30,8 +30,7 @@
 | OPT | 状态 | 范围 / 验收 |
 |-----|------|-------------|
 | OPT-163 | [ ] | **pyright 警告棘轮**：`pyproject` 现把 `report{ArgumentType,OptionalSubscript,OptionalIterable,OptionalMemberAccess,GeneralTypeIssues,AttributeAccessIssue}` 降为 warning。先统计基线数，逐模块转 error（engine/routes/paper 优先）。验收：warning 数单向下行，CI 保持绿 |
-| OPT-165 | [ ] | **Alembic ↔ `db/*.py` CREATE_SQL parity 测试**：断言每个 `CREATE_*_SQL` 表都有对应 migration head 覆盖（AGENTS 手动同步改自动）。验收：新测试通过，故意删一列会红 |
-| OPT-166 | [ ] | **死代码 / coverage omit 收敛**：核删 `service/state_bucket_slice.py`（唯一消费者是 ruff-excluded research 脚本）及其 coverage omit 例外；engine 6 行死分支（H1 遗留候选）。验收：omit 列表缩短、测试仍绿 |
+| OPT-175 | [ ] | **coverage 余量修复**（OPT-165 发现）：门 88% 现仅 **88.05%**，太薄。给 P0-11 未测的 `service/fin_panel.py`（~200 stmt，0 测）补单测 / 或核减死码。验收：覆盖率回到 ≥89%，门 88 恢复安全垫 |
 
 ### C 性能 / 数据（按需）
 
@@ -61,6 +60,8 @@
 
 ### 刚完成（待归档）
 
+| OPT-165 | [x] 2026-09-12 · **schema parity 护栏**：`tests/test_schema_parity.py`（纯 migration-coverage + PG 列超集）；**抓到真 drift**——`system_events` 无 migration → 补 `0048_system_events`（head 0048）；全量 4298 passed | — |
+| OPT-166 | [x] 2026-09-12 · **死代码/omit 收敛**：`state_bucket_slice.py` 移出 `src/`→`scripts/`（无 src 引用，文档已更新），删 coverage omit；engine 6 候选行复核为防御 nil 守卫、保留 | — |
 | OPT-174 | [x] 2026-09-12 · **main 变绿 hotfix**：修 ruff 7 + pyright 7（`ruff check`/`pyright` 均 0 error；全量 4295 passed） | — |
 | OPT-164 | [x] 2026-09-12 · **CI 格式门**：一次性 `ruff format`（432 文件）+ `prettier --write`（251 源码）；`lint` 加 `ruff format --check`、root `format:check` + CI 步骤 | — |
 | OPT-162 | [x] 2026-09-12 · 工作区 WIP 按主题切分提交（5 个 commit：OPT-160/161 工程 · sat 时钟统一 · trend_guide 钩子 · 数据一致性 · P0-12 研究+因子库；`git status` 干净） | — |
