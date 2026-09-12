@@ -205,7 +205,7 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 
 ### 3.0d 四态 slice vs S-3（可执行 · Phase 1 · 2026-09-01）
 
-> 设计：`docs/designs/state-bucket-slice-stock-leg.md` · 引擎：`service/state_bucket_slice.py` · 报告：`sliced_vs_s3_2026-09-01.json`  
+> 设计：`docs/designs/state-bucket-slice-stock-leg.md` · 引擎：`scripts/state_bucket_slice.py` · 报告：`sliced_vs_s3_2026-09-01.json`  
 > 口径：**每态独立槽** + 日收益加权 · `skip_t1_limit=True` · 三窗 OOS2/train/valid
 
 | 变体 | OOS2 Δ vs S-3 | train Δ | valid Δ | 过线(−5pt)/3 |

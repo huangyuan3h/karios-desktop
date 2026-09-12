@@ -60,7 +60,7 @@
 
 | 交付 | 路径 |
 |------|------|
-| 单态 + slice 合成引擎 | `service/state_bucket_slice.py` |
+| 单态 + slice 合成引擎 | `scripts/state_bucket_slice.py` |
 | 三窗 vs S-3 + 权重网格 | `scripts/compare_sliced_vs_s3.py` |
 | 报告 JSON | `data/backtest_reports/sliced_vs_s3_YYYY-MM-DD.json` |
 | 文档 | 本文件 + `state-bucket-algo` §3.0d（实验表） |

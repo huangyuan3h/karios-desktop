@@ -26,7 +26,7 @@ from data_sync_service.service.backtest_engine import (  # noqa: E402
     BacktestData,
     simulate,
 )
-from data_sync_service.service.state_bucket_slice import (  # noqa: E402
+from state_bucket_slice import (  # noqa: E402
     SLICE_VARIANTS,
     run_slice_variant,
 )
