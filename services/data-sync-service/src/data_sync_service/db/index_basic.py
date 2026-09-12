@@ -84,20 +84,22 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
         td = _date_str(r.get("trade_date"))
         if not td:
             continue
-        rows.append((
-            str(r.get("ts_code") or "").strip(),
-            td,
-            _numeric(r.get("total_mv")),
-            _numeric(r.get("float_mv")),
-            _numeric(r.get("total_share")),
-            _numeric(r.get("float_share")),
-            _numeric(r.get("free_share")),
-            _numeric(r.get("turnover_rate")),
-            _numeric(r.get("turnover_rate_f")),
-            _numeric(r.get("pe")),
-            _numeric(r.get("pe_ttm")),
-            _numeric(r.get("pb")),
-        ))
+        rows.append(
+            (
+                str(r.get("ts_code") or "").strip(),
+                td,
+                _numeric(r.get("total_mv")),
+                _numeric(r.get("float_mv")),
+                _numeric(r.get("total_share")),
+                _numeric(r.get("float_share")),
+                _numeric(r.get("free_share")),
+                _numeric(r.get("turnover_rate")),
+                _numeric(r.get("turnover_rate_f")),
+                _numeric(r.get("pe")),
+                _numeric(r.get("pe_ttm")),
+                _numeric(r.get("pb")),
+            )
+        )
     if not rows:
         return 0
     with get_connection() as conn:

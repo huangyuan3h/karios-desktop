@@ -135,9 +135,7 @@ def _closes_for(symbols: set[str], start: str, end: str) -> dict[str, dict[str, 
     by_ts: dict[str, str] = {ts: sym for sym, ts in resolved.items()}
     for code, bars in rows.items():
         sym = by_ts.get(code, code)
-        out[sym] = {
-            str(d): float(c) for d, _, _, _, c, _ in bars if c not in ("", None)
-        }
+        out[sym] = {str(d): float(c) for d, _, _, _, c, _ in bars if c not in ("", None)}
     return out
 
 
@@ -163,7 +161,9 @@ def _paper_holdings_on(day: str) -> dict[str, dict]:
     return out
 
 
-def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = None) -> dict[str, Any]:
+def reconcile_day(
+    day: str, *, window: str = "valid", end_date: str | None = None
+) -> dict[str, Any]:
     """Full reconciliation for one trading day, per market (CN + HK).
 
     ``window`` picks the S-3 window config; ``end_date`` extends the window
@@ -212,31 +212,37 @@ def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = Non
                 bt_vals.append(bt_ret)
             if pp_ret is not None:
                 pp_vals.append(pp_ret)
-            aligned.append({
-                "symbol": s,
-                "entry": bt_entry,
-                "paperEntry": _entry(actual[s]),
-                "entrySkew": _entry(actual[s]) != bt_entry,
-                "score": expect[s].get("score_at_entry"),
-                "btReturnPct": round(bt_ret, 2) if bt_ret is not None else None,
-                "paperReturnPct": round(pp_ret, 2) if pp_ret is not None else None,
-                "returnDiffPct": round(d, 2) if d is not None else None,
-            })
+            aligned.append(
+                {
+                    "symbol": s,
+                    "entry": bt_entry,
+                    "paperEntry": _entry(actual[s]),
+                    "entrySkew": _entry(actual[s]) != bt_entry,
+                    "score": expect[s].get("score_at_entry"),
+                    "btReturnPct": round(bt_ret, 2) if bt_ret is not None else None,
+                    "paperReturnPct": round(pp_ret, 2) if pp_ret is not None else None,
+                    "returnDiffPct": round(d, 2) if d is not None else None,
+                }
+            )
         for s in sorted(set(expect) - set(actual)):
             p = expect[s]
-            missing_h.append({
-                "symbol": s,
-                "entry": p["entry_date"],
-                "score": p.get("score_at_entry"),
-                "positionPct": p.get("position_pct"),
-            })
+            missing_h.append(
+                {
+                    "symbol": s,
+                    "entry": p["entry_date"],
+                    "score": p.get("score_at_entry"),
+                    "positionPct": p.get("position_pct"),
+                }
+            )
         for s in sorted(set(actual) - set(expect)):
             a = actual[s]
-            extra.append({
-                "symbol": s,
-                "entry": _entry(a),
-                "source": a.get("source"),
-            })
+            extra.append(
+                {
+                    "symbol": s,
+                    "entry": _entry(a),
+                    "source": a.get("source"),
+                }
+            )
         markets[market] = {
             "available": True,
             "expected": len(expect),
@@ -256,7 +262,9 @@ def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = Non
     return {"reconDate": day, "window": window, "markets": markets}
 
 
-def run_and_persist(day: str, *, window: str = "valid", end_date: str | None = None) -> dict[str, Any]:
+def run_and_persist(
+    day: str, *, window: str = "valid", end_date: str | None = None
+) -> dict[str, Any]:
     """reconcile_day + persist (idempotent per day+market). Cron entry point.
 
     ``end_date`` extends the frozen window so recent days (e.g. last Friday)
@@ -269,13 +277,11 @@ def run_and_persist(day: str, *, window: str = "valid", end_date: str | None = N
     for market, m in out["markets"].items():
         if not m.get("available"):
             continue
-        detail = [
-            {"type": "missing", **x} for x in m.get("missingList", [])
-        ] + [
-            {"type": "extra", **x} for x in m.get("extraList", [])
-        ] + [
-            {"type": "aligned", **x} for x in m.get("alignedList", [])
-        ]
+        detail = (
+            [{"type": "missing", **x} for x in m.get("missingList", [])]
+            + [{"type": "extra", **x} for x in m.get("extraList", [])]
+            + [{"type": "aligned", **x} for x in m.get("alignedList", [])]
+        )
         insert_recon(
             recon_date=out["reconDate"],
             market=market,
@@ -415,8 +421,12 @@ def _leg_ctx(day: str) -> dict[str, Any]:
 
 
 def reconcile_registry(
-    day: str, *, window: str = "valid", end_date: str | None = None,
-    mode: str = "twin_star", leg_ctx: dict[str, Any] | None = None,
+    day: str,
+    *,
+    window: str = "valid",
+    end_date: str | None = None,
+    mode: str = "twin_star",
+    leg_ctx: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """BEHAVIOR AUDIT (2026-08-13): the user's REAL holdings vs the S-3
     backtest "should hold" set for one trading day.
@@ -478,8 +488,9 @@ def reconcile_registry(
         was_held |= expect
 
         in_market = {
-            s: r for s, r in real.items() if _resolve_ts_code(s) is not None
-            and _resolve_ts_code(s)[0] == market
+            s: r
+            for s, r in real.items()
+            if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
         }
         extra_list: list[dict[str, Any]] = []
         sat_extra_list: list[dict[str, Any]] = []
@@ -501,10 +512,12 @@ def reconcile_registry(
                 if s not in push_syms:
                     sat_extra_list.append({**item, "kind": "sat_leg"})
             else:
-                extra_list.append({
-                    **item,
-                    "kind": "exited" if s in was_held else "never_entered",
-                })
+                extra_list.append(
+                    {
+                        **item,
+                        "kind": "exited" if s in was_held else "never_entered",
+                    }
+                )
         missing_list: list[dict[str, Any]] = [
             {
                 "symbol": s,
@@ -523,10 +536,15 @@ def reconcile_registry(
         # only signal-sanctioned names count — you cannot "miss" a name the
         # 14:20 screen never offered. Falls back to the engine book otherwise.
         sat_pool = (book_syms & push_syms) if push_syms else book_syms
-        sat_expect = {
-            s for s in sat_pool
-            if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
-        } if leg is not None else set()
+        sat_expect = (
+            {
+                s
+                for s in sat_pool
+                if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
+            }
+            if leg is not None
+            else set()
+        )
         sat_missing_list = [{"symbol": s} for s in sorted(sat_expect - set(in_market))]
         sat_actual = len(set(in_market) & (sat_expect | {e["symbol"] for e in sat_extra_list}))
         markets[market] = {
@@ -547,7 +565,9 @@ def reconcile_registry(
     return {"reconDate": day, "window": window, "markets": markets}
 
 
-def run_registry_and_persist(day: str, *, window: str = "valid", mode: str = "twin_star") -> dict[str, Any]:
+def run_registry_and_persist(
+    day: str, *, window: str = "valid", mode: str = "twin_star"
+) -> dict[str, Any]:
     """reconcile_registry + persist to db.behavior_audit (idempotent)."""
     from data_sync_service.db.behavior_audit import insert_audit
 

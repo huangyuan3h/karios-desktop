@@ -56,11 +56,31 @@ def _df_to_daily_rows(ts_code: str, df: Any) -> list[dict[str, Any]]:
         except Exception:
             continue
         try:
-            o = float(row["Open"]) if row.get("Open") is not None and row["Open"] == row["Open"] else None
-            h = float(row["High"]) if row.get("High") is not None and row["High"] == row["High"] else None
-            lo = float(row["Low"]) if row.get("Low") is not None and row["Low"] == row["Low"] else None
-            c = float(row["Close"]) if row.get("Close") is not None and row["Close"] == row["Close"] else None
-            v = float(row["Volume"]) if row.get("Volume") is not None and row["Volume"] == row["Volume"] else None
+            o = (
+                float(row["Open"])
+                if row.get("Open") is not None and row["Open"] == row["Open"]
+                else None
+            )
+            h = (
+                float(row["High"])
+                if row.get("High") is not None and row["High"] == row["High"]
+                else None
+            )
+            lo = (
+                float(row["Low"])
+                if row.get("Low") is not None and row["Low"] == row["Low"]
+                else None
+            )
+            c = (
+                float(row["Close"])
+                if row.get("Close") is not None and row["Close"] == row["Close"]
+                else None
+            )
+            v = (
+                float(row["Volume"])
+                if row.get("Volume") is not None and row["Volume"] == row["Volume"]
+                else None
+            )
         except (TypeError, ValueError):
             continue
         if c is None:
@@ -104,13 +124,21 @@ def sync_hk_daily_for_ts_code_yf(
         # First-time backfill: cap at ``backfill_years`` years to keep
         # bootstrap time and DB size reasonable. TrendOK only needs ~1y,
         # but 5y keeps long-term backtests working.
-        start_date = (datetime.now(UTC).date() - timedelta(days=365 * int(backfill_years))).isoformat()
+        start_date = (
+            datetime.now(UTC).date() - timedelta(days=365 * int(backfill_years))
+        ).isoformat()
     else:
         # Fetch from the day after our last known bar.
         start_date_obj = last_date + timedelta(days=1)
         start_date = start_date_obj.isoformat()
         if start_date > end_date:
-            return {"ok": True, "updated": 0, "skipped": True, "ts_code": code, "source": "yfinance"}
+            return {
+                "ok": True,
+                "updated": 0,
+                "skipped": True,
+                "ts_code": code,
+                "source": "yfinance",
+            }
 
     try:
         import pandas as pd  # type: ignore[import-not-found]

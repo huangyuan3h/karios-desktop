@@ -24,9 +24,7 @@ def upgrade() -> None:
     # The baseline imports the current paper-trading DDL, which already
     # contains this column on fresh databases. Keep the historical migration
     # safe for both baseline-created and legacy schemas.
-    op.execute(
-        "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS signal_snapshot JSONB;"
-    )
+    op.execute("ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS signal_snapshot JSONB;")
 
 
 def downgrade() -> None:

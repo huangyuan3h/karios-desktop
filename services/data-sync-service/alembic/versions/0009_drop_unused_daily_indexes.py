@@ -46,4 +46,6 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_daily_trade_date_brin")
     op.execute("DROP INDEX IF EXISTS idx_index_daily_trade_date_brin")
     op.execute("CREATE INDEX IF NOT EXISTS idx_daily_trade_date ON daily (trade_date DESC)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_index_daily_trade_date ON index_daily (trade_date DESC)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_index_daily_trade_date ON index_daily (trade_date DESC)"
+    )

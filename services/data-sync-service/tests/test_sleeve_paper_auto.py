@@ -95,7 +95,8 @@ def test_buy_opens_sleeve_leg():
     assert out["changed"] is True
     assert out["reason"] == "multi opened"
     open_legs = [
-        t for t in list_paper_trades(status="open")
+        t
+        for t in list_paper_trades(status="open")
         if str(t.get("symbol") or "").upper() == TEST_SYMBOL
     ]
     assert len(open_legs) == 1
@@ -127,7 +128,8 @@ def test_sell_to_repo_closes_leg():
     assert out["changed"] is True
     assert "multi closed" in out["reason"]
     open_legs = [
-        t for t in list_paper_trades(status="open")
+        t
+        for t in list_paper_trades(status="open")
         if str(t.get("symbol") or "").upper() == TEST_SYMBOL
     ]
     assert len(open_legs) == 0
@@ -152,8 +154,5 @@ def test_close_reason_is_sleeve_exit():
         return_value=_multi(action="SELL_TO_REPO", holding=True),
     ):
         apply_sleeve_to_paper(day="2026-08-20")
-    rows = [
-        t for t in list_paper_trades(status="closed")
-        if str(t.get("id")) == str(leg["id"])
-    ]
+    rows = [t for t in list_paper_trades(status="closed") if str(t.get("id")) == str(leg["id"])]
     assert rows and rows[0]["closeReason"] == CLOSE_REASON_SLEEVE_EXIT

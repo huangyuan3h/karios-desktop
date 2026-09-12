@@ -15,22 +15,46 @@ import data_sync_service.api.alpha_radar_routes as ar  # noqa: E402
 @pytest.fixture(autouse=True)
 def _patch_deps(monkeypatch):
     monkeypatch.setattr(ar, "ensure_tables", lambda: None)
-    monkeypatch.setattr(ar, "fetch_sources", lambda enabled_only=True, category=None: [{"id": "s1"}])
+    monkeypatch.setattr(
+        ar, "fetch_sources", lambda enabled_only=True, category=None: [{"id": "s1"}]
+    )
     monkeypatch.setattr(ar, "add_default_sources", lambda: 3)
     monkeypatch.setattr(ar, "fetch_documents", lambda **kw: (2, [{"id": "d1"}]))
     monkeypatch.setattr(ar, "pipeline_status", lambda: {"phase": "idle"})
-    monkeypatch.setattr(ar, "run_alpha_radar_ingest", lambda trigger, force_reprocess=False: {"ingested": 1})
-    monkeypatch.setattr(ar, "run_alpha_radar_process", lambda trigger, max_rounds=None: {"processed": 1})
-    monkeypatch.setattr(ar, "run_alpha_radar_pipeline", lambda force=False, trigger="manual": {"done": True})
-    monkeypatch.setattr(ar, "list_catalyst_stocks", lambda limit=50, max_age_days=None: [{"symbol": "x"}])
+    monkeypatch.setattr(
+        ar, "run_alpha_radar_ingest", lambda trigger, force_reprocess=False: {"ingested": 1}
+    )
+    monkeypatch.setattr(
+        ar, "run_alpha_radar_process", lambda trigger, max_rounds=None: {"processed": 1}
+    )
+    monkeypatch.setattr(
+        ar, "run_alpha_radar_pipeline", lambda force=False, trigger="manual": {"done": True}
+    )
+    monkeypatch.setattr(
+        ar, "list_catalyst_stocks", lambda limit=50, max_age_days=None: [{"symbol": "x"}]
+    )
     monkeypatch.setattr(ar, "get_auto_qa_stats", lambda since_days=7, limit=20: {"penalties": []})
     monkeypatch.setattr(ar, "get_meta", lambda key: "2026-08-07T10:00:00")
     monkeypatch.setattr(ar, "fetch_trends", lambda **kw: (1, [{"id": "t1"}]))
-    monkeypatch.setattr(ar, "fetch_all_sources", lambda enrich_fulltext=None, apply_filter=True, force_reprocess=False: {"fetched": 5})
+    monkeypatch.setattr(
+        ar,
+        "fetch_all_sources",
+        lambda enrich_fulltext=None, apply_filter=True, force_reprocess=False: {"fetched": 5},
+    )
     monkeypatch.setattr(ar, "process_document", lambda doc_id, map_cn=True: {"processed": 1})
-    monkeypatch.setattr(ar, "process_pending_documents", lambda limit=10, map_cn=True, mode="batch": {"processed": 2})
-    monkeypatch.setattr(ar, "fetch_trend_by_id", lambda tid: {"id": tid, "keywordsForMapping": ["芯片"]} if tid == "t1" else None)
-    monkeypatch.setattr(ar, "get_cn_industry_mainline", lambda: {"currentMainline": [{"industryName": "半导体"}]})
+    monkeypatch.setattr(
+        ar,
+        "process_pending_documents",
+        lambda limit=10, map_cn=True, mode="batch": {"processed": 2},
+    )
+    monkeypatch.setattr(
+        ar,
+        "fetch_trend_by_id",
+        lambda tid: {"id": tid, "keywordsForMapping": ["芯片"]} if tid == "t1" else None,
+    )
+    monkeypatch.setattr(
+        ar, "get_cn_industry_mainline", lambda: {"currentMainline": [{"industryName": "半导体"}]}
+    )
     monkeypatch.setattr(ar, "build_mainline_score_map", lambda m: {"半导体": 90.0})
     monkeypatch.setattr(ar, "compute_risk_status", lambda **kw: {"level": "low"})
     monkeypatch.setattr(ar, "update_trend_risk_status", lambda tid, rs: None)
@@ -43,7 +67,9 @@ def test_list_sources() -> None:
     r = client.get("/api/alpha-radar/sources")
     assert r.status_code == 200
     assert r.json()["sources"] == [{"id": "s1"}]
-    r2 = client.get("/api/alpha-radar/sources", params={"enabled_only": "false", "category": "news"})
+    r2 = client.get(
+        "/api/alpha-radar/sources", params={"enabled_only": "false", "category": "news"}
+    )
     assert r2.status_code == 200
 
 
@@ -103,10 +129,18 @@ def test_list_trends_defaults() -> None:
 
 
 def test_list_trends_explicit_filters() -> None:
-    r = client.get("/api/alpha-radar/trends", params={
-        "limit": 10, "offset": 5, "day": "all", "risk_status": "low",
-        "since": "2026-08-01", "latest_batch": "false", "maxAgeDays": 30,
-    })
+    r = client.get(
+        "/api/alpha-radar/trends",
+        params={
+            "limit": 10,
+            "offset": 5,
+            "day": "all",
+            "risk_status": "low",
+            "since": "2026-08-01",
+            "latest_batch": "false",
+            "maxAgeDays": 30,
+        },
+    )
     body = r.json()
     assert body["day"] is None  # "all" normalized
     assert body["since"] == "2026-08-01" and body["maxAgeDays"] == 30
@@ -149,7 +183,9 @@ def test_remap_trend() -> None:
 
 
 def test_remap_trend_value_error(monkeypatch) -> None:
-    monkeypatch.setattr(ar, "remap_trend_by_id", lambda tid: (_ for _ in ()).throw(ValueError("trend not found: x")))
+    monkeypatch.setattr(
+        ar, "remap_trend_by_id", lambda tid: (_ for _ in ()).throw(ValueError("trend not found: x"))
+    )
     r = client.post("/api/alpha-radar/trends/nope/remap")
     assert r.status_code == 200
     assert r.json()["ok"] is False and "trend not found" in r.json()["error"]

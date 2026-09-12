@@ -57,18 +57,29 @@ class TestLookupName:
         assert mb._lookup_name("000001.SZ") is None
 
     def test_db_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(mb, "ensure_stock_basic", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            mb, "ensure_stock_basic", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
         assert mb._lookup_name("000001.SZ") is None
 
 
 class TestGetMarketBars:
     def test_invalid_symbol(self, monkeypatch) -> None:
         out = mb.get_market_bars("BOGUS", force=True)
-        assert out == {"symbol": "BOGUS", "market": "", "ticker": "", "name": "", "currency": "", "bars": []}
+        assert out == {
+            "symbol": "BOGUS",
+            "market": "",
+            "ticker": "",
+            "name": "",
+            "currency": "",
+            "bars": [],
+        }
 
     def test_cn_no_force(self, monkeypatch) -> None:
         called = []
-        monkeypatch.setattr(mb, "_lookup_name", lambda ts_code: called.append(ts_code) or "平安银行")
+        monkeypatch.setattr(
+            mb, "_lookup_name", lambda ts_code: called.append(ts_code) or "平安银行"
+        )
         monkeypatch.setattr(mb, "fetch_last_bars", lambda ts_code, days: [{"date": "2024-01-01"}])
         out = mb.get_market_bars("CN:000001", days=30)
         assert out["market"] == "CN" and out["currency"] == "CNY" and out["name"] == "平安银行"
@@ -84,7 +95,11 @@ class TestGetMarketBars:
 
     def test_hk_force_yf_ok(self, monkeypatch) -> None:
         calls = []
-        monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code_yf", lambda ts_code: calls.append("yf") or {"ok": True, "updated": 5})
+        monkeypatch.setattr(
+            mb,
+            "sync_hk_daily_for_ts_code_yf",
+            lambda ts_code: calls.append("yf") or {"ok": True, "updated": 5},
+        )
         monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code", lambda ts_code: calls.append("ts"))
         monkeypatch.setattr(mb, "_lookup_name", lambda ts_code: None)
         monkeypatch.setattr(mb, "fetch_last_bars", lambda ts_code, days: [])
@@ -93,8 +108,14 @@ class TestGetMarketBars:
 
     def test_hk_force_yf_empty_falls_back(self, monkeypatch) -> None:
         calls = []
-        monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code_yf", lambda ts_code: calls.append("yf") or {"ok": True, "updated": 0})
-        monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code", lambda ts_code: calls.append("ts") or {"ok": False})
+        monkeypatch.setattr(
+            mb,
+            "sync_hk_daily_for_ts_code_yf",
+            lambda ts_code: calls.append("yf") or {"ok": True, "updated": 0},
+        )
+        monkeypatch.setattr(
+            mb, "sync_hk_daily_for_ts_code", lambda ts_code: calls.append("ts") or {"ok": False}
+        )
         monkeypatch.setattr(mb, "_lookup_name", lambda ts_code: None)
         monkeypatch.setattr(mb, "fetch_last_bars", lambda ts_code, days: [])
         mb.get_market_bars("HK:00700", force=True)
@@ -102,8 +123,14 @@ class TestGetMarketBars:
 
     def test_hk_force_yf_error_falls_back(self, monkeypatch) -> None:
         calls = []
-        monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code_yf", lambda ts_code: calls.append("yf") or {"ok": False})
-        monkeypatch.setattr(mb, "sync_hk_daily_for_ts_code", lambda ts_code: calls.append("ts") or {"ok": True, "updated": 3})
+        monkeypatch.setattr(
+            mb, "sync_hk_daily_for_ts_code_yf", lambda ts_code: calls.append("yf") or {"ok": False}
+        )
+        monkeypatch.setattr(
+            mb,
+            "sync_hk_daily_for_ts_code",
+            lambda ts_code: calls.append("ts") or {"ok": True, "updated": 3},
+        )
         monkeypatch.setattr(mb, "_lookup_name", lambda ts_code: None)
         monkeypatch.setattr(mb, "fetch_last_bars", lambda ts_code, days: [])
         out = mb.get_market_bars("HK:00700", force=True)
@@ -111,7 +138,9 @@ class TestGetMarketBars:
 
     def test_etf_force_sync(self, monkeypatch) -> None:
         called = []
-        monkeypatch.setattr(mb, "sync_etf_daily_for_ts_code", lambda ts_code: called.append(ts_code))
+        monkeypatch.setattr(
+            mb, "sync_etf_daily_for_ts_code", lambda ts_code: called.append(ts_code)
+        )
         monkeypatch.setattr(mb, "_lookup_name", lambda ts_code: "沪深300ETF")
         monkeypatch.setattr(mb, "fetch_last_bars", lambda ts_code, days: [])
         out = mb.get_market_bars("ETF:510300", force=True)

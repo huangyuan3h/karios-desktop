@@ -432,7 +432,9 @@ def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
                 result = future.result()
                 steps.append(result)
             except Exception as exc:
-                steps.append({"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}})
+                steps.append(
+                    {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
+                )
     step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
@@ -469,7 +471,13 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
                     steps.append(result)
                     yield json.dumps({"type": "step", "step": result}) + "\n"
                 except Exception as exc:
-                    result = {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
+                    result = {
+                        "name": name,
+                        "ok": False,
+                        "durationMs": 0,
+                        "message": str(exc),
+                        "meta": {},
+                    }
                     steps.append(result)
                     yield json.dumps({"type": "step", "step": result}) + "\n"
 

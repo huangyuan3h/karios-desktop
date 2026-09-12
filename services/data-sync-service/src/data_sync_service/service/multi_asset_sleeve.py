@@ -16,6 +16,7 @@ Rule (G2 prototype 2026-08-23, 661d 2023-11~2026-08):
 
 States: same as third_asset_sleeve but etf is dynamic (GOLD/OIL/NASDAQ/BOND).
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,13 +40,19 @@ CANDIDATES = [
 MULTI_ASSET_SYMBOLS = {c["symbol"] for c in CANDIDATES}
 MULTI_ASSET_TS_CODES = {c["ts"] for c in CANDIDATES}
 
+
 def is_multi_asset_symbol(symbol: str) -> bool:
     sym = str(symbol or "").upper()
     # also treat ts_code with .SH/.SZ as symbol; accept both 513110/513100 as NASDAQ
     if sym in MULTI_ASSET_SYMBOLS or sym in MULTI_ASSET_TS_CODES:
         return True
-    bare = sym.replace(".SH","").replace(".SZ","").replace("ETF:","")
-    return bare in {s.replace("ETF:","") for s in MULTI_ASSET_SYMBOLS} or bare in {"513110","513100","513500"}
+    bare = sym.replace(".SH", "").replace(".SZ", "").replace("ETF:", "")
+    return bare in {s.replace("ETF:", "") for s in MULTI_ASSET_SYMBOLS} or bare in {
+        "513110",
+        "513100",
+        "513500",
+    }
+
 
 def _etf_market_data(ts: str) -> dict[str, Any]:
     """Fetch ETF bars and compute close/MA200 for holding display."""
@@ -59,6 +66,7 @@ def _etf_market_data(ts: str) -> dict[str, Any]:
     except Exception:
         return {"ok": False, "n": 0}
 
+
 LOOKBACK = 60
 MA_WINDOW = 200
 COST = 0.0005
@@ -70,9 +78,7 @@ MIN_HOLD_DAYS = 1
 TRAILING_PCT = 8.0
 
 
-def _etf_trail_exit(
-    held: dict[str, Any], *, day: str
-) -> dict[str, Any] | None:
+def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
     """If held ETF close < peak_since_entry × (1 − TRAILING_PCT%), return SELL_TO_REPO."""
     held_sym = str(held.get("symbol") or "").upper()
     held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
@@ -99,9 +105,7 @@ def _etf_trail_exit(
             return {
                 "active": True,
                 "action": "SELL_TO_REPO",
-                "message": (
-                    f"{held_sym}峰值回撤{dd:.1f}% ≥{TRAILING_PCT:.0f}% → 转逆回购"
-                ),
+                "message": (f"{held_sym}峰值回撤{dd:.1f}% ≥{TRAILING_PCT:.0f}% → 转逆回购"),
                 "label": "卖出转repo(止损)",
             }
     except Exception as exc:
@@ -115,13 +119,16 @@ def _closes(ts: str, days: int = 260) -> list[float]:
         bars = fetch_last_bars(ts, days=days)
     except Exception:
         return []
-    out=[]
+    out = []
     for b in bars:
         try:
-            c=float(b.get("close"))
-            if c>0: out.append(c)
-        except: pass
+            c = float(b.get("close"))
+            if c > 0:
+                out.append(c)
+        except:
+            pass
     return out
+
 
 def _signal_closes(ts: str, days: int = 260) -> list[float]:
     """Closes up to the latest COMPLETED trading day (excludes today's bar).
@@ -137,16 +144,19 @@ def _signal_closes(ts: str, days: int = 260) -> list[float]:
         bars = fetch_last_bars(ts, days=days + 5)
     except Exception:
         return []
-    out=[]
+    out = []
     for b in bars:
         d = str(b.get("date") or b.get("trade_date") or "")
         if d >= today:
             continue
         try:
-            c=float(b.get("close"))
-            if c>0: out.append(c)
-        except: pass
+            c = float(b.get("close"))
+            if c > 0:
+                out.append(c)
+        except:
+            pass
     return out
+
 
 def _pick() -> dict[str, Any] | None:
     """Return today's ETF-leg pick: pure argmax mom60 among above-MA200.
@@ -159,7 +169,9 @@ def _pick() -> dict[str, Any] | None:
     for c in CANDIDATES:
         closes = _signal_closes(c["ts"], 260)
         if len(closes) < MA_WINDOW + LOOKBACK:
-            logger.warning("multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes))
+            logger.warning(
+                "multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes)
+            )
             continue
         raw_map.setdefault(c["key"], []).append(closes)
     closes_map: dict[str, list[float]] = {}
@@ -244,25 +256,37 @@ def _stock_basket_mom_from_holdings(holdings: list[dict[str, Any]]) -> dict[str,
         "n": len(moms),
     }
 
+
 def _rsi(closes: list[float], period: int = 14) -> float | None:
     if len(closes) < period + 1:
         return None
-    gains=0.0
-    losses=0.0
-    for i in range(1, period+1):
-        d=closes[-i] - closes[-i-1]
-        if d>0: gains+=d
-        else: losses+=-d
-    if losses==0:
+    gains = 0.0
+    losses = 0.0
+    for i in range(1, period + 1):
+        d = closes[-i] - closes[-i - 1]
+        if d > 0:
+            gains += d
+        else:
+            losses += -d
+    if losses == 0:
         return 100.0
-    rs=(gains/period)/(losses/period)
-    return 100 - 100/(1+rs)
+    rs = (gains / period) / (losses / period)
+    return 100 - 100 / (1 + rs)
+
 
 PULSE_STATS = {
-    "oil_rsi80": {"n":35, "mean":3.85, "median":4.70, "win":82.9, "vs_nas_mean":2.13, "recent_nas_mean":-1.06},
-    "nas_mom20_neg5": {"n":63, "mean":4.66, "win":71.4, "vs_nas_mean":0.59},
-    "oil_vol_low": {"n":129, "mean_gn":2.46, "win":65.1},
+    "oil_rsi80": {
+        "n": 35,
+        "mean": 3.85,
+        "median": 4.70,
+        "win": 82.9,
+        "vs_nas_mean": 2.13,
+        "recent_nas_mean": -1.06,
+    },
+    "nas_mom20_neg5": {"n": 63, "mean": 4.66, "win": 71.4, "vs_nas_mean": 0.59},
+    "oil_vol_low": {"n": 129, "mean_gn": 2.46, "win": 65.1},
 }
+
 
 def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
     """Observation layer for §22.7 R1-R5 (no position change, hint only).
@@ -274,61 +298,87 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
     """
     hints: list[dict[str, Any]] = []
     try:
-        closes_oil=_signal_closes("513350.SH", 260)
-        closes_nas=_signal_closes("513100.SH", 260)
+        closes_oil = _signal_closes("513350.SH", 260)
+        closes_nas = _signal_closes("513100.SH", 260)
         # R4 oil RSI>80
-        rsi_oil=_rsi(closes_oil) if len(closes_oil)>=15 else None  # t-1 close
+        rsi_oil = _rsi(closes_oil) if len(closes_oil) >= 15 else None  # t-1 close
         active_rsi = rsi_oil is not None and rsi_oil > 80
-        hints.append({
-            "id":"R4_oil_rsi80", "label":"油超买 RSI>80",
-            "active": bool(active_rsi), "value": round(rsi_oil,1) if rsi_oil is not None else None, "threshold":80,
-            "stats": PULSE_STATS["oil_rsi80"],
-            "note": "金强于油 +3.85% win82.9% n35，但金>纳指 +2.1%全期/-1.06%近期，vs sleeve≈0（纳指强势年）",
-            "action":"观察：若sleeve持有OIL，可考虑切GOLD；持有NASDAQ则不切",
-        })
+        hints.append(
+            {
+                "id": "R4_oil_rsi80",
+                "label": "油超买 RSI>80",
+                "active": bool(active_rsi),
+                "value": round(rsi_oil, 1) if rsi_oil is not None else None,
+                "threshold": 80,
+                "stats": PULSE_STATS["oil_rsi80"],
+                "note": "金强于油 +3.85% win82.9% n35，但金>纳指 +2.1%全期/-1.06%近期，vs sleeve≈0（纳指强势年）",
+                "action": "观察：若sleeve持有OIL，可考虑切GOLD；持有NASDAQ则不切",
+            }
+        )
         # R2 nas mom20<-5%
-        mom_nas=None
-        if len(closes_nas)>=21:
-            mom_nas=closes_nas[-1]/closes_nas[-21]-1 if closes_nas[-21]!=0 else None
+        mom_nas = None
+        if len(closes_nas) >= 21:
+            mom_nas = closes_nas[-1] / closes_nas[-21] - 1 if closes_nas[-21] != 0 else None
         active_nas = mom_nas is not None and mom_nas < -0.05
-        hints.append({
-            "id":"R2_nas_mom20_neg5", "label":"纳指弱势 mom20<-5%",
-            "active": bool(active_nas), "value": round(mom_nas*100,2) if mom_nas is not None else None, "threshold":-5.0,
-            "stats": PULSE_STATS["nas_mom20_neg5"],
-            "note": "金强于油 +4.66% win71.4% n63，但金>纳指 +0.59% vs sleeve≈0",
-            "action":"观察：纳指弱时金相对油安全",
-        })
+        hints.append(
+            {
+                "id": "R2_nas_mom20_neg5",
+                "label": "纳指弱势 mom20<-5%",
+                "active": bool(active_nas),
+                "value": round(mom_nas * 100, 2) if mom_nas is not None else None,
+                "threshold": -5.0,
+                "stats": PULSE_STATS["nas_mom20_neg5"],
+                "note": "金强于油 +4.66% win71.4% n63，但金>纳指 +0.59% vs sleeve≈0",
+                "action": "观察：纳指弱时金相对油安全",
+            }
+        )
         # R3 oil vol low20% (approx threshold 0.0126 from 2023-11+ distribution)
-        vol_oil=None
-        if len(closes_oil)>=21:
-            rets=[closes_oil[i]/closes_oil[i-1]-1 for i in range(len(closes_oil)-20, len(closes_oil))]
-            vol_oil=float(np.std(rets)) if rets else None
+        vol_oil = None
+        if len(closes_oil) >= 21:
+            rets = [
+                closes_oil[i] / closes_oil[i - 1] - 1
+                for i in range(len(closes_oil) - 20, len(closes_oil))
+            ]
+            vol_oil = float(np.std(rets)) if rets else None
         active_vol = vol_oil is not None and vol_oil < 0.0126
-        hints.append({
-            "id":"R3_oil_vol_low", "label":"油低波 vol20<20%分位",
-            "active": bool(active_vol), "value": round(vol_oil,4) if vol_oil is not None else None, "threshold":0.0126,
-            "stats": PULSE_STATS["oil_vol_low"],
-            "note": "金强于纳指 +2.46% win65.1% n129（双期稳定 early+2.26%/recent+2.75%），唯一金>纳指>2%天平",
-            "action":"观察：油低波时金相对纳指 +2.5%",
-        })
+        hints.append(
+            {
+                "id": "R3_oil_vol_low",
+                "label": "油低波 vol20<20%分位",
+                "active": bool(active_vol),
+                "value": round(vol_oil, 4) if vol_oil is not None else None,
+                "threshold": 0.0126,
+                "stats": PULSE_STATS["oil_vol_low"],
+                "note": "金强于纳指 +2.46% win65.1% n129（双期稳定 early+2.26%/recent+2.75%），唯一金>纳指>2%天平",
+                "action": "观察：油低波时金相对纳指 +2.5%",
+            }
+        )
     except Exception as exc:
         logger.warning("pulse hints failed: %s", exc)
     return hints
 
-def _idle_pct(holdings: list[dict[str, Any]]) -> float:
-    deployed=0.0
-    for h in holdings:
-        try: deployed+=float(h.get("positionPct", h.get("sleeve_pct") or 0))
-        except: pass
-    return max(0.0, 100-min(deployed,100))
 
-def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_override=None) -> dict[str, Any]:
+def _idle_pct(holdings: list[dict[str, Any]]) -> float:
+    deployed = 0.0
+    for h in holdings:
+        try:
+            deployed += float(h.get("positionPct", h.get("sleeve_pct") or 0))
+        except:
+            pass
+    return max(0.0, 100 - min(deployed, 100))
+
+
+def build_multi_asset_sleeve(
+    *, day: str, cn_block: dict[str, Any], holdings_override=None
+) -> dict[str, Any]:
     """Live 择强单轨 hint: equal-asset mom_compare (STOCK basket ∪ ETF pool).
 
     No Nasdaq-first / no auto SELL_TO_A_SHARE when S-3 has candidates — STOCK
     only wins when its basket mom60 beats ETFs above MA200.
     """
-    holdings = holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    holdings = (
+        holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    )
     idle = _idle_pct(holdings)
     regime = cn_block.get("regime")
     panic = bool((cn_block.get("panicCooldown") or {}).get("active"))
@@ -472,9 +522,7 @@ def build_multi_asset_sleeve(*, day: str, cn_block: dict[str, Any], holdings_ove
         )
         return out
     # Stocks held but ETF wins → hard-switch message (do not BUY ETF on top blindly).
-    has_stock = any(
-        str(h.get("symbol") or "").upper().startswith(("CN:", "HK:")) for h in holdings
-    )
+    has_stock = any(str(h.get("symbol") or "").upper().startswith(("CN:", "HK:")) for h in holdings)
     if has_stock:
         out.update(
             {

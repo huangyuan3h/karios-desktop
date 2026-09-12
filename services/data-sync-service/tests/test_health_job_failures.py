@@ -26,9 +26,24 @@ def test_job_failures_endpoint_aggregates_by_job(monkeypatch) -> None:
     from data_sync_service.db import sync_job_record
 
     recs = [
-        {"job_type": "stock_close_sync", "sync_at": "2026-08-07T09:05:00+00:00", "last_ts_code": "CN:600519", "error_message": "tushare quota"},
-        {"job_type": "stock_close_sync", "sync_at": "2026-08-07T08:00:00+00:00", "last_ts_code": "CN:000858", "error_message": "timeout"},
-        {"job_type": "news_fetch_job", "sync_at": "2026-08-07T07:30:00+00:00", "last_ts_code": None, "error_message": "conn refused"},
+        {
+            "job_type": "stock_close_sync",
+            "sync_at": "2026-08-07T09:05:00+00:00",
+            "last_ts_code": "CN:600519",
+            "error_message": "tushare quota",
+        },
+        {
+            "job_type": "stock_close_sync",
+            "sync_at": "2026-08-07T08:00:00+00:00",
+            "last_ts_code": "CN:000858",
+            "error_message": "timeout",
+        },
+        {
+            "job_type": "news_fetch_job",
+            "sync_at": "2026-08-07T07:30:00+00:00",
+            "last_ts_code": None,
+            "error_message": "conn refused",
+        },
     ]
     monkeypatch.setattr(sync_job_record, "list_recent_failures", lambda hours=24: recs)
     resp = client.get("/api/health/job-failures")

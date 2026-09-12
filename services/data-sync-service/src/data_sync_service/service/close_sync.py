@@ -41,6 +41,7 @@ DAILY_FIELDS = [
 def _cn_today() -> date:
     return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
+
 def _cn_now() -> datetime:
     return datetime.now(ZoneInfo("Asia/Shanghai"))
 
@@ -120,7 +121,9 @@ def _resolve_start_date(today: date, today_run: dict | None) -> date:
             if parsed:
                 start_date = parsed + timedelta(days=1)
             else:
-                logger.warning("close_sync: last_ts_code=%s not parseable, falling back to sync_at", marker_ok)
+                logger.warning(
+                    "close_sync: last_ts_code=%s not parseable, falling back to sync_at", marker_ok
+                )
                 start_date = _fallback_from_sync_at(last_ok, today)
         else:
             start_date = _fallback_from_sync_at(last_ok, today)
@@ -141,7 +144,9 @@ def _fallback_from_sync_at(last_ok: dict | None, today: date) -> date:
             sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
             return sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
         except ValueError:
-            logger.warning("close_sync: unparseable sync_at %r — syncing from today", last_ok.get("sync_at"))
+            logger.warning(
+                "close_sync: unparseable sync_at %r — syncing from today", last_ok.get("sync_at")
+            )
     return today
 
 
@@ -202,7 +207,10 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
             }
         open_flag = is_trading_day(exchange, today)
         if open_flag is None:
-            return {"ok": False, "error": "trade calendar still missing for today after trade_cal sync"}
+            return {
+                "ok": False,
+                "error": "trade calendar still missing for today after trade_cal sync",
+            }
 
     is_trading_today = open_flag is True
     start_date = _resolve_start_date(today, today_run)
@@ -238,7 +246,11 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
                 "ok": True,
                 "skipped": True,
                 "message": message,
-                "meta": {"endDateDailyRows": rows_end, "sufficient": sufficient, "end_date": end_str},
+                "meta": {
+                    "endDateDailyRows": rows_end,
+                    "sufficient": sufficient,
+                    "end_date": end_str,
+                },
             }
 
     # Guard: avoid marking today's close as synced before market close.
@@ -279,7 +291,9 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
                 end_date=_to_yyyymmdd(end),
             )
             if trade_cal_auto.get("ok"):
-                trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=end_date)
+                trade_dates = get_open_dates(
+                    exchange=exchange, start_date=start_date, end_date=end_date
+                )
         if not trade_dates:
             return {
                 "ok": False,
@@ -303,7 +317,9 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
             total_factor += n_factor
             last_completed = td
         except Exception as e:  # noqa: BLE001
-            insert_record(JOB_TYPE, success=False, last_ts_code=last_completed, error_message=str(e))
+            insert_record(
+                JOB_TYPE, success=False, last_ts_code=last_completed, error_message=str(e)
+            )
             return {"ok": False, "error": str(e), "last_marker": last_completed}
 
     # Daily extra data (margin/moneyflow/hk_hold/top) best-effort after daily bars succeed.
@@ -367,4 +383,3 @@ def get_close_sync_status() -> dict:
         "today_run": get_today_run(JOB_TYPE),
         "last_success": get_last_success(JOB_TYPE),
     }
-

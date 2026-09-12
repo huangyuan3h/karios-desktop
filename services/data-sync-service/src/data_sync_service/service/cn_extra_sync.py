@@ -42,7 +42,9 @@ def _get_all_ts_codes() -> list[str]:
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT ts_code FROM stock_basic WHERE market IN ('主板','创业板','科创板','中小板') OR ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ' LIMIT 6000")
+                cur.execute(
+                    "SELECT ts_code FROM stock_basic WHERE market IN ('主板','创业板','科创板','中小板') OR ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ' LIMIT 6000"
+                )
                 rows = cur.fetchall()
                 codes = [str(r[0]) for r in rows if r[0]]
                 if codes:
@@ -58,7 +60,9 @@ def _get_all_ts_codes() -> list[str]:
         return []
 
 
-def sync_financial_for_range(start_date: str, end_date: str, *, limit_codes: int | None = None) -> int:
+def sync_financial_for_range(
+    start_date: str, end_date: str, *, limit_codes: int | None = None
+) -> int:
     """Sync fina_indicator per ts_code, filter ann_date in range. One call per stock."""
     pro = _pro()
     cn_financial.ensure_table()
@@ -70,7 +74,9 @@ def sync_financial_for_range(start_date: str, end_date: str, *, limit_codes: int
     total = 0
     for ts_code in codes:
         try:
-            df = _with_retry(lambda ts_code=ts_code: pro.fina_indicator(ts_code=ts_code, fields=FINA_FIELDS))
+            df = _with_retry(
+                lambda ts_code=ts_code: pro.fina_indicator(ts_code=ts_code, fields=FINA_FIELDS)
+            )
             if df is None or df.empty:
                 time.sleep(0.12)
                 continue
@@ -139,7 +145,11 @@ def sync_holder_for_range(start_date: str, end_date: str, *, limit_codes: int | 
     total = 0
     for ts_code in codes:
         try:
-            df = _with_retry(lambda ts_code=ts_code: pro.stk_holdernumber(ts_code=ts_code, fields="ts_code,ann_date,end_date,holder_num"))
+            df = _with_retry(
+                lambda ts_code=ts_code: pro.stk_holdernumber(
+                    ts_code=ts_code, fields="ts_code,ann_date,end_date,holder_num"
+                )
+            )
             if df is None or df.empty:
                 time.sleep(0.12)
                 continue
@@ -156,7 +166,14 @@ def sync_holder_for_range(start_date: str, end_date: str, *, limit_codes: int | 
                     continue
                 if ann_d is None or ann_d < start or ann_d > end:
                     continue
-                rows.append({"ts_code": getattr(r, "ts_code", None), "ann_date": getattr(r, "ann_date", None), "end_date": getattr(r, "end_date", None), "holder_num": getattr(r, "holder_num", None)})
+                rows.append(
+                    {
+                        "ts_code": getattr(r, "ts_code", None),
+                        "ann_date": getattr(r, "ann_date", None),
+                        "end_date": getattr(r, "end_date", None),
+                        "holder_num": getattr(r, "holder_num", None),
+                    }
+                )
             if rows:
                 total += cn_holder.upsert_rows(rows)
             time.sleep(0.35)
@@ -177,7 +194,12 @@ def sync_margin_detail_for_dates(trade_dates: list[str]) -> int:
     for td in trade_dates:
         day = td.replace("-", "")
         try:
-            df = _with_retry(lambda day=day: pro.margin_detail(trade_date=day, fields="trade_date,ts_code,rzye,rqye,rzmre,rqyl,rzche,rqchl,rqmcl,rzrqye"))
+            df = _with_retry(
+                lambda day=day: pro.margin_detail(
+                    trade_date=day,
+                    fields="trade_date,ts_code,rzye,rqye,rzmre,rqyl,rzche,rqchl,rqmcl,rzrqye",
+                )
+            )
             if df is not None and not df.empty:
                 rows = [
                     {
@@ -249,7 +271,12 @@ def sync_hk_hold_for_dates(trade_dates: list[str]) -> int:
             df = _with_retry(lambda day=day: pro.hk_hold(trade_date=day))
             if df is not None and not df.empty:
                 rows = [
-                    {"trade_date": getattr(r, "trade_date", None), "ts_code": getattr(r, "ts_code", None), "vol": getattr(r, "vol", None), "ratio": getattr(r, "ratio", None)}
+                    {
+                        "trade_date": getattr(r, "trade_date", None),
+                        "ts_code": getattr(r, "ts_code", None),
+                        "vol": getattr(r, "vol", None),
+                        "ratio": getattr(r, "ratio", None),
+                    }
                     for r in df.itertuples()
                 ]
                 total += cn_hk_hold.upsert_rows(rows)
@@ -278,7 +305,10 @@ def sync_top_for_dates(trade_dates: list[str]) -> dict:
 
 def sync_all_for_range(start_date: str, end_date: str, *, daily_only: bool = False) -> dict:
     """Sync extra data for trade dates in range. If daily_only, skip quarterly (financial/holder)."""
-    trade_dates = [d.isoformat() for d in get_open_dates("SSE", date.fromisoformat(start_date), date.fromisoformat(end_date))]
+    trade_dates = [
+        d.isoformat()
+        for d in get_open_dates("SSE", date.fromisoformat(start_date), date.fromisoformat(end_date))
+    ]
     out: dict = {}
     if not daily_only:
         out["financial"] = sync_financial_for_range(start_date, end_date)

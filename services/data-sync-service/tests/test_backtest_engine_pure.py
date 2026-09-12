@@ -234,14 +234,15 @@ def test_pure_trend_guide_defaults_off() -> None:
     assert cfg.trend_guide_stop_pct == 0.0
     assert cfg.trend_guide_trail_pct == 0.0
     cfg2 = _mk_config(
-        trend_guide_code="000905.SH", trend_guide_ma=60,
-        trend_guide_stop_pct=-3.0, trend_guide_trail_pct=-5.0,
+        trend_guide_code="000905.SH",
+        trend_guide_ma=60,
+        trend_guide_stop_pct=-3.0,
+        trend_guide_trail_pct=-5.0,
     )
     assert cfg2.trend_guide_code == "000905.SH"
     assert cfg2.trend_guide_ma == 60
     assert cfg2.trend_guide_stop_pct == -3.0
     assert cfg2.trend_guide_trail_pct == -5.0
-
 
 
 # ---------------------------------------------------------------------------
@@ -561,9 +562,7 @@ def test_pure_summarize_score_buckets() -> None:
 
 def test_pure_summarize_wins_only_avg_loss_none() -> None:
     cfg = _mk_config()
-    summary = _summarize(
-        cfg, _mk_data(["2026-08-01"]), [_mk_trade(2.0)], 0, nav_curve=[1.0, 1.1]
-    )
+    summary = _summarize(cfg, _mk_data(["2026-08-01"]), [_mk_trade(2.0)], 0, nav_curve=[1.0, 1.1])
     assert summary.avg_win_pct == 2.0
     assert summary.avg_loss_pct is None
     assert summary.total_net_pnl_pct == 10.0
@@ -571,9 +570,7 @@ def test_pure_summarize_wins_only_avg_loss_none() -> None:
 
 def test_pure_summarize_losses_only_avg_win_none() -> None:
     cfg = _mk_config()
-    summary = _summarize(
-        cfg, _mk_data(["2026-08-01"]), [_mk_trade(-2.0)], 0, nav_curve=[1.0, 0.9]
-    )
+    summary = _summarize(cfg, _mk_data(["2026-08-01"]), [_mk_trade(-2.0)], 0, nav_curve=[1.0, 0.9])
     assert summary.avg_win_pct is None
     assert summary.avg_loss_pct == -2.0
 
@@ -615,9 +612,7 @@ def test_pure_summarize_zero_end_nav_cagr_zero() -> None:
 
 def test_pure_summarize_zero_mid_nav_skips_day() -> None:
     cfg = _mk_config()
-    summary = _summarize(
-        cfg, _mk_data(["2026-08-01"]), [_mk_trade(-50.0)], 0, nav_curve=[0.0, 0.5]
-    )
+    summary = _summarize(cfg, _mk_data(["2026-08-01"]), [_mk_trade(-50.0)], 0, nav_curve=[0.0, 0.5])
     assert summary.sharpe is None
     assert summary.annual_net_pnl_pct == pytest.approx(-100.0)
     assert summary.total_net_pnl_pct == -50.0
@@ -700,7 +695,7 @@ def test_pure_sharpe_from_closes_weighted_value() -> None:
         _mk_trade(-0.5, close_date="2026-08-06", position_pct=0.10),
     ]
     rets = [1.0 * 0.05, 2.0 * 0.05, -0.5 * 0.10]
-    expected = round(statistics.mean(rets) / statistics.stdev(rets) * (252 ** 0.5), 2)
+    expected = round(statistics.mean(rets) / statistics.stdev(rets) * (252**0.5), 2)
     assert _sharpe_from_closes(trades, cfg) == expected
 
 
@@ -713,7 +708,7 @@ def test_pure_sharpe_from_closes_aggregates_same_day() -> None:
         _mk_trade(-0.5, close_date="2026-08-06"),
     ]
     rets = [2.0 * 0.05, 2.0 * 0.05, -0.5 * 0.05]
-    expected = round(statistics.mean(rets) / statistics.stdev(rets) * (252 ** 0.5), 2)
+    expected = round(statistics.mean(rets) / statistics.stdev(rets) * (252**0.5), 2)
     assert _sharpe_from_closes(trades, cfg) == expected
 
 

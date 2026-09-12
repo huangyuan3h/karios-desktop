@@ -65,7 +65,11 @@ def test_ai_extract_pingan_screenshot(monkeypatch) -> None:
 
 
 def test_dedupe_and_pick_first_str() -> None:
-    rows = [{"ticker": " 600000 ", "qty": 1}, {"ticker": "600000", "qty": 1}, {"ticker": "000001", "qty": 2}]
+    rows = [
+        {"ticker": " 600000 ", "qty": 1},
+        {"ticker": "600000", "qty": 1},
+        {"ticker": "000001", "qty": 2},
+    ]
     out = bk._dedupe(rows, keys=["ticker"])
     assert len(out) == 2
     assert bk._pick_first_str({"ticker": "  X  "}, ["ticker", "symbol"]) == "X"
@@ -74,8 +78,12 @@ def test_dedupe_and_pick_first_str() -> None:
 
 
 def test_conditional_order_key() -> None:
-    k1 = bk._conditional_order_key({"ticker": "600000.SH", "side": "BUY", "triggerValue": "10.5", "qty": "100"})
-    k2 = bk._conditional_order_key({"symbol": "600000.SH", "方向": "buy", "触发价": "10.5", "数量": "100"})
+    k1 = bk._conditional_order_key(
+        {"ticker": "600000.SH", "side": "BUY", "triggerValue": "10.5", "qty": "100"}
+    )
+    k2 = bk._conditional_order_key(
+        {"symbol": "600000.SH", "方向": "buy", "触发价": "10.5", "数量": "100"}
+    )
     assert k1 == k2  # aliases normalize to same key
 
 
@@ -104,35 +112,64 @@ def test_account_crud_wrappers(monkeypatch) -> None:
 
 
 def test_get_account_state(monkeypatch) -> None:
-    monkeypatch.setattr(bk, "get_account_state_row", lambda aid: {
-        "accountId": "a1", "broker": "pingan", "updatedAt": "t",
-        "overview": {"totalAssets": 1}, "positions": [{"ticker": "x"}],
-        "conditionalOrders": [{"ticker": "y"}], "trades": [{"ticker": "z"}],
-    })
+    monkeypatch.setattr(
+        bk,
+        "get_account_state_row",
+        lambda aid: {
+            "accountId": "a1",
+            "broker": "pingan",
+            "updatedAt": "t",
+            "overview": {"totalAssets": 1},
+            "positions": [{"ticker": "x"}],
+            "conditionalOrders": [{"ticker": "y"}],
+            "trades": [{"ticker": "z"}],
+        },
+    )
     out = bk.get_account_state(account_id="a1")
     assert out["counts"] == {"positions": 1, "conditionalOrders": 1, "trades": 1}
 
     monkeypatch.setattr(bk, "get_account_state_row", lambda aid: None)
     monkeypatch.setattr(bk, "ensure_account_state", lambda **kw: None)
-    monkeypatch.setattr(bk, "get_account_state_row", lambda aid: {
-        "accountId": "a1", "broker": "pingan", "updatedAt": "t",
-        "overview": None, "positions": "not-a-list", "conditionalOrders": None, "trades": None,
-    })
+    monkeypatch.setattr(
+        bk,
+        "get_account_state_row",
+        lambda aid: {
+            "accountId": "a1",
+            "broker": "pingan",
+            "updatedAt": "t",
+            "overview": None,
+            "positions": "not-a-list",
+            "conditionalOrders": None,
+            "trades": None,
+        },
+    )
     out2 = bk.get_account_state(account_id="a1")
     assert out2["positions"] == [] and out2["overview"] == {}
 
 
 def test_sync_account_from_images(monkeypatch) -> None:
-    monkeypatch.setattr(bk, "_ai_extract_pingan_screenshot", lambda image_data_url: {
-        "kind": "positions",
-        "data": {
-            "totalAssets": 100.0,
-            "positions": [{"ticker": "600000"}, {"ticker": "600000"}, {"ticker": "000001"}],
-            "orders": [{"ticker": "a"}, {"ticker": "a"}],
-            "trades": [{"ticker": "b"}, {"ticker": "b"}],
+    monkeypatch.setattr(
+        bk,
+        "_ai_extract_pingan_screenshot",
+        lambda image_data_url: {
+            "kind": "positions",
+            "data": {
+                "totalAssets": 100.0,
+                "positions": [{"ticker": "600000"}, {"ticker": "600000"}, {"ticker": "000001"}],
+                "orders": [{"ticker": "a"}, {"ticker": "a"}],
+                "trades": [{"ticker": "b"}, {"ticker": "b"}],
+            },
         },
-    })
-    state = {"accountId": "a1", "broker": "pingan", "updatedAt": "t", "overview": {}, "positions": [], "conditionalOrders": [], "trades": []}
+    )
+    state = {
+        "accountId": "a1",
+        "broker": "pingan",
+        "updatedAt": "t",
+        "overview": {},
+        "positions": [],
+        "conditionalOrders": [],
+        "trades": [],
+    }
     upserted = {}
 
     def fake_upsert(**kw):
@@ -144,36 +181,63 @@ def test_sync_account_from_images(monkeypatch) -> None:
     monkeypatch.setattr(bk, "upsert_account_state", fake_upsert)
     monkeypatch.setattr(bk, "get_account_state", fake_state)
     bk.sync_account_from_images(
-        account_id="a1", captured_at="", images=[{"dataUrl": "data:image/png;base64,AA=="}],
+        account_id="a1",
+        captured_at="",
+        images=[{"dataUrl": "data:image/png;base64,AA=="}],
     )
     assert upserted["overview"]["totalAssets"] == 100.0  # positions screen doubles as overview
     assert len(upserted["positions"]) == 2  # deduped
     assert len(upserted["conditional_orders"]) == 1
     assert len(upserted["trades"]) == 1
 
-    monkeypatch.setattr(bk, "_ai_extract_pingan_screenshot", lambda image_data_url: {"kind": "other", "data": {}})
-    bk.sync_account_from_images(account_id="a1", captured_at="2026-08-07", images=[{"dataUrl": "x"}])
+    monkeypatch.setattr(
+        bk, "_ai_extract_pingan_screenshot", lambda image_data_url: {"kind": "other", "data": {}}
+    )
+    bk.sync_account_from_images(
+        account_id="a1", captured_at="2026-08-07", images=[{"dataUrl": "x"}]
+    )
     assert upserted["positions"] is None and upserted["updated_at"] == "2026-08-07"
 
 
 def test_import_broker_screenshots(monkeypatch) -> None:
     b64 = base64.b64encode(b"img-bytes").decode()
     monkeypatch.setattr(bk, "_seed_default_broker_account", lambda b: "acc-1")
-    monkeypatch.setattr(bk, "_ai_extract_pingan_screenshot", lambda image_data_url: {
-        "kind": "positions", "data": {}, "__meta": {"tokens": 10},
-    })
+    monkeypatch.setattr(
+        bk,
+        "_ai_extract_pingan_screenshot",
+        lambda image_data_url: {
+            "kind": "positions",
+            "data": {},
+            "__meta": {"tokens": 10},
+        },
+    )
     monkeypatch.setattr(bk, "insert_snapshot", lambda **kw: None)
     out = bk.import_broker_screenshots(
-        broker="pingan", account_id="", captured_at="",
-        images=[{"name": "shot.png", "mediaType": "image/png", "dataUrl": f"data:image/png;base64,{b64}"}],
+        broker="pingan",
+        account_id="",
+        captured_at="",
+        images=[
+            {
+                "name": "shot.png",
+                "mediaType": "image/png",
+                "dataUrl": f"data:image/png;base64,{b64}",
+            }
+        ],
     )
     assert out[0]["kind"] == "positions" and out[0]["broker"] == "pingan"
 
-    assert bk.import_broker_screenshots(broker="pingan", account_id="acc-1", captured_at="t", images=[{"dataUrl": ""}]) == []
+    assert (
+        bk.import_broker_screenshots(
+            broker="pingan", account_id="acc-1", captured_at="t", images=[{"dataUrl": ""}]
+        )
+        == []
+    )
 
     monkeypatch.setattr(bk, "_ai_extract_pingan_screenshot", lambda image_data_url: {})
     out2 = bk.import_broker_screenshots(
-        broker="pingan", account_id="acc-1", captured_at="t",
+        broker="pingan",
+        account_id="acc-1",
+        captured_at="t",
         images=[{"dataUrl": f"data:image/png;base64,{b64}"}],
     )
     assert out2[0]["kind"] == "unknown"
@@ -190,14 +254,27 @@ def test_list_and_get_snapshot_wrappers(monkeypatch) -> None:
 
 
 def test_delete_conditional_order(monkeypatch) -> None:
-    monkeypatch.setattr(bk, "get_account_state_row", lambda aid: {
-        "accountId": "a1", "broker": "pingan", "updatedAt": "t", "overview": {},
-        "positions": [], "trades": [],
-        "conditionalOrders": [{"ticker": "600000.SH", "side": "BUY", "triggerValue": "10.5", "qty": "100"}],
-    })
+    monkeypatch.setattr(
+        bk,
+        "get_account_state_row",
+        lambda aid: {
+            "accountId": "a1",
+            "broker": "pingan",
+            "updatedAt": "t",
+            "overview": {},
+            "positions": [],
+            "trades": [],
+            "conditionalOrders": [
+                {"ticker": "600000.SH", "side": "BUY", "triggerValue": "10.5", "qty": "100"}
+            ],
+        },
+    )
     monkeypatch.setattr(bk, "upsert_account_state", lambda **kw: None)
     monkeypatch.setattr(bk, "get_account_state", lambda account_id: {"kept": True})
-    out = bk.delete_conditional_order(account_id="a1", order={"symbol": "600000.SH", "方向": "buy", "触发价": "10.5", "数量": "100"})
+    out = bk.delete_conditional_order(
+        account_id="a1",
+        order={"symbol": "600000.SH", "方向": "buy", "触发价": "10.5", "数量": "100"},
+    )
     assert out == {"kept": True}
 
     monkeypatch.setattr(bk, "get_account_state_row", lambda aid: None)
@@ -207,10 +284,19 @@ def test_delete_conditional_order(monkeypatch) -> None:
     except ValueError:
         pass
 
-    monkeypatch.setattr(bk, "get_account_state_row", lambda aid: {
-        "accountId": "a1", "broker": "p", "updatedAt": "t", "overview": {}, "positions": [], "trades": [],
-        "conditionalOrders": [],
-    })
+    monkeypatch.setattr(
+        bk,
+        "get_account_state_row",
+        lambda aid: {
+            "accountId": "a1",
+            "broker": "p",
+            "updatedAt": "t",
+            "overview": {},
+            "positions": [],
+            "trades": [],
+            "conditionalOrders": [],
+        },
+    )
     try:
         bk.delete_conditional_order(account_id="a1", order={})
         raise AssertionError()

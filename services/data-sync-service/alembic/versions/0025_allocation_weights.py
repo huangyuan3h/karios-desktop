@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column("hk_regime", sa.Text, nullable=False),
         sa.Column("w_cn", sa.Double, nullable=False),
         sa.Column("w_hk", sa.Double, nullable=False),
-        sa.Column("decided_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "decided_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
     )
 
 

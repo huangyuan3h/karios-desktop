@@ -381,7 +381,7 @@ def get_auto_qa_stats(
         theme = str(t.get("macroTheme") or t.get("trendName") or "")
         if not theme:
             continue
-        for cn in (t.get("cnSymbols") or []):
+        for cn in t.get("cnSymbols") or []:
             if not isinstance(cn, dict):
                 continue
             ticker = _to_ticker(str(cn.get("symbol") or ""))
@@ -402,7 +402,7 @@ def get_auto_qa_stats(
         if not theme:
             continue
         allowed = theme_map.get(theme, [])
-        for cn in (t.get("cnSymbols") or []):
+        for cn in t.get("cnSymbols") or []:
             if not isinstance(cn, dict):
                 continue
             symbol = str(cn.get("symbol") or "")
@@ -487,8 +487,7 @@ def name_search_is_ambiguous(
     if not top1_name:
         return False
     return any(
-        _names_share_significant_chars(str(c.get("name") or ""), top1_name)
-        for c in candidates[1:]
+        _names_share_significant_chars(str(c.get("name") or ""), top1_name) for c in candidates[1:]
     )
 
 

@@ -175,7 +175,9 @@ def get_account_state_row(account_id: str) -> dict[str, Any] | None:
         "updatedAt": str(row[2]),
         "overview": row[3] if isinstance(row[3], dict) else json.loads(str(row[3]) or "{}"),
         "positions": row[4] if isinstance(row[4], list) else json.loads(str(row[4]) or "[]"),
-        "conditionalOrders": row[5] if isinstance(row[5], list) else json.loads(str(row[5]) or "[]"),
+        "conditionalOrders": row[5]
+        if isinstance(row[5], list)
+        else json.loads(str(row[5]) or "[]"),
         "trades": row[6] if isinstance(row[6], list) else json.loads(str(row[6]) or "[]"),
     }
 
@@ -231,7 +233,9 @@ def upsert_account_state(
     next_overview = overview if overview is not None else (current.get("overview") or {})
     next_positions = positions if positions is not None else (current.get("positions") or [])
     next_orders = (
-        conditional_orders if conditional_orders is not None else (current.get("conditionalOrders") or [])
+        conditional_orders
+        if conditional_orders is not None
+        else (current.get("conditionalOrders") or [])
     )
     next_trades = trades if trades is not None else (current.get("trades") or [])
     with get_connection() as conn:

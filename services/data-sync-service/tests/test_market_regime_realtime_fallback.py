@@ -51,7 +51,11 @@ def test_hsi_quote_failure_does_not_block_cn_realtime(monkeypatch) -> None:
         "fetch_last_closes_vol_batch",
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
-    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series])
+    monkeypatch.setattr(
+        mr,
+        "fetch_macro_last_closes",
+        lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series],
+    )
     monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)
@@ -76,7 +80,10 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
         if codes == ["000001.SH", "399006.SZ", "000905.SH"]:
             return {"ok": False, "error": "batch failure"}
         if codes == ["000001.SH"]:
-            return {"ok": True, "items": [_quote_item("000001.SH", 190.0, 179.0, "2026-03-21 14:30:00")]}
+            return {
+                "ok": True,
+                "items": [_quote_item("000001.SH", 190.0, 179.0, "2026-03-21 14:30:00")],
+            }
         if codes == ["399006.SZ"]:
             return {"ok": False, "error": "symbol failure"}
         if codes == ["000905.SH"]:
@@ -94,7 +101,11 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
         "fetch_last_closes_vol_batch",
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
-    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series])
+    monkeypatch.setattr(
+        mr,
+        "fetch_macro_last_closes",
+        lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series],
+    )
     monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)
@@ -105,4 +116,3 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
     assert by_code["399006.SZ"]["realtime"] is False
     assert by_code["399006.SZ"]["source"] == "db.index_daily"
     assert by_code["399006.SZ"]["quoteError"] == "symbol failure"
-

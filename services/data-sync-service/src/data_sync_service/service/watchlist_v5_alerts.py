@@ -41,7 +41,9 @@ def _get_regime(as_of_date: str | None) -> str:
         return "Weak"
 
 
-def _latest_bar_date(bars_by_code: dict[str, list[tuple[str, str, str, str, str, str]]]) -> str | None:
+def _latest_bar_date(
+    bars_by_code: dict[str, list[tuple[str, str, str, str, str, str]]],
+) -> str | None:
     latest: str | None = None
     for bars in bars_by_code.values():
         if not bars:

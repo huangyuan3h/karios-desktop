@@ -7,6 +7,7 @@ Bar-end timestamps (5min first print 09:35; 14:30 close = 14:30 price).
 15min: store 1430 + 1500 only. 5min: last-hour 1430…1500 (7 bars).
 5min overwrites ext_15min; never the reverse.
 """
+
 from __future__ import annotations
 
 import csv
@@ -136,7 +137,9 @@ def _header_index(header: list[str]) -> dict[str, int]:
 def _iter_last_hour_rows(
     path: Path,
     keep_times: frozenset[str],
-) -> Iterable[tuple[str, str, float | None, float | None, float | None, float, float | None, float | None]]:
+) -> Iterable[
+    tuple[str, str, float | None, float | None, float | None, float, float | None, float | None]
+]:
     with path.open(encoding="utf-8-sig", newline="") as fh:
         reader = csv.reader(fh)
         try:
@@ -257,12 +260,12 @@ def import_vendor_tree(
             if len(buf) >= FLUSH_ROWS:
                 _flush()
             if done % 100 == 0 or done == len(jobs):
-                logger.info("  %s/%s %s stored=%s", done, len(jobs), last_ts, stats["stored"] + len(buf))
+                logger.info(
+                    "  %s/%s %s stored=%s", done, len(jobs), last_ts, stats["stored"] + len(buf)
+                )
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
-            for ts_code, imported, payload in pool.map(
-                _parse_file_payload, jobs, chunksize=16
-            ):
+            for ts_code, imported, payload in pool.map(_parse_file_payload, jobs, chunksize=16):
                 done += 1
                 if imported:
                     stats["imported"] += 1

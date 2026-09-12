@@ -103,19 +103,21 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
     ensure_table()
     rows = []
     for row in df.itertuples(index=False):
-        rows.append((
-            _scalar(getattr(row, "ts_code", None)),
-            _date_str(getattr(row, "trade_date", None)),
-            _numeric(getattr(row, "open", None)),
-            _numeric(getattr(row, "high", None)),
-            _numeric(getattr(row, "low", None)),
-            _numeric(getattr(row, "close", None)),
-            _numeric(getattr(row, "pre_close", None)),
-            _numeric(getattr(row, "change", None)),
-            _numeric(getattr(row, "pct_chg", None)),
-            _numeric(getattr(row, "vol", None)),
-            _numeric(getattr(row, "amount", None)),
-        ))
+        rows.append(
+            (
+                _scalar(getattr(row, "ts_code", None)),
+                _date_str(getattr(row, "trade_date", None)),
+                _numeric(getattr(row, "open", None)),
+                _numeric(getattr(row, "high", None)),
+                _numeric(getattr(row, "low", None)),
+                _numeric(getattr(row, "close", None)),
+                _numeric(getattr(row, "pre_close", None)),
+                _numeric(getattr(row, "change", None)),
+                _numeric(getattr(row, "pct_chg", None)),
+                _numeric(getattr(row, "vol", None)),
+                _numeric(getattr(row, "amount", None)),
+            )
+        )
     if not rows:
         return 0
     with get_connection() as conn:
@@ -209,7 +211,9 @@ def fetch_last_closes(ts_code: str, days: int = 60) -> list[tuple[str, float]]:
     return out
 
 
-def fetch_last_closes_upto(ts_code: str, as_of_date: str, days: int = 60) -> list[tuple[str, float]]:
+def fetch_last_closes_upto(
+    ts_code: str, as_of_date: str, days: int = 60
+) -> list[tuple[str, float]]:
     """
     Return last N (date, close) rows up to as_of_date (inclusive), ordered by date ASC.
     """

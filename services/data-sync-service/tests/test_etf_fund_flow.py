@@ -22,6 +22,7 @@ def _clear_etf_cache():
     em._ETF_ROWS_CACHE = None
     em._ETF_ROWS_CACHE_DATE = None
 
+
 def _flow_for_symbol(symbol: str, *, main_net: float = 12_000_000.0) -> dict[str, Any]:
     return {
         "fdShareWan": None,
@@ -67,9 +68,12 @@ def test_classify_signal_broad_outflow() -> None:
 
 
 def test_classify_signal_sector_momentum() -> None:
-    assert svc.classify_signal(
-        category="sector", net_flow_1d=1.0, net_flow_3d=svc.SECTOR_MOMENTUM_3D_THRESHOLD + 1
-    ) == "Sector Momentum"
+    assert (
+        svc.classify_signal(
+            category="sector", net_flow_1d=1.0, net_flow_3d=svc.SECTOR_MOMENTUM_3D_THRESHOLD + 1
+        )
+        == "Sector Momentum"
+    )
 
 
 def test_classify_signal_sector_outflow() -> None:

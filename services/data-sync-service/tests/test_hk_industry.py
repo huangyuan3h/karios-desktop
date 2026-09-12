@@ -11,6 +11,7 @@ from data_sync_service.service import hk_industry
 
 # ----- _truncate_mbu pure-function tests -----
 
+
 def test_truncate_mbu_basic_chinese() -> None:
     text = "主要於中国及其他国家或地区研发及销售智能手机、IoT及生活消费产品、提供互联网服务及从事投资控股业务。"
     out = hk_industry._truncate_mbu(text)
@@ -48,6 +49,7 @@ def test_truncate_mbu_no_separator_long_text_truncates_only() -> None:
 
 # ----- fetch_xueqiu_mbu tests -----
 
+
 def test_fetch_xueqiu_mbu_returns_truncated_label(monkeypatch: pytest.MonkeyPatch) -> None:
     df = pd.DataFrame(
         {
@@ -80,7 +82,9 @@ def test_fetch_xueqiu_mbu_returns_none_for_non_hk() -> None:
     assert hk_industry.fetch_xueqiu_mbu("002415.SZ") is None
 
 
-def test_fetch_xueqiu_mbu_returns_none_when_akshare_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_xueqiu_mbu_returns_none_when_akshare_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If akshare is not installed, fetch_xueqiu_mbu returns None gracefully."""
     import builtins
 
@@ -141,9 +145,11 @@ def test_fetch_xueqiu_mbu_gives_up_after_all_retries(monkeypatch: pytest.MonkeyP
 
 # ----- _iter_missing_hk_codes tests -----
 
+
 def _patch_get_connection(monkeypatch, conn_factory):
     """Patch get_connection in the data_sync_service.db module (lazy import target)."""
     from data_sync_service import db as db_mod
+
     monkeypatch.setattr(db_mod, "get_connection", conn_factory)
 
 
@@ -222,6 +228,7 @@ def test_iter_missing_hk_codes_respects_limit(monkeypatch: pytest.MonkeyPatch) -
 
 # ----- sync_hk_industry tests -----
 
+
 def test_sync_hk_industry_upserts_resolved_labels(monkeypatch: pytest.MonkeyPatch) -> None:
     """When symbols are provided, fetch each mbu and update_industry is called."""
     captured: dict = {}
@@ -246,7 +253,9 @@ def test_sync_hk_industry_upserts_resolved_labels(monkeypatch: pytest.MonkeyPatc
     assert captured["mapping"] == {"00700.HK": "本集团主要从事金融业"}
 
 
-def test_sync_hk_industry_returns_error_when_no_labels_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sync_hk_industry_returns_error_when_no_labels_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(hk_industry, "fetch_xueqiu_mbu", lambda *_a, **_kw: None)
     monkeypatch.setattr(hk_industry, "insert_record", lambda **_kw: None)
 
@@ -265,6 +274,7 @@ def test_sync_hk_industry_skips_when_no_codes(monkeypatch: pytest.MonkeyPatch) -
 
 
 # ----- get_hk_industry_status tests -----
+
 
 def test_get_hk_industry_status_returns_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hk_industry, "ensure_stock_basic", lambda: None)
@@ -302,6 +312,7 @@ def test_get_hk_industry_status_returns_counts(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ----- db.update_industry tests -----
+
 
 def test_update_industry_writes_only_industry_column(monkeypatch: pytest.MonkeyPatch) -> None:
     """update_industry should issue per-row UPDATE statements, not full-row UPSERT."""
@@ -354,7 +365,10 @@ def test_update_industry_skips_empty_mapping() -> None:
 
 # ----- keep_industry in upsert_from_dataframe -----
 
-def test_upsert_from_dataframe_keep_industry_uses_coalesce_sql(monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_upsert_from_dataframe_keep_industry_uses_coalesce_sql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """hk_basic sync must use the COALESCE-preserving SQL so it doesn't blank industry."""
     import pandas as pd
 
@@ -442,13 +456,11 @@ def test_fetch_eastmoney_hk_industry_map_paginates(monkeypatch: pytest.MonkeyPat
         assert page_size == 500
         calls.append(page_number)
         if page_number < 3:
-            return _fake_em_payload(
-                page_number=page_number, page_size=500, total=500
-            )["result"]["data"]
+            return _fake_em_payload(page_number=page_number, page_size=500, total=500)["result"][
+                "data"
+            ]
         # Last page returns 123 rows — must stop.
-        return _fake_em_payload(
-            page_number=page_number, page_size=500, total=123
-        )["result"]["data"]
+        return _fake_em_payload(page_number=page_number, page_size=500, total=123)["result"]["data"]
 
     monkeypatch.setattr(hk_industry, "_fetch_em_page", fake_fetch_page)
 
@@ -463,7 +475,9 @@ def test_fetch_eastmoney_hk_industry_map_paginates(monkeypatch: pytest.MonkeyPat
     assert stats["emResolved"] == 500 + 500 + 123
 
 
-def test_fetch_eastmoney_hk_industry_map_skips_empty_industries(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_eastmoney_hk_industry_map_skips_empty_industries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Row with empty / missing BELONG_INDUSTRY must be dropped, not saved as empty string."""
     rows = [
         {"SECUCODE": "00001.HK", "BELONG_INDUSTRY": "银行"},
@@ -487,7 +501,9 @@ def test_fetch_eastmoney_hk_industry_map_skips_empty_industries(monkeypatch: pyt
     assert stats["emResolved"] == 2
 
 
-def test_fetch_eastmoney_hk_industry_map_ignores_non_hk_codes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_eastmoney_hk_industry_map_ignores_non_hk_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Rows whose SECUCODE doesn't end with .HK must be ignored."""
     rows = [
         {"SECUCODE": "00001.HK", "BELONG_INDUSTRY": "银行"},
@@ -655,9 +671,7 @@ def test_fetch_em_page_uses_proxy_disabled(monkeypatch: pytest.MonkeyPatch) -> N
         captured["headers"] = headers
         captured["timeout"] = timeout
         captured["proxies"] = proxies
-        return _FakeEMResponse(
-            {"success": True, "result": {"data": [], "pages": 0, "count": 0}}
-        )
+        return _FakeEMResponse({"success": True, "result": {"data": [], "pages": 0, "count": 0}})
 
     monkeypatch.setattr(requests, "get", fake_get)
 

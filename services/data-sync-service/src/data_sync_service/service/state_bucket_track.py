@@ -16,6 +16,7 @@ Two calibers share this engine (2026-09-11 统一后):
 Truth doc: docs/backtests/state-bucket-algo-2026-08-31.md §7
 Clock unification: docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -108,7 +109,10 @@ def _load_calendar(start: str, end: str) -> list[str]:
         "ORDER BY trade_date",
         (start, end),
     )
-    cal = [r[0].strftime("%Y-%m-%d") if hasattr(r[0], "strftime") else str(r[0]) for r in cur.fetchall()]
+    cal = [
+        r[0].strftime("%Y-%m-%d") if hasattr(r[0], "strftime") else str(r[0])
+        for r in cur.fetchall()
+    ]
     conn.close()
     return cal
 
@@ -133,7 +137,7 @@ def _day_features(
         if not cur["close"] or not cur["high"] or not cur["low"] or cur["close"] <= 0:
             continue
         amp = (cur["high"] - cur["low"]) / cur["close"]
-        amts = [r["amount"] for r in series[idx - 20: idx + 1] if r["amount"]]
+        amts = [r["amount"] for r in series[idx - 20 : idx + 1] if r["amount"]]
         if len(amts) < 15:
             continue
         avg20 = sum(amts[:-1]) / max(len(amts) - 1, 1) if len(amts) > 1 else amts[0]
@@ -153,7 +157,7 @@ def _day_features(
         idx = date_idx.get(ts, {}).get(day, -1)
         if idx < 20 or ts not in mv_map.get(day, {}):
             continue
-        closes = [r["close"] for r in series[idx - 19: idx + 1] if r["close"]]
+        closes = [r["close"] for r in series[idx - 19 : idx + 1] if r["close"]]
         if len(closes) < 20:
             continue
         tot += 1
@@ -378,7 +382,9 @@ def load_sgap_context(start: str, end: str) -> dict[str, Any]:
     }
 
 
-def _cached_day_features(ctx: dict[str, Any], day: str) -> tuple[dict[str, dict[str, float]], float]:
+def _cached_day_features(
+    ctx: dict[str, Any], day: str
+) -> tuple[dict[str, dict[str, float]], float]:
     cache = ctx["feat_cache"]
     hit = cache.get(day)
     if hit is None:
@@ -779,6 +785,7 @@ def replay_sgap_from_context(
 
                 ranked = sorted(gap_stocks, key=_proxy_amp)
             else:  # absrunup_asc: |fill print / open - 1|, missing print ranks last
+
                 def _abs_runup(ts: str, _day: str = day) -> float:
                     di = date_idx.get(ts, {}).get(_day, -1)
                     series = per_ts.get(ts)
@@ -809,7 +816,7 @@ def replay_sgap_from_context(
                         if di_lock > 20 and series_l:
                             amts = [
                                 r.get("amount")
-                                for r in series_l[di_lock - 21: di_lock]
+                                for r in series_l[di_lock - 21 : di_lock]
                                 if r.get("amount")
                             ]
                             if len(amts) >= 15 and amts[-1]:
@@ -840,9 +847,13 @@ def replay_sgap_from_context(
             bucket = ranked[:qn]
             skip_t1_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_t1_limit")
             skip_c1_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_run")
-            skip_c2_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_near_limit")
+            skip_c2_count = sum(
+                1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_near_limit"
+            )
             skip_c3_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_fade")
-            skip_churn_count = sum(1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_churn")
+            skip_churn_count = sum(
+                1 for ts in bucket if locked_reasons.get(ts) == "skip_1430_churn"
+            )
             for ts in bucket:
                 reason = locked_reasons.get(ts)
                 if not reason:
@@ -903,9 +914,7 @@ def replay_sgap_from_context(
                             one_word = bar["high"] == bar["low"] == bar["close"]
                         else:
                             one_word = bar["high"] == bar["low"] == bar["open"]
-                        if pc and pc > 0 and (
-                            one_word or px >= pc * (1 + lim - 0.004)
-                        ):
+                        if pc and pc > 0 and (one_word or px >= pc * (1 + lim - 0.004)):
                             continue
                     feat = feat_all.get(ts) or {}
                     positions[ts] = {
@@ -1198,6 +1207,7 @@ def build_state_bucket_timeline(*, start: str, end: str) -> dict[str, Any]:
 # (diag_sat_stage, compare_sat_stage/rank) and the live intraday push
 # must all use these — never reimplement the buckets elsewhere.
 
+
 def stage_labels(closes: list[float]) -> dict[str, str] | None:
     """Trailing-only lifecycle labels; last close = entry/decision day.
 
@@ -1219,7 +1229,7 @@ def stage_labels(closes: list[float]) -> dict[str, str] | None:
     before = closes[:-1]  # strictly before decision day for blast scan
     blast = None
     for i in range(len(before) - 20, -1, -1):
-        seg = before[max(0, i - 19): i + 1]
+        seg = before[max(0, i - 19) : i + 1]
         if len(seg) == 20 and seg[-1] / seg[0] - 1 >= 0.25:
             blast = (len(before) - 1) - i
             break
@@ -1238,8 +1248,9 @@ def stage_labels(closes: list[float]) -> dict[str, str] | None:
     return {
         "dd60": "at-high" if dd60 < 0.02 else ("shallow" if dd60 <= 0.08 else "deep"),
         "rally20": "neg" if r20 < 0 else ("mid" if r20 <= 0.15 else "blasted"),
-        "blast": "fresh<=10d" if blast is not None and blast <= 10
-                 else ("mid11-40d" if blast is not None and blast <= 40 else "old/never"),
+        "blast": "fresh<=10d"
+        if blast is not None and blast <= 10
+        else ("mid11-40d" if blast is not None and blast <= 40 else "old/never"),
         "wein": wein,
         "runup5": "cool" if r5 < 0.03 else ("warm" if r5 <= 0.10 else "climax"),
     }

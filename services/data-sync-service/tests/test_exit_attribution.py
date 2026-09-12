@@ -24,7 +24,9 @@ def _reset_settings_cache() -> None:
     config.get_settings.cache_clear()
 
 
-def _closed_trade(symbol="CN:600001", reason="target_hit", close_date="2026-08-01", pnl=5.0) -> dict:
+def _closed_trade(
+    symbol="CN:600001", reason="target_hit", close_date="2026-08-01", pnl=5.0
+) -> dict:
     return {
         "symbol": symbol,
         "entryDate": "2026-07-28",
@@ -77,25 +79,49 @@ def test_attribution_buckets_early_well_neutral() -> None:
     # on day 6 vs close on close_date.
     bars = {
         "600001.SH": _bars(
-            {"2026-08-01": 10.0, "2026-08-03": 10.1, "2026-08-04": 10.1, "2026-08-05": 10.2, "2026-08-06": 10.2, "2026-08-07": 10.3}
+            {
+                "2026-08-01": 10.0,
+                "2026-08-03": 10.1,
+                "2026-08-04": 10.1,
+                "2026-08-05": 10.2,
+                "2026-08-06": 10.2,
+                "2026-08-07": 10.3,
+            }
         ),  # +3.0%
         "600002.SH": _bars(
-            {"2026-08-01": 10.0, "2026-08-03": 9.9, "2026-08-04": 9.9, "2026-08-05": 9.8, "2026-08-06": 9.8, "2026-08-07": 9.8}
+            {
+                "2026-08-01": 10.0,
+                "2026-08-03": 9.9,
+                "2026-08-04": 9.9,
+                "2026-08-05": 9.8,
+                "2026-08-06": 9.8,
+                "2026-08-07": 9.8,
+            }
         ),  # -2.0%
         "600003.SH": _bars(
-            {"2026-08-01": 10.0, "2026-08-03": 10.0, "2026-08-04": 10.0, "2026-08-05": 10.05, "2026-08-06": 10.05, "2026-08-07": 10.05}
+            {
+                "2026-08-01": 10.0,
+                "2026-08-03": 10.0,
+                "2026-08-04": 10.0,
+                "2026-08-05": 10.05,
+                "2026-08-06": 10.05,
+                "2026-08-07": 10.05,
+            }
         ),  # +0.5%
     }
     trades[0]["symbol"] = "CN:600001"
     trades[1]["symbol"] = "CN:600002"
     trades[2]["symbol"] = "CN:600003"
 
-    with patch(
-        "data_sync_service.service.exit_attribution.list_paper_trades",
-        return_value=trades,
-    ), patch(
-        "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
-        return_value=bars,
+    with (
+        patch(
+            "data_sync_service.service.exit_attribution.list_paper_trades",
+            return_value=trades,
+        ),
+        patch(
+            "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
+            return_value=bars,
+        ),
     ):
         from data_sync_service.service.exit_attribution import analyze_exit_attribution
 
@@ -117,12 +143,15 @@ def test_attribution_insufficient_forward_data() -> None:
     """Close too recent to have N forward days → excluded, with count."""
     trades = [_closed_trade(close_date="2026-08-06")]  # only 1 forward day available
     bars = {"600001.SH": _bars({"2026-08-06": 10.0, "2026-08-07": 10.1})}
-    with patch(
-        "data_sync_service.service.exit_attribution.list_paper_trades",
-        return_value=trades,
-    ), patch(
-        "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
-        return_value=bars,
+    with (
+        patch(
+            "data_sync_service.service.exit_attribution.list_paper_trades",
+            return_value=trades,
+        ),
+        patch(
+            "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
+            return_value=bars,
+        ),
     ):
         from data_sync_service.service.exit_attribution import analyze_exit_attribution
 
@@ -143,12 +172,15 @@ def test_attribution_exposure_max_simultaneous() -> None:
         "600001.SH": _bars({"2026-08-01": 10.0, "2026-08-03": 10.3}),
         "600002.SH": _bars({"2026-08-01": 10.0, "2026-08-03": 10.3}),
     }
-    with patch(
-        "data_sync_service.service.exit_attribution.list_paper_trades",
-        return_value=trades,
-    ), patch(
-        "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
-        return_value=bars,
+    with (
+        patch(
+            "data_sync_service.service.exit_attribution.list_paper_trades",
+            return_value=trades,
+        ),
+        patch(
+            "data_sync_service.service.exit_attribution.fetch_ohlcv_batch_between",
+            return_value=bars,
+        ),
     ):
         from data_sync_service.service.exit_attribution import analyze_exit_attribution
 

@@ -141,19 +141,21 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
     ensure_table()
     rows = []
     for row in df.itertuples(index=False):
-        rows.append((
-            _scalar(getattr(row, "ts_code", None)),
-            _date_str(getattr(row, "trade_date", None)),
-            _numeric(getattr(row, "open", None)),
-            _numeric(getattr(row, "high", None)),
-            _numeric(getattr(row, "low", None)),
-            _numeric(getattr(row, "close", None)),
-            _numeric(getattr(row, "pre_close", None)),
-            _numeric(getattr(row, "change", None)),
-            _numeric(getattr(row, "pct_chg", None)),
-            _numeric(getattr(row, "vol", None)),
-            _numeric(getattr(row, "amount", None)),
-        ))
+        rows.append(
+            (
+                _scalar(getattr(row, "ts_code", None)),
+                _date_str(getattr(row, "trade_date", None)),
+                _numeric(getattr(row, "open", None)),
+                _numeric(getattr(row, "high", None)),
+                _numeric(getattr(row, "low", None)),
+                _numeric(getattr(row, "close", None)),
+                _numeric(getattr(row, "pre_close", None)),
+                _numeric(getattr(row, "change", None)),
+                _numeric(getattr(row, "pct_chg", None)),
+                _numeric(getattr(row, "vol", None)),
+                _numeric(getattr(row, "amount", None)),
+            )
+        )
     if not rows:
         return 0
     with get_connection() as conn:
@@ -342,6 +344,8 @@ def fetch_latest_trade_date_for_codes(ts_codes: list[str]) -> str | None:
     if hasattr(d, "strftime"):
         return d.strftime("%Y-%m-%d")
     return str(d)
+
+
 def fetch_trade_dates_for_codes(
     ts_codes: list[str],
     start_date: str,

@@ -72,12 +72,8 @@ def test_cluster_exposure_aggregates_by_cluster() -> None:
 
 def test_cap_triggers_only_above_threshold() -> None:
     # 29.9% → ok; 30.1% → blocked (boundary).
-    under = cluster_exposure(
-        [{"symbol": "HK:00700", "positionPct": 29.9}]
-    )
-    over = cluster_exposure(
-        [{"symbol": "HK:00700", "positionPct": 30.1}]
-    )
+    under = cluster_exposure([{"symbol": "HK:00700", "positionPct": 29.9}])
+    over = cluster_exposure([{"symbol": "HK:00700", "positionPct": 30.1}])
     assert blocked_clusters(under) == []
     assert blocked_clusters(over) == ["tech_hk"]
     assert CLUSTER_CAP_PCT == 30.0
@@ -130,11 +126,60 @@ def _mk_rows(ts_code: str, closes: list[float], start: int = 1) -> list:
 
 def test_correlation_matrix_high_for_same_theme() -> None:
     # Two series moving together 1:2 → r = 1.0 (returns identical).
-    rows_a = _mk_rows("00700.HK", [100, 101, 103, 105, 108, 110, 112, 115, 118, 120,
-                                   123, 126, 129, 132, 135, 138, 141, 144, 147, 150])
-    rows_b = _mk_rows("513180.SH", [200, 202, 206, 210, 216, 220, 224, 230, 236, 240,
-                                    246, 252, 258, 264, 270, 276, 282, 288, 294, 300])
-    rows_c = _mk_rows("601899.SH", [50, 49, 48, 49, 50, 51, 52, 51, 50, 49, 48, 49, 50, 51, 52, 53, 54, 53, 52, 51])
+    rows_a = _mk_rows(
+        "00700.HK",
+        [
+            100,
+            101,
+            103,
+            105,
+            108,
+            110,
+            112,
+            115,
+            118,
+            120,
+            123,
+            126,
+            129,
+            132,
+            135,
+            138,
+            141,
+            144,
+            147,
+            150,
+        ],
+    )
+    rows_b = _mk_rows(
+        "513180.SH",
+        [
+            200,
+            202,
+            206,
+            210,
+            216,
+            220,
+            224,
+            230,
+            236,
+            240,
+            246,
+            252,
+            258,
+            264,
+            270,
+            276,
+            282,
+            288,
+            294,
+            300,
+        ],
+    )
+    rows_c = _mk_rows(
+        "601899.SH",
+        [50, 49, 48, 49, 50, 51, 52, 51, 50, 49, 48, 49, 50, 51, 52, 53, 54, 53, 52, 51],
+    )
     with patch(
         "data_sync_service.service.correlation.get_connection",
     ):
@@ -199,15 +244,27 @@ def test_em_industry_for_ts_code_lookup() -> None:
     from data_sync_service.service.correlation import em_industry_for_ts_code
 
     class _Cur:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def execute(self, sql, params=None): return None
-        def fetchone(self): return ("半导体",)
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            return None
+
+        def fetchone(self):
+            return ("半导体",)
 
     class _Conn:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def cursor(self): return _Cur()
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return _Cur()
 
     with patch("data_sync_service.service.correlation.get_connection", return_value=_Conn()):
         assert em_industry_for_ts_code("688981.SH") == "半导体"
@@ -217,15 +274,27 @@ def test_em_industry_for_ts_code_missing_and_failure() -> None:
     from data_sync_service.service.correlation import em_industry_for_ts_code
 
     class _Cur:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def execute(self, sql, params=None): return None
-        def fetchone(self): return None
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            return None
+
+        def fetchone(self):
+            return None
 
     class _Conn:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def cursor(self): return _Cur()
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return _Cur()
 
     with patch("data_sync_service.service.correlation.get_connection", return_value=_Conn()):
         assert em_industry_for_ts_code("688981.SH") is None
@@ -247,8 +316,11 @@ class _FakeCorrCursor:
         self._rows = rows
         self._calls = 0
 
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
 
     def execute(self, sql, params=None):
         self._calls += 1
@@ -262,8 +334,11 @@ class _FakeCorrConn:
     def __init__(self, rows):
         self._rows = rows
 
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
 
     def cursor(self):
         return _FakeCorrCursor(self._rows)
@@ -273,18 +348,55 @@ def _corr_rows(ts_code: str, closes: list[float], start_day: int = 0) -> list:
     from datetime import date, timedelta
 
     base = date(2026, 7, 1)
-    return [
-        (ts_code, base + timedelta(days=start_day + i), c)
-        for i, c in enumerate(closes)
-    ]
+    return [(ts_code, base + timedelta(days=start_day + i), c) for i, c in enumerate(closes)]
 
 
 def test_correlation_matrix_full_path() -> None:
     # 20 fully-aligned days; identical returns → r = 1.0.
-    closes_a = [100, 101, 103, 105, 108, 110, 112, 115, 118, 120,
-                123, 126, 129, 132, 135, 138, 141, 144, 147, 150]
-    closes_b = [200, 202, 206, 210, 216, 220, 224, 230, 236, 240,
-                246, 252, 258, 264, 270, 276, 282, 288, 294, 300]
+    closes_a = [
+        100,
+        101,
+        103,
+        105,
+        108,
+        110,
+        112,
+        115,
+        118,
+        120,
+        123,
+        126,
+        129,
+        132,
+        135,
+        138,
+        141,
+        144,
+        147,
+        150,
+    ]
+    closes_b = [
+        200,
+        202,
+        206,
+        210,
+        216,
+        220,
+        224,
+        230,
+        236,
+        240,
+        246,
+        252,
+        258,
+        264,
+        270,
+        276,
+        282,
+        288,
+        294,
+        300,
+    ]
     rows = _corr_rows("00700.HK", closes_a) + _corr_rows("513180.SH", closes_b)
     with patch(
         "data_sync_service.service.correlation.get_connection",
@@ -296,8 +408,9 @@ def test_correlation_matrix_full_path() -> None:
 
 
 def test_correlation_matrix_small_sample_fails_open() -> None:
-    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + \
-        _corr_rows("513180.SH", [200 + 2 * i for i in range(10)])
+    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + _corr_rows(
+        "513180.SH", [200 + 2 * i for i in range(10)]
+    )
     with patch(
         "data_sync_service.service.correlation.get_connection",
         return_value=_FakeCorrConn(rows),
@@ -350,16 +463,58 @@ def test_evaluate_correlation_cap_with_matrix() -> None:
         {"symbol": "ETF:513180", "positionPct": 10.0},
         {"symbol": "CN:601899", "positionPct": 10.0},
     ]
-    closes_a = [100, 101, 103, 105, 108, 110, 112, 115, 118, 120,
-                123, 126, 129, 132, 135, 138, 141, 144, 147, 150]
-    closes_b = [200, 202, 206, 210, 216, 220, 224, 230, 236, 240,
-                246, 252, 258, 264, 270, 276, 282, 288, 294, 300]
+    closes_a = [
+        100,
+        101,
+        103,
+        105,
+        108,
+        110,
+        112,
+        115,
+        118,
+        120,
+        123,
+        126,
+        129,
+        132,
+        135,
+        138,
+        141,
+        144,
+        147,
+        150,
+    ]
+    closes_b = [
+        200,
+        202,
+        206,
+        210,
+        216,
+        220,
+        224,
+        230,
+        236,
+        240,
+        246,
+        252,
+        258,
+        264,
+        270,
+        276,
+        282,
+        288,
+        294,
+        300,
+    ]
     rows = _corr_rows("00700.HK", closes_a) + _corr_rows("513180.SH", closes_b)
     with patch(
         "data_sync_service.service.correlation.get_connection",
         return_value=_FakeCorrConn(rows),
     ):
-        out = evaluate_correlation_cap(positions, industries={"CN:601899": "有色金属"}, include_matrix=True)
+        out = evaluate_correlation_cap(
+            positions, industries={"CN:601899": "有色金属"}, include_matrix=True
+        )
     assert out["empiricalNote"] is None
     assert out["topPairs"] == [["HK:00700", "ETF:513180", 1.0]]
 
@@ -369,8 +524,9 @@ def test_evaluate_correlation_cap_matrix_insufficient_sample() -> None:
         {"symbol": "HK:00700", "positionPct": 10.0},
         {"symbol": "ETF:513180", "positionPct": 10.0},
     ]
-    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + \
-        _corr_rows("513180.SH", [200 + 2 * i for i in range(10)])
+    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + _corr_rows(
+        "513180.SH", [200 + 2 * i for i in range(10)]
+    )
     with patch(
         "data_sync_service.service.correlation.get_connection",
         return_value=_FakeCorrConn(rows),

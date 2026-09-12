@@ -6,6 +6,7 @@ paper row on the next calendar session date using day-D close as a placeholder
 and set ``signal_snapshot.pendingOpenFill=true`` so ``run_update`` can patch
 the real open once it lands.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,7 @@ def _next_session_after(signal_day: str, *, calendar_ts: str = "") -> str | None
     except ValueError:
         return None
     end = (start + timedelta(days=20)).isoformat()
-    sessions = open_sessions_between(
-        (start + timedelta(days=1)).isoformat(), end
-    )
+    sessions = open_sessions_between((start + timedelta(days=1)).isoformat(), end)
     return sessions[0] if sessions else None
 
 
@@ -134,9 +133,12 @@ def try_resolve_pending_open(
         return None
     if str(snap.get("entryMode") or "") != "next_open":
         return None
-    bars = fetch_ohlcv_batch_between([ts_code], entry_date[:10], entry_date[:10]).get(
-        str(ts_code).upper()
-    ) or []
+    bars = (
+        fetch_ohlcv_batch_between([ts_code], entry_date[:10], entry_date[:10]).get(
+            str(ts_code).upper()
+        )
+        or []
+    )
     if not bars:
         # last-N may include entry_date once close_sync wrote the bar
         recent = fetch_last_ohlcv_batch([ts_code], days=5).get(str(ts_code).upper()) or []

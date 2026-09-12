@@ -242,7 +242,11 @@ class TestSignalWithEstimatedVolumeOffline:
             "fetch_last_closes_vol_batch",
             lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70},
+        )
 
         signals = mr.get_index_signals(as_of_date=last_date)
         assert len(signals) >= 1
@@ -266,7 +270,11 @@ class TestSignalWithEstimatedVolumeOffline:
             "fetch_last_closes_vol_batch",
             lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70},
+        )
         monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
         signals = mr.get_index_signals(as_of_date=last_date)
@@ -285,8 +293,7 @@ class TestSignalWithEstimatedVolumeOffline:
 
         series = self._make_series_uptrend(base_vol=1e9)
         series = [
-            (d, c, v if i < len(series) - 3 else v * 2.0)
-            for i, (d, c, v) in enumerate(series)
+            (d, c, v if i < len(series) - 3 else v * 2.0) for i, (d, c, v) in enumerate(series)
         ]
         last_date = series[-1][0]
 
@@ -295,7 +302,11 @@ class TestSignalWithEstimatedVolumeOffline:
             "fetch_last_closes_vol_batch",
             lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.75, "total": 100, "above_count": 75})
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **_: {"ratio": 0.75, "total": 100, "above_count": 75},
+        )
         monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_ok)
 
         signals = mr.get_index_signals(as_of_date=last_date)
@@ -341,7 +352,11 @@ class TestReturnValueFields:
             "fetch_last_closes_vol_batch",
             lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70},
+        )
 
         signals = mr.get_index_signals(as_of_date=last_date)
         assert len(signals) >= 1
@@ -367,7 +382,11 @@ class TestReturnValueFields:
             "fetch_last_closes_vol_batch",
             lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70},
+        )
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
 
         signals = mr.get_index_signals(as_of_date=last_date)

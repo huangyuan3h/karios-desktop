@@ -91,7 +91,9 @@ def test_get_stoploss_batch_empty(monkeypatch) -> None:
 
 
 def test_get_stoploss_batch(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchall=[("600000.SH", 10.5, None, "d"), (None, 1.0, None, None)]))
+    cur = _patch(
+        monkeypatch, _Cur(fetchall=[("600000.SH", 10.5, None, "d"), (None, 1.0, None, None)])
+    )
     out = sl.get_stoploss_batch(["600000.SH", "000001.SZ"])
     assert list(out) == ["600000.SH"]
     assert out["600000.SH"]["stop_loss_price"] == 10.5
@@ -115,12 +117,14 @@ def test_upsert_stoploss_no_date(monkeypatch) -> None:
 
 def test_upsert_stoploss_batch(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    n = sl.upsert_stoploss_batch([
-        {"ts_code": "600000.SH", "stop_loss_price": 10.0, "as_of_date": "d1"},
-        {"ts_code": " ", "stop_loss_price": 5.0},  # skipped
-        {"ts_code": "600001.SH", "stop_loss_price": None},  # skipped
-        {"ts_code": "600002.SH", "stop_loss_price": "11.5"},
-    ])
+    n = sl.upsert_stoploss_batch(
+        [
+            {"ts_code": "600000.SH", "stop_loss_price": 10.0, "as_of_date": "d1"},
+            {"ts_code": " ", "stop_loss_price": 5.0},  # skipped
+            {"ts_code": "600001.SH", "stop_loss_price": None},  # skipped
+            {"ts_code": "600002.SH", "stop_loss_price": "11.5"},
+        ]
+    )
     assert n == 2
     assert cur.executemany_args[0][:2] == ("600000.SH", 10.0)
     assert cur.executemany_args[1][1] == 11.5
@@ -171,7 +175,9 @@ def test_compute_effective_no_stored(monkeypatch) -> None:
 def test_compute_effective_upgrade(monkeypatch) -> None:
     monkeypatch.setattr(sl, "get_stoploss", lambda code: {"stop_loss_price": 9.0})
     upserted = {}
-    monkeypatch.setattr(sl, "upsert_stoploss", lambda code, price, as_of_date=None: upserted.update(price=price))
+    monkeypatch.setattr(
+        sl, "upsert_stoploss", lambda code, price, as_of_date=None: upserted.update(price=price)
+    )
     eff, upgraded = sl.compute_effective_stoploss("600000.SH", 9.5)
     assert eff == 9.5 and upgraded is False
     assert upserted == {"price": 9.5}
@@ -179,6 +185,8 @@ def test_compute_effective_upgrade(monkeypatch) -> None:
 
 def test_compute_effective_keeps_stored(monkeypatch) -> None:
     monkeypatch.setattr(sl, "get_stoploss", lambda code: {"stop_loss_price": 10.0})
-    monkeypatch.setattr(sl, "upsert_stoploss", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no upsert")))
+    monkeypatch.setattr(
+        sl, "upsert_stoploss", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no upsert"))
+    )
     eff, upgraded = sl.compute_effective_stoploss("600000.SH", 9.5)
     assert eff == 10.0 and upgraded is True

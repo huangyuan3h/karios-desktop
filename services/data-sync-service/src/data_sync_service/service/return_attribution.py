@@ -12,6 +12,7 @@ Metrics (locked by unit tests):
 
 User trades book is realized SELL pnl by symbol/bucket — not the same NAV path.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -132,9 +133,7 @@ def attribute_by_month(day_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for month in sorted(months.keys()):
         raw = months[month]
-        by_pick = {
-            k: round(v * 100.0, 4) for k, v in sorted(raw.items(), key=lambda x: -abs(x[1]))
-        }
+        by_pick = {k: round(v * 100.0, 4) for k, v in sorted(raw.items(), key=lambda x: -abs(x[1]))}
         out.append(
             {
                 "month": month,
@@ -276,12 +275,7 @@ def attribute_pick_strong(
 def classify_user_symbol(symbol: str) -> str:
     """Map a journal symbol to GOLD/OIL/NASDAQ/BOND10/STOCK_CN/STOCK_HK/OTHER."""
     sym = str(symbol or "").upper()
-    bare = (
-        sym.replace("ETF:", "")
-        .replace(".SH", "")
-        .replace(".SZ", "")
-        .replace(".HK", "")
-    )
+    bare = sym.replace("ETF:", "").replace(".SH", "").replace(".SZ", "").replace(".HK", "")
     if bare in _ETF_BUCKET:
         return _ETF_BUCKET[bare]
     if sym.startswith("HK:"):
@@ -318,9 +312,7 @@ def attribute_user_trades(
 
     for r in in_window:
         sym = str(r.get("symbol") or "")
-        pnl = float(
-            r.get("pnlPct") if r.get("pnlPct") is not None else r.get("pnl_pct") or 0.0
-        )
+        pnl = float(r.get("pnlPct") if r.get("pnlPct") is not None else r.get("pnl_pct") or 0.0)
         st = by_symbol.setdefault(
             sym, {"count": 0, "sumPnlPct": 0.0, "bucket": classify_user_symbol(sym)}
         )

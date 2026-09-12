@@ -92,7 +92,9 @@ def _ema(values: list[float], period: int) -> list[float]:
     return ema_vals
 
 
-def _macd_histogram(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> list[float]:
+def _macd_histogram(
+    closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9
+) -> list[float]:
     if len(closes) < slow + signal:
         return []
     ema_fast = _ema(closes, fast)
@@ -327,7 +329,9 @@ def _get_market_liquidity_and_mainline(
     cached = cache.get(key)
     if cached is not None:
         return dict(cached)
-    result = _compute_market_liquidity_and_mainline(as_of_date=as_of_date, breadth_ratio=breadth_ratio)
+    result = _compute_market_liquidity_and_mainline(
+        as_of_date=as_of_date, breadth_ratio=breadth_ratio
+    )
     cache[key] = dict(result)
     return result
 
@@ -356,7 +360,9 @@ def _compute_market_liquidity_and_mainline(
         if breadth and "total_turnover_cny" in breadth:
             total_turnover_cny = float(breadth.get("total_turnover_cny") or 0.0)
     except Exception:
-        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
+        logger.warning(
+            "_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True
+        )
     today_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
     if dt == today_cn and total_turnover_cny == 0.0:
         try:
@@ -366,7 +372,9 @@ def _compute_market_liquidity_and_mainline(
                 if turnover_rt > 0.0:
                     total_turnover_cny = turnover_rt
         except Exception:
-            logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
+            logger.warning(
+                "_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True
+            )
     date_str = dt.isoformat()
     try:
         rows = get_rows_by_date(date_str)
@@ -374,7 +382,9 @@ def _compute_market_liquidity_and_mainline(
             inflows = [float(r.get("net_inflow") or 0.0) for r in rows]
             max_industry_inflow = max(inflows) if inflows else 0.0
     except Exception:
-        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
+        logger.warning(
+            "_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True
+        )
     turnover_above_1_5T = total_turnover_cny >= 1.5e12
     mainline_inflow_above_5B = max_industry_inflow >= 5e9
 
@@ -723,9 +733,7 @@ def _compute_index_signals(
         # 2026-08-10 (HK parallel line): as-of mode must bound HSI/HSTECH to
         # trade_date <= as_of_date — fetch_macro_last_closes now accepts the
         # bound; without it every historical date saw today's prices.
-        series_raw = fetch_macro_last_closes(
-            series_id, days=HISTORY_DAYS, as_of_date=use_as_of
-        )
+        series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS, as_of_date=use_as_of)
         if not series_raw or _hsi_series_stale(series_raw):
             if use_as_of:
                 # as-of mode: never fetch on demand — today's network data
@@ -934,7 +942,9 @@ def _regime_from_signals(index_signals: list[dict[str, Any]]) -> tuple[str, str 
         cn = [x for x in index_signals if isinstance(x, dict)][:2]
     if len(cn) < 2:
         return "Weak", None
-    greens = sum(1 for x in cn if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    greens = sum(
+        1 for x in cn if str(x.get("signal") or "") in ("green", "light_green", "deep_green")
+    )
     if greens == len(cn):
         return "Strong", None
     if greens > 0:
@@ -980,7 +990,9 @@ def get_hk_regime(*, as_of_date: str | None = None) -> dict[str, Any]:
     ]
     if len(hk) < 2:
         return {"regime": "Weak", "bias": None, "indexSignals": hk}
-    greens = sum(1 for x in hk if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    greens = sum(
+        1 for x in hk if str(x.get("signal") or "") in ("green", "light_green", "deep_green")
+    )
     if greens == len(hk):
         return {"regime": "Strong", "bias": None, "indexSignals": hk}
     if greens > 0:
@@ -1032,9 +1044,7 @@ def _strength_structure_votes(closes: list[float]) -> tuple[int, int]:
     return votes, total
 
 
-def regime_strength_score(
-    *, as_of_date: str | None = None, market: str = "CN"
-) -> dict[str, Any]:
+def regime_strength_score(*, as_of_date: str | None = None, market: str = "CN") -> dict[str, Any]:
     """Market strength in [0, 100] on the shared CN/HK ruler (T2).
 
     Returns {"market", "regime", "strength", "components", "signals"}.
@@ -1050,7 +1060,8 @@ def regime_strength_score(
     signals = get_index_signals(as_of_date=use_as_of, include_breadth=False)
     if market == "HK":
         rows = [
-            x for x in signals
+            x
+            for x in signals
             if str(x.get("tsCode") or x.get("seriesId") or x.get("series_id") or "").strip()
             in ("HSI", "HSTECH")
         ]
@@ -1081,7 +1092,9 @@ def regime_strength_score(
         raw_map = fetch_last_closes_vol_batch(cn_codes, days=HISTORY_DAYS, as_of_date=use_as_of)
         series_map = {code: [float(c) for _, c, _ in raw_map.get(code, [])] for code in cn_codes}
 
-    greens = sum(1 for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    greens = sum(
+        1 for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green")
+    )
     green_score = _STRENGTH_GREEN_CAP * greens / len(rows)
 
     mom_scores: list[float] = []
@@ -1100,7 +1113,9 @@ def regime_strength_score(
     structure_score = sum(struct_scores) / len(struct_scores) if struct_scores else 0.0
     strength = round(green_score + momentum_score + structure_score, 2)
 
-    greens_rank = len([x for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green")])
+    greens_rank = len(
+        [x for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green")]
+    )
     if greens_rank == len(rows):
         regime = "Strong"
     elif greens_rank > 0:

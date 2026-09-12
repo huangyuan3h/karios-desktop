@@ -86,7 +86,9 @@ def test_sync_single_success_clears_cache(monkeypatch) -> None:
     cleared = {"n": 0}
     from data_sync_service.service import trendok as tk
 
-    monkeypatch.setattr(tk, "clear_trendok_cache", lambda: cleared.__setitem__("n", cleared["n"] + 1))
+    monkeypatch.setattr(
+        tk, "clear_trendok_cache", lambda: cleared.__setitem__("n", cleared["n"] + 1)
+    )
     pro = _patch(monkeypatch, last=date(2026, 8, 6))
     pro.df = pd.DataFrame({"ts_code": ["600000.SH"], "trade_date": ["20260807"]})
     out = dl.sync_daily_for_ts_code("600000.SH")
@@ -132,16 +134,24 @@ def test_sync_full_no_list(monkeypatch) -> None:
 
 
 def test_sync_full_resume(monkeypatch) -> None:
-    pro = _patch(monkeypatch, ts_codes=["600000.SH", "600001.SH", "600002.SH"],
-                 run={"success": False, "last_ts_code": "600001.SH"}, last=date(2026, 8, 6))
+    pro = _patch(
+        monkeypatch,
+        ts_codes=["600000.SH", "600001.SH", "600002.SH"],
+        run={"success": False, "last_ts_code": "600001.SH"},
+        last=date(2026, 8, 6),
+    )
     out = dl.sync_daily_full()
     assert out["ok"] is True
     assert pro.calls[0]["ts_code"] == "600002.SH"
 
 
 def test_sync_full_resume_unknown(monkeypatch) -> None:
-    pro = _patch(monkeypatch, ts_codes=["600000.SH"],
-                 run={"success": False, "last_ts_code": "x.X"}, last=date(2026, 8, 6))
+    pro = _patch(
+        monkeypatch,
+        ts_codes=["600000.SH"],
+        run={"success": False, "last_ts_code": "x.X"},
+        last=date(2026, 8, 6),
+    )
     assert dl.sync_daily_full()["ok"] is True
     assert pro.calls[0]["ts_code"] == "600000.SH"
 

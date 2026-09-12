@@ -267,10 +267,7 @@ def _seat_rows_from_report(
     ticker = _ts_code_to_ticker(ts_code)
     if not ticker:
         return []
-    filter_expr = (
-        f'(SECURITY_CODE="{ticker}")'
-        f"{_em_trade_date_filter(trade_date_iso)}"
-    )
+    filter_expr = f'(SECURITY_CODE="{ticker}"){_em_trade_date_filter(trade_date_iso)}'
     sort_col = "BUY" if side == "buy" else "SELL"
     try:
         rows = _em_fetch_pages(
@@ -371,7 +368,9 @@ def fetch_em_seat_bundles_parallel(
     out: dict[str, EastMoneySeatBundle] = {}
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(fetch_em_seat_bundle, ts_code=ts_code, trade_date_iso=trade_date_iso): ts_code
+            executor.submit(
+                fetch_em_seat_bundle, ts_code=ts_code, trade_date_iso=trade_date_iso
+            ): ts_code
             for ts_code in wanted
         }
         for future in as_completed(futures):
@@ -428,7 +427,9 @@ def normalize_tushare_top_list_rows(rows: list[dict[str, Any]]) -> set[str]:
 
 def normalize_tushare_top_inst_rows(
     rows: list[dict[str, Any]],
-) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+) -> tuple[
+    dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]
+]:
     org_net_by_ticker: dict[str, float] = {}
     reasons_by_ticker: dict[str, str] = {}
     buy_seats_by_ts_code: dict[str, list[dict[str, Any]]] = {}
@@ -506,7 +507,11 @@ def fetch_eastmoney_top_inst_on_date(trade_date_iso: str) -> TopInstProviderResu
 
 def _configured_top_inst_providers() -> list[str]:
     raw = os.getenv(TOP_INST_PROVIDER_ENV, "").strip()
-    names = [p.strip().lower() for p in raw.split(",") if p.strip()] if raw else list(DEFAULT_TOP_INST_PROVIDERS)
+    names = (
+        [p.strip().lower() for p in raw.split(",") if p.strip()]
+        if raw
+        else list(DEFAULT_TOP_INST_PROVIDERS)
+    )
     out: list[str] = []
     for name in names:
         if name in SUPPORTED_TOP_INST_PROVIDERS and name not in out:
@@ -699,7 +704,9 @@ def _missing_summary_codes(ts_codes: list[str], *, trade_date_iso: str) -> list[
     return [code for code in ts_codes if code not in existing]
 
 
-def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = None) -> dict[str, Any]:
+def sync_top_inst_watchlist(
+    *, force: bool = False, trade_date: str | None = None
+) -> dict[str, Any]:
     """Sync dragon-tiger institutional flow for watchlist CN symbols."""
     ensure_table()
 
@@ -900,7 +907,9 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
         "fallbackUsed": bool(provider_errors),
         "providerErrors": provider_errors,
         "onBoardCount": on_board_count,
-        "lhbCount": provider_result.lhb_count if provider_result.lhb_count is not None else len(lhb_tickers),
+        "lhbCount": provider_result.lhb_count
+        if provider_result.lhb_count is not None
+        else len(lhb_tickers),
         "orgTradeCount": (
             provider_result.org_trade_count
             if provider_result.org_trade_count is not None

@@ -54,7 +54,12 @@ def run() -> dict[str, Any] | None:
             markdown=md,
         )
         insert_record(JOB_ID, True, None)
-        logger.info("[weekly_review] generated %s (%s) markdown=%d chars", end_date, brief.get("id"), len(md))
+        logger.info(
+            "[weekly_review] generated %s (%s) markdown=%d chars",
+            end_date,
+            brief.get("id"),
+            len(md),
+        )
         return {"endDate": end_date, "briefId": brief.get("id"), "markdownChars": len(md)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("[weekly_review] failed: %s", exc)

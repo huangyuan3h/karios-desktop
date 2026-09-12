@@ -183,9 +183,7 @@ def list_trades(*, limit: int = 50, symbol: str | None = None) -> list[dict[str,
 def delete_trade(trade_id: str) -> bool:
     """Delete one leg (corrections only). Returns True if a row was removed."""
     with get_connection() as conn, conn.cursor() as cur:
-        cur.execute(
-            f"DELETE FROM {USER_TRADES_TABLE} WHERE id = %s", (trade_id,)
-        )
+        cur.execute(f"DELETE FROM {USER_TRADES_TABLE} WHERE id = %s", (trade_id,))
         return cur.rowcount > 0
 
 

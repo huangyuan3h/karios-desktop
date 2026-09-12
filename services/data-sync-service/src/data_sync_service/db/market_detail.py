@@ -150,4 +150,3 @@ def upsert_fund_flow(symbol: str, items: list[dict[str, Any]], *, updated_at: st
                 values,
             )
         conn.commit()
-

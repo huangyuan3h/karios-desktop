@@ -28,8 +28,17 @@ MORNING_MODEL_VERSION = "brief-v2"
 
 # Exclude backward-looking patterns from brief
 EXCLUDE_TITLE_PATTERNS = [
-    "月度总结", "回顾", "月跌", "月涨", "上半年回顾", "年度回顾",
-    "YTD", "Year-to-date", "月报", "半年报", "年报",
+    "月度总结",
+    "回顾",
+    "月跌",
+    "月涨",
+    "上半年回顾",
+    "年度回顾",
+    "YTD",
+    "Year-to-date",
+    "月报",
+    "半年报",
+    "年报",
 ]
 
 # Category assignment rules
@@ -80,9 +89,7 @@ def _load_watchlist_context() -> tuple[set[str], set[str]]:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 # Load registry with payload (contains positionPct)
-                cur.execute(
-                    "SELECT symbol, payload FROM watchlist_registry"
-                )
+                cur.execute("SELECT symbol, payload FROM watchlist_registry")
                 for row in cur.fetchall():
                     sym = str(row[0])
                     payload = row[1] if isinstance(row[1], dict) else {}
@@ -258,8 +265,7 @@ def select_brief_items(hours: int = 24, limit: int = 200) -> list[dict[str, Any]
 
     # Score and sort
     scored = [
-        (item, _score_item(item, held_symbols, held_sectors, watched_symbols))
-        for item in enriched
+        (item, _score_item(item, held_symbols, held_sectors, watched_symbols)) for item in enriched
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
 
@@ -267,22 +273,24 @@ def select_brief_items(hours: int = 24, limit: int = 200) -> list[dict[str, Any]
     result = []
     for item, score in scored[:BRIEF_SIZE]:
         category = _assign_category(item, watched_symbols)
-        result.append({
-            "id": item["id"],
-            "title": item["title"],
-            "sourceId": item.get("sourceId"),
-            "publishedAt": item.get("publishedAt"),
-            "tickers": item.get("tickers") or [],
-            "sectors": item.get("sectors") or [],
-            "eventType": item.get("eventType"),
-            "importance": item.get("importance"),
-            "relevanceScore": item.get("relevanceScore"),
-            "aiSummary": item.get("aiSummary"),
-            "actionability": item.get("actionability"),
-            "link": item.get("link"),
-            "score": round(score, 1),
-            "category": category,
-        })
+        result.append(
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "sourceId": item.get("sourceId"),
+                "publishedAt": item.get("publishedAt"),
+                "tickers": item.get("tickers") or [],
+                "sectors": item.get("sectors") or [],
+                "eventType": item.get("eventType"),
+                "importance": item.get("importance"),
+                "relevanceScore": item.get("relevanceScore"),
+                "aiSummary": item.get("aiSummary"),
+                "actionability": item.get("actionability"),
+                "link": item.get("link"),
+                "score": round(score, 1),
+                "category": category,
+            }
+        )
 
     return result
 

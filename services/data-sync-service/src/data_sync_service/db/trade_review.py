@@ -127,7 +127,9 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
-def fetch_all(limit: int = 50, offset: int = 0, symbol: str | None = None) -> tuple[int, list[dict[str, Any]]]:
+def fetch_all(
+    limit: int = 50, offset: int = 0, symbol: str | None = None
+) -> tuple[int, list[dict[str, Any]]]:
     """Return total and paginated trade reviews."""
     ensure_table()
     lim = max(1, min(int(limit), 200))
@@ -258,7 +260,9 @@ def create_review(
     return fetch_by_id(review_id) or {}
 
 
-def update_review(*, review_id: str, payload: dict[str, Any], updated_at: str) -> dict[str, Any] | None:
+def update_review(
+    *, review_id: str, payload: dict[str, Any], updated_at: str
+) -> dict[str, Any] | None:
     """Patch-update trade review. Only fields present in payload are updated."""
     ensure_table()
     existing = fetch_by_id(review_id)

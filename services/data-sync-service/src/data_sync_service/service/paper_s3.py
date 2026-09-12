@@ -471,7 +471,9 @@ def build_s3_candidates(
         flow_ok = True
         mainline: set[str] = set()
     else:
-        flow_any_positive_by_day, mainline_allow_by_day, _flow5d = _load_flow_mainline_data(cfg, [day])
+        flow_any_positive_by_day, mainline_allow_by_day, _flow5d = _load_flow_mainline_data(
+            cfg, [day]
+        )
         flow_ok = flow_any_positive_by_day.get(day, False)
         if not flow_ok:
             return []
@@ -485,14 +487,8 @@ def build_s3_candidates(
         # the valid window.
         s_up = int(sentiment_items[-1].get("upCount") or 0) if sentiment_items else 0
         s_down = int(sentiment_items[-1].get("downCount") or 0) if sentiment_items else 0
-        breadth_weak = (
-            s_up > 0 and s_down > 0 and (s_up / s_down) < WEAK_RATIO_MAX
-        )
-        if (
-            today_mode in SENTIMENT_BLOCK_MODES
-            or breadth_weak
-            or panic.get("active")
-        ):
+        breadth_weak = s_up > 0 and s_down > 0 and (s_up / s_down) < WEAK_RATIO_MAX
+        if today_mode in SENTIMENT_BLOCK_MODES or breadth_weak or panic.get("active"):
             return []
         industry_by_ts = _load_industries(list(resolved.values()))
 
@@ -576,7 +572,11 @@ def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
 
 
 def _pyramid_adds(
-    *, day: str, holds: list[dict[str, Any]], closes: dict[str, float], source: str = SOURCE_S3,
+    *,
+    day: str,
+    holds: list[dict[str, Any]],
+    closes: dict[str, float],
+    source: str = SOURCE_S3,
     sleeve_scale: float = 1.0,
 ) -> int:
     """S-3 pyramiding: add a half sleeve at same-day close when the main leg
@@ -751,6 +751,7 @@ def _alpha_key(symbol: str) -> str:
         return "HK:" + symbol[3:].zfill(5)
     return symbol
 
+
 def _hk_session_count(from_iso: str, to_iso: str) -> int | None:
     """HK open sessions in [from, to] from HK bars; None on any failure."""
     try:
@@ -812,8 +813,12 @@ def _hk_settled_cash(*, day: str) -> dict[str, Any]:
             if ep > 0 and cp > 0 and sv > 0:
                 unsettled += sv * cp / ep
         out.update(
-            {"ok": True, "settled": 1.0 - deployed - unsettled,
-             "deployed": deployed, "unsettled": unsettled}
+            {
+                "ok": True,
+                "settled": 1.0 - deployed - unsettled,
+                "deployed": deployed,
+                "unsettled": unsettled,
+            }
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 HK settle ledger failed (fallback): %s", exc)
@@ -870,7 +875,9 @@ def run_intake_s3(
         holds0 = _s3_open_holds(source=source)
         if holds0:
             closes0 = _fetch_closes([str(h.get("tsCode") or "") for h in holds0 if h.get("tsCode")])
-            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0, source=source, sleeve_scale=sleeve_scale)
+            summary["pyramidAdded"] = _pyramid_adds(
+                day=day, holds=holds0, closes=closes0, source=source, sleeve_scale=sleeve_scale
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 pyramiding failed: %s", exc)
 
@@ -901,8 +908,12 @@ def run_intake_s3(
             all_ts = sorted(hold_ts | {c["ts_code"] for c in candidates})
             closes = _fetch_closes(all_ts)
             swapped_cands, candidates = _swap_holds_for_candidates(
-                day=day, holds=holds, candidates=candidates,
-                rs_by_ts=rs_by_ts, closes=closes, market=market,
+                day=day,
+                holds=holds,
+                candidates=candidates,
+                rs_by_ts=rs_by_ts,
+                closes=closes,
+                market=market,
             )
             summary["swappedOut"] = len(swapped_cands)
     except Exception as exc:  # noqa: BLE001
@@ -915,7 +926,11 @@ def run_intake_s3(
     if sleeve_scale <= 0:
         # T4: this market has no capital this week (R5c) — no NEW positions.
         summary["skipped"] += len(candidates) + len(swapped_cands)
-        summary["skippedReasons"]["allocation-zero"] = summary["skippedReasons"].get("allocation-zero", 0) + len(candidates) + len(swapped_cands)
+        summary["skippedReasons"]["allocation-zero"] = (
+            summary["skippedReasons"].get("allocation-zero", 0)
+            + len(candidates)
+            + len(swapped_cands)
+        )
         return summary
 
     # D3 (2026-08-15): env-aware sleeve — uptrend 1.25x / fan 0.75x (CN only;
@@ -954,9 +969,6 @@ def run_intake_s3(
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 stock basic lookup failed: %s", exc)
 
-
-
-
     closes: dict[str, float] = {}
     try:
         bars_by_ts = fetch_last_ohlcv_batch(ts_codes, days=2)
@@ -981,12 +993,16 @@ def run_intake_s3(
         px = cand.get("entry_price") or closes.get(ts)
         if px is None or px <= 0:
             summary["skipped"] += 1
-            summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
+            summary["skippedReasons"]["no-close-price"] = (
+                summary["skippedReasons"].get("no-close-price", 0) + 1
+            )
             continue
         fill = resolve_next_open_fill(ts, day, signal_close=float(px))
         if fill is None:
             summary["skipped"] += 1
-            summary["skippedReasons"]["no-next-open"] = summary["skippedReasons"].get("no-next-open", 0) + 1
+            summary["skippedReasons"]["no-next-open"] = (
+                summary["skippedReasons"].get("no-next-open", 0) + 1
+            )
             continue
         name = by_name.get(ts)
         why = (
@@ -995,7 +1011,9 @@ def run_intake_s3(
         )
         snap = merge_entry_snapshot(
             _signal_snapshot_for(
-                symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                symbol=cand["symbol"],
+                industry=cand.get("industry"),
+                trade_date=day,
             ),
             fill,
         )
@@ -1015,16 +1033,25 @@ def run_intake_s3(
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
             summary["skipped"] += 1
-            summary["skippedReasons"]["insert-error"] = summary["skippedReasons"].get("insert-error", 0) + 1
+            summary["skippedReasons"]["insert-error"] = (
+                summary["skippedReasons"].get("insert-error", 0) + 1
+            )
             continue
         if row is None:
             summary["skipped"] += 1
-            summary["skippedReasons"]["duplicate"] = summary["skippedReasons"].get("duplicate", 0) + 1
+            summary["skippedReasons"]["duplicate"] = (
+                summary["skippedReasons"].get("duplicate", 0) + 1
+            )
             continue
         summary["swappedIn"] += 1
         summary.setdefault("symbols", []).append(
-            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": sleeve,
-             "swappedIn": True}
+            {
+                "symbol": cand["symbol"],
+                "name": name,
+                "score": cand["score"],
+                "sleevePct": sleeve,
+                "swappedIn": True,
+            }
         )
 
     for cand in candidates:
@@ -1032,19 +1059,25 @@ def run_intake_s3(
         px = closes.get(ts)
         if px is None or px <= 0:
             summary["skipped"] += 1
-            summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
+            summary["skippedReasons"]["no-close-price"] = (
+                summary["skippedReasons"].get("no-close-price", 0) + 1
+            )
             continue
         if market == "HK" and settle_ok:
             need = float(sleeve) * (1.0 + entry_cost_frac("HK"))
             if settled_cash + 1e-9 < need:
                 summary["skipped"] += 1
-                summary["skippedReasons"]["settle-lock"] = summary["skippedReasons"].get("settle-lock", 0) + 1
+                summary["skippedReasons"]["settle-lock"] = (
+                    summary["skippedReasons"].get("settle-lock", 0) + 1
+                )
                 continue
             settled_cash -= need
         fill = resolve_next_open_fill(ts, day, signal_close=float(px))
         if fill is None:
             summary["skipped"] += 1
-            summary["skippedReasons"]["no-next-open"] = summary["skippedReasons"].get("no-next-open", 0) + 1
+            summary["skippedReasons"]["no-next-open"] = (
+                summary["skippedReasons"].get("no-next-open", 0) + 1
+            )
             continue
         name = by_name.get(ts)
         why = (
@@ -1053,7 +1086,9 @@ def run_intake_s3(
         )
         snap = merge_entry_snapshot(
             _signal_snapshot_for(
-                symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                symbol=cand["symbol"],
+                industry=cand.get("industry"),
+                trade_date=day,
             ),
             fill,
         )
@@ -1073,11 +1108,15 @@ def run_intake_s3(
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 insert failed for %s: %s", cand["symbol"], exc)
             summary["skipped"] += 1
-            summary["skippedReasons"]["insert-error"] = summary["skippedReasons"].get("insert-error", 0) + 1
+            summary["skippedReasons"]["insert-error"] = (
+                summary["skippedReasons"].get("insert-error", 0) + 1
+            )
             continue
         if row is None:
             summary["skipped"] += 1
-            summary["skippedReasons"]["duplicate"] = summary["skippedReasons"].get("duplicate", 0) + 1
+            summary["skippedReasons"]["duplicate"] = (
+                summary["skippedReasons"].get("duplicate", 0) + 1
+            )
             continue
         summary["inserted"] += 1
         summary.setdefault("symbols", []).append(

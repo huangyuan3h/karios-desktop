@@ -5,6 +5,7 @@ measure predictive power without new DB sync. Watchlist-scale IC is
 trend-only (N ~ 5000), not statistically decisive — results carry sample
 size warnings per spec.
 """
+
 from __future__ import annotations
 
 import math
@@ -17,6 +18,7 @@ def _spearman(x: list[float], y: list[float]) -> float | None:
     n = len(x)
     if n < 10:
         return None
+
     # rank (average for ties)
     def rank_vals(v: list[float]) -> list[float]:
         sorted_idx = sorted(range(n), key=lambda i: v[i])
@@ -161,7 +163,14 @@ def compute_signal_ic(
                 ics.append(ic)
                 ns.append(len(xs))
         if not ics:
-            out[h] = {"mean_ic": None, "icir": None, "hit_rate": None, "n_days": 0, "avg_n": 0, "ics": []}
+            out[h] = {
+                "mean_ic": None,
+                "icir": None,
+                "hit_rate": None,
+                "n_days": 0,
+                "avg_n": 0,
+                "ics": [],
+            }
             continue
         mean_ic = sum(ics) / len(ics)
         # sample std
@@ -244,7 +253,9 @@ def analyze_signals(
         horizons = [1, 3, 5, 10]
     # Enable RS and liquidity so BacktestData loads those signals
     # (defaults disable them; S-3 uses 0.5 / 0.7)
-    cfg = BacktestConfig(start_date=start_date, end_date=end_date, rs_rank_min=0.5, min_avg_amount=0.7)
+    cfg = BacktestConfig(
+        start_date=start_date, end_date=end_date, rs_rank_min=0.5, min_avg_amount=0.7
+    )
     data = BacktestData(cfg)
 
     # warn if thin
@@ -257,7 +268,10 @@ def analyze_signals(
         "warnings": [],
     }
     if n_days < 30 or n_ts < 100:
-        results["warnings"].append(f"thin sample N_days={n_days} N_ts={n_ts} — IC is trend-only, N<100 not decisive (TIP-013 spec)")
+        results["warnings"].append(
+            f"thin sample N_days={n_days} N_ts={n_ts} — IC is trend-only, N<100 not decisive (TIP-013 spec)"
+        )
+
     # signal getters
     def make_getter(name: str):
         if name == "score":
@@ -269,7 +283,11 @@ def analyze_signals(
             return lambda day, ts: data.avg_amount_by_day.get(day, {}).get(ts)
         if name == "flow5d":
             # flow5d is per-industry, map via industry_by_ts
-            return lambda day, ts: data.flow5d_by_day.get(day, {}).get(data.industry_by_ts.get(ts, "")) if hasattr(data, "flow5d_by_day") else None
+            return lambda day, ts: (
+                data.flow5d_by_day.get(day, {}).get(data.industry_by_ts.get(ts, ""))
+                if hasattr(data, "flow5d_by_day")
+                else None
+            )
         if name == "mom20":
             return lambda day, ts: _mom_20(data, ts, day)
         if name == "vol20":

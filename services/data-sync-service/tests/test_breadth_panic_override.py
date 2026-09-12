@@ -76,7 +76,9 @@ def test_build_market_sentiment_bundle_applies_breadth_panic(monkeypatch) -> Non
     monkeypatch.setattr(dashboard, "compute_srv_index", lambda **_: None)
     monkeypatch.setattr(dashboard, "compute_execution_gate", lambda **_: {"mode": "DEFENSE"})
 
-    out = dashboard._build_market_sentiment_bundle(as_of_date="2026-05-29", use_realtime_index=False)
+    out = dashboard._build_market_sentiment_bundle(
+        as_of_date="2026-05-29", use_realtime_index=False
+    )
     latest = out["items"][-1]
     assert latest["riskMode"] == "extreme_caution"
     # 2026-08-12: panic 不再改红绿灯原色（对齐回测口径）——panic 由

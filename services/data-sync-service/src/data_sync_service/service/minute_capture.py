@@ -43,10 +43,10 @@ REQUEST_TIMEOUT = 20
 # the block in the first place.
 EM_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 EM_REFERER = "https://quote.eastmoney.com/"
-EM_GENTLE_DELAY_SECONDS = 1.5     # between individual requests
-EM_PAUSE_EVERY = 30               # every N requests…
-EM_PAUSE_SECONDS = 10.0           # …pause this long
-EM_MAX_DAYS_PER_CALL = 5          # beg..end span per request (5 trading days)
+EM_GENTLE_DELAY_SECONDS = 1.5  # between individual requests
+EM_PAUSE_EVERY = 30  # every N requests…
+EM_PAUSE_SECONDS = 10.0  # …pause this long
+EM_MAX_DAYS_PER_CALL = 5  # beg..end span per request (5 trading days)
 
 CN_DAYS = 5  # unused placeholder — no history on minute endpoints
 
@@ -63,7 +63,7 @@ def _fetch_tencent(code: str, kind: str) -> list[dict[str, Any]] | None:
     )
     txt = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT).read().decode("utf-8", "ignore")
     if "=" in txt[:200]:
-        txt = txt[txt.index("=") + 1:]
+        txt = txt[txt.index("=") + 1 :]
     import json
 
     d = json.loads(txt)
@@ -84,11 +84,17 @@ def _fetch_tencent(code: str, kind: str) -> list[dict[str, Any]] | None:
             continue
         if px <= 0:
             continue
-        rows.append({
-            "time": t,
-            "open": px, "high": px, "low": px, "close": px,
-            "vol": v, "amount": amt,
-        })
+        rows.append(
+            {
+                "time": t,
+                "open": px,
+                "high": px,
+                "low": px,
+                "close": px,
+                "vol": v,
+                "amount": amt,
+            }
+        )
     return rows if rows else None
 
 
@@ -192,20 +198,31 @@ def _em_fetch_5m(secid: str, beg: str, end: str) -> list[dict[str, Any]] | None:
         # "2026-08-12 15:55", o, c, h, low, vol, amount, _
         try:
             dt, o, c, h, low, v, amt = (
-                parts[0], float(parts[1]), float(parts[2]),
-                float(parts[3]), float(parts[4]), float(parts[5]), float(parts[6]),
+                parts[0],
+                float(parts[1]),
+                float(parts[2]),
+                float(parts[3]),
+                float(parts[4]),
+                float(parts[5]),
+                float(parts[6]),
             )
         except (TypeError, ValueError):
             continue
         if c <= 0:
             continue
         trade_date, _, hm = dt.partition(" ")
-        rows.append({
-            "trade_date": trade_date,
-            "time": hm.replace(":", "")[:4],
-            "open": o, "high": h, "low": low, "close": c,
-            "vol": v, "amount": amt,
-        })
+        rows.append(
+            {
+                "trade_date": trade_date,
+                "time": hm.replace(":", "")[:4],
+                "open": o,
+                "high": h,
+                "low": low,
+                "close": c,
+                "vol": v,
+                "amount": amt,
+            }
+        )
     return rows
 
 

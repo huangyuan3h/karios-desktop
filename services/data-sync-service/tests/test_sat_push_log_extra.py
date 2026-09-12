@@ -57,8 +57,15 @@ def _screen():
         "gateOpen": True,
         "breadth": 0.519,
         "snapshotAt": "2026-09-09T14:30:00+08:00",
-        "candidates": [{"ts": "300308.SZ", "amp": 3.68, "gapPct": 3.34,
-                        "stage": "S2-advance/climax", "stageTier": "0"}],
+        "candidates": [
+            {
+                "ts": "300308.SZ",
+                "amp": 3.68,
+                "gapPct": 3.34,
+                "stage": "S2-advance/climax",
+                "stageTier": "0",
+            }
+        ],
         "alternates": [{"ts": "600903.SH", "amp": 4.43, "gapPct": 2.1}],
         "blocked": [],
         "skippedC1": [{"ts": "999999.SZ", "amp": 9.9, "gapPct": 9.0}],

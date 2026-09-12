@@ -131,7 +131,13 @@ def test_record_invalid_side_rejected() -> None:
 def test_record_invalid_leg_rejected() -> None:
     r = client.post(
         "/trades",
-        json={"symbol": "CN:688525", "side": "BUY", "price": 221.0, "positionPct": 12.5, "leg": "x"},
+        json={
+            "symbol": "CN:688525",
+            "side": "BUY",
+            "price": 221.0,
+            "positionPct": 12.5,
+            "leg": "x",
+        },
     )
     assert r.status_code == 400
 
@@ -141,14 +147,27 @@ def test_record_leg_passthrough(monkeypatch) -> None:
     monkeypatch.setattr(
         ur,
         "insert_trade",
-        lambda **kw: (seen.update(kw), {
-            "id": "t9", "symbol": kw["symbol"], "side": kw["side"], "price": kw["price"],
-            "positionPct": kw["position_pct"], "leg": kw.get("leg", "s3"),
-        })[1],
+        lambda **kw: (
+            seen.update(kw),
+            {
+                "id": "t9",
+                "symbol": kw["symbol"],
+                "side": kw["side"],
+                "price": kw["price"],
+                "positionPct": kw["position_pct"],
+                "leg": kw.get("leg", "s3"),
+            },
+        )[1],
     )
     r = client.post(
         "/trades",
-        json={"symbol": "CN:688525", "side": "BUY", "price": 221.0, "positionPct": 12.5, "leg": "sat"},
+        json={
+            "symbol": "CN:688525",
+            "side": "BUY",
+            "price": 221.0,
+            "positionPct": 12.5,
+            "leg": "sat",
+        },
     )
     assert r.status_code == 200
     assert seen.get("leg") == "sat"
@@ -184,8 +203,14 @@ def test_record_trade_captures_alpha_snapshot(monkeypatch) -> None:
         "maxConfidence": 0.9,
         "riskStatuses": ["active"],
         "events": [
-            {"trend": "x", "grade": "A", "confidence": 0.9, "daysAgo": 2,
-             "riskStatus": "active", "focus": "y"},
+            {
+                "trend": "x",
+                "grade": "A",
+                "confidence": 0.9,
+                "daysAgo": 2,
+                "riskStatus": "active",
+                "focus": "y",
+            },
         ],
     }
     monkeypatch.setattr(ur, "_alpha_snapshot_for", lambda symbol, trade_date: snap)
@@ -223,8 +248,11 @@ def test_delete_trade() -> None:
 
 def test_patch_trade_leg(monkeypatch) -> None:
     monkeypatch.setattr(
-        ur, "update_trade",
-        lambda trade_id, **kw: {"id": trade_id, "leg": kw.get("leg", "s3")} if trade_id == "t1" else None,
+        ur,
+        "update_trade",
+        lambda trade_id, **kw: (
+            {"id": trade_id, "leg": kw.get("leg", "s3")} if trade_id == "t1" else None
+        ),
     )
     r = client.patch("/trades/t1", json={"leg": "sat"})
     assert r.status_code == 200

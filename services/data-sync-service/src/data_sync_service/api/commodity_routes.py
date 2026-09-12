@@ -10,6 +10,7 @@ from data_sync_service.service.portfolio_health import _health_block
 
 router = APIRouter(prefix="/commodities", tags=["commodities"])
 
+
 @router.get("/signals")
 def get_signals():
     return all_signals()
@@ -23,7 +24,11 @@ def get_sleeve(day: str | None = None):
     cn_block = _health_block(market="CN", day=d)
     # Use real watchlist holdings so idlePct/message reflects today's manual buys (e.g. 513350 bought 2026-08-24)
     raw_holdings = [
-        {"symbol": str(r.get("symbol") or "").upper(), "positionPct": (r.get("payload") or {}).get("positionPct", r.get("positionPct")), "ts_code": r.get("ts_code")}
+        {
+            "symbol": str(r.get("symbol") or "").upper(),
+            "positionPct": (r.get("payload") or {}).get("positionPct", r.get("positionPct")),
+            "ts_code": r.get("ts_code"),
+        }
         for r in list_registry()
         if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
     ]
@@ -38,7 +43,11 @@ def get_sleeve_paper(day: str | None = None):
     cn_block = _health_block(market="CN", day=d)
     open_trades = list_paper_trades(status="open")
     holdings = [
-        {"symbol": t.get("symbol"), "ts_code": t.get("ts_code"), "sleeve_pct": t.get("sleeve_pct") or 0}
+        {
+            "symbol": t.get("symbol"),
+            "ts_code": t.get("ts_code"),
+            "sleeve_pct": t.get("sleeve_pct") or 0,
+        }
         for t in open_trades
         if str(t.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
     ]

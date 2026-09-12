@@ -221,8 +221,13 @@ def sync_account_from_images(
 
         if kind == "account_overview":
             overview = data2
-        elif kind == "positions" and overview is None and any(
-            k in data2 for k in ("totalAssets", "securitiesValue", "cashAvailable", "withdrawable")
+        elif (
+            kind == "positions"
+            and overview is None
+            and any(
+                k in data2
+                for k in ("totalAssets", "securitiesValue", "cashAvailable", "withdrawable")
+            )
         ):
             overview = data2
 
@@ -241,9 +246,11 @@ def sync_account_from_images(
             saw_trades = True
             trades_acc.extend([t if isinstance(t, dict) else {"raw": t} for t in ts])
 
-    positions_out = _dedupe(
-        positions_acc, keys=["ticker", "Ticker", "symbol", "Symbol", "name", "Name"]
-    ) if saw_positions and positions_acc else None
+    positions_out = (
+        _dedupe(positions_acc, keys=["ticker", "Ticker", "symbol", "Symbol", "name", "Name"])
+        if saw_positions and positions_acc
+        else None
+    )
     orders_out = (
         _dedupe(
             orders_acc,
@@ -344,7 +351,9 @@ def import_broker_screenshots(
     return out
 
 
-def list_broker_snapshots(*, broker: str, account_id: str | None, limit: int = 20) -> list[dict[str, Any]]:
+def list_broker_snapshots(
+    *, broker: str, account_id: str | None, limit: int = 20
+) -> list[dict[str, Any]]:
     aid = (account_id or "").strip() or _seed_default_broker_account(broker)
     return list_snapshots(broker=broker, account_id=aid, limit=limit)
 

@@ -27,7 +27,9 @@ class TestHelpers:
         assert ms._ma([1.0] * 10, 5) == 1.0
 
     def test_stale(self, monkeypatch) -> None:
-        monkeypatch.setattr("data_sync_service.service.macro_snapshot_on_demand._is_data_stale", lambda d: True)
+        monkeypatch.setattr(
+            "data_sync_service.service.macro_snapshot_on_demand._is_data_stale", lambda d: True
+        )
         assert ms._macro_as_of_stale("2020-01-01")
 
 
@@ -35,7 +37,9 @@ class TestItemFromDb:
     def test_from_db(self, monkeypatch) -> None:
         closes = [("2026-08-06", 99.0), ("2026-08-07", 100.0)]
         latest = {"pct_chg": "2.5", "source": "src", "underlying_ts_code": "IXIC"}
-        item = ms._macro_item_from_db({"seriesId": SID_IXIC, "name": "N", "category": "us_tech", "why": "w"}, closes, latest)
+        item = ms._macro_item_from_db(
+            {"seriesId": SID_IXIC, "name": "N", "category": "us_tech", "why": "w"}, closes, latest
+        )
         assert item["close"] == 100.0
         assert item["pctChg"] == 2.5
         assert item["ma5"] is None
@@ -43,7 +47,11 @@ class TestItemFromDb:
 
     def test_computed_pct(self, monkeypatch) -> None:
         closes = [("a", 100.0), ("b", 110.0)]
-        monkeypatch.setattr(ms, "get_latest_row", lambda sid: {"pct_chg": None, "source": "s", "underlying_ts_code": "u"})
+        monkeypatch.setattr(
+            ms,
+            "get_latest_row",
+            lambda sid: {"pct_chg": None, "source": "s", "underlying_ts_code": "u"},
+        )
         item = ms._macro_item_from_db({"seriesId": "X", "name": "N", "category": "c"}, closes)
         assert item["pctChg"] == pytest.approx(10.0)
 
@@ -55,7 +63,11 @@ class TestItemFromDb:
 
     def test_bad_closes(self) -> None:
         closes = [("a", float("nan")), ("b", 2.0), ("c", None)]
-        item = ms._macro_item_from_db({"seriesId": "X", "name": "N", "category": "c"}, closes, {"pct_chg": None, "source": "s", "underlying_ts_code": "u"})
+        item = ms._macro_item_from_db(
+            {"seriesId": "X", "name": "N", "category": "c"},
+            closes,
+            {"pct_chg": None, "source": "s", "underlying_ts_code": "u"},
+        )
         assert item["close"] == 2.0
         assert item["ma5"] is None and item["ma20"] is None
 
@@ -79,7 +91,9 @@ class TestBackfill:
 
     def test_bad_hist(self, monkeypatch) -> None:
         m = {"pctChg": None, "seriesId": "X", "close": 1.0, "realtime": False}
-        monkeypatch.setattr(ms, "fetch_last_closes", lambda sid, days: [("a", float("nan")), ("b", 0.0)])
+        monkeypatch.setattr(
+            ms, "fetch_last_closes", lambda sid, days: [("a", float("nan")), ("b", 0.0)]
+        )
         ms._backfill_macro_pct_chg(m)
         assert m.get("pctChg") is None
 
@@ -97,15 +111,52 @@ class TestBackfill:
 
 
 class TestBuild:
-    def _patch(self, monkeypatch, *, closes=None, latest=None, resolved=None, quotes=None, enrich=None, window=False, warning=None):
+    def _patch(
+        self,
+        monkeypatch,
+        *,
+        closes=None,
+        latest=None,
+        resolved=None,
+        quotes=None,
+        enrich=None,
+        window=False,
+        warning=None,
+    ):
         monkeypatch.setattr(ms, "ensure_table", lambda: None)
         monkeypatch.setattr(ms, "get_index_signals", lambda **kw: [{"k": "v"}])
         monkeypatch.setattr(ms, "fetch_last_closes_batch", lambda sids, days: closes or {})
         monkeypatch.setattr(ms, "get_latest_rows_batch", lambda sids: latest or {})
-        monkeypatch.setattr(ms, "resolve_put_iv_for_snapshot", lambda **kw: resolved or {"close": 20.0, "pctChg": 1.0, "asOfDate": "d", "source": "s", "underlyingTsCode": "u", "realtime": False, "signal": "neutral", "signalLabel": "N", "warning": warning, "diagnostics": {}})
-        monkeypatch.setattr(ms, "fetch_realtime_quotes", lambda codes: quotes if quotes is not None else {"ok": True, "items": []})
-        monkeypatch.setattr(ms, "_trade_date_from_trade_time", lambda tt: "2026-08-07" if tt else None)
-        monkeypatch.setattr(ms, "enrich_macro_items_on_demand", lambda items: enrich(items) if enrich else items)
+        monkeypatch.setattr(
+            ms,
+            "resolve_put_iv_for_snapshot",
+            lambda **kw: (
+                resolved
+                or {
+                    "close": 20.0,
+                    "pctChg": 1.0,
+                    "asOfDate": "d",
+                    "source": "s",
+                    "underlyingTsCode": "u",
+                    "realtime": False,
+                    "signal": "neutral",
+                    "signalLabel": "N",
+                    "warning": warning,
+                    "diagnostics": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            ms,
+            "fetch_realtime_quotes",
+            lambda codes: quotes if quotes is not None else {"ok": True, "items": []},
+        )
+        monkeypatch.setattr(
+            ms, "_trade_date_from_trade_time", lambda tt: "2026-08-07" if tt else None
+        )
+        monkeypatch.setattr(
+            ms, "enrich_macro_items_on_demand", lambda items: enrich(items) if enrich else items
+        )
         monkeypatch.setattr(ms, "shanghai_today", lambda: __import__("datetime").date(2026, 8, 7))
         monkeypatch.setattr(ms, "_is_shanghai_sync_window", lambda: window)
         monkeypatch.setattr(ms, "get_latest_etf_flow_date", lambda: "2026-08-07")
@@ -137,12 +188,26 @@ class TestBuild:
             "A50": {"pct_chg": None, "source": "fut", "underlying_ts_code": "FTXA50"},
             "COMM_ENERGY": {"pct_chg": None, "source": "fut", "underlying_ts_code": ""},
         }
-        quotes = {"ok": True, "items": [
-            {"ts_code": "IXIC", "price": 110.0, "pct_chg": 1.5, "trade_time": "2026-08-07 04:00:00"},
-            {"ts_code": "USDCNH.FXCM", "price": 7.2, "pct_chg": None, "pre_close": 7.1, "trade_time": None},
-            {"ts_code": "unknown", "price": 1.0, "pct_chg": 1.0},
-            "not-a-dict",
-        ]}
+        quotes = {
+            "ok": True,
+            "items": [
+                {
+                    "ts_code": "IXIC",
+                    "price": 110.0,
+                    "pct_chg": 1.5,
+                    "trade_time": "2026-08-07 04:00:00",
+                },
+                {
+                    "ts_code": "USDCNH.FXCM",
+                    "price": 7.2,
+                    "pct_chg": None,
+                    "pre_close": 7.1,
+                    "trade_time": None,
+                },
+                {"ts_code": "unknown", "price": 1.0, "pct_chg": 1.0},
+                "not-a-dict",
+            ],
+        }
         self._patch(monkeypatch, closes=closes, latest=latest, quotes=quotes)
         out = ms.build_macro_snapshot(cn_index_signals=[{"a": 1}])
         ix = next(m for m in out["macro"] if m["seriesId"] == SID_IXIC)
@@ -159,12 +224,40 @@ class TestBuild:
         assert usdcnh["pctChg"] == pytest.approx(0.1 / 7.1 * 100.0)
 
     def test_put_iv_warning_filtered(self, monkeypatch) -> None:
-        self._patch(monkeypatch, resolved={"close": 20.0, "pctChg": None, "asOfDate": "d", "source": "s", "underlyingTsCode": "u", "realtime": True, "signal": None, "signalLabel": None, "warning": "LIVE_FAIL", "diagnostics": "not-dict"})
+        self._patch(
+            monkeypatch,
+            resolved={
+                "close": 20.0,
+                "pctChg": None,
+                "asOfDate": "d",
+                "source": "s",
+                "underlyingTsCode": "u",
+                "realtime": True,
+                "signal": None,
+                "signalLabel": None,
+                "warning": "LIVE_FAIL",
+                "diagnostics": "not-dict",
+            },
+        )
         out = ms.build_macro_snapshot()
         assert "warnings" not in out
 
     def test_put_iv_other_warning(self, monkeypatch) -> None:
-        self._patch(monkeypatch, resolved={"close": 20.0, "pctChg": None, "asOfDate": "d", "source": "s", "underlyingTsCode": "u", "realtime": True, "signal": None, "signalLabel": None, "warning": "other warning", "diagnostics": {}})
+        self._patch(
+            monkeypatch,
+            resolved={
+                "close": 20.0,
+                "pctChg": None,
+                "asOfDate": "d",
+                "source": "s",
+                "underlyingTsCode": "u",
+                "realtime": True,
+                "signal": None,
+                "signalLabel": None,
+                "warning": "other warning",
+                "diagnostics": {},
+            },
+        )
         out = ms.build_macro_snapshot()
         assert "other warning" in out["warning"]
 
@@ -185,7 +278,18 @@ class TestBuild:
     def test_quote_pct_fallback(self, monkeypatch) -> None:
         closes = {SID_IXIC: [("a", 100.0), ("b", 105.0)]}
         latest = {SID_IXIC: {"pct_chg": None, "source": "s", "underlying_ts_code": "IXIC"}}
-        quotes = {"ok": True, "items": [{"ts_code": "IXIC", "price": 110.0, "pct_chg": None, "pre_close": 100.0, "trade_time": None}]}
+        quotes = {
+            "ok": True,
+            "items": [
+                {
+                    "ts_code": "IXIC",
+                    "price": 110.0,
+                    "pct_chg": None,
+                    "pre_close": 100.0,
+                    "trade_time": None,
+                }
+            ],
+        }
         self._patch(monkeypatch, closes=closes, latest=latest, quotes=quotes)
         out = ms.build_macro_snapshot()
         ix = next(m for m in out["macro"] if m["seriesId"] == SID_IXIC)

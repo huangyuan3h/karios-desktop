@@ -117,7 +117,18 @@ def test_upsert_document_builds_query(monkeypatch) -> None:
             captured.append((sql, params))
 
         def fetchone(self):
-            return ("doc-1", "src-1", "T", "u", "news", None, None, "2026-08-04", "2026-08-04T00:00:00+00:00", "raw")
+            return (
+                "doc-1",
+                "src-1",
+                "T",
+                "u",
+                "news",
+                None,
+                None,
+                "2026-08-04",
+                "2026-08-04T00:00:00+00:00",
+                "raw",
+            )
 
         def __enter__(self):
             return self
@@ -159,8 +170,9 @@ def test_upsert_document_builds_query(monkeypatch) -> None:
     sql, params = captured[0]
     assert "ON CONFLICT" in sql
     assert params[0] == "doc-1"
-"""db/alpha_radar wave-2: fetch/delete/trend read-write drivers via fake conn."""
 
+
+"""db/alpha_radar wave-2: fetch/delete/trend read-write drivers via fake conn."""
 
 
 class _FakeCur:
@@ -210,7 +222,11 @@ def _monkey(monkeypatch, cur):
 
 
 def test_fetch_sources_filters(monkeypatch) -> None:
-    cur = _FakeCur(fetchall=[("s1", "N", "u", "news", True, "2026-08-04T00:00:00+00:00", "2026-08-01T00:00:00+00:00")])
+    cur = _FakeCur(
+        fetchall=[
+            ("s1", "N", "u", "news", True, "2026-08-04T00:00:00+00:00", "2026-08-01T00:00:00+00:00")
+        ]
+    )
     _monkey(monkeypatch, cur)
     out = ard.fetch_sources(enabled_only=True, category="news")
     assert out[0]["id"] == "s1" and out[0]["enabled"] is True
@@ -232,9 +248,16 @@ def test_update_source_last_fetch(monkeypatch) -> None:
 
 
 def test_fetch_documents_filters(monkeypatch) -> None:
-    cur = _FakeCur(fetchone=("2",), fetchall=[("d1", "s1", "T", "u", "news", None, None, None, "2026-08-04T00:00:00+00:00", "raw")])
+    cur = _FakeCur(
+        fetchone=("2",),
+        fetchall=[
+            ("d1", "s1", "T", "u", "news", None, None, None, "2026-08-04T00:00:00+00:00", "raw")
+        ],
+    )
     _monkey(monkeypatch, cur)
-    total, items = ard.fetch_documents(limit=999, offset=-3, category="news", processing_status="raw", hours=24)
+    total, items = ard.fetch_documents(
+        limit=999, offset=-3, category="news", processing_status="raw", hours=24
+    )
     assert total == 2 and items[0]["id"] == "d1"
     sql, params = cur.executed[1]
     assert "category = %s" in sql and "processing_status = %s" in sql and "fetched_at >= %s" in sql
@@ -248,7 +271,11 @@ def test_fetch_documents_filters(monkeypatch) -> None:
 
 
 def test_fetch_documents_by_status(monkeypatch) -> None:
-    cur = _FakeCur(fetchall=[("d1", "s1", "T", "u", "news", None, None, None, "2026-08-04T00:00:00+00:00", "raw")])
+    cur = _FakeCur(
+        fetchall=[
+            ("d1", "s1", "T", "u", "news", None, None, None, "2026-08-04T00:00:00+00:00", "raw")
+        ]
+    )
     _monkey(monkeypatch, cur)
     out = ard.fetch_documents_by_status(processing_status="raw", limit=1, enabled_sources_only=True)
     assert out[0]["processingStatus"] == "raw"
@@ -282,19 +309,43 @@ def test_delete_trends_family(monkeypatch) -> None:
 
 def test_insert_trend_and_row(monkeypatch) -> None:
     row = (
-        "t1", "d1", "Trend A", None, None, "催化剂", "1T", "high",
-        "policy", "focus", "logic", '["kw"]', '[{"symbol":"600000.SH"}]',
-        0.9, "pending", '{"driver_type":"policy"}', "2026-08-04T00:00:00+00:00",
+        "t1",
+        "d1",
+        "Trend A",
+        None,
+        None,
+        "催化剂",
+        "1T",
+        "high",
+        "policy",
+        "focus",
+        "logic",
+        '["kw"]',
+        '[{"symbol":"600000.SH"}]',
+        0.9,
+        "pending",
+        '{"driver_type":"policy"}',
+        "2026-08-04T00:00:00+00:00",
     )
     cur = _FakeCur(fetchone=row)
     _monkey(monkeypatch, cur)
     out = ard.insert_trend(
-        trend_id="t1", document_id="d1", trend_name="Trend A",
-        macro_theme=None, catalyst_grade=None, catalyst="催化剂",
-        global_target="1T", urgency_level="high", driver_type="policy",
-        event_focus="focus", logic_summary="logic", keywords_for_mapping=["kw"],
-        cn_symbols=[{"symbol": "600000.SH"}], mapping_confidence=0.9,
-        risk_status="pending", trend_json={"driver_type": "policy"},
+        trend_id="t1",
+        document_id="d1",
+        trend_name="Trend A",
+        macro_theme=None,
+        catalyst_grade=None,
+        catalyst="催化剂",
+        global_target="1T",
+        urgency_level="high",
+        driver_type="policy",
+        event_focus="focus",
+        logic_summary="logic",
+        keywords_for_mapping=["kw"],
+        cn_symbols=[{"symbol": "600000.SH"}],
+        mapping_confidence=0.9,
+        risk_status="pending",
+        trend_json={"driver_type": "policy"},
     )
     assert out["id"] == "t1"
     assert out["driverType"] == "policy"
@@ -304,11 +355,32 @@ def test_insert_trend_and_row(monkeypatch) -> None:
 
 
 def test_fetch_trend_by_id_and_delete(monkeypatch) -> None:
-    doc = ("DOC T", "http://doc", "news", "2026-08-03T00:00:00+00:00", "2026-08-03T01:00:00+00:00", "sum")
+    doc = (
+        "DOC T",
+        "http://doc",
+        "news",
+        "2026-08-03T00:00:00+00:00",
+        "2026-08-03T01:00:00+00:00",
+        "sum",
+    )
     trend17 = (
-        "t1", "d1", "Trend A", "催化剂", "1T", "high", "主题", "grade",
-        "policy", "focus", "logic", '["kw"]', '[{"symbol":"600000.SH"}]',
-        0.9, "pending", '{"hkSymbols":[{"symbol":"00700.HK"}]}', "2026-08-04T00:00:00+00:00",
+        "t1",
+        "d1",
+        "Trend A",
+        "催化剂",
+        "1T",
+        "high",
+        "主题",
+        "grade",
+        "policy",
+        "focus",
+        "logic",
+        '["kw"]',
+        '[{"symbol":"600000.SH"}]',
+        0.9,
+        "pending",
+        '{"hkSymbols":[{"symbol":"00700.HK"}]}',
+        "2026-08-04T00:00:00+00:00",
     )
     cur = _FakeCur(fetchone=trend17 + doc)
     _monkey(monkeypatch, cur)
@@ -332,15 +404,43 @@ def test_fetch_trend_by_id_and_delete(monkeypatch) -> None:
 
 
 def test_fetch_trends_filters(monkeypatch) -> None:
-    doc = ("DOC T", "http://doc", "news", "2026-08-03T00:00:00+00:00", "2026-08-03T01:00:00+00:00", "sum")
-    trend17 = ("t1", "d1", "Trend A", "催化剂", "1T", "high", "主题", "grade",
-               "policy", "focus", "logic", "[]", "null", None, "pending",
-               "{}", "2026-08-04T00:00:00+00:00")
+    doc = (
+        "DOC T",
+        "http://doc",
+        "news",
+        "2026-08-03T00:00:00+00:00",
+        "2026-08-03T01:00:00+00:00",
+        "sum",
+    )
+    trend17 = (
+        "t1",
+        "d1",
+        "Trend A",
+        "催化剂",
+        "1T",
+        "high",
+        "主题",
+        "grade",
+        "policy",
+        "focus",
+        "logic",
+        "[]",
+        "null",
+        None,
+        "pending",
+        "{}",
+        "2026-08-04T00:00:00+00:00",
+    )
     cur = _FakeCur(fetchone=(1,), fetchall=[trend17 + doc])
     _monkey(monkeypatch, cur)
     total, items = ard.fetch_trends(
-        document_id="d1", risk_status="pending", day="2026-08-04",
-        since="2026-08-01T00:00:00+00:00", max_age_days=30, limit=999, offset=-1,
+        document_id="d1",
+        risk_status="pending",
+        day="2026-08-04",
+        since="2026-08-01T00:00:00+00:00",
+        max_age_days=30,
+        limit=999,
+        offset=-1,
     )
     assert total == 1 and items[0]["id"] == "t1"
     sql, params = cur.executed[1]
@@ -351,7 +451,15 @@ def test_update_trend_status_mapping_hk(monkeypatch) -> None:
     cur = _FakeCur(rowcount=1)
     _monkey(monkeypatch, cur)
     assert ard.update_trend_risk_status("t1", "high") is True
-    assert ard.update_trend_mapping(trend_id="t1", cn_symbols=[{"symbol": "x"}], mapping_confidence=0.5, risk_status="mapped") is True
+    assert (
+        ard.update_trend_mapping(
+            trend_id="t1",
+            cn_symbols=[{"symbol": "x"}],
+            mapping_confidence=0.5,
+            risk_status="mapped",
+        )
+        is True
+    )
 
     cur2 = _FakeCur(fetchone=('{"a":1}',), rowcount=1)
     _monkey(monkeypatch, cur2)
@@ -368,16 +476,44 @@ def test_update_trend_status_mapping_hk(monkeypatch) -> None:
 
 
 def test_trend_row_legacy_layout() -> None:
-    legacy = ("t1", "d1", "Trend A", "催化剂", "1T", "high", "主题", "grade",
-              "[]", "null", 0.7, "pending", '{"driverType":"AI"}', "2026-08-04T00:00:00+00:00")
+    legacy = (
+        "t1",
+        "d1",
+        "Trend A",
+        "催化剂",
+        "1T",
+        "high",
+        "主题",
+        "grade",
+        "[]",
+        "null",
+        0.7,
+        "pending",
+        '{"driverType":"AI"}',
+        "2026-08-04T00:00:00+00:00",
+    )
     out = ard._trend_row(legacy)
     assert out["driverType"] == "AI"
     assert out["mappingConfidence"] == 0.7
     assert out["riskStatus"] == "pending"
     assert out["eventFocus"] == "催化剂"
 
-    bad_json = ("t1", "d1", "Trend A", "催化剂", "1T", "high", "主题", "grade",
-                "bad-json", "bad-json", 0.7, "pending", "bad-json", "2026-08-04T00:00:00+00:00")
+    bad_json = (
+        "t1",
+        "d1",
+        "Trend A",
+        "催化剂",
+        "1T",
+        "high",
+        "主题",
+        "grade",
+        "bad-json",
+        "bad-json",
+        0.7,
+        "pending",
+        "bad-json",
+        "2026-08-04T00:00:00+00:00",
+    )
     out2 = ard._trend_row(bad_json)
     assert out2["cnSymbols"] == []
     assert out2["keywordsForMapping"] == []

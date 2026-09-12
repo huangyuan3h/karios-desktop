@@ -206,11 +206,11 @@ def nth_open_session(
 
 # --- Market phase (pre-market / open / closed) ---
 
-MORNING_OPEN_MIN = 9 * 60 + 30      # 09:30
-MORNING_CLOSE_MIN = 11 * 60 + 30    # 11:30
-AFTERNOON_OPEN_MIN = 13 * 60        # 13:00
-AFTERNOON_CLOSE_MIN = 15 * 60       # 15:00
-AFTER_HOURS_END_MIN = 20 * 60       # 20:00
+MORNING_OPEN_MIN = 9 * 60 + 30  # 09:30
+MORNING_CLOSE_MIN = 11 * 60 + 30  # 11:30
+AFTERNOON_OPEN_MIN = 13 * 60  # 13:00
+AFTERNOON_CLOSE_MIN = 15 * 60  # 15:00
+AFTER_HOURS_END_MIN = 20 * 60  # 20:00
 
 
 def compute_market_status(now: datetime | None = None) -> dict[str, Any]:

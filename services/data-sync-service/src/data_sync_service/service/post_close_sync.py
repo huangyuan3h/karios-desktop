@@ -16,7 +16,6 @@ from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
 logger = logging.getLogger(__name__)
 
 
-
 def run_post_close_sync() -> dict[str, Any]:
     """
     Run index, macro, and eastmoney industry incremental syncs in parallel.

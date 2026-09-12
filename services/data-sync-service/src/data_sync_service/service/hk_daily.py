@@ -72,9 +72,7 @@ def _date_to_yyyymmdd(d: date) -> str:
 
 def _backfill_start_yyyymmdd() -> str:
     """Earliest date tushare will pull on first-time full sync (5y ago today)."""
-    return _date_to_yyyymmdd(
-        datetime.now(UTC).date() - timedelta(days=365 * _BACKFILL_YEARS)
-    )
+    return _date_to_yyyymmdd(datetime.now(UTC).date() - timedelta(days=365 * _BACKFILL_YEARS))
 
 
 def _sync_one_with_fallback(ts_code: str) -> dict[str, Any]:

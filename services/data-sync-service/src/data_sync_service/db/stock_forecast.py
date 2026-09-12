@@ -85,19 +85,25 @@ def sync_forecast_for_dates(start_date: str, end_date: str, *, limit: int = 2000
                     ann_date=day.replace("-", ""),
                     fields="ts_code,ann_date,end_date,type,net_profit_min,net_profit_max,p_change_min,p_change_max",
                 )
-                rows = [] if (df is None or df.empty) else [
-                    (
-                        str(r.ts_code),
-                        _iso_date(str(r.ann_date)),
-                        str(r.end_date or ""),
-                        str(r.type or ""),
-                        float(r.net_profit_min) if r.net_profit_min is not None else None,
-                        float(r.net_profit_max) if r.net_profit_max is not None else None,
-                        float(r.p_change_min) if getattr(r, "p_change_min", None) is not None else None,
-                    )
-                    for r in df.itertuples()
-                    if getattr(r, "ts_code", None)
-                ]
+                rows = (
+                    []
+                    if (df is None or df.empty)
+                    else [
+                        (
+                            str(r.ts_code),
+                            _iso_date(str(r.ann_date)),
+                            str(r.end_date or ""),
+                            str(r.type or ""),
+                            float(r.net_profit_min) if r.net_profit_min is not None else None,
+                            float(r.net_profit_max) if r.net_profit_max is not None else None,
+                            float(r.p_change_min)
+                            if getattr(r, "p_change_min", None) is not None
+                            else None,
+                        )
+                        for r in df.itertuples()
+                        if getattr(r, "ts_code", None)
+                    ]
+                )
                 break
             except Exception as exc:  # noqa: BLE001 — rate limit / transient
                 if attempt == 2:

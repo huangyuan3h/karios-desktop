@@ -338,7 +338,10 @@ def test_sector_divergence_no_trigger_when_surge_below_threshold() -> None:
         )
 
     # Should NOT trigger divergence since surge is only 2.9%
-    assert res["checks"].get("sector_divergence") is None or res["checks"].get("sector_divergence") is False
+    assert (
+        res["checks"].get("sector_divergence") is None
+        or res["checks"].get("sector_divergence") is False
+    )
     alerts = [a for a in res["riskAlerts"] if a.get("code") == "sector_divergence"]
     assert len(alerts) == 0
 
@@ -372,7 +375,10 @@ def test_sector_divergence_no_trigger_when_industry_not_in_outflow_top3() -> Non
         )
 
     # Should NOT trigger divergence since industry not in outflow top 3
-    assert res["checks"].get("sector_divergence") is None or res["checks"].get("sector_divergence") is False
+    assert (
+        res["checks"].get("sector_divergence") is None
+        or res["checks"].get("sector_divergence") is False
+    )
     alerts = [a for a in res["riskAlerts"] if a.get("code") == "sector_divergence"]
     assert len(alerts) == 0
 
@@ -658,4 +664,3 @@ def test_sector_divergence_overrides_t1_sniper() -> None:
     # So this should just NOT trigger divergence and MAY trigger sniper
     # (since no divergence trigger condition met here)
     pass
-

@@ -102,14 +102,9 @@ def _resolve_trend_storage_fields(
         or _CATEGORY_DRIVER_DEFAULT.get(str(category_hint or "").lower(), "Global_Tech")
     )
     event_focus = str(
-        trend.get("event_focus")
-        or trend.get("eventFocus")
-        or trend.get("catalyst")
-        or macro_theme
+        trend.get("event_focus") or trend.get("eventFocus") or trend.get("catalyst") or macro_theme
     )
-    logic_summary = str(
-        trend.get("logic_summary") or trend.get("logicSummary") or event_focus
-    )[:30]
+    logic_summary = str(trend.get("logic_summary") or trend.get("logicSummary") or event_focus)[:30]
 
     return {
         "trend_name": macro_theme,
@@ -392,13 +387,21 @@ def process_document_batch(
     }
 
 
-def process_pending_documents(*, limit: int = 3, map_cn: bool = True, mode: str = "single") -> dict[str, Any]:
+def process_pending_documents(
+    *, limit: int = 3, map_cn: bool = True, mode: str = "single"
+) -> dict[str, Any]:
     if mode == "batch":
         batch_size = max(2, min(int(limit), 15))
         try:
             return process_document_batch(batch_size=batch_size, map_cn=map_cn)
         except Exception as exc:
-            return {"processed": 0, "batchSize": 0, "trends": [], "errors": [{"error": str(exc)}], "mode": "batch"}
+            return {
+                "processed": 0,
+                "batchSize": 0,
+                "trends": [],
+                "errors": [{"error": str(exc)}],
+                "mode": "batch",
+            }
 
     docs = fetch_documents_by_status(processing_status="raw", limit=limit)
     results: list[dict[str, Any]] = []

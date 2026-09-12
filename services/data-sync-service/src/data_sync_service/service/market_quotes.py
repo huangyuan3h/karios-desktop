@@ -15,11 +15,11 @@ def get_market_quotes_batch(
 ) -> dict[str, dict[str, Any]]:
     """
     Fetch price and change% for multiple ts_codes.
-    
+
     Args:
         ts_codes: List of ts_code (e.g., ["000001.SZ", "600000.SH"])
         use_realtime: If True, use realtime quote API; otherwise use latest daily close.
-    
+
     Returns:
         Mapping: ts_code -> {"price": str, "changePct": str, "volume": str, "turnover": str}
         Missing values are None.

@@ -4,7 +4,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 
-def _flat_bars(*, days: int = 65, start_price: float = 100.0, end_price: float | None = None) -> list[tuple[str, str, str, str, str, str]]:
+def _flat_bars(
+    *, days: int = 65, start_price: float = 100.0, end_price: float | None = None
+) -> list[tuple[str, str, str, str, str, str]]:
     out: list[tuple[str, str, str, str, str, str]] = []
     final_price = end_price if end_price is not None else start_price
     for i in range(days):

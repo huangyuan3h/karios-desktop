@@ -48,13 +48,21 @@ def test_structure_votes_short_series() -> None:
 
 
 def test_strength_score_hk_all_green(monkeypatch) -> None:
-    monkeypatch.setattr(mr, "get_index_signals", lambda as_of_date=None, include_breadth=True: [
-        _sig("green", "HSI"),
-        _sig("deep_green", "HSTECH"),
-    ])
-    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda sid, days=80, as_of_date=None: [
-        ("2026-08-10", 100.0 + 40 * (i / 70)) for i in range(71)
-    ])
+    monkeypatch.setattr(
+        mr,
+        "get_index_signals",
+        lambda as_of_date=None, include_breadth=True: [
+            _sig("green", "HSI"),
+            _sig("deep_green", "HSTECH"),
+        ],
+    )
+    monkeypatch.setattr(
+        mr,
+        "fetch_macro_last_closes",
+        lambda sid, days=80, as_of_date=None: [
+            ("2026-08-10", 100.0 + 40 * (i / 70)) for i in range(71)
+        ],
+    )
     out = mr.regime_strength_score(market="HK", as_of_date="2026-08-10")
     assert out["market"] == "HK"
     assert out["regime"] == "Strong"
@@ -63,14 +71,23 @@ def test_strength_score_hk_all_green(monkeypatch) -> None:
 
 
 def test_strength_score_cn_weak(monkeypatch) -> None:
-    monkeypatch.setattr(mr, "get_index_signals", lambda as_of_date=None, include_breadth=True: [
-        _sig("red", "000001.SH"),
-        _sig("yellow", "399006.SZ"),
-        _sig("red", "000905.SH"),
-    ])
-    monkeypatch.setattr(mr, "fetch_last_closes_vol_batch", lambda codes, days=80, as_of_date=None: {
-        c: [("2026-08-10", 100.0 - 30 * (i / 70), 1_000_000.0) for i in range(71)] for c in codes
-    })
+    monkeypatch.setattr(
+        mr,
+        "get_index_signals",
+        lambda as_of_date=None, include_breadth=True: [
+            _sig("red", "000001.SH"),
+            _sig("yellow", "399006.SZ"),
+            _sig("red", "000905.SH"),
+        ],
+    )
+    monkeypatch.setattr(
+        mr,
+        "fetch_last_closes_vol_batch",
+        lambda codes, days=80, as_of_date=None: {
+            c: [("2026-08-10", 100.0 - 30 * (i / 70), 1_000_000.0) for i in range(71)]
+            for c in codes
+        },
+    )
     out = mr.regime_strength_score(market="CN", as_of_date="2026-08-10")
     assert out["market"] == "CN"
     assert out["regime"] == "Weak"

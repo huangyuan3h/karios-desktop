@@ -63,7 +63,9 @@ def test_rsshub_base_and_chinese_url(monkeypatch) -> None:
     monkeypatch.delenv("ALPHA_RADAR_RSSHUB_BASE_URL", raising=False)
     monkeypatch.delenv("ALPHA_RADAR_RSS_GOV_NDRC", raising=False)
     assert ai.rsshub_base_url() == "http://127.0.0.1:1200"
-    assert ai._chinese_source_url("ndrc", "ALPHA_RADAR_RSS_GOV_NDRC") == "http://127.0.0.1:1200/ndrc"
+    assert (
+        ai._chinese_source_url("ndrc", "ALPHA_RADAR_RSS_GOV_NDRC") == "http://127.0.0.1:1200/ndrc"
+    )
     monkeypatch.setenv("ALPHA_RADAR_RSS_GOV_NDRC", "http://override:8888/x")
     assert ai._chinese_source_url("ndrc", "ALPHA_RADAR_RSS_GOV_NDRC") == "http://override:8888/x"
 
@@ -85,7 +87,9 @@ def test_urlopen_uses_opener(monkeypatch) -> None:
     class _Resp:
         pass
 
-    monkeypatch.setattr(ai, "_opener", lambda: type("O", (), {"open": lambda self, req, timeout: _Resp()})())
+    monkeypatch.setattr(
+        ai, "_opener", lambda: type("O", (), {"open": lambda self, req, timeout: _Resp()})()
+    )
     req = urllib.request.Request("http://example.com")
     assert ai._urlopen(req, timeout=10) is not None
 
@@ -188,7 +192,9 @@ def test_fetch_rss_feed(monkeypatch) -> None:
     def fake_feedparser_parse(raw):
         return _fake_entries()
 
-    monkeypatch.setattr(ai, "feedparser", type("F", (), {"parse": staticmethod(fake_feedparser_parse)})())
+    monkeypatch.setattr(
+        ai, "feedparser", type("F", (), {"parse": staticmethod(fake_feedparser_parse)})()
+    )
     monkeypatch.setattr(ai, "_urlopen", _FakeResp(b"<rss/>"))
     out = ai.fetch_rss_feed("http://h/feed")
     assert len(out) == 1
@@ -199,7 +205,9 @@ def test_fetch_rss_feed(monkeypatch) -> None:
 
 def test_fetch_rss_feed_http_error(monkeypatch) -> None:
     monkeypatch.setattr(ai, "feedparser", type("F", (), {"parse": lambda raw: None})())
-    monkeypatch.setattr(ai, "_urlopen", lambda req, timeout: (_ for _ in ()).throw(_http_error(500)))
+    monkeypatch.setattr(
+        ai, "_urlopen", lambda req, timeout: (_ for _ in ()).throw(_http_error(500))
+    )
     try:
         ai.fetch_rss_feed("http://h/feed")
         raise AssertionError()
@@ -253,12 +261,30 @@ def test_fetch_jina_markdown_breaks_on_4xx(monkeypatch) -> None:
 def test_fetch_one_alpha_source_full_flow(monkeypatch) -> None:
     from threading import Semaphore
 
-    monkeypatch.setattr(ai, "fetch_rss_feed", lambda url: [
-        {"id": "i1", "title": "t1", "link": "http://a/1", "summary": "short", "published_at": None},
-        {"id": "i2", "title": "t2", "link": "http://a/2", "summary": "x" * 500, "published_at": None},
-    ])
+    monkeypatch.setattr(
+        ai,
+        "fetch_rss_feed",
+        lambda url: [
+            {
+                "id": "i1",
+                "title": "t1",
+                "link": "http://a/1",
+                "summary": "short",
+                "published_at": None,
+            },
+            {
+                "id": "i2",
+                "title": "t2",
+                "link": "http://a/2",
+                "summary": "x" * 500,
+                "published_at": None,
+            },
+        ],
+    )
     monkeypatch.setattr(ai, "max_items_per_source", lambda: 50)
-    monkeypatch.setattr(ai, "filter_feed_items", lambda items, source_id: (items, {"filteredOut": 0}))
+    monkeypatch.setattr(
+        ai, "filter_feed_items", lambda items, source_id: (items, {"filteredOut": 0})
+    )
     monkeypatch.setattr(ai, "fulltext_max_per_priority_source", lambda: 2)
     monkeypatch.setattr(ai, "_needs_jina_fallback", lambda s, min_chars=280: len(s) < 100)
     monkeypatch.setattr(ai, "fetch_jina_markdown", lambda url: "FULL TEXT")
@@ -284,11 +310,23 @@ def test_fetch_one_alpha_source_requeued_and_error(monkeypatch) -> None:
     def fake_upsert(**kw):
         return {"_requeued": True}
 
-    monkeypatch.setattr(ai, "fetch_rss_feed", lambda url: [
-        {"id": "i1", "title": "t1", "link": "http://a/1", "summary": None, "published_at": None},
-    ])
+    monkeypatch.setattr(
+        ai,
+        "fetch_rss_feed",
+        lambda url: [
+            {
+                "id": "i1",
+                "title": "t1",
+                "link": "http://a/1",
+                "summary": None,
+                "published_at": None,
+            },
+        ],
+    )
     monkeypatch.setattr(ai, "max_items_per_source", lambda: 50)
-    monkeypatch.setattr(ai, "filter_feed_items", lambda items, source_id: (items, {"filteredOut": 0}))
+    monkeypatch.setattr(
+        ai, "filter_feed_items", lambda items, source_id: (items, {"filteredOut": 0})
+    )
     monkeypatch.setattr(ai, "upsert_document", fake_upsert)
     monkeypatch.setattr(ai, "update_source_last_fetch", lambda sid, at: None)
     out = ai._fetch_one_alpha_source(
@@ -301,11 +339,16 @@ def test_fetch_one_alpha_source_requeued_and_error(monkeypatch) -> None:
     )
     assert out["ingest_requeued"] == 1
 
-    monkeypatch.setattr(ai, "fetch_rss_feed", lambda url: (_ for _ in ()).throw(RuntimeError("feed down")))
+    monkeypatch.setattr(
+        ai, "fetch_rss_feed", lambda url: (_ for _ in ()).throw(RuntimeError("feed down"))
+    )
     out2 = ai._fetch_one_alpha_source(
         {"id": "stratechery", "url": "http://h/feed", "category": "priority"},
-        fetched_at="x", use_fulltext=False, apply_filter=True,
-        force_reprocess=False, jina_semaphore=None,
+        fetched_at="x",
+        use_fulltext=False,
+        apply_filter=True,
+        force_reprocess=False,
+        jina_semaphore=None,
     )
     assert out2["error"] == "feed down"
     assert out2["count"] == -1

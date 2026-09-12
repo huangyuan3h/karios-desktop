@@ -39,4 +39,3 @@ def run() -> None:
         logger.warning("adj_factor_full_sync failed: %s", r.get("error", "unknown"))
 
     record_dict_result(JOB_ID, result, ok_log=_ok, fail_log=_fail)
-

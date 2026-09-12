@@ -37,7 +37,8 @@ def test_short_history_unlabeled_last():
     assert stage_labels([1.0] * 60) is None
     assert stage_tier(None) == 3
     assert stage_rank_key("a", None, 1.0) > stage_rank_key(
-        "b", {"wein": "S1-base", "runup5": "cool"}, 99.0)
+        "b", {"wein": "S1-base", "runup5": "cool"}, 99.0
+    )
 
 
 def test_rank_key_amp_tiebreak():

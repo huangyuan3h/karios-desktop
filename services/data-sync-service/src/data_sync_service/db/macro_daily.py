@@ -198,7 +198,12 @@ def fetch_macro_daily(
                 obj[col] = None
             elif hasattr(val, "strftime") and col == "trade_date":
                 obj[col] = val.strftime("%Y-%m-%d")
-            elif hasattr(val, "__float__") and col not in ("series_id", "trade_date", "source", "underlying_ts_code"):
+            elif hasattr(val, "__float__") and col not in (
+                "series_id",
+                "trade_date",
+                "source",
+                "underlying_ts_code",
+            ):
                 try:
                     obj[col] = float(val)
                 except (TypeError, ValueError):

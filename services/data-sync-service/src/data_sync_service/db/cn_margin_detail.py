@@ -56,7 +56,20 @@ def upsert_rows(rows: list[dict]) -> int:
         ts = str(r.get("ts_code") or "").strip()
         if not td or not ts:
             continue
-        vals.append((td, ts, r.get("rzye"), r.get("rqye"), r.get("rzmre"), r.get("rqyl"), r.get("rzche"), r.get("rqchl"), r.get("rqmcl"), r.get("rzrqye")))
+        vals.append(
+            (
+                td,
+                ts,
+                r.get("rzye"),
+                r.get("rqye"),
+                r.get("rzmre"),
+                r.get("rqyl"),
+                r.get("rzche"),
+                r.get("rqchl"),
+                r.get("rqmcl"),
+                r.get("rzrqye"),
+            )
+        )
     if not vals:
         return 0
     with get_connection() as conn:

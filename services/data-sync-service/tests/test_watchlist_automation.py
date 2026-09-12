@@ -416,7 +416,9 @@ def test_record_score_snapshots_returns_rows(monkeypatch) -> None:
             "values": {"emIndustry": "Banking"},
         }
     ]
-    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: fixture_rows)
+    monkeypatch.setattr(
+        wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: fixture_rows
+    )
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
 
     trade_date, count, rows = wa.record_score_snapshots(["CN:600000"])
@@ -496,7 +498,8 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     # 2026-08-12: the CN universe is the whole market (daily table) —
     # isolate the universe seam so this test asserts its own small pool.
     monkeypatch.setattr(
-        wa, "_score_universe_symbols",
+        wa,
+        "_score_universe_symbols",
         lambda: (["CN:600000", "CN:600001"], [], []),
     )
 
@@ -524,13 +527,9 @@ def test_list_fallback_universe_skips_defense_and_caps(monkeypatch) -> None:
         if keyword == "银行":
             return [{"symbol": "CN:601988", "name": "Bank"}]
         if keyword == "电子":
-            return [
-                {"symbol": f"CN:30000{i}", "name": f"E{i}"} for i in range(min(limit, 5))
-            ]
+            return [{"symbol": f"CN:30000{i}", "name": f"E{i}"} for i in range(min(limit, 5))]
         if keyword == "计算机":
-            return [
-                {"symbol": f"CN:68800{i}", "name": f"C{i}"} for i in range(min(limit, 5))
-            ]
+            return [{"symbol": f"CN:68800{i}", "name": f"C{i}"} for i in range(min(limit, 5))]
         return []
 
     monkeypatch.setattr(
@@ -547,7 +546,9 @@ def test_list_fallback_universe_skips_defense_and_caps(monkeypatch) -> None:
 
 
 def test_list_fallback_universe_empty_top5(monkeypatch) -> None:
-    monkeypatch.setattr(wa, "get_top_5d_industry_names_ordered", lambda as_of_date=None, top_n=5: [])
+    monkeypatch.setattr(
+        wa, "get_top_5d_industry_names_ordered", lambda as_of_date=None, top_n=5: []
+    )
     out = wa.list_fallback_universe_symbols()
     assert out["symbols"] == []
     assert out["count"] == 0
@@ -561,9 +562,7 @@ def test_get_top_5d_industry_names_empty_when_no_flow_date(monkeypatch) -> None:
 
 
 def test_get_top_5d_industry_names_ordered_rank(monkeypatch) -> None:
-    monkeypatch.setattr(
-        wa, "resolve_effective_as_of", lambda x: "2026-06-18"
-    )
+    monkeypatch.setattr(wa, "resolve_effective_as_of", lambda x: "2026-06-18")
     monkeypatch.setattr(
         wa, "trade_dates_upto", lambda d, n, fallback_dates_fn=None: ["2026-06-12", "2026-06-18"]
     )
@@ -625,10 +624,15 @@ def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
         wa,
         "compute_trendok_for_symbols",
         lambda symbols, realtime=False: [
-            {"symbol": "CN:600000", "asOfDate": "2026-06-18", "score": 20.0, "values": {"emIndustry": "银行"}},
+            {
+                "symbol": "CN:600000",
+                "asOfDate": "2026-06-18",
+                "score": 20.0,
+                "values": {"emIndustry": "银行"},
+            },
             {"symbol": "", "asOfDate": "2026-06-18", "score": 10.0},  # no symbol → skip
-            {"symbol": "CN:600001", "asOfDate": "", "score": 30.0},   # no asOfDate → today
-            "not-a-dict",                                             # skip
+            {"symbol": "CN:600001", "asOfDate": "", "score": 30.0},  # no asOfDate → today
+            "not-a-dict",  # skip
         ],
     )
     captured: list[list[dict]] = []
@@ -649,7 +653,9 @@ def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
     monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
     monkeypatch.setattr(
-        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+        wa,
+        "get_last_n_trading_dates",
+        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
     )
     monkeypatch.setattr(
         wa,
@@ -776,7 +782,9 @@ def test_compute_removals_wraps_registry_and_trendok(monkeypatch) -> None:
 
 def test_industry_from_trendok_em_preferred_then_row() -> None:
     assert wa._industry_from_trendok({"values": {"emIndustry": "半导体"}}) == "半导体"
-    assert wa._industry_from_trendok({"values": {"em_industry": "银行"}, "industry": "煤炭"}) == "银行"
+    assert (
+        wa._industry_from_trendok({"values": {"em_industry": "银行"}, "industry": "煤炭"}) == "银行"
+    )
     assert wa._industry_from_trendok({"values": {}, "industry": " 医药 "}) == "医药"
     assert wa._industry_from_trendok({"values": None, "industry": None}) is None
 
@@ -786,9 +794,7 @@ def test_resolve_em_industries_for_symbols_maps_cn_only(monkeypatch) -> None:
         "data_sync_service.service.eastmoney_industry.lookup_em_industries_for_ts_codes",
         lambda codes: {"600000.SH": " 银行 ", "00700.HK": "资讯科技"},
     )
-    out = wa._resolve_em_industries_for_symbols(
-        ["CN:600000", "HK:700", "ETF:510300", "bad-symbol"]
-    )
+    out = wa._resolve_em_industries_for_symbols(["CN:600000", "HK:700", "ETF:510300", "bad-symbol"])
     assert out == {"CN:600000": "银行", "HK:700": "资讯科技"}
     # ETF:510300 / bad-symbol are dropped by _cn_symbol_to_ts_code
 
@@ -852,7 +858,9 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-2")
     monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
     monkeypatch.setattr(
-        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+        wa,
+        "get_last_n_trading_dates",
+        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
     )
     monkeypatch.setattr(
         wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())
@@ -885,7 +893,9 @@ def test_run_intraday_scores_realtime_refresh(monkeypatch) -> None:
         calls.append((symbols, realtime))
         return ("2026-08-11", len(symbols), [])
 
-    monkeypatch.setattr(ms, "sync_cn_sentiment", lambda **kw: {"ok": True, "asOfDate": "2026-08-11"})
+    monkeypatch.setattr(
+        ms, "sync_cn_sentiment", lambda **kw: {"ok": True, "asOfDate": "2026-08-11"}
+    )
     monkeypatch.setattr(wa, "is_trading_day", lambda *a, **k: True)
     monkeypatch.setattr(wa, "_score_universe_symbols", lambda: (["CN:600001"], ["HK:00700"], []))
     monkeypatch.setattr(wa, "record_score_snapshots", fake_record)
@@ -905,15 +915,20 @@ def test_run_intraday_scores_skips_non_trading_day(monkeypatch) -> None:
     assert out["skipped"] is True
     assert out["skipReason"] == "not_trading_day"
 
+
 def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
     """compute_rs_ranks maps symbols -> whole-market RS percentiles."""
 
     from data_sync_service.service import watchlist_automation as wa
 
-    monkeypatch.setattr(wa, "get_connection", lambda: (_ for _ in ()).throw(AssertionError("db should not be hit")))
+    monkeypatch.setattr(
+        wa, "get_connection", lambda: (_ for _ in ()).throw(AssertionError("db should not be hit"))
+    )
 
     def fake_parse(sym):
-        return ("CN", "600001", "600001.SH") if sym == "CN:600001" else ("CN", "600002", "600002.SH")
+        return (
+            ("CN", "600001", "600001.SH") if sym == "CN:600001" else ("CN", "600002", "600002.SH")
+        )
 
     monkeypatch.setattr("data_sync_service.service.trendok._symbol_to_ts_code", fake_parse)
 
@@ -974,7 +989,9 @@ def test_run_watchlist_automation_research_channel_paused_by_default(monkeypatch
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
     monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
     monkeypatch.setattr(
-        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+        wa,
+        "get_last_n_trading_dates",
+        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
     )
     monkeypatch.setattr(
         wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())

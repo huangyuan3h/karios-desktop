@@ -33,6 +33,7 @@ class WatchlistAlertItem(BaseModel):
 class WatchlistAlertsRequest(BaseModel):
     items: list[WatchlistAlertItem] = []
 
+
 router = APIRouter()
 
 
@@ -112,7 +113,9 @@ def get_macro_history_endpoint(
     limit: int = Query(500, ge=1, le=5000),
 ) -> dict:
     """Return macro daily history for a specific series (OHLCV)."""
-    rows = fetch_macro_daily(series_id=series_id, start_date=start_date, end_date=end_date, limit=limit)
+    rows = fetch_macro_daily(
+        series_id=series_id, start_date=start_date, end_date=end_date, limit=limit
+    )
     return {"seriesId": series_id, "data": rows}
 
 
@@ -177,7 +180,9 @@ def get_quote_endpoint(
 
 
 @router.get("/market/stocks/{symbol}/bars")
-def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), force: bool = False) -> dict:
+def get_market_bars_endpoint(
+    symbol: str, days: int = Query(60, ge=10, le=200), force: bool = False
+) -> dict:
     # Purpose: compatibility endpoint for StockPage candlestick chart.
     # Inputs: symbol like CN:000001, days; force triggers incremental tushare sync then DB read.
     try:
@@ -245,7 +250,9 @@ def get_market_stocks_endpoint(
     Returns MarketStocksResponse-compatible format.
     Price and change% are fetched from daily table (latest close) or realtime API.
     """
-    total, items = fetch_market_stocks(market=market, q=q, offset=offset, limit=limit, use_realtime=use_realtime)
+    total, items = fetch_market_stocks(
+        market=market, q=q, offset=offset, limit=limit, use_realtime=use_realtime
+    )
     return {
         "items": items,
         "total": total,
@@ -256,7 +263,9 @@ def get_market_stocks_endpoint(
 
 @router.get("/market/stocks/quotes")
 def get_market_stocks_quotes_endpoint(
-    symbols: list[str] | None = Query(None, description="List of symbols (e.g., CN:000001,CN:600000)"),
+    symbols: list[str] | None = Query(
+        None, description="List of symbols (e.g., CN:000001,CN:600000)"
+    ),
     use_realtime: bool = Query(False, description="Use realtime quotes instead of daily close"),
 ) -> dict:
     """
@@ -322,7 +331,9 @@ def search_stocks_endpoint(
     q2 = (q or "").strip()
     if not q2:
         return {"items": []}
-    _total, items = fetch_market_stocks(market=market, q=q2, offset=0, limit=int(limit), use_realtime=use_realtime)
+    _total, items = fetch_market_stocks(
+        market=market, q=q2, offset=0, limit=int(limit), use_realtime=use_realtime
+    )
     return {"items": items}
 
 
@@ -417,6 +428,8 @@ def watchlist_v5_plan_endpoint(req: WatchlistAlertsRequest) -> dict:
 
 
 @router.post("/market/stocks/watchlist/momentum-alerts")
-def watchlist_momentum_alerts_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> list[dict]:
+def watchlist_momentum_alerts_endpoint(
+    req: WatchlistAlertsRequest, realtime: bool = False
+) -> list[dict]:
     items = [x.model_dump() for x in (req.items or [])]
     return compute_watchlist_momentum_alerts(items, bool(realtime))  # type: ignore[call-arg]

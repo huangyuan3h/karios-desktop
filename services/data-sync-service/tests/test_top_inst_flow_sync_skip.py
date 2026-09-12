@@ -125,8 +125,12 @@ def test_sync_top_inst_uses_tushare_provider_result(monkeypatch) -> None:
             ["eastmoney: temporary blocked"],
         ),
     )
-    monkeypatch.setattr(svc, "upsert_daily_rows", lambda rows: inserted_daily_rows.append(rows) or len(rows))
-    monkeypatch.setattr(svc, "upsert_summary_rows", lambda rows: inserted_summary_rows.append(rows) or len(rows))
+    monkeypatch.setattr(
+        svc, "upsert_daily_rows", lambda rows: inserted_daily_rows.append(rows) or len(rows)
+    )
+    monkeypatch.setattr(
+        svc, "upsert_summary_rows", lambda rows: inserted_summary_rows.append(rows) or len(rows)
+    )
     monkeypatch.setattr(svc, "insert_record", lambda **kwargs: None)
 
     out = svc.sync_top_inst_watchlist(force=True)
@@ -180,7 +184,9 @@ def test_sync_top_inst_skips_when_today_lhb_not_published(monkeypatch) -> None:
     evening — an empty result is "not published yet", not a data outage."""
     monkeypatch.setattr(svc, "ensure_table", lambda: None)
     monkeypatch.setattr(svc, "_latest_cn_trade_date_yyyymmdd", lambda: "20260820")
-    monkeypatch.setattr(svc, "_is_today", lambda _td: True)  # 2026-08-21: frozen date no longer equals today
+    monkeypatch.setattr(
+        svc, "_is_today", lambda _td: True
+    )  # 2026-08-21: frozen date no longer equals today
     monkeypatch.setattr(svc, "_watchlist_ts_codes", lambda: ["603588.SH"])
     monkeypatch.setattr(svc, "get_today_run", lambda job_type: None)
     monkeypatch.setattr(svc, "is_trading_day", lambda exchange, cal_date: True)
@@ -287,8 +293,12 @@ def test_sync_top_inst_eastmoney_seat_failure_is_isolated(monkeypatch) -> None:
             "603986.SH": EastMoneySeatBundle(error="temporary_blocked"),
         },
     )
-    monkeypatch.setattr(svc, "upsert_daily_rows", lambda rows: inserted_daily_rows.append(rows) or len(rows))
-    monkeypatch.setattr(svc, "upsert_summary_rows", lambda rows: inserted_summary_rows.append(rows) or len(rows))
+    monkeypatch.setattr(
+        svc, "upsert_daily_rows", lambda rows: inserted_daily_rows.append(rows) or len(rows)
+    )
+    monkeypatch.setattr(
+        svc, "upsert_summary_rows", lambda rows: inserted_summary_rows.append(rows) or len(rows)
+    )
     monkeypatch.setattr(svc, "insert_record", lambda **kwargs: None)
 
     out = svc.sync_top_inst_watchlist(force=True)

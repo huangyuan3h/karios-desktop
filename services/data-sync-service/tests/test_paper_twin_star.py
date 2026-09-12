@@ -60,7 +60,9 @@ def test_intake_skips_when_slots_full(monkeypatch) -> None:
         lambda: {"sat": {"gateOpen": True, "candidates": [{"ts": "000001.SZ", "close": 10}]}},
     )
     monkeypatch.setattr(pts, "_open_twin_star", lambda: opens)
-    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+    monkeypatch.setattr(
+        pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert"))
+    )
     out = pts.run_intake_twin_star(trade_date="2026-09-02")
     assert out["inserted"] == 0
     assert out["skippedReasons"]["slots_full"] == 1
@@ -121,7 +123,9 @@ def test_intake_skips_already_open_and_gate_closed(monkeypatch) -> None:
         lambda: [{"symbol": "CN:000001", "source": SOURCE_TWIN_STAR}],
     )
     monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
-    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+    monkeypatch.setattr(
+        pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert"))
+    )
     out = pts.run_intake_twin_star(trade_date="2026-09-02")
     assert out["inserted"] == 0
     assert out["skippedReasons"]["already_open"] == 1
@@ -164,7 +168,9 @@ def test_sleeve_is_twelve_point_five() -> None:
 
 def test_intake_skips_snapshot_bad_and_non_session(monkeypatch) -> None:
     monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
-    monkeypatch.setattr(pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert")))
+    monkeypatch.setattr(
+        pts, "insert_paper_trade", lambda **k: (_ for _ in ()).throw(AssertionError("no insert"))
+    )
 
     # Stale/missing intraday tape: T-1 fallback list must not be bought.
     monkeypatch.setattr(
@@ -210,7 +216,9 @@ def test_intake_prefers_bar_1430_and_records_source(monkeypatch) -> None:
     monkeypatch.setattr(pts, "_open_twin_star", lambda: [])
     monkeypatch.setattr(pts, "fetch_last_ohlcv_batch", lambda ts, days=5: {})
     monkeypatch.setattr(
-        pts, "_fetch_1430_px_map", lambda ts, day: ({"000001.SZ": 10.2}, {"000001.SZ": "bar_5min_1430"})
+        pts,
+        "_fetch_1430_px_map",
+        lambda ts, day: ({"000001.SZ": 10.2}, {"000001.SZ": "bar_5min_1430"}),
     )
 
     def fake_insert(**kwargs):
@@ -291,7 +299,9 @@ def test_update_records_exit_source_and_hhmm(monkeypatch) -> None:
         lambda ts, days=8: {"000001.SZ": [["2026-09-02", 0, 0, 0, 10.2]]},
     )
     monkeypatch.setattr(
-        pts, "_fetch_1430_px_map", lambda ts, day: ({"000001.SZ": 10.1}, {"000001.SZ": "bar_5min_1430"})
+        pts,
+        "_fetch_1430_px_map",
+        lambda ts, day: ({"000001.SZ": 10.1}, {"000001.SZ": "bar_5min_1430"}),
     )
 
     def fake_close(**kwargs):

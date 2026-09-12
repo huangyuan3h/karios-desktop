@@ -189,8 +189,12 @@ def test_liquidity_ttl_cache_hits_on_second_call() -> None:
             "mainline_inflow_above_5B": True,
         },
     ) as compute:
-        first = market_regime._get_market_liquidity_and_mainline(as_of_date="2026-06-18", breadth_ratio=0.6)
-        second = market_regime._get_market_liquidity_and_mainline(as_of_date="2026-06-18", breadth_ratio=0.6)
+        first = market_regime._get_market_liquidity_and_mainline(
+            as_of_date="2026-06-18", breadth_ratio=0.6
+        )
+        second = market_regime._get_market_liquidity_and_mainline(
+            as_of_date="2026-06-18", breadth_ratio=0.6
+        )
 
     assert first == second
     assert compute.call_count == 1

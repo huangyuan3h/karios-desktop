@@ -12,7 +12,9 @@ def test_load_alpha_s_symbols(monkeypatch) -> None:
 
     monkeypatch.setattr(wa, "load_catalyst_window", lambda: (["a", "b"], ["s1", "s2"]))
     assert tk._load_alpha_s_symbols() == {"s1", "s2"}
-    monkeypatch.setattr(wa, "load_catalyst_window", lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        wa, "load_catalyst_window", lambda: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     assert tk._load_alpha_s_symbols() == set()
 
 
@@ -34,7 +36,9 @@ def test_apply_alpha_s_recovering_hit(monkeypatch) -> None:
     monkeypatch.setattr(tk, "_volume_vs_avg10", lambda vols: 3.0)
     monkeypatch.setattr(tk, "_is_bullish_day", lambda closes, opens: True)
     res = {"score": 40.0, "trendOk": False, "scoreParts": {}}
-    tk.apply_alpha_s_trend_recovering(res, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=True)
+    tk.apply_alpha_s_trend_recovering(
+        res, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=True
+    )
     assert res["trendOk"] is True
     assert res["score"] == 60.0
     assert res["trendStatus"] == "recovering"
@@ -47,12 +51,16 @@ def test_apply_alpha_s_recovering_miss_and_bad_parts(monkeypatch) -> None:
     monkeypatch.setattr(tk, "_volume_vs_avg10", lambda vols: 1.0)
     monkeypatch.setattr(tk, "_is_bullish_day", lambda closes, opens: True)
     res = {"score": "bad", "trendOk": True}
-    tk.apply_alpha_s_trend_recovering(res, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=True)
+    tk.apply_alpha_s_trend_recovering(
+        res, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=True
+    )
     assert res["trendStatus"] == "ok"
     assert res["checks"]["alphaSTrendRecovering"] is False
 
     res2 = {"score": 70, "trendOk": False, "scoreParts": "not-a-dict"}
-    tk.apply_alpha_s_trend_recovering(res2, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=False)
+    tk.apply_alpha_s_trend_recovering(
+        res2, closes=[1.0] * 11, opens=[0.5] * 11, vols=[1.0] * 11, is_alpha_s=False
+    )
     assert res2["trendStatus"] == "no"
 
 
@@ -66,9 +74,41 @@ def test_macro_override_lock_active() -> None:
 
 def test_atr14() -> None:
     assert tk._atr14([1.0, 2.0], [1.0, 2.0], [1.0, 2.0]) is None
-    highs = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0]
+    highs = [
+        10.0,
+        11.0,
+        12.0,
+        13.0,
+        14.0,
+        15.0,
+        16.0,
+        17.0,
+        18.0,
+        19.0,
+        20.0,
+        21.0,
+        22.0,
+        23.0,
+        24.0,
+    ]
     lows = [9.0, 9.5, 10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0, 15.5, 16.0]
-    closes = [9.5, 10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0, 15.5, 16.0, 16.5]
+    closes = [
+        9.5,
+        10.0,
+        10.5,
+        11.0,
+        11.5,
+        12.0,
+        12.5,
+        13.0,
+        13.5,
+        14.0,
+        14.5,
+        15.0,
+        15.5,
+        16.0,
+        16.5,
+    ]
     atr = tk._atr14(highs, lows, closes)
     assert atr is not None and atr > 0
     assert tk._atr14(highs, lows, closes, period=0) is None
@@ -147,31 +187,64 @@ def test_is_momentum_surge_eligible() -> None:
 
 
 def test_apply_intraday_risk_buy_blocks() -> None:
-    res = {"stopLossParts": {}, "riskMetricsLive": True, "intradayChgPct": 8.0,
-           "buyMode": "B_momentum", "trendOk": True, "score": 90.0, "scoreParts": {}, "buyWhy": ""}
+    res = {
+        "stopLossParts": {},
+        "riskMetricsLive": True,
+        "intradayChgPct": 8.0,
+        "buyMode": "B_momentum",
+        "trendOk": True,
+        "score": 90.0,
+        "scoreParts": {},
+        "buyWhy": "",
+    }
     tk._apply_intraday_risk_buy_blocks(res, market_regime="Weak")
     assert res["buyChecks"]["momentum_surge_allow"] is True
     assert "TIP-007" in res["buyWhy"]
 
-    res2 = {"stopLossParts": {}, "riskMetricsLive": True, "intradayChgPct": 8.0,
-            "buyMode": "FE", "buyChecks": {}}
+    res2 = {
+        "stopLossParts": {},
+        "riskMetricsLive": True,
+        "intradayChgPct": 8.0,
+        "buyMode": "FE",
+        "buyChecks": {},
+    }
     tk._apply_intraday_risk_buy_blocks(res2, market_regime="Weak")
     assert res2["buyAction"] == "avoid"
     assert res2["buyChecks"]["blocked_intraday_surge"] is True
 
-    res3 = {"stopLossParts": {}, "riskMetricsLive": True, "intradayChgPct": 3.0,
-            "gapUp": True, "buyMode": "B_momentum", "buyAction": "buy", "buyChecks": {}}
+    res3 = {
+        "stopLossParts": {},
+        "riskMetricsLive": True,
+        "intradayChgPct": 3.0,
+        "gapUp": True,
+        "buyMode": "B_momentum",
+        "buyAction": "buy",
+        "buyChecks": {},
+    }
     tk._apply_intraday_risk_buy_blocks(res3, market_regime="Weak")
     assert res3["buyAction"] == "avoid"
     assert res3["buyChecks"]["blocked_gap_up_weak_market"] is True
 
-    res4 = {"stopLossParts": {}, "riskMetricsLive": True, "intradayChgPct": 3.0,
-            "gapUp": True, "buyMode": "FE", "buyAction": "hold", "buyChecks": {}, "buyWhy": ""}
+    res4 = {
+        "stopLossParts": {},
+        "riskMetricsLive": True,
+        "intradayChgPct": 3.0,
+        "gapUp": True,
+        "buyMode": "FE",
+        "buyAction": "hold",
+        "buyChecks": {},
+        "buyWhy": "",
+    }
     tk._apply_intraday_risk_buy_blocks(res4, market_regime="Weak")
     assert res4["buyChecks"]["blocked_gap_up_weak_market"] is True
     assert "禁止追高" in res4["buyWhy"]
 
-    res5 = {"stopLossParts": {"exit_now": 1}, "riskMetricsLive": True, "intradayChgPct": 8.0, "buyChecks": {}}
+    res5 = {
+        "stopLossParts": {"exit_now": 1},
+        "riskMetricsLive": True,
+        "intradayChgPct": 8.0,
+        "buyChecks": {},
+    }
     tk._apply_intraday_risk_buy_blocks(res5, market_regime="Weak")
     assert res5["buyChecks"] == {} and "buyAction" not in res5
 
@@ -195,7 +268,9 @@ def test_merge_realtime_bar(monkeypatch) -> None:
     older = tk._merge_realtime_bar(bars, {"price": 10.5, "trade_time": "2026-08-05 09:30"})
     assert older == bars  # stale date ignored
     monkeypatch.setattr(tk, "_quote_trade_date", lambda q: "2026-08-06")
-    same_day = tk._merge_realtime_bar(bars, {"price": 10.8, "open": 10.1, "high": 10.9, "low": 10.0, "volume": 200})
+    same_day = tk._merge_realtime_bar(
+        bars, {"price": 10.8, "open": 10.1, "high": 10.9, "low": 10.0, "volume": 200}
+    )
     assert len(same_day) == 1 and same_day[0][0] == "2026-08-06" and same_day[0][4] == "10.8"
     monkeypatch.setattr(tk, "_quote_trade_date", lambda q: "2026-08-07")
     next_day = tk._merge_realtime_bar(bars, {"price": 10.9})
@@ -256,7 +331,9 @@ def test_lookup_em_industry_boards(monkeypatch) -> None:
     assert tk._lookup_em_industry_boards([]) == {}
     monkeypatch.setattr(tk, "lookup_em_industries", lambda codes: {"600000.SH": "银行"})
     assert tk._lookup_em_industry_boards(["600000.SH"]) == {"600000.SH": "银行"}
-    monkeypatch.setattr(tk, "lookup_em_industries", lambda codes: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        tk, "lookup_em_industries", lambda codes: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     assert tk._lookup_em_industry_boards(["600000.SH"]) == {}
 
 
@@ -279,9 +356,15 @@ def test_build_industry_flow_context(monkeypatch) -> None:
     ctx = tk._build_industry_flow_context("2026-08-07")
     assert ctx == {"asOfDate": "2026-08-07", "ok": False}
 
-    monkeypatch.setattr(tk, "trade_dates_upto", lambda fd, n, fallback_dates_fn=None: ["2026-08-07", "2026-08-06"])
+    monkeypatch.setattr(
+        tk, "trade_dates_upto", lambda fd, n, fallback_dates_fn=None: ["2026-08-07", "2026-08-06"]
+    )
     monkeypatch.setattr(tk, "get_rows_for_dates", lambda dates: [{"net_inflow": 1.0}])
-    monkeypatch.setattr(tk, "build_trendok_flow_context_from_rows", lambda flow_date, dates_5, rows: {"ok": True, "flow_date": flow_date})
+    monkeypatch.setattr(
+        tk,
+        "build_trendok_flow_context_from_rows",
+        lambda flow_date, dates_5, rows: {"ok": True, "flow_date": flow_date},
+    )
     ctx2 = tk._build_industry_flow_context("2026-08-07")
     assert ctx2["ok"] is True
 
@@ -322,7 +405,9 @@ def test_normalize_yyyy_mm_dd() -> None:
 
 
 def test_resolve_inst_summaries_for_trendok(monkeypatch) -> None:
-    monkeypatch.setattr(tk, "fetch_summaries_for_codes", lambda codes, trade_date=None: {"600000.SH": {"netBuy": 1}})
+    monkeypatch.setattr(
+        tk, "fetch_summaries_for_codes", lambda codes, trade_date=None: {"600000.SH": {"netBuy": 1}}
+    )
     out = tk._resolve_inst_summaries_for_trendok(["600000.SH"], latest_bar_date="2026-08-07")
     assert out["600000.SH"]["netBuy"] == 1
 
@@ -335,6 +420,8 @@ def test_resolve_inst_summaries_for_trendok(monkeypatch) -> None:
         return {"000001.SZ": {"netBuy": 2}}
 
     monkeypatch.setattr(tk, "fetch_summaries_for_codes", fake_fetch)
-    out2 = tk._resolve_inst_summaries_for_trendok(["600000.SH", "000001.SZ"], latest_bar_date="2026-08-07")
+    out2 = tk._resolve_inst_summaries_for_trendok(
+        ["600000.SH", "000001.SZ"], latest_bar_date="2026-08-07"
+    )
     assert set(out2) == {"600000.SH", "000001.SZ"}
     assert len(calls) == 2  # second call without trade_date for missing

@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330",
     "start": "uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330",
-    "lint": "uv run ruff check .",
+    "lint": "uv run ruff check . && uv run ruff format --check .",
     "format": "uv run ruff format .",
     "typecheck": "uv run pyright",
     "test": "uv run pytest -q",

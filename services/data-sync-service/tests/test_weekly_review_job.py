@@ -10,7 +10,11 @@ def test_prev_friday(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "data_sync_service.scheduler.weekly_review_job.datetime",
-        type("FakeDT", (), {"now": staticmethod(lambda tz=UTC: datetime(2026, 8, 17, 12, 0, tzinfo=tz))}),
+        type(
+            "FakeDT",
+            (),
+            {"now": staticmethod(lambda tz=UTC: datetime(2026, 8, 17, 12, 0, tzinfo=tz))},
+        ),
     )
     assert wj._prev_friday() == "2026-08-14"
 
@@ -28,12 +32,18 @@ def test_run_generates_and_stores(monkeypatch) -> None:
 
     monkeypatch.setattr("data_sync_service.service.weekly_review.build_weekly_review", fake_build)
     monkeypatch.setattr("data_sync_service.db.morning_brief.upsert_brief", fake_upsert)
-    monkeypatch.setattr("data_sync_service.scheduler.weekly_review_job.insert_record",
-                        lambda *a, **k: calls.setdefault("record", (a, k)))
+    monkeypatch.setattr(
+        "data_sync_service.scheduler.weekly_review_job.insert_record",
+        lambda *a, **k: calls.setdefault("record", (a, k)),
+    )
     monkeypatch.setattr(wj, "_prev_friday", lambda: "2026-08-14")
 
     out = wj.run()
-    assert out == {"endDate": "2026-08-14", "briefId": "2026-08-14-weekly-review", "markdownChars": 4}
+    assert out == {
+        "endDate": "2026-08-14",
+        "briefId": "2026-08-14-weekly-review",
+        "markdownChars": 4,
+    }
     assert calls["build"] == ["2026-08-14"]
     assert calls["upsert"]["brief_type"] == "weekly-review"
     assert calls["record"][0] == (wj.JOB_ID, True, None)

@@ -114,17 +114,19 @@ def list_events(limit: int = 100, include_resolved: bool = False) -> list[dict[s
             rows = cur.fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
-        out.append({
-            "id": r[0],
-            "eventType": r[1],
-            "severity": r[2],
-            "title": r[3],
-            "detail": r[4],
-            "payload": r[5],
-            "dedupeKey": r[6],
-            "resolved": bool(r[7]),
-            "createdAt": r[8].isoformat() if hasattr(r[8], "isoformat") else str(r[8]),
-        })
+        out.append(
+            {
+                "id": r[0],
+                "eventType": r[1],
+                "severity": r[2],
+                "title": r[3],
+                "detail": r[4],
+                "payload": r[5],
+                "dedupeKey": r[6],
+                "resolved": bool(r[7]),
+                "createdAt": r[8].isoformat() if hasattr(r[8], "isoformat") else str(r[8]),
+            }
+        )
     return out
 
 

@@ -8,6 +8,7 @@ After 12:30 a missing/stale session file is recorded as a trading-job
 failure (once per day) so Watchlist + notifications can see it. Lookback
 from yesterday is not a success.
 """
+
 from __future__ import annotations
 
 import logging

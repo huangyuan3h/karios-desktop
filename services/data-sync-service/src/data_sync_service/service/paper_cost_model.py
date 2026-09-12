@@ -108,6 +108,4 @@ def entry_cost_frac(market: str) -> float:
     if market not in _COST_PARAMS:
         raise ValueError(f"no cost model for market {market!r} (known: {sorted(_COST_PARAMS)})")
     p = _COST_PARAMS[market]
-    return (
-        p.commission_bps_entry + p.stamp_bps_entry + p.slippage_bps_entry
-    ) / 100.0 / 100.0
+    return (p.commission_bps_entry + p.stamp_bps_entry + p.slippage_bps_entry) / 100.0 / 100.0

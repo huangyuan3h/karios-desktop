@@ -96,18 +96,46 @@ def _df_to_daily_rows(
         if since is not None and d is not None and d <= since:
             prev_close = row.get("close")  # noqa: F841 — track for next bar's pre_close
             try:
-                prev_close = float(prev_close) if prev_close is not None and prev_close == prev_close else None
+                prev_close = (
+                    float(prev_close)
+                    if prev_close is not None and prev_close == prev_close
+                    else None
+                )
             except (TypeError, ValueError):
                 prev_close = None
             continue
 
         try:
-            o = float(row.get("open")) if row.get("open") is not None and row.get("open") == row.get("open") else None
-            h = float(row.get("high")) if row.get("high") is not None and row.get("high") == row.get("high") else None
-            lo = float(row.get("low")) if row.get("low") is not None and row.get("low") == row.get("low") else None
-            c = float(row.get("close")) if row.get("close") is not None and row.get("close") == row.get("close") else None
-            v = float(row.get("volume")) if row.get("volume") is not None and row.get("volume") == row.get("volume") else None
-            amt = float(row.get("amount")) if row.get("amount") is not None and row.get("amount") == row.get("amount") else None
+            o = (
+                float(row.get("open"))
+                if row.get("open") is not None and row.get("open") == row.get("open")
+                else None
+            )
+            h = (
+                float(row.get("high"))
+                if row.get("high") is not None and row.get("high") == row.get("high")
+                else None
+            )
+            lo = (
+                float(row.get("low"))
+                if row.get("low") is not None and row.get("low") == row.get("low")
+                else None
+            )
+            c = (
+                float(row.get("close"))
+                if row.get("close") is not None and row.get("close") == row.get("close")
+                else None
+            )
+            v = (
+                float(row.get("volume"))
+                if row.get("volume") is not None and row.get("volume") == row.get("volume")
+                else None
+            )
+            amt = (
+                float(row.get("amount"))
+                if row.get("amount") is not None and row.get("amount") == row.get("amount")
+                else None
+            )
         except (TypeError, ValueError):
             continue
 

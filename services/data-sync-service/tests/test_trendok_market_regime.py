@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 
-def _make_bars(days: int = 40, start_price: float = 10.0, step: float = 0.3) -> list[tuple[str, str, str, str, str, str]]:
+def _make_bars(
+    days: int = 40, start_price: float = 10.0, step: float = 0.3
+) -> list[tuple[str, str, str, str, str, str]]:
     out: list[tuple[str, str, str, str, str, str]] = []
     for i in range(days):
         date = f"2025-02-{i + 1:02d}"
@@ -10,7 +12,9 @@ def _make_bars(days: int = 40, start_price: float = 10.0, step: float = 0.3) -> 
         high = close + 0.35
         low = close - 0.4
         vol = 1000 + i * 15
-        out.append((date, f"{open_p:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{vol:.3f}"))
+        out.append(
+            (date, f"{open_p:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{vol:.3f}")
+        )
     return out
 
 

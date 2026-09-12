@@ -203,23 +203,66 @@ def test_compute_auto_qa_penalty_per_symbol_helper(tmp_path):
 def test_fetch_theme_win_rates_filters_by_min_trades():
     trades = [
         # theme "A" — 4 trades, 1 win → 25% (< 30% floor after min trades ≥ 3)
-        {"status": "closed", "closeDate": "2026-07-01", "pnlPct": 1.0, "whyAtEntry": '{"macroTheme": "A"}'},
-        {"status": "closed", "closeDate": "2026-07-02", "pnlPct": -2.0, "whyAtEntry": '{"macroTheme": "A"}'},
-        {"status": "closed", "closeDate": "2026-07-03", "pnlPct": -3.0, "whyAtEntry": '{"macroTheme": "A"}'},
-        {"status": "closed", "closeDate": "2026-07-04", "pnlPct": -1.5, "whyAtEntry": '{"macroTheme": "A"}'},
+        {
+            "status": "closed",
+            "closeDate": "2026-07-01",
+            "pnlPct": 1.0,
+            "whyAtEntry": '{"macroTheme": "A"}',
+        },
+        {
+            "status": "closed",
+            "closeDate": "2026-07-02",
+            "pnlPct": -2.0,
+            "whyAtEntry": '{"macroTheme": "A"}',
+        },
+        {
+            "status": "closed",
+            "closeDate": "2026-07-03",
+            "pnlPct": -3.0,
+            "whyAtEntry": '{"macroTheme": "A"}',
+        },
+        {
+            "status": "closed",
+            "closeDate": "2026-07-04",
+            "pnlPct": -1.5,
+            "whyAtEntry": '{"macroTheme": "A"}',
+        },
         # theme "B" — 3 trades, 2 wins → 66% (not low)
-        {"status": "closed", "closeDate": "2026-07-01", "pnlPct": 5.0, "whyAtEntry": '{"macroTheme": "B"}'},
-        {"status": "closed", "closeDate": "2026-07-02", "pnlPct": 2.0, "whyAtEntry": '{"macroTheme": "B"}'},
-        {"status": "closed", "closeDate": "2026-07-03", "pnlPct": -1.0, "whyAtEntry": '{"macroTheme": "B"}'},
+        {
+            "status": "closed",
+            "closeDate": "2026-07-01",
+            "pnlPct": 5.0,
+            "whyAtEntry": '{"macroTheme": "B"}',
+        },
+        {
+            "status": "closed",
+            "closeDate": "2026-07-02",
+            "pnlPct": 2.0,
+            "whyAtEntry": '{"macroTheme": "B"}',
+        },
+        {
+            "status": "closed",
+            "closeDate": "2026-07-03",
+            "pnlPct": -1.0,
+            "whyAtEntry": '{"macroTheme": "B"}',
+        },
         # theme "C" — 1 trade, 1 win → excluded (insufficient)
-        {"status": "closed", "closeDate": "2026-07-01", "pnlPct": 10.0, "whyAtEntry": '{"macroTheme": "C"}'},
+        {
+            "status": "closed",
+            "closeDate": "2026-07-01",
+            "pnlPct": 10.0,
+            "whyAtEntry": '{"macroTheme": "C"}',
+        },
     ]
-    with patch(
-        "data_sync_service.service.alpha_radar_qa.list_paper_trades",
-        return_value=trades,
-    ), patch(
-        "data_sync_service.service.alpha_radar_qa.ensure_paper_tables",
-        return_value=None,
+    with (
+        patch(
+            "data_sync_service.service.alpha_radar_qa.list_paper_trades",
+            return_value=trades,
+        ),
+        patch(
+            "data_sync_service.service.alpha_radar_qa.ensure_paper_tables",
+            return_value=None,
+        ),
     ):
         rates = fetch_theme_win_rates(since_days=60, min_trades=3)
     assert "A" in rates
@@ -237,9 +280,7 @@ def test_fetch_theme_win_rates_filters_by_min_trades():
 
 def test_get_auto_qa_stats_combines_penalties_and_low_win(tmp_path):
     seed_path = tmp_path / "theme_industry_map.json"
-    seed_path.write_text(
-        json.dumps({"themes": {"HBM 涨价": ["半导体"]}}, ensure_ascii=False)
-    )
+    seed_path.write_text(json.dumps({"themes": {"HBM 涨价": ["半导体"]}}, ensure_ascii=False))
     trends = [
         {
             "id": "t1",
@@ -248,17 +289,23 @@ def test_get_auto_qa_stats_combines_penalties_and_low_win(tmp_path):
             "cnSymbols": [{"symbol": "CN:600036", "name": "招商银行"}],
         }
     ]
-    with patch(
-        "data_sync_service.service.alpha_radar_qa.fetch_trends",
-        return_value=(1, trends),
-    ), patch(
-        "data_sync_service.service.alpha_radar_qa.lookup_by_ts_codes",
-        return_value={"600036.SH": "银行"},
-    ), patch(
-        "data_sync_service.service.alpha_radar_qa.fetch_theme_win_rates",
-        return_value={"HBM 涨价": {"wins": 1, "total": 5, "winRate": 0.20}},
+    with (
+        patch(
+            "data_sync_service.service.alpha_radar_qa.fetch_trends",
+            return_value=(1, trends),
+        ),
+        patch(
+            "data_sync_service.service.alpha_radar_qa.lookup_by_ts_codes",
+            return_value={"600036.SH": "银行"},
+        ),
+        patch(
+            "data_sync_service.service.alpha_radar_qa.fetch_theme_win_rates",
+            return_value={"HBM 涨价": {"wins": 1, "total": 5, "winRate": 0.20}},
+        ),
     ):
-        stats = get_auto_qa_stats(since_days=7, limit=10, config=AutoQaConfig(seed_path=str(seed_path)))
+        stats = get_auto_qa_stats(
+            since_days=7, limit=10, config=AutoQaConfig(seed_path=str(seed_path))
+        )
 
     assert stats["themesCovered"] == 1
     assert len(stats["recentPenalties"]) == 1

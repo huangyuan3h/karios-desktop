@@ -21,9 +21,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE user_trades ADD COLUMN IF NOT EXISTS alpha_snapshot JSONB;"
-    )
+    op.execute("ALTER TABLE user_trades ADD COLUMN IF NOT EXISTS alpha_snapshot JSONB;")
 
 
 def downgrade() -> None:

@@ -109,7 +109,9 @@ def _prev_open_date(exchange: str, d0: date) -> date | None:
     ensure_daily()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT MAX(trade_date) FROM daily WHERE trade_date < %s", (d0.isoformat(),))
+            cur.execute(
+                "SELECT MAX(trade_date) FROM daily WHERE trade_date < %s", (d0.isoformat(),)
+            )
             row = cur.fetchone()
     return row[0] if row and row[0] else None
 
@@ -381,6 +383,7 @@ def _score_trend(industry: str, ctx: dict[str, Any]) -> tuple[float, dict[str, A
 
     market_series = ctx["market_avg_close"]
     market_closes = [market_series.get(d, 0.0) for d in dates]
+
     def _ret5(xs: list[float]) -> float:
         if len(xs) < 6 or xs[-6] <= 0:
             return 0.0
@@ -440,7 +443,9 @@ def ensure_scores_for_dates(dates: list[str]) -> dict[str, Any]:
     return {"ensured": ensured}
 
 
-def _is_mainline(industries_scores: list[dict[str, Any]], recent_scores: dict[str, dict[str, float]]) -> bool:
+def _is_mainline(
+    industries_scores: list[dict[str, Any]], recent_scores: dict[str, dict[str, float]]
+) -> bool:
     if not industries_scores:
         return False
     for d in recent_scores.values():
@@ -494,7 +499,9 @@ def get_cn_industry_mainline(*, as_of_date: str | None = None) -> dict[str, Any]
             current_mainline.append(_to_row(r, is_mainline=True))
 
     mainline_names = {r["industryName"] for r in current_mainline}
-    all_scores = [_to_row(r, is_mainline=(r["industry_name"] in mainline_names)) for r in scores_today]
+    all_scores = [
+        _to_row(r, is_mainline=(r["industry_name"] in mainline_names)) for r in scores_today
+    ]
     return {
         "asOfDate": d,
         "dates": dates_for_trend,
@@ -503,12 +510,18 @@ def get_cn_industry_mainline(*, as_of_date: str | None = None) -> dict[str, Any]
     }
 
 
-def sync_cn_industry_mainline(*, as_of_date: str | None = None, force: bool = False) -> dict[str, Any]:
+def sync_cn_industry_mainline(
+    *, as_of_date: str | None = None, force: bool = False
+) -> dict[str, Any]:
     d = (as_of_date or "").strip() or (flow_latest_date() or "")
     if not d:
         return {"ok": False, "error": "no_industry_flow_data"}
     dates_for_trend = _trade_dates_upto(d, 21)
-    metrics = ensure_metrics_for_dates(dates_for_trend) if force else ensure_metrics_for_dates(dates_for_trend)
+    metrics = (
+        ensure_metrics_for_dates(dates_for_trend)
+        if force
+        else ensure_metrics_for_dates(dates_for_trend)
+    )
     scores = ensure_scores_for_dates(dates_for_trend[-max(MAINLINE_STREAK_DAYS, 1) :])
     return {
         "ok": True,

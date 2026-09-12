@@ -150,9 +150,7 @@ def aggregate_catalyst_stocks(
                 confidence = 0.0
             contribution = article_contribution(
                 confidence=confidence,
-                urgency_level=str(
-                    trend.get("catalystGrade") or trend.get("urgencyLevel") or "B"
-                ),
+                urgency_level=str(trend.get("catalystGrade") or trend.get("urgencyLevel") or "B"),
                 event_at=event_at,
                 now=ref,
             )
@@ -169,7 +167,9 @@ def aggregate_catalyst_stocks(
                 ),
                 "eventFocus": str(trend.get("eventFocus") or trend.get("event_focus") or "").strip()
                 or None,
-                "logicSummary": str(trend.get("logicSummary") or trend.get("logic_summary") or "").strip()
+                "logicSummary": str(
+                    trend.get("logicSummary") or trend.get("logic_summary") or ""
+                ).strip()
                 or None,
                 "catalyst": str(trend.get("catalyst") or "").strip() or None,
                 "globalTarget": str(trend.get("globalTarget") or "").strip() or None,
@@ -241,7 +241,10 @@ def aggregate_catalyst_stocks(
         )
 
     results.sort(
-        key=lambda row: (float(row.get("catalystScore") or 0), str(row.get("latestArticleAt") or "")),
+        key=lambda row: (
+            float(row.get("catalystScore") or 0),
+            str(row.get("latestArticleAt") or ""),
+        ),
         reverse=True,
     )
     return results
@@ -265,6 +268,7 @@ def list_catalyst_stocks(
                 compute_auto_qa_penalty_for_catalyst,
                 fetch_theme_win_rates,
             )
+
             penalties = compute_auto_qa_penalty_for_catalyst(items[:lim])
             win_rates = fetch_theme_win_rates()
             for item in items[:lim]:
@@ -289,11 +293,7 @@ def list_catalyst_stocks(
             auto_qa_payload = {
                 "applied": True,
                 "themesCovered": len(penalties),
-                "lowWinRateThemeCount": sum(
-                    1
-                    for wr in win_rates.values()
-                    if wr["winRate"] < 0.30
-                ),
+                "lowWinRateThemeCount": sum(1 for wr in win_rates.values() if wr["winRate"] < 0.30),
             }
         except Exception as exc:  # noqa: BLE001
             auto_qa_payload = {"applied": False, "error": str(exc)}

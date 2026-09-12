@@ -107,7 +107,11 @@ def upsert_daily_rows(rows: Iterable[dict[str, Any]]) -> int:
                 str(meta.get("industry_name") or ""),
                 float(meta.get("net_inflow") or 0.0),
                 str(meta.get("updated_at") or ""),
-                Json(meta.get("raw") if isinstance(meta.get("raw"), dict) else {"raw": meta.get("raw")}),
+                Json(
+                    meta.get("raw")
+                    if isinstance(meta.get("raw"), dict)
+                    else {"raw": meta.get("raw")}
+                ),
                 str(meta.get("taxonomy") or "UNKNOWN"),
                 _int_or_none(meta.get("industry_level")),
                 str(meta.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE),

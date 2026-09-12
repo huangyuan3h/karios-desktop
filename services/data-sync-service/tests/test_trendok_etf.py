@@ -1,4 +1,5 @@
 """ETF-specific trendok behavior: rule isolation from stock hard-exit + fallback stops."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -129,10 +130,13 @@ def test_etf_momentum_exhaustion_downgrades_to_trim() -> None:
         hist[-1] = -base * 0.5
         return macd_line, sig, hist
 
-    with patch(
-        "data_sync_service.service.trendok._compute_watchlist_score_v4",
-        return_value=(88.0, {"base": 88.0}),
-    ), patch("data_sync_service.service.trendok._macd", side_effect=fake_macd):
+    with (
+        patch(
+            "data_sync_service.service.trendok._compute_watchlist_score_v4",
+            return_value=(88.0, {"base": 88.0}),
+        ),
+        patch("data_sync_service.service.trendok._macd", side_effect=fake_macd),
+    ):
         res = _trendok_one(
             symbol="ETF:515880",
             name="Test",

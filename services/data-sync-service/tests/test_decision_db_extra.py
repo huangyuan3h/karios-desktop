@@ -84,8 +84,24 @@ class TestUpsertActions:
         cur = Mock()
         monkeypatch.setattr(dcd, "get_connection", lambda: _fake_conn(cur))
         actions = [
-            {"session_id": 1, "message_id": 5, "symbol": "CN:600519", "action": "BUY", "rationale": "r", "confidence": 0.9, "snapshot_date": "2026-08-07"},
-            {"session_id": 1, "message_id": 5, "symbol": "CN:000001", "action": "ADD", "rationale": None, "confidence": None, "snapshot_date": None},
+            {
+                "session_id": 1,
+                "message_id": 5,
+                "symbol": "CN:600519",
+                "action": "BUY",
+                "rationale": "r",
+                "confidence": 0.9,
+                "snapshot_date": "2026-08-07",
+            },
+            {
+                "session_id": 1,
+                "message_id": 5,
+                "symbol": "CN:000001",
+                "action": "ADD",
+                "rationale": None,
+                "confidence": None,
+                "snapshot_date": None,
+            },
         ]
         assert dcd.upsert_actions(actions) == 2
         assert cur.execute.call_count == 4

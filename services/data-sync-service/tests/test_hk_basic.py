@@ -9,6 +9,7 @@ from data_sync_service.service.hk_basic import (
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_map_hk_basic_to_stock_basic_df() -> None:
     hk_df = pd.DataFrame(
         [
@@ -63,4 +64,3 @@ def test_sync_hk_basic_endpoint_shape(monkeypatch) -> None:
     payload = resp.json()
     assert payload["ok"] is True
     assert payload["updated"] == 2
-

@@ -80,15 +80,17 @@ def upsert_from_dataframe(df: pd.DataFrame, *, keep_industry: bool = False) -> i
     ensure_table()
     rows = []
     for row in df.itertuples(index=False):
-        rows.append((
-            _scalar(getattr(row, "ts_code", None)),
-            _scalar(getattr(row, "symbol", None)),
-            _scalar(getattr(row, "name", None)),
-            _scalar(getattr(row, "industry", None)),
-            _scalar(getattr(row, "market", None)),
-            _date(getattr(row, "list_date", None)),
-            _date(getattr(row, "delist_date", None)),
-        ))
+        rows.append(
+            (
+                _scalar(getattr(row, "ts_code", None)),
+                _scalar(getattr(row, "symbol", None)),
+                _scalar(getattr(row, "name", None)),
+                _scalar(getattr(row, "industry", None)),
+                _scalar(getattr(row, "market", None)),
+                _date(getattr(row, "list_date", None)),
+                _date(getattr(row, "delist_date", None)),
+            )
+        )
     if not rows:
         return 0
     sql = UPSERT_KEEP_INDUSTRY_SQL if keep_industry else UPSERT_SQL
@@ -277,7 +279,7 @@ def fetch_market_stocks(
     # Collect ts_codes for batch quote fetch
     ts_codes_list: list[str] = []
     row_data: list[tuple[str, str, str, str, str | None]] = []
-    
+
     for r in rows:
         ts_code = str(r[0])
         ticker = str(r[1])
@@ -289,36 +291,41 @@ def fetch_market_stocks(
 
     # Fetch quotes in batch
     from data_sync_service.service.market_quotes import get_market_quotes_batch
+
     quotes_map = get_market_quotes_batch(ts_codes_list, use_realtime=use_realtime)
-    
+
     # Build items with quote data
     items = []
     for ts_code, ticker, name, market_val, list_date in row_data:
         # Normalize market value: Tushare uses "主板", "中小板", "创业板" etc., map to "CN"
-        market_normalized = "CN" if market_val in ("主板", "中小板", "创业板", "科创板", "CN") else market_val
-        
+        market_normalized = (
+            "CN" if market_val in ("主板", "中小板", "创业板", "科创板", "CN") else market_val
+        )
+
         # Convert ts_code to symbol format: "000001.SZ" -> "CN:000001"
         if market_normalized == "CN" and "." in ts_code:
             ticker_part = ts_code.split(".")[0]
             symbol = f"CN:{ticker_part}"
         else:
             symbol = f"{market_normalized}:{ticker}"
-        
+
         quote = quotes_map.get(ts_code, {})
-        
-        items.append({
-            "symbol": symbol,
-            "market": market_normalized,  # Use normalized market value
-            "ticker": ticker,
-            "name": name,
-            "currency": "CNY" if market_normalized == "CN" else "HKD",
-            "price": quote.get("price"),
-            "changePct": quote.get("changePct"),
-            "volume": quote.get("volume"),
-            "turnover": quote.get("turnover"),
-            "marketCap": None,  # Market cap not available in daily table
-            "updatedAt": str(list_date) if list_date else "",  # Use list_date as fallback
-        })
+
+        items.append(
+            {
+                "symbol": symbol,
+                "market": market_normalized,  # Use normalized market value
+                "ticker": ticker,
+                "name": name,
+                "currency": "CNY" if market_normalized == "CN" else "HKD",
+                "price": quote.get("price"),
+                "changePct": quote.get("changePct"),
+                "volume": quote.get("volume"),
+                "turnover": quote.get("turnover"),
+                "marketCap": None,  # Market cap not available in daily table
+                "updatedAt": str(list_date) if list_date else "",  # Use list_date as fallback
+            }
+        )
 
     return total, items
 
@@ -328,11 +335,14 @@ def get_market_status() -> dict:
     ensure_table()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE delist_date IS NULL OR delist_date > CURRENT_DATE")
+            cur.execute(
+                f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE delist_date IS NULL OR delist_date > CURRENT_DATE"
+            )
             total = int(cur.fetchone()[0] or 0)
 
     # Get last sync time from sync_job_record
     from data_sync_service.db.sync_job_record import get_last_successful_run
+
     last_run = get_last_successful_run("stock_basic_sync")
     last_sync_at = last_run.get("sync_at") if last_run else None
 

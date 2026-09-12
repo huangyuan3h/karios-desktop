@@ -55,6 +55,7 @@ def _patch_urlopen(monkeypatch, payload: dict | None = None, exc: Exception | No
 
 # ---- _call_llm -------------------------------------------------------------
 
+
 def test_call_llm_success(monkeypatch) -> None:
     _patch_settings(monkeypatch)
     _patch_urlopen(monkeypatch, {"choices": [{"message": {"content": '[{"id":"i1"}]'}}]})
@@ -100,10 +101,13 @@ def test_call_llm_sends_api_key(monkeypatch) -> None:
     monkeypatch.setattr(ne.urllib.request, "urlopen", fake)
     ne._call_llm("p")
     assert captured[0].get_header("Authorization") == "Bearer sekrit"
-    assert captured[0].get_header("Content-type") == "application/json"  # urllib capitalizes header key
+    assert (
+        captured[0].get_header("Content-type") == "application/json"
+    )  # urllib capitalizes header key
 
 
 # ---- enrich_batch ----------------------------------------------------------
+
 
 def test_enrich_batch_empty() -> None:
     assert ne.enrich_batch([]) == {"enriched": 0, "failed": 0, "filtered": 0}
@@ -125,10 +129,22 @@ def test_enrich_batch_success(monkeypatch) -> None:
     _patch_settings(monkeypatch)
     raw = json.dumps(
         [
-            {"tickers": ["600519"], "sectors": ["白酒"], "eventType": "earnings", "importance": 3,
-             "aiSummary": "茅台业绩超预期", "actionability": "actionable"},
-            {"tickers": [], "sectors": [], "eventType": "macro", "importance": 2,
-             "aiSummary": "央行降准", "actionability": "informational"},
+            {
+                "tickers": ["600519"],
+                "sectors": ["白酒"],
+                "eventType": "earnings",
+                "importance": 3,
+                "aiSummary": "茅台业绩超预期",
+                "actionability": "actionable",
+            },
+            {
+                "tickers": [],
+                "sectors": [],
+                "eventType": "macro",
+                "importance": 2,
+                "aiSummary": "央行降准",
+                "actionability": "informational",
+            },
         ]
     )
     monkeypatch.setattr(ne, "_call_llm", lambda p: raw)
@@ -157,8 +173,13 @@ def test_enrich_batch_validation_error_isolated(monkeypatch) -> None:
         if entry.get("id") == "i0":
             raise ValueError("bad entry")
         return {
-            "tickers": [], "sectors": [], "event_type": "other", "importance": 2,
-            "relevance_score": 30, "ai_summary": "x", "actionability": "informational",
+            "tickers": [],
+            "sectors": [],
+            "event_type": "other",
+            "importance": 2,
+            "relevance_score": 30,
+            "ai_summary": "x",
+            "actionability": "informational",
         }
 
     monkeypatch.setattr(ne, "_validate_entry", boom)
@@ -178,6 +199,7 @@ def test_enrich_batch_update_false_counts_failed(monkeypatch) -> None:
 
 # ---- _filter_pending -------------------------------------------------------
 
+
 def test_filter_pending_mixed(monkeypatch) -> None:
     kept_calls: list[dict] = []
     monkeypatch.setattr(ne, "update_item_enrichment", lambda **kw: kept_calls.append(kw))
@@ -196,12 +218,16 @@ def test_filter_pending_mixed(monkeypatch) -> None:
 
 def test_filter_pending_all_kept(monkeypatch) -> None:
     monkeypatch.setattr(ne, "update_item_enrichment", lambda **kw: None)
-    items = [{"id": "a", "title": "TSMC 财报", "summary": ""}, {"id": "b", "title": "央行降准", "summary": ""}]
+    items = [
+        {"id": "a", "title": "TSMC 财报", "summary": ""},
+        {"id": "b", "title": "央行降准", "summary": ""},
+    ]
     kept, filtered = ne._filter_pending(items)
     assert len(kept) == 2 and filtered == 0
 
 
 # ---- run_enrichment_cycle --------------------------------------------------
+
 
 def test_cycle_no_pending(monkeypatch) -> None:
     monkeypatch.setattr(ne, "fetch_pending_enrichment", lambda limit: [])
@@ -221,10 +247,12 @@ def test_cycle_all_prefiltered(monkeypatch) -> None:
 
 
 def test_cycle_multiple_batches(monkeypatch) -> None:
-    pending = iter([
-        [{"id": f"i{i}", "title": "美联储利率决议", "summary": ""} for i in range(5)],
-        [],
-    ])
+    pending = iter(
+        [
+            [{"id": f"i{i}", "title": "美联储利率决议", "summary": ""} for i in range(5)],
+            [],
+        ]
+    )
     monkeypatch.setattr(ne, "fetch_pending_enrichment", lambda limit: next(pending))
     monkeypatch.setattr(
         ne, "enrich_batch", lambda items: {"enriched": len(items), "failed": 0, "filtered": 0}
@@ -251,7 +279,11 @@ def test_cycle_enrich_batch_raises_marks_failed(monkeypatch) -> None:
 
 
 def test_cycle_respects_max_batches(monkeypatch) -> None:
-    monkeypatch.setattr(ne, "fetch_pending_enrichment", lambda limit: [{"id": "a", "title": "美联储利率决议", "summary": ""}])
+    monkeypatch.setattr(
+        ne,
+        "fetch_pending_enrichment",
+        lambda limit: [{"id": "a", "title": "美联储利率决议", "summary": ""}],
+    )
     monkeypatch.setattr(
         ne, "enrich_batch", lambda items: {"enriched": 1, "failed": 0, "filtered": 0}
     )
@@ -262,6 +294,7 @@ def test_cycle_respects_max_batches(monkeypatch) -> None:
 
 
 # ---- watchlist / relevance -------------------------------------------------
+
 
 def test_get_watchlist_symbols_cached(monkeypatch) -> None:
     ne._WATCHLIST_CACHE = ["CN:600000"]

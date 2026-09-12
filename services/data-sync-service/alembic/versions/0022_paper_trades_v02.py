@@ -39,11 +39,13 @@ def upgrade() -> None:
     # Legacy rows: v0 was CN-only with no cost model → market='CN',
     # gross = the pnl we recorded, costs = 0.
     op.execute("UPDATE paper_trades SET market = 'CN' WHERE market IS NULL;")
-    op.execute("UPDATE paper_trades SET gross_pnl_pct = pnl_pct WHERE gross_pnl_pct IS NULL AND pnl_pct IS NOT NULL;")
-    op.execute("UPDATE paper_trades SET costs_pct = 0 WHERE costs_pct IS NULL AND pnl_pct IS NOT NULL;")
     op.execute(
-        "ALTER TABLE paper_trades ALTER COLUMN market SET NOT NULL;"
+        "UPDATE paper_trades SET gross_pnl_pct = pnl_pct WHERE gross_pnl_pct IS NULL AND pnl_pct IS NOT NULL;"
     )
+    op.execute(
+        "UPDATE paper_trades SET costs_pct = 0 WHERE costs_pct IS NULL AND pnl_pct IS NOT NULL;"
+    )
+    op.execute("ALTER TABLE paper_trades ALTER COLUMN market SET NOT NULL;")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_paper_trades_market "
         "ON paper_trades(market, entry_date DESC);"

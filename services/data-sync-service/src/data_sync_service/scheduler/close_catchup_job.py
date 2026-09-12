@@ -70,4 +70,3 @@ def run() -> None:
     except Exception as exc:
         logger.warning("close_sync_catchup crashed: %s", exc)
         insert_record(JOB_ID, success=False, error_message=str(exc))
-

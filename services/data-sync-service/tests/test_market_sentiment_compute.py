@@ -10,11 +10,20 @@ from data_sync_service.service import market_sentiment as ms
 def _base_mocks(monkeypatch, **overrides) -> None:
     def mk(name, fn):
         monkeypatch.setattr(ms, name, fn)
-    monkeypatch.setattr(ms, "fetch_cn_market_breadth_eod", lambda dt: {
-        "up_count": 3000, "down_count": 2000, "flat_count": 100,
-        "total_count": 5100, "up_down_ratio": 1.5,
-        "total_turnover_cny": 1.9e12, "total_volume": 1e9,
-    })
+
+    monkeypatch.setattr(
+        ms,
+        "fetch_cn_market_breadth_eod",
+        lambda dt: {
+            "up_count": 3000,
+            "down_count": 2000,
+            "flat_count": 100,
+            "total_count": 5100,
+            "up_down_ratio": 1.5,
+            "total_turnover_cny": 1.9e12,
+            "total_volume": 1e9,
+        },
+    )
 
     mk("_prev_open_date", lambda ex, d: datetime.date(2026, 7, 31))
     mk("_close_limit_up_pool_codes", lambda d: ["600000.SH", "000001.SZ"])
@@ -22,7 +31,10 @@ def _base_mocks(monkeypatch, **overrides) -> None:
     mk("_failed_limitup_rate_from_db", lambda dt: (40.0, 10, 6))
     mk("_compute_index_max_chg_pct", lambda d: 1.5)
     mk("_read_prev_day_turnover", lambda d: 1.5e12)
-    mk("check_capitulation_bottom", lambda *, down, as_of: {"triggered": False, "rule": "", "raw": {}})
+    mk(
+        "check_capitulation_bottom",
+        lambda *, down, as_of: {"triggered": False, "rule": "", "raw": {}},
+    )
     mk("check_follow_through_day", lambda **kw: {"triggered": False, "rule": "", "raw": {}})
     mk("apply_breadth_panic_risk_mode", lambda mode, down, rules: mode)
     for k, v in overrides.items():
@@ -40,8 +52,11 @@ def test_compute_hot_mode(monkeypatch) -> None:
 
 
 def test_compute_no_new_positions_when_premium_negative_failed_high(monkeypatch) -> None:
-    _base_mocks(monkeypatch, _avg_pct_chg_from_db=lambda dt, pool: (-0.5, 2),
-                _failed_limitup_rate_from_db=lambda dt: (75.0, 10, 2))
+    _base_mocks(
+        monkeypatch,
+        _avg_pct_chg_from_db=lambda dt, pool: (-0.5, 2),
+        _failed_limitup_rate_from_db=lambda dt: (75.0, 10, 2),
+    )
     out = ms.compute_cn_sentiment_for_date("2026-08-04")
     assert out["riskMode"] == "no_new_positions"
 
@@ -53,9 +68,13 @@ def test_compute_caution_when_failed_rate_high(monkeypatch) -> None:
         _failed_limitup_rate_from_db=lambda dt: (80.0, 10, 2),
         # ratio 1.0 < 1.2 → bullish_override off → failed>=70 ⇒ caution
         fetch_cn_market_breadth_eod=lambda dt: {
-            "up_count": 2500, "down_count": 2500, "flat_count": 100,
-            "total_count": 5100, "up_down_ratio": 1.0,
-            "total_turnover_cny": 1.9e12, "total_volume": 1e9,
+            "up_count": 2500,
+            "down_count": 2500,
+            "flat_count": 100,
+            "total_count": 5100,
+            "up_down_ratio": 1.0,
+            "total_turnover_cny": 1.9e12,
+            "total_volume": 1e9,
         },
     )
     out = ms.compute_cn_sentiment_for_date("2026-08-04")
@@ -63,8 +82,9 @@ def test_compute_caution_when_failed_rate_high(monkeypatch) -> None:
 
 
 def test_compute_caution_when_breadth_fails(monkeypatch) -> None:
-    _base_mocks(monkeypatch,
-                fetch_cn_market_breadth_eod=lambda dt: (_ for _ in ()).throw(RuntimeError("x")))
+    _base_mocks(
+        monkeypatch, fetch_cn_market_breadth_eod=lambda dt: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     out = ms.compute_cn_sentiment_for_date("2026-08-04")
     assert out["riskMode"] == "caution"  # errors force caution
     assert "breadth_failed" in out["rules"][0] if out["rules"] else True
@@ -75,9 +95,13 @@ def test_compute_euphoric_requires_all_flags(monkeypatch) -> None:
     _base_mocks(
         monkeypatch,
         fetch_cn_market_breadth_eod=lambda dt: {
-            "up_count": 4000, "down_count": 1000, "flat_count": 0,
-            "total_count": 5000, "up_down_ratio": 2.5,
-            "total_turnover_cny": 2.6e12, "total_volume": 1e9,
+            "up_count": 4000,
+            "down_count": 1000,
+            "flat_count": 0,
+            "total_count": 5000,
+            "up_down_ratio": 2.5,
+            "total_turnover_cny": 2.6e12,
+            "total_volume": 1e9,
         },
         _avg_pct_chg_from_db=lambda dt, pool: (3.5, 2),
         _failed_limitup_rate_from_db=lambda dt: (20.0, 10, 8),
@@ -87,9 +111,10 @@ def test_compute_euphoric_requires_all_flags(monkeypatch) -> None:
 
 
 def test_compute_ftd_overrides_to_confirmed_uptrend(monkeypatch) -> None:
-    _base_mocks(monkeypatch, check_follow_through_day=lambda **kw: {
-        "triggered": True, "rule": "ftd", "raw": {"ok": 1}
-    })
+    _base_mocks(
+        monkeypatch,
+        check_follow_through_day=lambda **kw: {"triggered": True, "rule": "ftd", "raw": {"ok": 1}},
+    )
     out = ms.compute_cn_sentiment_for_date("2026-08-04")
     assert out["riskMode"] == "confirmed_uptrend"
     assert out["raw"]["ftd"] == {"ok": 1}
@@ -127,9 +152,9 @@ def test_tushare_daily_pct_chg_map_none(monkeypatch) -> None:
 
 def test_close_limit_up_pool_detects_10pct(monkeypatch) -> None:
     rows = [
-        ("600001.SH", 10.0, 11.0, 11.0, 10.0, "普通股"),    # 10% limit → hit exactly
-        ("600002.SH", 10.0, 10.5, 10.2, 2.0, None),          # below limit → not in pool
-        ("300001.SZ", 10.0, 12.0, 12.0, 20.0, None),         # 20% limit board → hit
+        ("600001.SH", 10.0, 11.0, 11.0, 10.0, "普通股"),  # 10% limit → hit exactly
+        ("600002.SH", 10.0, 10.5, 10.2, 2.0, None),  # below limit → not in pool
+        ("300001.SZ", 10.0, 12.0, 12.0, 20.0, None),  # 20% limit board → hit
     ]
     monkeypatch.setattr(ms, "_daily_rows_for_date", lambda d: rows)
     out = ms._close_limit_up_pool_codes(__import__("datetime").date(2026, 7, 1))
@@ -154,7 +179,9 @@ def test_prev_open_date_uses_calendar(monkeypatch) -> None:
 
     monkeypatch.setattr(ms, "is_trading_day", lambda ex, d: True)
     monkeypatch.setattr(
-        ms, "get_open_dates", lambda exchange, start_date, end_date: [dt.date(2026, 7, 31), dt.date(2026, 8, 3)]
+        ms,
+        "get_open_dates",
+        lambda exchange, start_date, end_date: [dt.date(2026, 7, 31), dt.date(2026, 8, 3)],
     )
     assert ms._prev_open_date("SSE", dt.date(2026, 8, 4)) == dt.date(2026, 8, 3)
 
@@ -222,7 +249,8 @@ def test_fetch_cn_yesterday_limitup_premium_tushare_computes(monkeypatch) -> Non
     import datetime as dt
 
     monkeypatch.setattr(
-        ms, "_tushare_yesterday_limitup_codes",
+        ms,
+        "_tushare_yesterday_limitup_codes",
         lambda d: (dt.date(2026, 7, 31), ["A.SH", "B.SH", "C.SH"]),
     )
     monkeypatch.setattr(ms, "_tushare_daily_pct_chg_map", lambda d: {"A.SH": 2.0, "B.SH": 4.0})
@@ -235,7 +263,9 @@ def test_fetch_cn_yesterday_limitup_premium_tushare_computes(monkeypatch) -> Non
 def test_fetch_cn_yesterday_limitup_premium_darwin_uses_tushare(monkeypatch) -> None:
     """On darwin the AkShare path is skipped entirely."""
     monkeypatch.setattr(ms.sys, "platform", "darwin")
-    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda d: {"premium": 1.0})
+    monkeypatch.setattr(
+        ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda d: {"premium": 1.0}
+    )
     out = ms.fetch_cn_yesterday_limitup_premium(__import__("datetime").date(2026, 8, 4))
     assert out["premium"] == 1.0
 
@@ -245,6 +275,8 @@ def test_fetch_cn_failed_limitup_rate_darwin_raises_akshare_disabled(monkeypatch
     out = ms.fetch_cn_failed_limitup_rate(__import__("datetime").date(2026, 8, 4))
     assert out["failed_rate"] == 0.0
     assert "akshare_disabled_on_darwin" in out["raw"].get("akshareError", "")
+
+
 """market_sentiment wave-3: tushare/akshare fetchers + compute driver."""
 
 import math  # noqa: E402
@@ -316,15 +348,25 @@ def test_tushare_yesterday_limitup_codes(monkeypatch) -> None:
 
 
 def test_tushare_yesterday_limitup_codes_none(monkeypatch) -> None:
-    monkeypatch.setattr(ms, "_tushare_pro", lambda: type("P", (), {"limit_list_d": lambda **kw: None})())
+    monkeypatch.setattr(
+        ms, "_tushare_pro", lambda: type("P", (), {"limit_list_d": lambda **kw: None})()
+    )
     monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
     y, codes = ms._tushare_yesterday_limitup_codes(datetime.date(2026, 8, 7))
     assert y is None and codes == []
 
 
 def test_fetch_premium_tushare(monkeypatch) -> None:
-    monkeypatch.setattr(ms, "_tushare_yesterday_limitup_codes", lambda as_of: (datetime.date(2026, 8, 5), ["600000.SH", "000001.SZ"]))
-    monkeypatch.setattr(ms, "_tushare_daily_pct_chg_map", lambda as_of: {"600000.SH": 5.0, "000001.SZ": 3.0, "000002.SZ": 9.0})
+    monkeypatch.setattr(
+        ms,
+        "_tushare_yesterday_limitup_codes",
+        lambda as_of: (datetime.date(2026, 8, 5), ["600000.SH", "000001.SZ"]),
+    )
+    monkeypatch.setattr(
+        ms,
+        "_tushare_daily_pct_chg_map",
+        lambda as_of: {"600000.SH": 5.0, "000001.SZ": 3.0, "000002.SZ": 9.0},
+    )
     out = ms.fetch_cn_yesterday_limitup_premium_tushare(datetime.date(2026, 8, 7))
     assert out["premium"] == 4.0
     assert out["count"] == 2
@@ -345,10 +387,16 @@ def test_fetch_cn_a_spot_change_pct(monkeypatch) -> None:
 
 def test_fetch_cn_a_spot_change_pct_fallback_and_fail(monkeypatch) -> None:
     df = pd.DataFrame({"code": ["600000"], "change_pct": [2.0]})
-    ak = type("AK", (), {
-        "stock_zh_a_spot_em": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("blocked"))),
-        "stock_zh_a_spot": staticmethod(lambda: df),
-    })()
+    ak = type(
+        "AK",
+        (),
+        {
+            "stock_zh_a_spot_em": staticmethod(
+                lambda: (_ for _ in ()).throw(RuntimeError("blocked"))
+            ),
+            "stock_zh_a_spot": staticmethod(lambda: df),
+        },
+    )()
     monkeypatch.setattr(ms, "_akshare", lambda: ak)
     monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
     assert ms._fetch_cn_a_spot_change_pct() == {"600000": 2.0}
@@ -378,7 +426,11 @@ def test_fetch_premium_akshare_path(monkeypatch) -> None:
 def test_fetch_premium_akshare_fails_falls_back(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(ms, "_akshare", lambda: type("AK", (), {})())
-    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda as_of: {"date": "x", "premium": 1.0, "count": 1, "raw": {}})
+    monkeypatch.setattr(
+        ms,
+        "fetch_cn_yesterday_limitup_premium_tushare",
+        lambda as_of: {"date": "x", "premium": 1.0, "count": 1, "raw": {}},
+    )
     out = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
     assert out["premium"] == 1.0
     assert "akshareError" in out["raw"]
@@ -395,7 +447,11 @@ def test_fetch_premium_akshare_fails_falls_back(monkeypatch) -> None:
 
 def test_fetch_premium_darwin_uses_tushare(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda as_of: {"date": "x", "premium": 2.5, "count": 1, "raw": {"source": "tushare"}})
+    monkeypatch.setattr(
+        ms,
+        "fetch_cn_yesterday_limitup_premium_tushare",
+        lambda as_of: {"date": "x", "premium": 2.5, "count": 1, "raw": {"source": "tushare"}},
+    )
     out = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
     assert out["premium"] == 2.5
     monkeypatch.undo()

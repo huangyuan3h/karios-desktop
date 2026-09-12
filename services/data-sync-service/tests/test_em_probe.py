@@ -63,8 +63,12 @@ def test_streak_alerts_once_on_third(monkeypatch) -> None:
     _patch_fetch(monkeypatch, fail_hosts={"push2.eastmoney.com"})
     events: list[dict] = []
     emits: list[dict] = []
-    monkeypatch.setattr("data_sync_service.db.system_events.insert_event", lambda **k: events.append(k) or True)
-    monkeypatch.setattr("data_sync_service.db.webhook.emit_event", lambda *a, **k: emits.append(a) or True)
+    monkeypatch.setattr(
+        "data_sync_service.db.system_events.insert_event", lambda **k: events.append(k) or True
+    )
+    monkeypatch.setattr(
+        "data_sync_service.db.webhook.emit_event", lambda *a, **k: emits.append(a) or True
+    )
     r1 = probe.run_em_probe()
     r2 = probe.run_em_probe()
     assert r1["alerted"] == [] and r2["alerted"] == [] and events == []
@@ -145,12 +149,18 @@ def test_breaker_latched_and_cooldown(monkeypatch) -> None:
 
 def test_job_ok_failure_exception(monkeypatch) -> None:
     rows: list[tuple] = []
-    monkeypatch.setattr(job, "insert_record", lambda jt, success, **k: rows.append((jt, success, k.get("error_message"))))
+    monkeypatch.setattr(
+        job,
+        "insert_record",
+        lambda jt, success, **k: rows.append((jt, success, k.get("error_message"))),
+    )
     monkeypatch.setattr(job, "run_em_probe", lambda: {"failed": [], "checks": []})
     job.run()
     assert rows == [("em_probe", True, None)]
 
-    monkeypatch.setattr(job, "run_em_probe", lambda: {"failed": ["push2.eastmoney.com"], "checks": []})
+    monkeypatch.setattr(
+        job, "run_em_probe", lambda: {"failed": ["push2.eastmoney.com"], "checks": []}
+    )
     job.run()
     assert rows[-1][1] is False and "push2.eastmoney.com" in (rows[-1][2] or "")
 
@@ -180,7 +190,12 @@ def test_health_source_fresh_ok(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "data_sync_service.service.em_probe.probe_status",
-        lambda: {"at": time.time(), "checks": [{"host": "h", "ok": True}], "streaks": {}, "failing": []},
+        lambda: {
+            "at": time.time(),
+            "checks": [{"host": "h", "ok": True}],
+            "streaks": {},
+            "failing": [],
+        },
     )
     out = hr._em_probe_source({"source": "eastmoney_probe", "label": "x", "thresholdMinutes": 20})
     assert out["stale"] is False and out["hosts"] is not None
@@ -191,7 +206,12 @@ def test_health_source_failing_and_ban_stale(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "data_sync_service.service.em_probe.probe_status",
-        lambda: {"at": time.time(), "checks": [{"host": "h", "ok": False}], "streaks": {}, "failing": ["h"]},
+        lambda: {
+            "at": time.time(),
+            "checks": [{"host": "h", "ok": False}],
+            "streaks": {},
+            "failing": ["h"],
+        },
     )
     out = hr._em_probe_source({"source": "eastmoney_probe", "label": "x", "thresholdMinutes": 20})
     assert out["stale"] is True and out["failingHosts"] == ["h"]
@@ -202,7 +222,12 @@ def test_health_source_failing_and_ban_stale(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "data_sync_service.service.em_push2_http.breaker_status",
-        lambda: {"ban_latched": True, "cooldown_remaining_s": 100, "fail_streak": 3, "proxy_degraded": False},
+        lambda: {
+            "ban_latched": True,
+            "cooldown_remaining_s": 100,
+            "fail_streak": 3,
+            "proxy_degraded": False,
+        },
     )
     out = hr._em_probe_source({"source": "eastmoney_probe", "label": "x", "thresholdMinutes": 20})
     assert out["stale"] is True and out["banLatched"] is True and out["cooldownRemainingS"] == 100

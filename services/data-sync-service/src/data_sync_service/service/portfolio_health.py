@@ -37,6 +37,7 @@ def is_open_position_pct(raw: Any) -> bool:
     except (TypeError, ValueError):
         return False
 
+
 # 2026-08-10 (no-choice UX): the manual trade size that matches the
 # backtested edge. Backtest = 10%/sleeve × 20 = 200% nominal (no-leverage
 # impossible), paper = 5% × 20 = 100%. For a manual book (<=10 positions)
@@ -139,7 +140,9 @@ def _holding_check(
             # Pull ~35 sessions before entry too: the OPT-105 ATR line is
             # locked at entry time (sessions BEFORE entry).
             lookback = (
-                (date.fromisoformat(entry_date) - __import__("datetime").timedelta(days=45)).isoformat()
+                (
+                    date.fromisoformat(entry_date) - __import__("datetime").timedelta(days=45)
+                ).isoformat()
                 if regime == "Strong"
                 else entry_date
             )
@@ -442,9 +445,11 @@ def _build_holdings_block(
 
     trail = -12.0 if market == "HK" else None
     if market == "HK":
+
         def in_market(sym: str) -> bool:
             return sym.startswith("HK:")
     else:
+
         def in_market(sym: str) -> bool:
             return sym.startswith(("CN:", "ETF:"))
 
@@ -515,9 +520,7 @@ def _build_holdings_block(
             check["symbol"] = sym
             check["name"] = str(name or "")
             check["positionPct"] = pct
-            check["pyramidTriggerLine"] = round(
-                float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
-            )
+            check["pyramidTriggerLine"] = round(float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3)
             check["pyramidAdded"] = sym in pyramid_syms
             # Satellite body=3 progress on the trade calendar (same counter the
             # backtest/paper replay uses). Watchlist prefers this over its
@@ -526,9 +529,7 @@ def _build_holdings_block(
                 try:
                     from data_sync_service.service.twin_star_daily import sat_body_progress
 
-                    check["satBody"] = sat_body_progress(
-                        str(entry) if entry else None, day
-                    )
+                    check["satBody"] = sat_body_progress(str(entry) if entry else None, day)
                 except Exception:  # noqa: BLE001
                     check["satBody"] = None
             # 2026-08-12: merge the main table's trend-structure exit signal
@@ -551,7 +552,7 @@ def _build_holdings_block(
             # (peak climbs -> fixed-price trailing order goes stale; pyramid
             # add -> stop line climbs). Baseline persisted per-symbol so each
             # move alerts once; first sighting only stores the baseline.
-            prev_ops = (r.get("conditionalOps") or payload.get("conditionalOps") or {})
+            prev_ops = r.get("conditionalOps") or payload.get("conditionalOps") or {}
             prev_trail = _as_float(prev_ops.get("trail"))
             prev_stop = _as_float(prev_ops.get("stop"))
             ops = _detect_line_ops(
@@ -568,12 +569,15 @@ def _build_holdings_block(
                 try:
                     from data_sync_service.db.watchlist_automation import update_registry_payload
 
-                    update_registry_payload(sym, {
-                        "conditionalOps": {
-                            "trail": check.get("trailingLine"),
-                            "stop": check.get("stopLossLine"),
-                        }
-                    })
+                    update_registry_payload(
+                        sym,
+                        {
+                            "conditionalOps": {
+                                "trail": check.get("trailingLine"),
+                                "stop": check.get("stopLossLine"),
+                            }
+                        },
+                    )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("portfolio health persist line baseline %s failed: %s", sym, exc)
             holdings.append(check)
@@ -640,7 +644,9 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         panic = get_panic_cooldown(days=10, cooldown_days=PANIC_COOLDOWN_DAYS, as_of_date=day)
         candidates: list[dict[str, Any]] = []
         try:
-            candidates = build_s3_candidates(trade_date=day, market="HK", max_positions=S3_MAX_POSITIONS)
+            candidates = build_s3_candidates(
+                trade_date=day, market="HK", max_positions=S3_MAX_POSITIONS
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health HK candidates failed: %s", exc)
         rules: dict[str, Any] = {
@@ -656,8 +662,11 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         }
     else:
         cfg = BacktestConfig(
-            start_date=day, end_date=day,
-            score_threshold=65.0, gates="full", rs_rank_min=0.5,
+            start_date=day,
+            end_date=day,
+            score_threshold=65.0,
+            gates="full",
+            rs_rank_min=0.5,
         )
         regime = None
         try:
@@ -738,7 +747,9 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         try:
             cn_held_names = _held_company_names(market="CN", day=day)
             if cn_held_names:
-                candidates = [c for c in candidates if str(c.get("name") or "") not in cn_held_names]
+                candidates = [
+                    c for c in candidates if str(c.get("name") or "") not in cn_held_names
+                ]
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health HK dedupe failed: %s", exc)
     candidate_total = len(candidates)
@@ -763,7 +774,11 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             logger.warning("portfolio health circuit check failed: %s", exc)
 
     holdings = _build_holdings_block(
-        market=market, day=day, alpha_map=alpha_map, flow_map=flow_map, l1_map=l1_map,
+        market=market,
+        day=day,
+        alpha_map=alpha_map,
+        flow_map=flow_map,
+        l1_map=l1_map,
         regime=regime if market == "CN" else None,
     )
     info_summary = {
@@ -834,17 +849,23 @@ def build_portfolio_health(
         if str(r.get("symbol") or "").upper().startswith(("CN:", "HK:", "ETF:"))
     ]
     try:
-        third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)
+        third_asset_sleeve = build_third_asset_sleeve(
+            day=day, cn_block=cn, holdings_override=raw_holdings
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health third-asset sleeve failed: %s", exc)
         third_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
     try:
-        third_asset_holding = build_third_asset_holding(day=day, cn_block=cn, holdings_override=raw_holdings)
+        third_asset_holding = build_third_asset_holding(
+            day=day, cn_block=cn, holdings_override=raw_holdings
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health third-asset holding failed: %s", exc)
         third_asset_holding = None
     try:
-        multi_asset_sleeve = build_multi_asset_sleeve(day=day, cn_block=cn, holdings_override=raw_holdings)
+        multi_asset_sleeve = build_multi_asset_sleeve(
+            day=day, cn_block=cn, holdings_override=raw_holdings
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health multi-asset sleeve failed: %s", exc)
         multi_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
@@ -863,7 +884,9 @@ def build_portfolio_health(
         sym = str(h.get("symbol") or "").upper()
         if _is_multi(sym) and is_open_position_pct(h.get("positionPct")):
             # enrich with market data
-            ts = h.get("ts_code") or sym.replace("ETF:", "") + (".SH" if sym.startswith("ETF:5") else ".SZ")
+            ts = h.get("ts_code") or sym.replace("ETF:", "") + (
+                ".SH" if sym.startswith("ETF:5") else ".SZ"
+            )
             md = {}
             try:
                 from data_sync_service.service.multi_asset_sleeve import _etf_market_data

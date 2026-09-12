@@ -90,15 +90,17 @@ def test_date() -> None:
 
 def test_upsert_from_dataframe(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    df = pd.DataFrame({
-        "ts_code": ["600000.SH", "000001.SZ"],
-        "symbol": ["600000", "1"],
-        "name": ["浦发", None],
-        "industry": ["银行", "保险"],
-        "market": ["主板", "主板"],
-        "list_date": [None, "19910403"],
-        "delist_date": [None, None],
-    })
+    df = pd.DataFrame(
+        {
+            "ts_code": ["600000.SH", "000001.SZ"],
+            "symbol": ["600000", "1"],
+            "name": ["浦发", None],
+            "industry": ["银行", "保险"],
+            "market": ["主板", "主板"],
+            "list_date": [None, "19910403"],
+            "delist_date": [None, None],
+        }
+    )
     n = sb.upsert_from_dataframe(df)
     assert n == 2
     assert cur.executemany_args[0][4] == "主板"
@@ -108,8 +110,17 @@ def test_upsert_from_dataframe(monkeypatch) -> None:
 
 def test_upsert_from_dataframe_keep_industry(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    df = pd.DataFrame({"ts_code": ["600000.SH"], "symbol": ["600000"], "name": ["x"],
-                       "industry": [None], "market": ["HK"], "list_date": [None], "delist_date": [None]})
+    df = pd.DataFrame(
+        {
+            "ts_code": ["600000.SH"],
+            "symbol": ["600000"],
+            "name": ["x"],
+            "industry": [None],
+            "market": ["HK"],
+            "list_date": [None],
+            "delist_date": [None],
+        }
+    )
     sb.upsert_from_dataframe(df, keep_industry=True)
     assert sb.UPSERT_KEEP_INDUSTRY_SQL in cur.executed[0]
 
@@ -153,7 +164,10 @@ def test_fetch_ts_codes_by_market(monkeypatch) -> None:
     assert cur.params == ("ETF",)
     cur2 = _patch(monkeypatch, _Cur(fetchall=[]))
     sb.fetch_ts_codes_by_market("")
-    assert cur2.executed[0].startswith("SELECT ts_code") and "WHERE" not in cur2.executed[0].split("FROM")[1]
+    assert (
+        cur2.executed[0].startswith("SELECT ts_code")
+        and "WHERE" not in cur2.executed[0].split("FROM")[1]
+    )
 
 
 def test_fetch_all(monkeypatch) -> None:
@@ -166,10 +180,17 @@ def test_fetch_all(monkeypatch) -> None:
 
 
 def test_fetch_market_stocks_cn(monkeypatch) -> None:
-    _ = _patch(monkeypatch, _Cur(fetchone=(2,), fetchall=[
-        ("000001.SZ", "1", "平安", "主板", "2026-01-01", None),
-        ("00700.HK", "00700", "腾讯", "HK", None, None),
-    ], cols=[_Col("ts_code")]))
+    _ = _patch(
+        monkeypatch,
+        _Cur(
+            fetchone=(2,),
+            fetchall=[
+                ("000001.SZ", "1", "平安", "主板", "2026-01-01", None),
+                ("00700.HK", "00700", "腾讯", "HK", None, None),
+            ],
+            cols=[_Col("ts_code")],
+        ),
+    )
     quotes = {"000001.SZ": {"price": 10.0, "changePct": 1.5, "volume": 100, "turnover": 1000}}
 
     def fake_quotes(codes, use_realtime=False):
@@ -214,7 +235,9 @@ def test_get_market_status(monkeypatch) -> None:
     _ = _patch(monkeypatch, _Cur(fetchone=(5000,)))
     from data_sync_service.db import sync_job_record as sjr
 
-    monkeypatch.setattr(sjr, "get_last_successful_run", lambda jt: {"sync_at": "2026-08-07T10:00:00"})
+    monkeypatch.setattr(
+        sjr, "get_last_successful_run", lambda jt: {"sync_at": "2026-08-07T10:00:00"}
+    )
     out = sb.get_market_status()
     assert out["stocks"] == 5000 and out["lastSyncAt"] == "2026-08-07T10:00:00"
     monkeypatch.setattr(sjr, "get_last_successful_run", lambda jt: None)

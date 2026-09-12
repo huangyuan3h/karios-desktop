@@ -86,10 +86,14 @@ def run() -> None:
         return
     if proc.returncode != 0:
         insert_record(
-            JOB_ID, success=False,
+            JOB_ID,
+            success=False,
             error_message=f"exit={proc.returncode}: {proc.stderr.strip()[-400:]}",
         )
         logger.warning("paper_backtest_mirror failed: %s", proc.stderr.strip()[-400:])
         return
     insert_record(JOB_ID, success=True)
-    logger.info("paper_backtest_mirror ok: %s", proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else "")
+    logger.info(
+        "paper_backtest_mirror ok: %s",
+        proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else "",
+    )

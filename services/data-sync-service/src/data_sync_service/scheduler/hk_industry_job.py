@@ -39,7 +39,9 @@ def run() -> None:
         return
     if result.get("ok"):
         if result.get("skipped"):
-            logger.info("hk_industry_sync skipped: %s", result.get("message", "no HK codes to update"))
+            logger.info(
+                "hk_industry_sync skipped: %s", result.get("message", "no HK codes to update")
+            )
         else:
             logger.info(
                 "hk_industry_sync ok: resolved=%s updated=%s emResolved=%s xueqiuResolved=%s pages=%s",

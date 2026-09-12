@@ -21,9 +21,11 @@ def _patch_job(monkeypatch: pytest.MonkeyPatch, *, sat="sat", payload="payload",
     monkeypatch.setattr(job, "build_twin_star_reminder_payload", lambda today: payload)
     calls: list[dict] = []
     if emit is None:
+
         def emit(event_type, payload, dedupe_key):
             calls.append({"type": event_type, "key": dedupe_key})
             return True
+
     monkeypatch.setattr(job, "emit_event", emit)
     return calls
 

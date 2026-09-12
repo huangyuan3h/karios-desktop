@@ -47,27 +47,39 @@ def test_limit_pct_normal_stock():
 
 
 def test_is_limit_up_false_no_data():
-    assert not _is_limit_up(ts_code="000001.SZ", pre_close=None, close=10.0, pct_chg=10.0, name="测试")
-    assert not _is_limit_up(ts_code="000001.SZ", pre_close=10.0, close=None, pct_chg=10.0, name="测试")
+    assert not _is_limit_up(
+        ts_code="000001.SZ", pre_close=None, close=10.0, pct_chg=10.0, name="测试"
+    )
+    assert not _is_limit_up(
+        ts_code="000001.SZ", pre_close=10.0, close=None, pct_chg=10.0, name="测试"
+    )
 
 
 def test_is_limit_up_normal_stock():
     pre_close = 10.0
     limit_price = pre_close * 1.10
-    assert _is_limit_up(ts_code="000001.SZ", pre_close=pre_close, close=limit_price, pct_chg=9.9, name="测试")
+    assert _is_limit_up(
+        ts_code="000001.SZ", pre_close=pre_close, close=limit_price, pct_chg=9.9, name="测试"
+    )
 
 
 def test_is_limit_up_gem_stock():
     pre_close = 50.0
     limit_price = pre_close * 1.20
-    assert _is_limit_up(ts_code="300001.SZ", pre_close=pre_close, close=limit_price, pct_chg=19.9, name="创业板")
+    assert _is_limit_up(
+        ts_code="300001.SZ", pre_close=pre_close, close=limit_price, pct_chg=19.9, name="创业板"
+    )
 
 
 def test_is_limit_up_st_stock():
     pre_close = 5.0
     limit_price = pre_close * 1.05
-    assert _is_limit_up(ts_code="000001.SZ", pre_close=pre_close, close=limit_price, pct_chg=4.9, name="ST测试")
+    assert _is_limit_up(
+        ts_code="000001.SZ", pre_close=pre_close, close=limit_price, pct_chg=4.9, name="ST测试"
+    )
 
 
 def test_is_limit_up_not_limit():
-    assert not _is_limit_up(ts_code="000001.SZ", pre_close=10.0, close=10.5, pct_chg=5.0, name="测试")
+    assert not _is_limit_up(
+        ts_code="000001.SZ", pre_close=10.0, close=10.5, pct_chg=5.0, name="测试"
+    )

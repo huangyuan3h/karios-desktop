@@ -43,8 +43,20 @@ def test_match_points_join_and_diffs() -> None:
 def test_summarize_rates_and_percentiles() -> None:
     matches = [
         {"trade_date": "d", "time": "1430", "abs_match": True, "rel_diff": 0.0, "ohl_match": True},
-        {"trade_date": "d", "time": "1430", "abs_match": True, "rel_diff": 0.001, "ohl_match": True},
-        {"trade_date": "d", "time": "1500", "abs_match": False, "rel_diff": 0.05, "ohl_match": False},
+        {
+            "trade_date": "d",
+            "time": "1430",
+            "abs_match": True,
+            "rel_diff": 0.001,
+            "ohl_match": True,
+        },
+        {
+            "trade_date": "d",
+            "time": "1500",
+            "abs_match": False,
+            "rel_diff": 0.05,
+            "ohl_match": False,
+        },
         {"trade_date": "d", "time": "1500", "missing": True},
     ]
     s = cvm.summarize(matches)

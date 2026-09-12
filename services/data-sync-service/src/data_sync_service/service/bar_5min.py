@@ -321,6 +321,10 @@ def backfill_symbols(
         if (i + 1) % 20 == 0:
             logger.info(
                 "[bar_5min] progress %d/%d ok=%d stored=%d failed=%d",
-                i + 1, len(pending), out["ok"], out["stored"], out["failed"],
+                i + 1,
+                len(pending),
+                out["ok"],
+                out["stored"],
+                out["failed"],
             )
     return out

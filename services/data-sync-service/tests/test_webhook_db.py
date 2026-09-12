@@ -108,7 +108,9 @@ def test_failure_retry_then_dead() -> None:
         event_types=["job_failed"],
     )
     webhook.emit_event("job_failed", {"job_type": "x"}, dedupe_key="test:retry:1")
-    pending = [d for d in webhook.list_pending_deliveries() if d["url"] == f"{TEST_URL_PREFIX}retry"]
+    pending = [
+        d for d in webhook.list_pending_deliveries() if d["url"] == f"{TEST_URL_PREFIX}retry"
+    ]
     delivery_id = pending[0]["delivery_id"]
 
     for _ in range(webhook.MAX_ATTEMPTS):

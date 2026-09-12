@@ -49,7 +49,9 @@ def run() -> None:
         from data_sync_service.service.multi_asset_sleeve import _pick as sleeve_pick
 
         pick = sleeve_pick()
-        is_stock_pick = (pick.get("key") if isinstance(pick, dict) else getattr(pick, "key", None)) == "STOCK"
+        is_stock_pick = (
+            pick.get("key") if isinstance(pick, dict) else getattr(pick, "key", None)
+        ) == "STOCK"
         if not is_stock_pick:
             for m in ("CN", "HK"):
                 if m in available and available[m].get("missingList"):
@@ -66,7 +68,10 @@ def run() -> None:
     )
     logger.info(
         "behavior_audit ok: day=%s markets=%d extra=%d missing=%d",
-        out.get("reconDate"), len(available), n_extra, n_missing,
+        out.get("reconDate"),
+        len(available),
+        n_extra,
+        n_missing,
     )
 
     if n_extra > 0 or n_missing > 0:

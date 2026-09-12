@@ -64,14 +64,25 @@ def test_bonus_slope_param():
 
     assert _score_bonus_ema20_slope_5d(ema20s, params=DEFAULT_TRENDOK_PARAMS) == 5.0
     assert _score_bonus_ema20_slope_5d(ema20s, params=TrendOKParams(bonus_ema20_slope_5d=0)) == 0.0
-    assert _score_bonus_ema20_slope_5d(ema20s, params=TrendOKParams(bonus_ema20_slope_5d=10)) == 10.0
+    assert (
+        _score_bonus_ema20_slope_5d(ema20s, params=TrendOKParams(bonus_ema20_slope_5d=10)) == 10.0
+    )
 
 
 def test_anti_spike_penalties_param():
-    kw = dict(close=10.0, ema20=9.5, intraday_chg_pct=7.0, atr14=0.6, vol_today=4_000_000, avg_vol30=1_000_000)
+    kw = dict(
+        close=10.0,
+        ema20=9.5,
+        intraday_chg_pct=7.0,
+        atr14=0.6,
+        vol_today=4_000_000,
+        avg_vol30=1_000_000,
+    )
     pen_default, _ = _score_anti_spike_penalties(**kw, params=DEFAULT_TRENDOK_PARAMS)
     # raise threshold to 8% => 7% no longer triggers intraday penalty (-20)
-    pen_high_thr, _ = _score_anti_spike_penalties(**kw, params=TrendOKParams(intraday_surge_threshold_pct=8.0))
+    pen_high_thr, _ = _score_anti_spike_penalties(
+        **kw, params=TrendOKParams(intraday_surge_threshold_pct=8.0)
+    )
     assert pen_high_thr < pen_default
     assert pen_high_thr == pen_default - 20.0
 
@@ -109,11 +120,19 @@ def test_compute_trendok_for_symbols_param_bypass(monkeypatch):
     # Non-default params must bypass cache and reflect in score
     import data_sync_service.service.trendok as tk
 
-    monkeypatch.setattr(tk, "fetch_last_ohlcv_batch", lambda codes, days=120: {c: [("2026-08-01", "10", "11", "9", "10", "1000000")] * 80 for c in codes})
+    monkeypatch.setattr(
+        tk,
+        "fetch_last_ohlcv_batch",
+        lambda codes, days=120: {
+            c: [("2026-08-01", "10", "11", "9", "10", "1000000")] * 80 for c in codes
+        },
+    )
     monkeypatch.setattr(tk, "_lookup_stock_basic", lambda codes: ({c: "Name" for c in codes}, {}))
     monkeypatch.setattr(tk, "_lookup_em_industry_boards", lambda codes: {})
     monkeypatch.setattr(tk, "fetch_summaries_for_codes", lambda codes, trade_date=None: {})
-    monkeypatch.setattr(tk, "get_market_regime", lambda as_of_date=None, include_breadth=False: {"regime": "Strong"})
+    monkeypatch.setattr(
+        tk, "get_market_regime", lambda as_of_date=None, include_breadth=False: {"regime": "Strong"}
+    )
     monkeypatch.setattr(tk, "_build_industry_flow_context", lambda d: {"ok": False})
     monkeypatch.setattr(tk, "fetch_daily_seats_batch", lambda keys: {})
     monkeypatch.setattr(tk, "get_stoploss_batch", lambda codes: {})

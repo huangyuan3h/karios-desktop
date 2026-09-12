@@ -184,7 +184,9 @@ def weights_r5cs(
     w_cn, w_hk = weights_from_regimes(cn_regime, hk_regime)
     # both weak -> same as before: all to sleeve
     if w_cn == 0 and w_hk == 0:
-        return weights_with_sleeve_from_regimes(cn_regime, hk_regime, etf_above_ma200=etf_above_ma200)
+        return weights_with_sleeve_from_regimes(
+            cn_regime, hk_regime, etf_above_ma200=etf_above_ma200
+        )
     # sleeve availability
     if etf_above_ma200 is None:
         try:

@@ -11,7 +11,16 @@ ADD_CH = {"field": "action", "newValue": "ADD", "symbol": "HK:00700", "source": 
 ETF_CH = {"field": "action", "newValue": "BUY", "symbol": "ETF:510300", "source": "alpha"}
 
 
-def _patch_all(monkeypatch, *, closes=None, registry=None, changes=None, raise_changes=False, raise_registry=False, raise_closes=False):  # noqa: ANN001, ANN003
+def _patch_all(
+    monkeypatch,
+    *,
+    closes=None,
+    registry=None,
+    changes=None,
+    raise_changes=False,
+    raise_registry=False,
+    raise_closes=False,
+):  # noqa: ANN001, ANN003
     from data_sync_service.db import execution_journal as ej_db
     from data_sync_service.db import watchlist_automation as wa_db
 
@@ -208,7 +217,9 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}
+            ],
         )
         _patch_all(monkeypatch)
         out = pt.run_update(today_iso="2026-08-07")
@@ -220,7 +231,9 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}
+            ],
         )
         _patch_all(
             monkeypatch,
@@ -260,7 +273,9 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+            ],
         )
         monkeypatch.setattr(pt_db, "update_paper_trade_price", Mock())
         _patch_all(
@@ -277,7 +292,9 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": None, "entryDate": "2026-08-01"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": None, "entryDate": "2026-08-01"}
+            ],
         )
         _patch_all(
             monkeypatch,
@@ -292,9 +309,15 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-01"}
+            ],
         )
-        monkeypatch.setattr(pt_db, "close_paper_trade", lambda **kw: (_ for _ in ()).throw(RuntimeError("close boom")))
+        monkeypatch.setattr(
+            pt_db,
+            "close_paper_trade",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("close boom")),
+        )
         _patch_all(
             monkeypatch,
             closes={"600519.SH": [("2026-08-06", 1, 1, 1, 9.0, 100)]},
@@ -308,9 +331,15 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+            ],
         )
-        monkeypatch.setattr(pt_db, "update_paper_trade_price", lambda **kw: (_ for _ in ()).throw(RuntimeError("upd boom")))
+        monkeypatch.setattr(
+            pt_db,
+            "update_paper_trade_price",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("upd boom")),
+        )
         _patch_all(
             monkeypatch,
             closes={"600519.SH": [("2026-08-06", 1, 1, 1, 10.5, 100)]},
@@ -325,7 +354,9 @@ class TestRunUpdate:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+            ],
         )
         upd = Mock()
         monkeypatch.setattr(pt_db, "update_paper_trade_price", upd)
@@ -427,7 +458,9 @@ class TestComputeStats:
     def test_db_error(self, monkeypatch) -> None:
         from data_sync_service.db import paper_trading as pt_db
 
-        monkeypatch.setattr(pt_db, "count_since", lambda since: (_ for _ in ()).throw(RuntimeError("stats boom")))
+        monkeypatch.setattr(
+            pt_db, "count_since", lambda since: (_ for _ in ()).throw(RuntimeError("stats boom"))
+        )
         out = pt.compute_stats(since_iso="2026-08-01")
         assert "error" in out
 
@@ -436,7 +469,13 @@ class TestComputeStats:
 
         monkeypatch.setattr(pt_db, "count_since", lambda since: (10, 5))
         monkeypatch.setattr(pt_db, "avg_pnl_pct_since", lambda since: 2.5)
-        monkeypatch.setattr(pt_db, "count_by_market_since", lambda since: {"CN": {"closedCount": 3, "winningCount": 2, "avgPnlPct": 1.5, "winRate": 0.66}})
+        monkeypatch.setattr(
+            pt_db,
+            "count_by_market_since",
+            lambda since: {
+                "CN": {"closedCount": 3, "winningCount": 2, "avgPnlPct": 1.5, "winRate": 0.66}
+            },
+        )
         out = pt.compute_stats(since_iso="2026-08-01", market="HK")
         assert out["closedCount"] == 0 and out["winningCount"] == 0
         assert out["winRate"] is None and out["avgPnlPct"] is None
@@ -447,7 +486,9 @@ class TestComputeStats:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+            lambda: [
+                {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+            ],
         )
         monkeypatch.setattr(pt_db, "TARGET_PNL_PCT", 10.0)
         close = Mock()
@@ -466,7 +507,13 @@ class TestComputeStats:
 
         monkeypatch.setattr(pt_db, "count_since", lambda since: (10, 5))
         monkeypatch.setattr(pt_db, "avg_pnl_pct_since", lambda since: 2.5)
-        monkeypatch.setattr(pt_db, "count_by_market_since", lambda since: {"CN": {"closedCount": 3, "winningCount": 2, "avgPnlPct": 1.5, "winRate": 0.66}})
+        monkeypatch.setattr(
+            pt_db,
+            "count_by_market_since",
+            lambda since: {
+                "CN": {"closedCount": 3, "winningCount": 2, "avgPnlPct": 1.5, "winRate": 0.66}
+            },
+        )
         out = pt.compute_stats(since_iso="2026-08-01", market="CN")
         assert out["closedCount"] == 3 and out["winningCount"] == 2
 
@@ -480,16 +527,34 @@ def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
     monkeypatch.setattr(
         pt_db,
         "get_open_paper_trades",
-        lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+        lambda: [
+            {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+        ],
     )
     close = Mock()
     monkeypatch.setattr(pt_db, "close_paper_trade", close)
     _patch_all(
         monkeypatch,
-        closes={"600519.SH": [
-            ("2026-08-06", "10.0", "10.5", "9.8", "10.4", "100"),  # close peak 10.4 (high 10.5 ignored)
-            ("2026-08-07", "9.6", "9.7", "9.4", "9.55", "100"),    # -8.2% from 10.4; net -4.5% → trailing, not stop
-        ]},
+        closes={
+            "600519.SH": [
+                (
+                    "2026-08-06",
+                    "10.0",
+                    "10.5",
+                    "9.8",
+                    "10.4",
+                    "100",
+                ),  # close peak 10.4 (high 10.5 ignored)
+                (
+                    "2026-08-07",
+                    "9.6",
+                    "9.7",
+                    "9.4",
+                    "9.55",
+                    "100",
+                ),  # -8.2% from 10.4; net -4.5% → trailing, not stop
+            ]
+        },
         registry=[{"symbol": "CN:600519", "positionPct": 20}],
     )
     out = pt.run_update(today_iso="2026-08-07")
@@ -504,16 +569,20 @@ def test_trailing_stop_holds_below_threshold(monkeypatch) -> None:
     monkeypatch.setattr(
         pt_db,
         "get_open_paper_trades",
-        lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+        lambda: [
+            {"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}
+        ],
     )
     close = Mock()
     monkeypatch.setattr(pt_db, "close_paper_trade", close)
     _patch_all(
         monkeypatch,
-        closes={"600519.SH": [
-            ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
-            ("2026-08-07", "9.98", "10.0", "9.9", "9.98", "100"),  # -5.0% from peak
-        ]},
+        closes={
+            "600519.SH": [
+                ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
+                ("2026-08-07", "9.98", "10.0", "9.9", "9.98", "100"),  # -5.0% from peak
+            ]
+        },
         registry=[{"symbol": "CN:600519", "positionPct": 20}],
     )
     out = pt.run_update(today_iso="2026-08-07")
@@ -532,10 +601,16 @@ class TestS3PaperProtections:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{
-                "id": "s3-1", "symbol": "HK:00178", "entryPrice": 1.0,
-                "entryDate": "2026-08-10", "source": "S3HK", "market": "HK",
-            }],
+            lambda: [
+                {
+                    "id": "s3-1",
+                    "symbol": "HK:00178",
+                    "entryPrice": 1.0,
+                    "entryDate": "2026-08-10",
+                    "source": "S3HK",
+                    "market": "HK",
+                }
+            ],
         )
         upd = Mock()
         close = Mock()
@@ -545,7 +620,10 @@ class TestS3PaperProtections:
         # paper line must NOT.
         _patch_all(monkeypatch, registry=[])
         closes = {
-            "00178.HK": [("2026-08-08", 0.95, 0.95, 0.95, 1.0, 100), ("2026-08-10", 1.0, 1.0, 1.0, 1.05, 100)],
+            "00178.HK": [
+                ("2026-08-08", 0.95, 0.95, 0.95, 1.0, 100),
+                ("2026-08-10", 1.0, 1.0, 1.0, 1.05, 100),
+            ],
         }
         monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
         out = pt.run_update(today_iso="2026-08-10")
@@ -559,16 +637,23 @@ class TestS3PaperProtections:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{
-                "id": "m1", "symbol": "CN:600519", "entryPrice": 10.0,
-                "entryDate": "2026-08-01", "source": "MANUAL", "market": "CN",
-            }],
+            lambda: [
+                {
+                    "id": "m1",
+                    "symbol": "CN:600519",
+                    "entryPrice": 10.0,
+                    "entryDate": "2026-08-01",
+                    "source": "MANUAL",
+                    "market": "CN",
+                }
+            ],
         )
         close = Mock()
         monkeypatch.setattr(pt_db, "close_paper_trade", close)
         _patch_all(monkeypatch, registry=[])
         monkeypatch.setattr(
-            pt, "fetch_last_ohlcv_batch",
+            pt,
+            "fetch_last_ohlcv_batch",
             lambda codes, days: {"600519.SH": [("2026-08-07", 10.0, 10.0, 10.0, 10.0, 100)]},
         )
         out = pt.run_update(today_iso="2026-08-07")
@@ -583,10 +668,16 @@ class TestS3PaperProtections:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{
-                "id": "t1", "symbol": "CN:600519", "entryPrice": 10.0,
-                "entryDate": "2026-08-05", "source": "S3", "market": "CN",
-            }],
+            lambda: [
+                {
+                    "id": "t1",
+                    "symbol": "CN:600519",
+                    "entryPrice": 10.0,
+                    "entryDate": "2026-08-05",
+                    "source": "S3",
+                    "market": "CN",
+                }
+            ],
         )
         upd = Mock()
         close = Mock()
@@ -595,10 +686,10 @@ class TestS3PaperProtections:
         _patch_all(monkeypatch, registry=[])
         closes = {
             "600519.SH": [
-                ("2026-08-01", 14.0, 15.0, 14.0, 14.0, 100),   # pre-entry peak
-                ("2026-08-05", 10.0, 10.5, 10.0, 10.0, 100),   # entry day
-                ("2026-08-06", 10.1, 11.0, 10.0, 10.1, 100),   # post-entry high 11.0
-                ("2026-08-07", 10.2, 10.3, 10.0, 10.2, 100),   # -7.3% vs 11.0 → hold
+                ("2026-08-01", 14.0, 15.0, 14.0, 14.0, 100),  # pre-entry peak
+                ("2026-08-05", 10.0, 10.5, 10.0, 10.0, 100),  # entry day
+                ("2026-08-06", 10.1, 11.0, 10.0, 10.1, 100),  # post-entry high 11.0
+                ("2026-08-07", 10.2, 10.3, 10.0, 10.2, 100),  # -7.3% vs 11.0 → hold
             ],
         }
         monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
@@ -627,10 +718,16 @@ class TestS3StrongATRStop:
         monkeypatch.setattr(
             pt_db,
             "get_open_paper_trades",
-            lambda: [{
-                "id": "t1", "symbol": "CN:600519", "entryPrice": 10.0,
-                "entryDate": "2026-08-05", "source": "S3", "market": "CN",
-            }],
+            lambda: [
+                {
+                    "id": "t1",
+                    "symbol": "CN:600519",
+                    "entryPrice": 10.0,
+                    "entryDate": "2026-08-05",
+                    "source": "S3",
+                    "market": "CN",
+                }
+            ],
         )
         upd = Mock()
         close = Mock()

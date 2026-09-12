@@ -181,9 +181,11 @@ def analyze_exit_attribution(*, days: int = 5, limit: int = 500) -> dict[str, An
     for p in with_fwd:
         overall["count"] += 1
         overall["sumFwd"] = overall.get("sumFwd", 0.0) + float(p["forwardPct"])
-        count_key = {"exit_early": "earlyCount", "exit_well": "wellCount", "neutral": "neutralCount"}[
-            p["bucket"]
-        ]
+        count_key = {
+            "exit_early": "earlyCount",
+            "exit_well": "wellCount",
+            "neutral": "neutralCount",
+        }[p["bucket"]]
         overall[count_key] += 1
     if overall["count"]:
         overall["avgFwdPct"] = round(overall["sumFwd"] / overall["count"], 3)
@@ -211,9 +213,11 @@ def analyze_exit_attribution(*, days: int = 5, limit: int = 500) -> dict[str, An
         b["withForward"] += 1
         b.setdefault("sumFwd", 0.0)
         b["sumFwd"] += float(p["forwardPct"])
-        count_key = {"exit_early": "earlyCount", "exit_well": "wellCount", "neutral": "neutralCount"}[
-            p["bucket"]
-        ]
+        count_key = {
+            "exit_early": "earlyCount",
+            "exit_well": "wellCount",
+            "neutral": "neutralCount",
+        }[p["bucket"]]
         b[count_key] += 1
     for _, b in by_reason.items():
         if b["withForward"]:

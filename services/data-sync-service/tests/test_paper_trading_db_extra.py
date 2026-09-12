@@ -21,21 +21,40 @@ class TestInsertPaperTrade:
     def test_bad_side(self) -> None:
 
         try:
-            pt.insert_paper_trade(symbol="CN:600519", entry_date="2026-08-07", side="SELL", entry_price=10.0, market="CN")
+            pt.insert_paper_trade(
+                symbol="CN:600519",
+                entry_date="2026-08-07",
+                side="SELL",
+                entry_price=10.0,
+                market="CN",
+            )
             raise AssertionError("should raise")
         except ValueError as e:
             assert "side must be one of" in str(e)
 
     def test_bad_source(self) -> None:
         try:
-            pt.insert_paper_trade(symbol="CN:600519", entry_date="2026-08-07", side="BUY", entry_price=10.0, source="hack", market="CN")
+            pt.insert_paper_trade(
+                symbol="CN:600519",
+                entry_date="2026-08-07",
+                side="BUY",
+                entry_price=10.0,
+                source="hack",
+                market="CN",
+            )
             raise AssertionError("should raise")
         except ValueError as e:
             assert "source must be one of" in str(e)
 
     def test_bad_market(self) -> None:
         try:
-            pt.insert_paper_trade(symbol="CN:600519", entry_date="2026-08-07", side="BUY", entry_price=10.0, market="US")
+            pt.insert_paper_trade(
+                symbol="CN:600519",
+                entry_date="2026-08-07",
+                side="BUY",
+                entry_price=10.0,
+                market="US",
+            )
             raise AssertionError("should raise")
         except ValueError as e:
             assert "market must be one of" in str(e)
@@ -44,20 +63,45 @@ class TestInsertPaperTrade:
         cur = Mock()
         cur.fetchone.return_value = None
         monkeypatch.setattr(pt, "get_connection", lambda: _fake_conn(cur))
-        assert pt.insert_paper_trade(symbol="CN:600519", entry_date="2026-08-07", side="BUY", entry_price=10.0, market="CN") is None
+        assert (
+            pt.insert_paper_trade(
+                symbol="CN:600519",
+                entry_date="2026-08-07",
+                side="BUY",
+                entry_price=10.0,
+                market="CN",
+            )
+            is None
+        )
 
     def test_ok(self, monkeypatch) -> None:
         cur = Mock()
         cur.fetchone.return_value = {
-            "id": "x", "symbol": "CN:600519", "entry_date": "2026-08-07", "side": "BUY",
-            "entry_price": 10.0, "status": "open", "source": None, "market": "CN",
-            "pnl_pct": None, "gross_pnl_pct": None, "costs_pct": None, "close_reason": None,
-            "holding_days": None, "close_date": None, "close_price": None,
-            "score_at_entry": None, "why_at_entry": None, "sleeve_pct": None,
-            "created_at": None, "updated_at": None,
+            "id": "x",
+            "symbol": "CN:600519",
+            "entry_date": "2026-08-07",
+            "side": "BUY",
+            "entry_price": 10.0,
+            "status": "open",
+            "source": None,
+            "market": "CN",
+            "pnl_pct": None,
+            "gross_pnl_pct": None,
+            "costs_pct": None,
+            "close_reason": None,
+            "holding_days": None,
+            "close_date": None,
+            "close_price": None,
+            "score_at_entry": None,
+            "why_at_entry": None,
+            "sleeve_pct": None,
+            "created_at": None,
+            "updated_at": None,
         }
         monkeypatch.setattr(pt, "get_connection", lambda: _fake_conn(cur))
-        out = pt.insert_paper_trade(symbol="CN:600519", entry_date="2026-08-07", side="BUY", entry_price=10.0, market="CN")
+        out = pt.insert_paper_trade(
+            symbol="CN:600519", entry_date="2026-08-07", side="BUY", entry_price=10.0, market="CN"
+        )
         assert out["symbol"] == "CN:600519"
 
 
@@ -106,11 +150,23 @@ class TestUpdateAndClose:
         cur = Mock()
         cur.fetchone.return_value = None
         monkeypatch.setattr(pt, "get_connection", lambda: _fake_conn(cur))
-        assert pt.update_paper_trade_price(trade_id="t1", close_price=10.0, pnl_pct=1.0, holding_days=1) is None
+        assert (
+            pt.update_paper_trade_price(
+                trade_id="t1", close_price=10.0, pnl_pct=1.0, holding_days=1
+            )
+            is None
+        )
 
     def test_close_bad_reason(self) -> None:
         try:
-            pt.close_paper_trade(trade_id="t1", close_date="2026-08-07", close_price=10.0, pnl_pct=1.0, holding_days=1, close_reason="hack")
+            pt.close_paper_trade(
+                trade_id="t1",
+                close_date="2026-08-07",
+                close_price=10.0,
+                pnl_pct=1.0,
+                holding_days=1,
+                close_reason="hack",
+            )
             raise AssertionError("should raise")
         except ValueError as e:
             assert "close_reason must be one of" in str(e)
@@ -119,7 +175,16 @@ class TestUpdateAndClose:
         cur = Mock()
         cur.fetchone.return_value = {"id": "t1", "symbol": "CN:600519", "status": "closed"}
         monkeypatch.setattr(pt, "get_connection", lambda: _fake_conn(cur))
-        out = pt.close_paper_trade(trade_id="t1", close_date="2026-08-07", close_price=9.0, pnl_pct=-5.0, holding_days=6, close_reason="stop_hit", gross_pnl_pct=-4.0, costs_pct=1.0)
+        out = pt.close_paper_trade(
+            trade_id="t1",
+            close_date="2026-08-07",
+            close_price=9.0,
+            pnl_pct=-5.0,
+            holding_days=6,
+            close_reason="stop_hit",
+            gross_pnl_pct=-4.0,
+            costs_pct=1.0,
+        )
         assert out["status"] == "closed"
 
 

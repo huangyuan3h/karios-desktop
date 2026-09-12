@@ -12,13 +12,27 @@ def test_stop_trail_alerts_extracts_exit_and_near_line(monkeypatch) -> None:
         lambda: {
             "CN": {
                 "holdings": [
-                    {"symbol": "CN:600000", "name": "浦发银行", "action": "EXIT",
-                     "reason": "stop_loss", "pnlPct": -6.0, "stopLossLine": None,
-                     "trailingLine": None},
-                    {"symbol": "CN:600519", "name": "贵州茅台", "action": "HOLD",
-                     "pnlPct": 2.0, "lastClose": 100, "stopLossLine": 98.5,
-                     "trailingLine": 92, "nearStop": True, "nearStopLabel": "止损",
-                     "nearStopDistancePct": 1.5},
+                    {
+                        "symbol": "CN:600000",
+                        "name": "浦发银行",
+                        "action": "EXIT",
+                        "reason": "stop_loss",
+                        "pnlPct": -6.0,
+                        "stopLossLine": None,
+                        "trailingLine": None,
+                    },
+                    {
+                        "symbol": "CN:600519",
+                        "name": "贵州茅台",
+                        "action": "HOLD",
+                        "pnlPct": 2.0,
+                        "lastClose": 100,
+                        "stopLossLine": 98.5,
+                        "trailingLine": 92,
+                        "nearStop": True,
+                        "nearStopLabel": "止损",
+                        "nearStopDistancePct": 1.5,
+                    },
                 ]
             }
         },
@@ -44,11 +58,21 @@ def test_line_update_and_expire_soon_alerts(monkeypatch) -> None:
         lambda: {
             "CN": {
                 "holdings": [
-                    {"symbol": "CN:300628", "name": "亿联网络", "action": "HOLD",
-                     "pnlPct": 5.0, "stopLossLine": -5.0, "trailingLine": -3.0,
-                     "expireDate": "2026-10-03",
-                     "lineOps": {"trail_up": [36.828, 37.52], "stop_up": [37.905, 38.1],
-                                 "expire_soon": 3, "expireDate": "2026-10-03"}},
+                    {
+                        "symbol": "CN:300628",
+                        "name": "亿联网络",
+                        "action": "HOLD",
+                        "pnlPct": 5.0,
+                        "stopLossLine": -5.0,
+                        "trailingLine": -3.0,
+                        "expireDate": "2026-10-03",
+                        "lineOps": {
+                            "trail_up": [36.828, 37.52],
+                            "stop_up": [37.905, 38.1],
+                            "expire_soon": 3,
+                            "expireDate": "2026-10-03",
+                        },
+                    },
                 ]
             }
         },
@@ -73,10 +97,22 @@ def test_recon_alerts_only_when_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.reconciliation.latest_recon",
         lambda limit=2: [
-            {"reconDate": "2026-08-07", "market": "HK", "expected": 19, "actual": 0,
-             "missing": 19, "extra": 0},
-            {"reconDate": "2026-08-07", "market": "CN", "expected": 0, "actual": 0,
-             "missing": 0, "extra": 0},
+            {
+                "reconDate": "2026-08-07",
+                "market": "HK",
+                "expected": 19,
+                "actual": 0,
+                "missing": 19,
+                "extra": 0,
+            },
+            {
+                "reconDate": "2026-08-07",
+                "market": "CN",
+                "expected": 0,
+                "actual": 0,
+                "missing": 0,
+                "extra": 0,
+            },
         ],
     )
     out = nf._recon_alerts()
@@ -90,10 +126,16 @@ def test_cron_failures_filters_trading_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.sync_job_record.list_recent_failures",
         lambda hours=24: [
-            {"job_type": "paper_trading_update", "sync_at": "2026-08-12T08:00:00Z",
-             "error_message": "boom"},
-            {"job_type": "some_other_job", "sync_at": "2026-08-12T08:00:00Z",
-             "error_message": "ignore me"},
+            {
+                "job_type": "paper_trading_update",
+                "sync_at": "2026-08-12T08:00:00Z",
+                "error_message": "boom",
+            },
+            {
+                "job_type": "some_other_job",
+                "sync_at": "2026-08-12T08:00:00Z",
+                "error_message": "ignore me",
+            },
         ],
     )
     out = nf._cron_failures()
@@ -104,15 +146,22 @@ def test_cron_failures_filters_trading_jobs(monkeypatch) -> None:
 
 
 def test_trading_job_types_cover_twin_star_health() -> None:
-    assert {"twin_star_intraday", "sleeve_etf_daily_sync", "stock_daily_basic_sync"} <= nf.TRADING_JOB_TYPES
+    assert {
+        "twin_star_intraday",
+        "sleeve_etf_daily_sync",
+        "stock_daily_basic_sync",
+    } <= nf.TRADING_JOB_TYPES
 
 
 def test_cron_failures_includes_twin_star_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.sync_job_record.list_recent_failures",
         lambda hours=24: [
-            {"job_type": "twin_star_intraday", "sync_at": "2026-09-02T04:35:00Z",
-             "error_message": "no_session_snapshot"},
+            {
+                "job_type": "twin_star_intraday",
+                "sync_at": "2026-09-02T04:35:00Z",
+                "error_message": "no_session_snapshot",
+            },
         ],
     )
     out = nf._cron_failures()
@@ -152,10 +201,16 @@ def test_rolling_oos_warning_reads_file(monkeypatch, tmp_path) -> None:
     import json
 
     p = tmp_path / "rolling_oos_latest.json"
-    p.write_text(json.dumps({
-        "windowStart": "2026-05-13", "windowEnd": "2026-08-11",
-        "warning": True, "warnings": ["HK: -8.5%"],
-    }))
+    p.write_text(
+        json.dumps(
+            {
+                "windowStart": "2026-05-13",
+                "windowEnd": "2026-08-11",
+                "warning": True,
+                "warnings": ["HK: -8.5%"],
+            }
+        )
+    )
     monkeypatch.setattr(nf, "REPORTS_DIR", tmp_path)
     out = nf._rolling_oos_warning()
     assert len(out) == 1
@@ -169,21 +224,38 @@ def test_rolling_oos_warning_reads_file(monkeypatch, tmp_path) -> None:
 def test_pyramid_trigger_alert_fires_when_close_crosses_line(monkeypatch) -> None:
     """A held symbol whose close crossed the +2.5% trigger and not added yet -> alert."""
     monkeypatch.setattr(
-        nf, "_anchor_blocks",
-        lambda: {"CN": {"holdings": [
-            {
-                "symbol": "CN:300628", "name": "亿联网络", "action": "HOLD",
-                "pyramidTriggerLine": 40.897, "pyramidAdded": False, "lastClose": 42.01,
-            },
-            {
-                "symbol": "CN:600000", "name": "未触发", "action": "HOLD",
-                "pyramidTriggerLine": 10.0, "pyramidAdded": False, "lastClose": 9.5,
-            },
-            {
-                "symbol": "CN:600001", "name": "已加过", "action": "HOLD",
-                "pyramidTriggerLine": 10.0, "pyramidAdded": True, "lastClose": 11.0,
-            },
-        ]}},
+        nf,
+        "_anchor_blocks",
+        lambda: {
+            "CN": {
+                "holdings": [
+                    {
+                        "symbol": "CN:300628",
+                        "name": "亿联网络",
+                        "action": "HOLD",
+                        "pyramidTriggerLine": 40.897,
+                        "pyramidAdded": False,
+                        "lastClose": 42.01,
+                    },
+                    {
+                        "symbol": "CN:600000",
+                        "name": "未触发",
+                        "action": "HOLD",
+                        "pyramidTriggerLine": 10.0,
+                        "pyramidAdded": False,
+                        "lastClose": 9.5,
+                    },
+                    {
+                        "symbol": "CN:600001",
+                        "name": "已加过",
+                        "action": "HOLD",
+                        "pyramidTriggerLine": 10.0,
+                        "pyramidAdded": True,
+                        "lastClose": 11.0,
+                    },
+                ]
+            }
+        },
     )
     out = nf._pyramid_trigger_alerts()
     assert len(out) == 1
@@ -193,21 +265,45 @@ def test_pyramid_trigger_alert_fires_when_close_crosses_line(monkeypatch) -> Non
 
 
 def test_build_notifications_sorts_high_first(monkeypatch) -> None:
-    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda mode="single_track", ctx=None: [
-        {"id": "a", "type": "near_line", "severity": "medium", "title": "m", "detail": "d",
-         "anchor": "holdings", "createdAt": "x"},
-    ])
-    monkeypatch.setattr(nf, "_cron_failures", lambda: [
-        {"id": "b", "type": "cron_failed", "severity": "high", "title": "h", "detail": "d",
-         "anchor": "scheduler", "createdAt": "x"},
-    ])
+    monkeypatch.setattr(
+        nf,
+        "_stop_trail_alerts",
+        lambda mode="single_track", ctx=None: [
+            {
+                "id": "a",
+                "type": "near_line",
+                "severity": "medium",
+                "title": "m",
+                "detail": "d",
+                "anchor": "holdings",
+                "createdAt": "x",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        nf,
+        "_cron_failures",
+        lambda: [
+            {
+                "id": "b",
+                "type": "cron_failed",
+                "severity": "high",
+                "title": "h",
+                "detail": "d",
+                "anchor": "scheduler",
+                "createdAt": "x",
+            },
+        ],
+    )
     monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
     monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda mode="single_track", ctx=None: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
     monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
     monkeypatch.setattr(nf, "_twin_star_snapshot_alert", lambda mode="single_track": [])
-    monkeypatch.setattr(nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None})
+    monkeypatch.setattr(
+        nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None}
+    )
     out = nf.build_notifications()
     assert [x["severity"] for x in out] == ["high", "medium"]
 
@@ -367,14 +463,25 @@ def test_twin_star_sat_exit_ignores_protect_stop(monkeypatch) -> None:
 
 
 def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:
-    monkeypatch.setattr(nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "OIL", "tradeDate": "2026-09-02"})
+    monkeypatch.setattr(
+        nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "OIL", "tradeDate": "2026-09-02"}
+    )
     monkeypatch.setattr(nf, "_stop_trail_alerts", lambda *a, **k: [])
     monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda *a, **k: [])
     monkeypatch.setattr(nf, "_cron_failures", lambda: [])
     monkeypatch.setattr(
         nf,
         "_recon_alerts",
-        lambda: [{"id": "recon:x", "type": "recon_missing", "severity": "low", "title": "t", "detail": "d", "anchor": "recon"}],
+        lambda: [
+            {
+                "id": "recon:x",
+                "type": "recon_missing",
+                "severity": "low",
+                "title": "t",
+                "detail": "d",
+                "anchor": "recon",
+            }
+        ],
     )
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])

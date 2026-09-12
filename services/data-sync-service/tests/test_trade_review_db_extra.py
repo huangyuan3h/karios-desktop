@@ -5,10 +5,33 @@ from __future__ import annotations
 from data_sync_service.db import trade_review as tr
 
 FULL_ROW = (
-    "r1", "CN:600000", "平安银行", "2026-07-01", "2026-07-10", 9,
-    100.0, 2.5, 0.1, 2.0, "green", "red", True, False, True,
-    "notes", 20.0, 10.5, 9.8, 11.2, "目标达成", "exec", "good", "improve",
-    '{"k": "v"}', "2026-07-10T00:00:00Z", "2026-07-10T00:00:00Z",
+    "r1",
+    "CN:600000",
+    "平安银行",
+    "2026-07-01",
+    "2026-07-10",
+    9,
+    100.0,
+    2.5,
+    0.1,
+    2.0,
+    "green",
+    "red",
+    True,
+    False,
+    True,
+    "notes",
+    20.0,
+    10.5,
+    9.8,
+    11.2,
+    "目标达成",
+    "exec",
+    "good",
+    "improve",
+    '{"k": "v"}',
+    "2026-07-10T00:00:00Z",
+    "2026-07-10T00:00:00Z",
 )
 
 
@@ -61,7 +84,11 @@ class _Conn:
         return None
 
     def cursor(self):
-        seq = self._seq_by_cursor[len(self.cursors)] if len(self.cursors) < len(self._seq_by_cursor) else []
+        seq = (
+            self._seq_by_cursor[len(self.cursors)]
+            if len(self.cursors) < len(self._seq_by_cursor)
+            else []
+        )
         c = _Cur(seq, self._rowcount)
         self.cursors.append(c)
         return c
@@ -147,7 +174,12 @@ class TestCrud:
 
     def test_create_review(self, monkeypatch) -> None:
         conn = _conn(monkeypatch, seq_by_cursor=[[], [], [("one", FULL_ROW)]])
-        out = tr.create_review(review_id="r1", payload={"symbol": "CN:600000", "customPayload": {"a": 1}}, created_at="t", updated_at="t")
+        out = tr.create_review(
+            review_id="r1",
+            payload={"symbol": "CN:600000", "customPayload": {"a": 1}},
+            created_at="t",
+            updated_at="t",
+        )
         assert out["id"] == "r1"
         insert_sql, params = conn.cursors[1].executed[0]
         assert "INSERT INTO" in insert_sql
@@ -159,7 +191,9 @@ class TestCrud:
         assert out == {}
 
     def test_update_review(self, monkeypatch) -> None:
-        conn = _conn(monkeypatch, seq_by_cursor=[[], [("one", FULL_ROW)], [], [], [("one", FULL_ROW)]])
+        conn = _conn(
+            monkeypatch, seq_by_cursor=[[], [("one", FULL_ROW)], [], [], [("one", FULL_ROW)]]
+        )
         out = tr.update_review(review_id="r1", payload={"pnlPct": 3.5}, updated_at="t2")
         assert out["id"] == "r1"
         update_sql, params = conn.cursors[3].executed[0]

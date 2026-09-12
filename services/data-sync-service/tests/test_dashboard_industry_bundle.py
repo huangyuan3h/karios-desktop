@@ -54,8 +54,18 @@ def test_build_industry_bundle_single_batch_read() -> None:
 def test_build_industry_bundle_excludes_ghost_holiday_dates() -> None:
     open_dates = ["2026-06-17", "2026-06-18", "2026-06-22"]
     rows = [
-        {"date": "2026-06-18", "industry_code": "c1", "industry_name": "电子", "net_inflow": 36.69e8},
-        {"date": "2026-06-19", "industry_code": "c1", "industry_name": "电子", "net_inflow": 36.69e8},
+        {
+            "date": "2026-06-18",
+            "industry_code": "c1",
+            "industry_name": "电子",
+            "net_inflow": 36.69e8,
+        },
+        {
+            "date": "2026-06-19",
+            "industry_code": "c1",
+            "industry_name": "电子",
+            "net_inflow": 36.69e8,
+        },
     ]
     with (
         patch(

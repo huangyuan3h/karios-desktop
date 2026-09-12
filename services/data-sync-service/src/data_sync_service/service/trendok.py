@@ -246,7 +246,9 @@ def _finalize_trendok_response(
     return apply_macro_override_lock(out, risk_mode, down_count, params=params)
 
 
-def _trendok_cache_key(symbols: list[str], realtime: bool, latest_bar_date: str | None) -> tuple[frozenset[str], bool, str]:
+def _trendok_cache_key(
+    symbols: list[str], realtime: bool, latest_bar_date: str | None
+) -> tuple[frozenset[str], bool, str]:
     return (frozenset(symbols), bool(realtime), str(latest_bar_date or ""))
 
 
@@ -297,7 +299,9 @@ def _rsi(values: list[float], period: int = 14) -> list[float]:
     return out
 
 
-def _macd(values: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[list[float], list[float], list[float]]:
+def _macd(
+    values: list[float], fast: int = 12, slow: int = 26, signal: int = 9
+) -> tuple[list[float], list[float], list[float]]:
     if not values:
         return ([], [], [])
     ema_fast = _ema(values, fast)
@@ -308,7 +312,9 @@ def _macd(values: list[float], fast: int = 12, slow: int = 26, signal: int = 9) 
     return (macd_line, signal_line, hist)
 
 
-def _atr14(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float | None:
+def _atr14(
+    highs: list[float], lows: list[float], closes: list[float], period: int = 14
+) -> float | None:
     if period <= 0:
         return None
     n = min(len(highs), len(lows), len(closes))
@@ -354,7 +360,12 @@ _W_VOL = DEFAULT_TRENDOK_PARAMS.w_vol
 
 
 def _score_sub_ema(
-    ema5: float, ema20: float, ema60: float, ema20_prev: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+    ema5: float,
+    ema20: float,
+    ema60: float,
+    ema20_prev: float,
+    *,
+    params: TrendOKParams = DEFAULT_TRENDOK_PARAMS,
 ) -> tuple[float, float]:
     if ema5 is None or ema20 is None or ema60 is None:
         return 0.0, 0.0
@@ -391,7 +402,9 @@ def _score_sub_breakout(
     return s_break, 100.0 * params.w_break * s_break
 
 
-def _score_sub_rsi(rsi14: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> tuple[float, float]:
+def _score_sub_rsi(
+    rsi14: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, float]:
     if rsi14 is None:
         return 0.0, 0.0
     s_rsi = _clip01(1.0 - abs(rsi14 - 65.0) / 15.0)
@@ -400,7 +413,9 @@ def _score_sub_rsi(rsi14: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARA
     return s_rsi, 100.0 * params.w_rsi * s_rsi
 
 
-def _score_sub_volume(ratio_vol: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> tuple[float, float]:
+def _score_sub_volume(
+    ratio_vol: float, *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> tuple[float, float]:
     if ratio_vol is None:
         return 0.0, 0.0
     b1, b2, b3, b4 = params.vol_break_1, params.vol_break_2, params.vol_break_3, params.vol_break_4
@@ -420,7 +435,9 @@ def _score_sub_volume(ratio_vol: float, *, params: TrendOKParams = DEFAULT_TREND
     return s_vol, 100.0 * params.w_vol * s_vol
 
 
-def _score_bonus_ema20_slope_5d(ema20s: list[float], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS) -> float:
+def _score_bonus_ema20_slope_5d(
+    ema20s: list[float], *, params: TrendOKParams = DEFAULT_TRENDOK_PARAMS
+) -> float:
     if len(ema20s) < 6:
         return 0.0
     for i in range(-5, 0):
@@ -1361,11 +1378,7 @@ def _trendok_one(
         "missingData": [],
     }
 
-    if not (
-        symbol.startswith("CN:")
-        or symbol.startswith("HK:")
-        or symbol.startswith("ETF:")
-    ):
+    if not (symbol.startswith("CN:") or symbol.startswith("HK:") or symbol.startswith("ETF:")):
         res["missingData"].append("unsupported_market")
         return res
 
@@ -1405,7 +1418,9 @@ def _trendok_one(
     if is_held and entry_date:
         try:
             closes_after = [
-                float(c) for d, c in zip(dates, closes, strict=False) if str(d) >= str(entry_date)[:10]
+                float(c)
+                for d, c in zip(dates, closes, strict=False)
+                if str(d) >= str(entry_date)[:10]
             ]
             if closes_after:
                 res["s3PeakClose"] = round(max(closes_after), 6)
@@ -1512,7 +1527,9 @@ def _trendok_one(
             close = float(v["close"])
             high20_high = max(highs[-20:]) if len(highs) >= 20 else float(v["high20"])
             intraday_raw = res.get("intradayChgPct")
-            intraday_chg_pct = float(intraday_raw) if isinstance(intraday_raw, (int, float)) else None
+            intraday_chg_pct = (
+                float(intraday_raw) if isinstance(intraday_raw, (int, float)) else None
+            )
 
             score, parts = _compute_watchlist_score_v4(
                 close=close,
@@ -1537,7 +1554,9 @@ def _trendok_one(
             res["score"] = score
             res["scoreParts"] = parts
             if industry and flow_ctx:
-                delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx, params=params)
+                delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(
+                    industry, flow_ctx, params=params
+                )
                 checks = res.get("checks") if isinstance(res.get("checks"), dict) else {}
                 positive_bonus_allowed = all(
                     bool(checks.get(k))
@@ -1551,9 +1570,7 @@ def _trendok_one(
                     )
                 )
                 effective_flow_parts = {
-                    k: v
-                    for k, v in flow_parts.items()
-                    if float(v) < 0.0 or positive_bonus_allowed
+                    k: v for k, v in flow_parts.items() if float(v) < 0.0 or positive_bonus_allowed
                 }
                 if flow_parts:
                     if effective_flow_parts:
@@ -1566,7 +1583,9 @@ def _trendok_one(
                     allowed_positive_delta = positive_delta if positive_bonus_allowed else 0.0
                     effective_delta = negative_delta + allowed_positive_delta
                     if effective_delta != 0.0:
-                        res["score"] = round(max(0.0, min(100.0, float(res["score"]) + effective_delta)), 3)
+                        res["score"] = round(
+                            max(0.0, min(100.0, float(res["score"]) + effective_delta)), 3
+                        )
             buy_seats: list[dict[str, Any]] | None = None
             if inst_summary and inst_summary.get("on_board"):
                 td = _normalize_yyyy_mm_dd(inst_summary.get("trade_date"))
@@ -1671,7 +1690,10 @@ def _trendok_one(
 
             # 2) Momentum exhaustion: MACD hist shrinks 3 days then turns negative + volume dries up
             # Warning case: hist shrinks but stays positive => suggest reducing half.
-            if res["values"].get("avgVol5") is not None and res["values"].get("avgVol30") is not None:
+            if (
+                res["values"].get("avgVol5") is not None
+                and res["values"].get("avgVol30") is not None
+            ):
                 avg5v = float(res["values"]["avgVol5"])
                 avg30v = float(res["values"]["avgVol30"])
                 if len(hist) >= 4:
@@ -1690,7 +1712,9 @@ def _trendok_one(
                         else:
                             exit_now = True
                             exit_check_mom_exhaust = True
-                            exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
+                            exit_reasons.append(
+                                "momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry"
+                            )
 
                     if not shrink_then_flip:
                         shrink_cnt = 0
@@ -1707,7 +1731,9 @@ def _trendok_one(
                         if hist4[3] > 0.0 and shrink_cnt >= 2:
                             warn_reduce_half = True
                             warn_reasons.append(
-                                "momentum_warning:hist_shrinking_and_volume_dry" if vol_dry else "momentum_warning:hist_shrinking"
+                                "momentum_warning:hist_shrinking_and_volume_dry"
+                                if vol_dry
+                                else "momentum_warning:hist_shrinking"
                             )
             else:
                 # If volume averages are unavailable, still warn based on MACD histogram shrinking (best-effort).
@@ -1872,7 +1898,13 @@ def _trendok_one(
             buy_why = "风险：立刻离场信号触发，禁止买入"
         else:
             n = len(closes)
-            if n >= 26 and len(opens) == n and len(highs) == n and len(lows) == n and len(vols) == n:
+            if (
+                n >= 26
+                and len(opens) == n
+                and len(highs) == n
+                and len(lows) == n
+                and len(vols) == n
+            ):
                 close = closes[-1]
                 vol = vols[-1]
                 vol_prev = vols[-2] if n >= 2 else vol
@@ -1905,7 +1937,10 @@ def _trendok_one(
                     new_high = bool(close > prev10_high)
                     vol_ok = bool(vol_sma20 is not None and vol > vol_sma20 * 1.2)
                     macd_inc = bool(len(hist) >= 2 and float(hist[-1]) > float(hist[-2]))
-                    rsi_ok = bool(res["values"].get("rsi14") is not None and float(res["values"]["rsi14"]) < 80.0)
+                    rsi_ok = bool(
+                        res["values"].get("rsi14") is not None
+                        and float(res["values"]["rsi14"]) < 80.0
+                    )
                     buy_checks["b_prev10_high"] = round(prev10_high, 6)
                     buy_checks["b_new_high"] = new_high
                     buy_checks["b_vol_ok"] = vol_ok
@@ -1939,9 +1974,15 @@ def _trendok_one(
                     in_pullback_window = breakout_idx is not None
                     buy_checks["a_in_pullback_window"] = in_pullback_window
                     buy_checks["a_breakout_idx"] = breakout_idx
-                    buy_checks["a_breakout_level"] = round(breakout_level, 6) if breakout_level is not None else None
+                    buy_checks["a_breakout_level"] = (
+                        round(breakout_level, 6) if breakout_level is not None else None
+                    )
 
-                    ema20_now = float(res["values"]["ema20"]) if res["values"].get("ema20") is not None else None
+                    ema20_now = (
+                        float(res["values"]["ema20"])
+                        if res["values"].get("ema20") is not None
+                        else None
+                    )
                     low10 = min(lows[-10:]) if n >= 10 else min(lows)
                     support = max(low10, ema20_now) if ema20_now is not None else low10
                     buy_checks["a_support"] = round(support, 6)
@@ -2071,12 +2112,16 @@ def _trendok_one(
         t1_strong = t1_above_ema20 and t1_volume_ok
 
         # T-day pullback detection: orderly pullback between -1% and -3%
-        intraday_chg = float(res.get("intradayChgPct") or 0.0) if isinstance(
-            res.get("intradayChgPct"), (int, float)
-        ) else 0.0
+        intraday_chg = (
+            float(res.get("intradayChgPct") or 0.0)
+            if isinstance(res.get("intradayChgPct"), (int, float))
+            else 0.0
+        )
         pullback_ok = -3.0 <= intraday_chg <= -1.0
 
-        t1_sniper_triggered = t1_surge and t1_strong and pullback_ok and res.get("buyAction") != "avoid"
+        t1_sniper_triggered = (
+            t1_surge and t1_strong and pullback_ok and res.get("buyAction") != "avoid"
+        )
         if t1_sniper_triggered:
             # Add sniper alert
             res["riskAlerts"].append(
@@ -2143,7 +2188,11 @@ def _trendok_one(
     if sector_divergence_triggered:
         res["trendOk"] = False
 
-    volume_ratio_raw = (res.get("values") or {}).get("volumeRatio") if isinstance(res.get("values"), dict) else None
+    volume_ratio_raw = (
+        (res.get("values") or {}).get("volumeRatio")
+        if isinstance(res.get("values"), dict)
+        else None
+    )
     low_volume_ratio = False
     if isinstance(volume_ratio_raw, (int, float)):
         low_volume_ratio = float(volume_ratio_raw) < params.low_volume_ratio_threshold
@@ -2179,4 +2228,3 @@ def _trendok_one(
     res["checks"]["rs_leader"] = rs_leader
     res["rs"] = rs_value
     return res
-

@@ -11,6 +11,7 @@ from data_sync_service.service.alpha_radar_process import _resolve_trend_storage
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_resolve_trend_storage_fields_v4():
     fields = _resolve_trend_storage_fields(
         {

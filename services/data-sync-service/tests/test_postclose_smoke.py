@@ -200,13 +200,21 @@ def test_ingest_snapshot_is_idempotent_on_same_content() -> None:
     cards = [{"symbol": sym, "action": "BUY", "why": "SMOKE_TEST", "source": "TV"}]
 
     first = ingest_snapshot(
-        trade_date=ENTRY_DATE, source="TV", gate=gate, cards=cards, meta={"smoke": True},
+        trade_date=ENTRY_DATE,
+        source="TV",
+        gate=gate,
+        cards=cards,
+        meta={"smoke": True},
     )
     _CREATED["snapshot_ids"].add(first["snapshotId"])
     assert first["changed"] is True
 
     second = ingest_snapshot(
-        trade_date=ENTRY_DATE, source="TV", gate=gate, cards=cards, meta={"smoke": True},
+        trade_date=ENTRY_DATE,
+        source="TV",
+        gate=gate,
+        cards=cards,
+        meta={"smoke": True},
     )
     assert second["changed"] is False
     assert second["heartbeat"] is True

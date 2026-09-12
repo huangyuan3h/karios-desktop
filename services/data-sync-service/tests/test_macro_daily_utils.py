@@ -51,12 +51,14 @@ def test_normalize_fx_daily_df_empty():
 
 
 def test_normalize_fx_daily_df_with_bid_columns():
-    df = pd.DataFrame({
-        "bid_close": [100.0, 101.0],
-        "bid_open": [99.0, 100.0],
-        "bid_high": [102.0, 103.0],
-        "bid_low": [98.0, 99.0],
-    })
+    df = pd.DataFrame(
+        {
+            "bid_close": [100.0, 101.0],
+            "bid_open": [99.0, 100.0],
+            "bid_high": [102.0, 103.0],
+            "bid_low": [98.0, 99.0],
+        }
+    )
     result = _normalize_fx_daily_df(df)
     assert "close" in result.columns
     assert "open" in result.columns
@@ -66,10 +68,12 @@ def test_normalize_fx_daily_df_with_bid_columns():
 
 
 def test_normalize_fx_daily_df_preserves_other_columns():
-    df = pd.DataFrame({
-        "bid_close": [100.0],
-        "other_column": [42],
-    })
+    df = pd.DataFrame(
+        {
+            "bid_close": [100.0],
+            "other_column": [42],
+        }
+    )
     result = _normalize_fx_daily_df(df)
     assert "other_column" in result.columns
     assert result["other_column"].tolist() == [42]

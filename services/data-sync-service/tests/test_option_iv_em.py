@@ -66,7 +66,9 @@ def test_resolve_put_iv_for_snapshot_live(monkeypatch) -> None:
 
 def test_fetch_510300_atm_put_iv_live_no_candidate_has_diagnostics(monkeypatch) -> None:
     svc._LAST_PUT_IV_DIAGNOSTICS = {}
-    monkeypatch.setattr(svc, "_fetch_em_option_value_rows", lambda: [{"f14": "50ETF沽6月2900", "f249": 19.0}])
+    monkeypatch.setattr(
+        svc, "_fetch_em_option_value_rows", lambda: [{"f14": "50ETF沽6月2900", "f249": 19.0}]
+    )
     monkeypatch.setattr(svc.sys, "platform", "darwin")
 
     picked = svc.fetch_510300_atm_put_iv_live()

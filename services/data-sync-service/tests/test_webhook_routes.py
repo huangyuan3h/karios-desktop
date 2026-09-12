@@ -81,7 +81,11 @@ class TestDelivery:
             "url": "https://hook.example/x",
             "secret": "sekrit",
         }
-        monkeypatch.setattr(wd, "datetime", type("DT", (), {"now": lambda tz=None: __import__("datetime").datetime(2026, 8, 12)}))
+        monkeypatch.setattr(
+            wd,
+            "datetime",
+            type("DT", (), {"now": lambda tz=None: __import__("datetime").datetime(2026, 8, 12)}),
+        )
         captured: dict = {}
 
         def fake_post(url, body, signature):
@@ -107,7 +111,9 @@ class TestDelivery:
             "url": "https://hook.example/y",
             "secret": "sekrit",
         }
-        monkeypatch.setattr(wd, "_post", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("refused")))
+        monkeypatch.setattr(
+            wd, "_post", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("refused"))
+        )
         monkeypatch.setattr(wd.webhook_db, "list_pending_deliveries", lambda limit=100: [delivery])
         marks: list[int] = []
         monkeypatch.setattr(wd.webhook_db, "mark_delivery_failed", lambda i, e: marks.append(i))
@@ -127,7 +133,9 @@ class TestDelivery:
         }
         monkeypatch.setattr(wd.webhook_db, "list_pending_deliveries", lambda limit=100: [delivery])
         monkeypatch.setattr(wd, "_rate_limited", lambda d, now: {3})
-        monkeypatch.setattr(wd, "_post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not post")))
+        monkeypatch.setattr(
+            wd, "_post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not post"))
+        )
         out = wd.deliver_pending()
         assert out["blocked"] == 1 and out["delivered"] == 0
 
@@ -137,8 +145,12 @@ class TestDelivery:
             "event_id": 12,
             "subscription_id": 4,
             "event_type": "execution_card",
-            "payload": {"day": "2026-08-14", "gate": {"A股": {"regime": "Diverging"}},
-                        "candidates": [], "exits": []},
+            "payload": {
+                "day": "2026-08-14",
+                "gate": {"A股": {"regime": "Diverging"}},
+                "candidates": [],
+                "exits": [],
+            },
             "url": "https://api.day.app/device-key",
             "secret": "sekrit",
             "provider": "bark",

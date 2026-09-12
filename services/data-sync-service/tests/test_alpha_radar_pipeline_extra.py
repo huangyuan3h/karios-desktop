@@ -96,20 +96,32 @@ class TestProcessLoops:
     def test_loop_done(self, monkeypatch) -> None:
         counts = iter([3, 3, 0])
         monkeypatch.setattr(ap, "count_documents_by_status", lambda s: next(counts))
-        monkeypatch.setattr(ap, "process_pending_documents", lambda **kw: {"processed": 2, "trends": [{"id": 1}], "errors": [{"error": "e1"}, "e2"]})
+        monkeypatch.setattr(
+            ap,
+            "process_pending_documents",
+            lambda **kw: {"processed": 2, "trends": [{"id": 1}], "errors": [{"error": "e1"}, "e2"]},
+        )
         total, trends, errors = ap._run_process_loops(max_rounds=3)
         assert total == 4 and len(trends) == 2
         assert errors == [{"error": "e1"}, {"error": "e2"}, {"error": "e1"}, {"error": "e2"}]
 
     def test_loop_processed_less_than_two(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "count_documents_by_status", lambda s: 3)
-        monkeypatch.setattr(ap, "process_pending_documents", lambda **kw: {"processed": 1, "trends": [], "errors": []})
+        monkeypatch.setattr(
+            ap,
+            "process_pending_documents",
+            lambda **kw: {"processed": 1, "trends": [], "errors": []},
+        )
         total, trends, errors = ap._run_process_loops(max_rounds=3)
         assert total == 1
 
     def test_loop_exception(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "count_documents_by_status", lambda s: 3)
-        monkeypatch.setattr(ap, "process_pending_documents", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            ap,
+            "process_pending_documents",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
         total, trends, errors = ap._run_process_loops(max_rounds=3)
         assert errors == [{"error": "boom"}]
 
@@ -139,7 +151,9 @@ class TestStatus:
         assert out["lastIngestStats"] == {"stored": 1}
 
     def test_pipeline_status_bad_count(self, monkeypatch) -> None:
-        monkeypatch.setattr(ap, "get_meta", lambda k: "not-a-number" if k == ap.META_LAST_TREND_COUNT else None)
+        monkeypatch.setattr(
+            ap, "get_meta", lambda k: "not-a-number" if k == ap.META_LAST_TREND_COUNT else None
+        )
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, []))
         monkeypatch.setattr(ap, "count_trends_total", lambda: 0)
         monkeypatch.setattr(ap, "count_documents_by_status", lambda s: 0)
@@ -153,7 +167,9 @@ class TestStatus:
 class TestIngest:
     def test_ingest_success(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "add_default_sources", lambda: None)
-        monkeypatch.setattr(ap, "fetch_all_sources", lambda **kw: {"ingestStats": {"stored": 3}, "sourceErrors": {}})
+        monkeypatch.setattr(
+            ap, "fetch_all_sources", lambda **kw: {"ingestStats": {"stored": 3}, "sourceErrors": {}}
+        )
         monkeypatch.setattr(ap, "set_meta", lambda k, v: None)
         seen = {}
         monkeypatch.setattr(ap, "insert_record", lambda job, **kw: seen.update(job=job, **kw))
@@ -164,7 +180,11 @@ class TestIngest:
 
     def test_ingest_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "add_default_sources", lambda: None)
-        monkeypatch.setattr(ap, "fetch_all_sources", lambda **kw: {"ingestStats": {"stored": 0}, "sourceErrors": {"cnrss": "err"}})
+        monkeypatch.setattr(
+            ap,
+            "fetch_all_sources",
+            lambda **kw: {"ingestStats": {"stored": 0}, "sourceErrors": {"cnrss": "err"}},
+        )
         monkeypatch.setattr(ap, "set_meta", lambda k, v: None)
         seen = {}
         monkeypatch.setattr(ap, "insert_record", lambda job, **kw: seen.update(job=job, **kw))
@@ -212,7 +232,11 @@ class TestPipeline:
     def test_pipeline_force(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "get_meta", lambda k: "2026-08-07T10:00:00+00:00")
         monkeypatch.setattr(ap, "_within_cooldown", lambda d: False)
-        monkeypatch.setattr(ap, "run_alpha_radar_ingest", lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}})
+        monkeypatch.setattr(
+            ap,
+            "run_alpha_radar_ingest",
+            lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}},
+        )
         monkeypatch.setattr(ap, "_run_process_loops", lambda **kw: (2, [{"id": 1}], []))
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, [{"id": 1}]))
         monkeypatch.setattr(ap, "set_meta", lambda k, v: None)
@@ -226,7 +250,11 @@ class TestPipeline:
 
     def test_pipeline_retention(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "get_meta", lambda k: None)
-        monkeypatch.setattr(ap, "run_alpha_radar_ingest", lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}})
+        monkeypatch.setattr(
+            ap,
+            "run_alpha_radar_ingest",
+            lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}},
+        )
         monkeypatch.setattr(ap, "_run_process_loops", lambda **kw: (2, [], []))
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, [{"id": 1}]))
         monkeypatch.setattr(ap, "set_meta", lambda k, v: None)
@@ -240,7 +268,15 @@ class TestPipeline:
 
     def test_pipeline_no_stored(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "get_meta", lambda k: None)
-        monkeypatch.setattr(ap, "run_alpha_radar_ingest", lambda **kw: {"ok": False, "ingest": {"sourceErrors": {"rss": "err"}}, "ingestStats": {"stored": 0}})
+        monkeypatch.setattr(
+            ap,
+            "run_alpha_radar_ingest",
+            lambda **kw: {
+                "ok": False,
+                "ingest": {"sourceErrors": {"rss": "err"}},
+                "ingestStats": {"stored": 0},
+            },
+        )
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, [{"id": 1}]))
         monkeypatch.setattr(ap, "insert_record", lambda job, **kw: None)
         monkeypatch.setattr(ap, "count_trends_total", lambda: 5)
@@ -251,8 +287,16 @@ class TestPipeline:
 
     def test_pipeline_zero_trends_with_errors(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "get_meta", lambda k: None)
-        monkeypatch.setattr(ap, "run_alpha_radar_ingest", lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}})
-        monkeypatch.setattr(ap, "_run_process_loops", lambda **kw: (0, [], [{"error": "ai-service LLM returned 0 trends"}]))
+        monkeypatch.setattr(
+            ap,
+            "run_alpha_radar_ingest",
+            lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}},
+        )
+        monkeypatch.setattr(
+            ap,
+            "_run_process_loops",
+            lambda **kw: (0, [], [{"error": "ai-service LLM returned 0 trends"}]),
+        )
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, []))
         monkeypatch.setattr(ap, "delete_trends_since", lambda d: None)
         monkeypatch.setattr(ap, "set_meta", lambda k, v: None)
@@ -265,7 +309,11 @@ class TestPipeline:
 
     def test_pipeline_zero_trends_no_errors(self, monkeypatch) -> None:
         monkeypatch.setattr(ap, "get_meta", lambda k: None)
-        monkeypatch.setattr(ap, "run_alpha_radar_ingest", lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}})
+        monkeypatch.setattr(
+            ap,
+            "run_alpha_radar_ingest",
+            lambda **kw: {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 3}},
+        )
         monkeypatch.setattr(ap, "_run_process_loops", lambda **kw: (0, [], []))
         monkeypatch.setattr(ap, "fetch_trends", lambda **kw: (0, []))
         monkeypatch.setattr(ap, "delete_trends_since", lambda d: None)

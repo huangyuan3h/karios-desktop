@@ -84,7 +84,9 @@ class TestSleeveEtfSync:
         monkeypatch.setattr(ed, "get_settings", lambda: _Settings())
         monkeypatch.setattr(ed, "get_pool", lambda: SimpleNamespace(pro=lambda: _Pro()))
         monkeypatch.setattr(ed, "upsert_from_dataframe", _upsert)
-        monkeypatch.setattr(ed, "get_last_trade_date", lambda ts: __import__("datetime").date(2026, 8, 21))
+        monkeypatch.setattr(
+            ed, "get_last_trade_date", lambda ts: __import__("datetime").date(2026, 8, 21)
+        )
         monkeypatch.setattr(ed, "_sync_end_date", lambda ts: "20260831")
         monkeypatch.setattr(ed, "time", type("t", (), {"sleep": staticmethod(lambda s: None)}))
         rec = {"rows": []}

@@ -352,9 +352,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
     # the read failed → fail open (never close on pool_exit without data).
     registry_symbols: set[str] | None = None
     try:
-        registry_symbols = {
-            str(r.get("symbol") or "") for r in wa_db.list_registry() if r
-        }
+        registry_symbols = {str(r.get("symbol") or "") for r in wa_db.list_registry() if r}
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_trade update list_registry failed: %s", exc)
 
@@ -451,11 +449,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         # past the profit trigger, tighten the allowed peak pullback to
         # protect realized gains. Disabled until the walk-forward audit
         # passes (live constants are the ship gate).
-        if (
-            reason is None
-            and pt_db.PROFIT_TRAIL_TRIGGER_PCT > 0
-            and pt_db.PROFIT_TRAIL_PCT < 0
-        ):
+        if reason is None and pt_db.PROFIT_TRAIL_TRIGGER_PCT > 0 and pt_db.PROFIT_TRAIL_PCT < 0:
             entry_px = _row_number(t, "entryPrice", "entry_price") or 0.0
             peak = 0.0
             entry = _row_str(t, "entryDate", "entry_date") or ""
@@ -530,17 +524,13 @@ def _row_str(t: dict[str, Any], camel: str, snake: str) -> str | None:
     return str(raw) if raw is not None else None
 
 
-def _atr_pct_at_entry(
-    bars: list, entry_date: str, entry_price: float
-) -> float:
+def _atr_pct_at_entry(bars: list, entry_date: str, entry_price: float) -> float:
     """ATR14 / entry_price x 100 computed from the sessions BEFORE entry.
 
     OPT-105: the S-3 Strong-regime stop uses the entry-locked ATR% (same as
     the backtest engine's ``atr14_pct_for``). 0.0 when bars are insufficient
     → the fixed constants apply (safe fallback)."""
-    before = sorted(
-        [b for b in bars if str(b[0]) < entry_date], key=lambda b: str(b[0])
-    )[-15:]
+    before = sorted([b for b in bars if str(b[0]) < entry_date], key=lambda b: str(b[0]))[-15:]
     if len(before) < 8 or entry_price is None or entry_price <= 0:
         return 0.0
     trs: list[float] = []
@@ -631,7 +621,11 @@ def _pick_close_reason(
     if score is not None and score < floor:
         return pt_db.CLOSE_REASON_SCORE_FLOOR
 
-    if not exclude_pool_exit and registry_symbols is not None and str(t.get("symbol") or "") not in registry_symbols:
+    if (
+        not exclude_pool_exit
+        and registry_symbols is not None
+        and str(t.get("symbol") or "") not in registry_symbols
+    ):
         return pt_db.CLOSE_REASON_POOL_EXIT
 
     if holding_days >= hold:

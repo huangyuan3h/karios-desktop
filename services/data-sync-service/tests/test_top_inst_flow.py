@@ -43,7 +43,10 @@ def test_classify_seat_label() -> None:
 
 def test_format_inst_flow_display() -> None:
     assert format_inst_flow_display(inst_net_buy_yi=3.2, label="机构主买") == "+3.2亿 (机构主买)"
-    assert format_inst_flow_display(inst_net_buy_yi=-1.5, label="机构净卖/拉萨主买") == "-1.5亿 (机构净卖/拉萨主买)"
+    assert (
+        format_inst_flow_display(inst_net_buy_yi=-1.5, label="机构净卖/拉萨主买")
+        == "-1.5亿 (机构净卖/拉萨主买)"
+    )
 
 
 def test_build_inst_flow_payload_on_board() -> None:
@@ -172,7 +175,9 @@ def test_normalize_tushare_top_inst_rows() -> None:
         },
     ]
 
-    org_by_ticker, buy_seats_by_ts_code, inst_seats_by_ts_code = normalize_tushare_top_inst_rows(rows)
+    org_by_ticker, buy_seats_by_ts_code, inst_seats_by_ts_code = normalize_tushare_top_inst_rows(
+        rows
+    )
 
     assert org_by_ticker["603588"]["NET_BUY_AMT"] == -40_000_000.0
     assert len(buy_seats_by_ts_code["603588.SH"]) == 1

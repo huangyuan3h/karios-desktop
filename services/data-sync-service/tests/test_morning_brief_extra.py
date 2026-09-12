@@ -43,7 +43,9 @@ class _Conn:
         return None
 
     def cursor(self):
-        row_sets = self._row_sets[len(self.cursors)] if len(self.cursors) < len(self._row_sets) else []
+        row_sets = (
+            self._row_sets[len(self.cursors)] if len(self.cursors) < len(self._row_sets) else []
+        )
         c = _Cur(row_sets)
         self.cursors.append(c)
         return c
@@ -82,22 +84,35 @@ class TestFreshness:
         assert mb._freshness_bonus((now - timedelta(hours=20)).isoformat(), "") == 10
 
     def test_freshness_fallback_and_bad(self) -> None:
-        assert mb._freshness_bonus(None, (datetime.now(UTC) - timedelta(hours=1)).isoformat()) == 100
+        assert (
+            mb._freshness_bonus(None, (datetime.now(UTC) - timedelta(hours=1)).isoformat()) == 100
+        )
         assert mb._freshness_bonus("garbage", "") == 10
 
     def test_freshness_z_suffix(self) -> None:
         now = datetime.now(UTC)
-        assert mb._freshness_bonus((now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"), "") == 100
+        assert (
+            mb._freshness_bonus((now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"), "")
+            == 100
+        )
 
 
 class TestWatchlist:
     def test_load_watchlist_context(self, monkeypatch) -> None:
         from data_sync_service import db as dbmod
 
-        conn = _Conn([
-            [[("CN:600519", {"positionPct": 50}), ("CN:000001", {"positionPct": 0}), ("CN:600000", "notdict")],
-             [("白酒",), ("银行",)]],
-        ])
+        conn = _Conn(
+            [
+                [
+                    [
+                        ("CN:600519", {"positionPct": 50}),
+                        ("CN:000001", {"positionPct": 0}),
+                        ("CN:600000", "notdict"),
+                    ],
+                    [("白酒",), ("银行",)],
+                ],
+            ]
+        )
         monkeypatch.setattr(dbmod, "get_connection", lambda: conn)
         held, sectors = mb._load_watchlist_context()
         assert held == {"CN:600519"}
@@ -107,7 +122,9 @@ class TestWatchlist:
     def test_load_watchlist_context_error(self, monkeypatch) -> None:
         from data_sync_service import db as dbmod
 
-        monkeypatch.setattr(dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+        monkeypatch.setattr(
+            dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down"))
+        )
         assert mb._load_watchlist_context() == (set(), set())
 
     def test_load_watched_symbols(self, monkeypatch) -> None:
@@ -121,7 +138,9 @@ class TestWatchlist:
     def test_load_watched_symbols_error(self, monkeypatch) -> None:
         from data_sync_service import db as dbmod
 
-        monkeypatch.setattr(dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("down"))
+        )
         assert mb._load_watched_symbols() == set()
 
     def test_watchlist_boost_held_full(self) -> None:
@@ -137,7 +156,9 @@ class TestWatchlist:
         assert mb._watchlist_boost(_item(sectors=["白酒"]), set(), {"白酒"}) == 20
 
     def test_watchlist_boost_none(self) -> None:
-        assert mb._watchlist_boost(_item(tickers=["300001.SZ"], sectors=["光伏"]), set(), set()) == 0
+        assert (
+            mb._watchlist_boost(_item(tickers=["300001.SZ"], sectors=["光伏"]), set(), set()) == 0
+        )
 
 
 class TestCategory:
@@ -177,16 +198,25 @@ class TestScoring:
 
 class TestSelectAndGenerate:
     def test_select_brief_items(self, monkeypatch) -> None:
-        monkeypatch.setattr(mb, "fetch_items", lambda limit, hours: (10, [
-            _item(id="a", enrichmentStatus="done", importance=5),
-            _item(id="b", enrichmentStatus="done", importance=3, title="某公司大跌"),
-            _item(id="c", enrichmentStatus="done", importance=0, title="噪音"),
-            _item(id="d", enrichmentStatus="done", importance=4, title="2026年度回顾"),
-            _item(id="e", enrichmentStatus="pending"),
-            _item(id="f", enrichmentStatus="done", importance=4, actionability="historical"),
-            _item(id="g", enrichmentStatus="done", importance=4, tickers=["300001.SZ"]),
-            _item(id="h", enrichmentStatus="done", importance=4, tickers=["000002.SZ"]),
-        ]))
+        monkeypatch.setattr(
+            mb,
+            "fetch_items",
+            lambda limit, hours: (
+                10,
+                [
+                    _item(id="a", enrichmentStatus="done", importance=5),
+                    _item(id="b", enrichmentStatus="done", importance=3, title="某公司大跌"),
+                    _item(id="c", enrichmentStatus="done", importance=0, title="噪音"),
+                    _item(id="d", enrichmentStatus="done", importance=4, title="2026年度回顾"),
+                    _item(id="e", enrichmentStatus="pending"),
+                    _item(
+                        id="f", enrichmentStatus="done", importance=4, actionability="historical"
+                    ),
+                    _item(id="g", enrichmentStatus="done", importance=4, tickers=["300001.SZ"]),
+                    _item(id="h", enrichmentStatus="done", importance=4, tickers=["000002.SZ"]),
+                ],
+            ),
+        )
         monkeypatch.setattr(mb, "_load_watchlist_context", lambda: ({"600519.SH"}, {"白酒"}))
         monkeypatch.setattr(mb, "_load_watched_symbols", lambda: {"600519", "300001.SZ"})
         out = mb.select_brief_items()
@@ -203,10 +233,16 @@ class TestSelectAndGenerate:
         assert mb.select_brief_items() == []
 
     def test_generate_brief(self, monkeypatch) -> None:
-        monkeypatch.setattr(mb, "select_brief_items", lambda hours=24: [
-            _item(id="a", score=80.0, category="macro", sectors=["白酒"], eventType="earnings"),
-            _item(id="b", score=70.0, category="watchlist", sectors=["白酒"], eventType="earnings"),
-        ])
+        monkeypatch.setattr(
+            mb,
+            "select_brief_items",
+            lambda hours=24: [
+                _item(id="a", score=80.0, category="macro", sectors=["白酒"], eventType="earnings"),
+                _item(
+                    id="b", score=70.0, category="watchlist", sectors=["白酒"], eventType="earnings"
+                ),
+            ],
+        )
         stored = {}
 
         def upsert(**kw):

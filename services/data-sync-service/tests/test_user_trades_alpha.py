@@ -54,8 +54,16 @@ def _insert_trend(
                 (id, source_id, title, url, category, published_at, fetched_at, processing_status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (doc_id, TEST_SOURCE_ID, f"doc {doc_id}", f"https://d/{doc_id}", "test",
-             published_at, fetched_at, "processed"),
+            (
+                doc_id,
+                TEST_SOURCE_ID,
+                f"doc {doc_id}",
+                f"https://d/{doc_id}",
+                "test",
+                published_at,
+                fetched_at,
+                "processed",
+            ),
         )
         cur.execute(
             """
@@ -65,35 +73,63 @@ def _insert_trend(
                 risk_status, trend_json, created_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (trend_id, doc_id, f"trend {trend_id}", grade, "cat", "target", "A",
-             "kw", f'[{{"symbol": "{symbol}"}}]', confidence, risk_status,
-             '{"hkSymbols": []}', fetched_at),
+            (
+                trend_id,
+                doc_id,
+                f"trend {trend_id}",
+                grade,
+                "cat",
+                "target",
+                "A",
+                "kw",
+                f'[{{"symbol": "{symbol}"}}]',
+                confidence,
+                risk_status,
+                '{"hkSymbols": []}',
+                fetched_at,
+            ),
         )
 
 
 def test_snapshot_counts_only_events_visible_as_of() -> None:
     # Event 5 days before trade_date -> counted.
-    _insert_trend(trend_id="t-snap-in", doc_id="d-snap-in",
-                  published_at="2026-08-08T02:00:00+08:00",
-                  fetched_at="2026-08-08T02:00:00+08:00")
+    _insert_trend(
+        trend_id="t-snap-in",
+        doc_id="d-snap-in",
+        published_at="2026-08-08T02:00:00+08:00",
+        fetched_at="2026-08-08T02:00:00+08:00",
+    )
     # Event on trade_date itself -> counted (as-of day boundary inclusive).
-    _insert_trend(trend_id="t-snap-same", doc_id="d-snap-same",
-                  published_at="2026-08-13T09:00:00+08:00",
-                  fetched_at="2026-08-13T09:00:00+08:00",
-                  grade="S", confidence=0.95)
+    _insert_trend(
+        trend_id="t-snap-same",
+        doc_id="d-snap-same",
+        published_at="2026-08-13T09:00:00+08:00",
+        fetched_at="2026-08-13T09:00:00+08:00",
+        grade="S",
+        confidence=0.95,
+    )
     # Event AFTER trade_date -> must NOT count (no lookahead).
-    _insert_trend(trend_id="t-snap-future", doc_id="d-snap-future",
-                  published_at="2026-08-15T09:00:00+08:00",
-                  fetched_at="2026-08-15T09:00:00+08:00")
+    _insert_trend(
+        trend_id="t-snap-future",
+        doc_id="d-snap-future",
+        published_at="2026-08-15T09:00:00+08:00",
+        fetched_at="2026-08-15T09:00:00+08:00",
+    )
     # Event older than the 14-day window -> must NOT count.
-    _insert_trend(trend_id="t-snap-old", doc_id="d-snap-old",
-                  published_at="2026-07-25T09:00:00+08:00",
-                  fetched_at="2026-07-25T09:00:00+08:00")
+    _insert_trend(
+        trend_id="t-snap-old",
+        doc_id="d-snap-old",
+        published_at="2026-07-25T09:00:00+08:00",
+        fetched_at="2026-07-25T09:00:00+08:00",
+    )
     # Another symbol -> must NOT count.
-    _insert_trend(trend_id="t-snap-other", doc_id="d-snap-other",
-                  published_at="2026-08-10T09:00:00+08:00",
-                  fetched_at="2026-08-10T09:00:00+08:00",
-                  symbol="CN:99alpha9")
+    _insert_trend(
+        trend_id="t-snap-other",
+        doc_id="d-snap-other",
+        published_at="2026-08-10T09:00:00+08:00",
+        fetched_at="2026-08-10T09:00:00+08:00",
+        symbol="CN:99alpha9",
+    )
 
     snap = alpha_snapshot_for(TEST_SYMBOL, "2026-08-13")
 
@@ -109,7 +145,10 @@ def test_snapshot_counts_only_events_visible_as_of() -> None:
 
 
 def test_snapshot_none_when_no_matching_events() -> None:
-    _insert_trend(trend_id="t-snap-nomatch", doc_id="d-snap-nomatch",
-                  published_at="2026-08-10T09:00:00+08:00",
-                  fetched_at="2026-08-10T09:00:00+08:00")
+    _insert_trend(
+        trend_id="t-snap-nomatch",
+        doc_id="d-snap-nomatch",
+        published_at="2026-08-10T09:00:00+08:00",
+        fetched_at="2026-08-10T09:00:00+08:00",
+    )
     assert alpha_snapshot_for("CN:99nomatch", "2026-08-13") is None

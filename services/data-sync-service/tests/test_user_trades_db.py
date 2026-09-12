@@ -64,28 +64,43 @@ def test_insert_rejects_invalid_side() -> None:
 def test_leg_defaults_s3_and_accepts_sat() -> None:
     ut.ensure_tables()
     core = ut.insert_trade(
-        symbol=TEST_SYMBOL, side="BUY", trade_date="2026-09-09", price=10.0, position_pct=10.0,
+        symbol=TEST_SYMBOL,
+        side="BUY",
+        trade_date="2026-09-09",
+        price=10.0,
+        position_pct=10.0,
     )
     assert core["leg"] == "s3"
     sat = ut.insert_trade(
-        symbol=f"{TEST_PREFIX}sat1", side="BUY", trade_date="2026-09-07",
-        price=221.28, position_pct=12.5, leg="sat",
+        symbol=f"{TEST_PREFIX}sat1",
+        side="BUY",
+        trade_date="2026-09-07",
+        price=221.28,
+        position_pct=12.5,
+        leg="sat",
     )
     assert sat["leg"] == "sat"
     rows = ut.list_trades(symbol=f"{TEST_PREFIX}sat1")
     assert any(r["id"] == sat["id"] and r["leg"] == "sat" for r in rows)
     with pytest.raises(ValueError):
         ut.insert_trade(
-            symbol=TEST_SYMBOL, side="BUY", trade_date="2026-09-09",
-            price=1.0, position_pct=1.0, leg="x",
+            symbol=TEST_SYMBOL,
+            side="BUY",
+            trade_date="2026-09-09",
+            price=1.0,
+            position_pct=1.0,
+            leg="x",
         )
 
 
 def test_update_trade_leg_roundtrip() -> None:
     ut.ensure_tables()
     row = ut.insert_trade(
-        symbol=f"{TEST_PREFIX}fix1", side="BUY", trade_date="2026-09-07",
-        price=100.0, position_pct=12.5,
+        symbol=f"{TEST_PREFIX}fix1",
+        side="BUY",
+        trade_date="2026-09-07",
+        price=100.0,
+        position_pct=12.5,
     )
     assert row["leg"] == "s3"
     fixed = ut.update_trade(row["id"], leg="sat")
@@ -163,8 +178,14 @@ def test_alpha_snapshot_roundtrip() -> None:
         "maxConfidence": 0.9,
         "riskStatuses": ["active"],
         "events": [
-            {"trend": "x", "grade": "A", "confidence": 0.9, "daysAgo": 2,
-             "riskStatus": "active", "focus": "y"},
+            {
+                "trend": "x",
+                "grade": "A",
+                "confidence": 0.9,
+                "daysAgo": 2,
+                "riskStatus": "active",
+                "focus": "y",
+            },
         ],
     }
     row = ut.insert_trade(

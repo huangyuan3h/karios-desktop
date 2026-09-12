@@ -49,10 +49,10 @@ def _mk_data() -> tuple[list[str], dict, dict, dict]:
     dates = _mk_dates(25)
     gap_idx = 20  # first idx with idx>=20 eligibility
     per_ts = {
-        "A.SH": _mk_series(dates, gap_idx, 0.05, 0.01),   # lowest amp -> top bucket
+        "A.SH": _mk_series(dates, gap_idx, 0.05, 0.01),  # lowest amp -> top bucket
         "B.SH": _mk_series(dates, gap_idx, 0.05, 0.04),
-        "C.SH": _mk_series(dates, gap_idx, 0.05, 0.09),   # outside top-33%
-        "D.SH": _mk_series(dates, None, 0.0, 0.02),       # no gap
+        "C.SH": _mk_series(dates, gap_idx, 0.05, 0.09),  # outside top-33%
+        "D.SH": _mk_series(dates, None, 0.0, 0.02),  # no gap
     }
     mv = {ds: {ts: 100.0 for ts in per_ts} for ds in dates}
     return dates, per_ts, mv, {}

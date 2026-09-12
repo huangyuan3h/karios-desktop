@@ -42,7 +42,9 @@ class ListTradeJournalsResponse(BaseModel):
 
 
 @router.get("/journals", response_model=ListTradeJournalsResponse)
-def list_journals(limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)) -> ListTradeJournalsResponse:
+def list_journals(
+    limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)
+) -> ListTradeJournalsResponse:
     """List journals with pagination."""
     total, items = journal_db.fetch_all(limit=limit, offset=offset)
     return ListTradeJournalsResponse(total=total, items=[TradeJournal(**it) for it in items])
@@ -67,7 +69,9 @@ def create_journal(req: TradeJournalCreateRequest) -> TradeJournal:
     jid = str(uuid4())
     title = (req.title or "").strip() or "Trading Journal"
     content = req.contentMd or ""
-    journal = journal_db.create_journal(journal_id=jid, title=title, content_md=content, created_at=now, updated_at=now)
+    journal = journal_db.create_journal(
+        journal_id=jid, title=title, content_md=content, created_at=now, updated_at=now
+    )
     return TradeJournal(**journal)
 
 
@@ -78,7 +82,9 @@ def update_journal(journal_id: str, req: TradeJournalUpdateRequest) -> TradeJour
     if not jid:
         raise HTTPException(status_code=400, detail="journal_id is required")
     now = _now_iso()
-    journal = journal_db.update_journal(journal_id=jid, title=req.title, content_md=req.contentMd, updated_at=now)
+    journal = journal_db.update_journal(
+        journal_id=jid, title=req.title, content_md=req.contentMd, updated_at=now
+    )
     if not journal:
         raise HTTPException(status_code=404, detail="Journal not found")
     return TradeJournal(**journal)

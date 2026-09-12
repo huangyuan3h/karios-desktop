@@ -55,7 +55,9 @@ def _load_close_series(table: str, ts_code: str, start: str, end: str) -> list[t
     return out
 
 
-def load_etf_share_series(codes: list[str], start: str, end: str) -> dict[str, list[tuple[str, float]]]:
+def load_etf_share_series(
+    codes: list[str], start: str, end: str
+) -> dict[str, list[tuple[str, float]]]:
     out: dict[str, list[tuple[str, float]]] = {c: [] for c in codes}
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -75,9 +77,7 @@ def load_close_series(table: str, ts_code: str, start: str, end: str) -> list[tu
     return _load_close_series(table, ts_code, start, end)
 
 
-def _above_flags(
-    series: list[tuple[str, float]], calendar: list[str], ma: int
-) -> list[bool]:
+def _above_flags(series: list[tuple[str, float]], calendar: list[str], ma: int) -> list[bool]:
     """Per master-calendar day: latest close ≤ d vs its MA(ma).
 
     Uses ALL series data points ≤ d — including pre-window lookback closes —
@@ -165,9 +165,7 @@ def breadth_state_by_day(
     return state
 
 
-def state_runs(
-    state: dict[str, bool], calendar: list[str]
-) -> tuple[tuple[str, str], ...]:
+def state_runs(state: dict[str, bool], calendar: list[str]) -> tuple[tuple[str, str], ...]:
     """Inclusive (first ON day, last ON day) windows — same endpoint semantics
     as backtest_engine.compute_throttle_windows (end = last day state held)."""
     windows: list[tuple[str, str]] = []
@@ -255,9 +253,7 @@ def national_team_state_for_calendar(
     return national_team_state_by_day(index_series, share_series, calendar)
 
 
-def national_team_state_on(
-    as_of: str, *, lookback_days: int = NATIONAL_TEAM_LOOKBACK_DAYS
-) -> bool:
+def national_team_state_on(as_of: str, *, lookback_days: int = NATIONAL_TEAM_LOOKBACK_DAYS) -> bool:
     """Live single-day check (causal: state uses data ≤ as_of-1). Fail-open
     (returns False) on missing data — the gate only ever pauses on a definite
     ON state. Uses the recent CN index trading days as the calendar so

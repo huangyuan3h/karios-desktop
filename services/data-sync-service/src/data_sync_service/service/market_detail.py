@@ -324,4 +324,3 @@ def get_market_fund_flow(*, symbol: str, days: int = 60, force: bool = False) ->
         "currency": currency,
         "items": items2,
     }
-

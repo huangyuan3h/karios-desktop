@@ -1,4 +1,5 @@
 """Factor signals — morphology / microstructure signals (independent of S-3)."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -17,6 +18,7 @@ def get_signals(trade_date: str | None = Query(None, description="YYYY-MM-DD, de
         # latest signals (most recent trade_date with data)
         from data_sync_service.db import get_connection
         from data_sync_service.db.factor_signals import ensure_table
+
         ensure_table()
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -41,6 +43,7 @@ def sync_signals(trade_date: str | None = None):
         prev = (date.fromisoformat(target) - timedelta(days=3)).isoformat()
         # fallback: scan previous 5 days
         from data_sync_service.db.trade_calendar import get_open_dates
+
         opens = get_open_dates("SSE", date.fromisoformat(prev), date.fromisoformat(target))
         if opens:
             target = opens[-1].isoformat()

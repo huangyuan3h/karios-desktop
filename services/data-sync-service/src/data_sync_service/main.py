@@ -84,7 +84,10 @@ app = FastAPI(
     ),
     openapi_tags=[
         {"name": "v1:discovery", "description": "Stable discovery endpoints (no auth required)."},
-        {"name": "v1:business", "description": "Read-only business data (market, watchlist, journal, paper-trades)."},
+        {
+            "name": "v1:business",
+            "description": "Read-only business data (market, watchlist, journal, paper-trades).",
+        },
         {"name": "v1:explain", "description": "Comprehensive context pack for a single symbol."},
         {"name": "v1:quota", "description": "Per-API-key quota usage snapshot."},
     ],

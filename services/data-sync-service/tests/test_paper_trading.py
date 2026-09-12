@@ -241,8 +241,22 @@ def test_paper_trades_stats_requires_since() -> None:
 def test_run_intake_filters_out_of_scope_symbols() -> None:
     """An ETF decision journal change must be skipped, not inserted."""
     fake_journal = [
-        {"symbol": "HK:00700", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 80, "sleevePct": 5.0},
-        {"symbol": "ETF:510300", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 80, "sleevePct": 5.0},
+        {
+            "symbol": "HK:00700",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 80,
+            "sleevePct": 5.0,
+        },
+        {
+            "symbol": "ETF:510300",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 80,
+            "sleevePct": 5.0,
+        },
     ]
     with (
         patch(
@@ -292,7 +306,14 @@ def test_run_intake_skips_already_positioned_symbols() -> None:
     """If the user has already taken a real position, we don't paper-trade
     on top of it — that would double-count."""
     fake_journal = [
-        {"symbol": "CN:000001", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 80, "sleevePct": 5.0},
+        {
+            "symbol": "CN:000001",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 80,
+            "sleevePct": 5.0,
+        },
     ]
     fake_registry = [
         {"symbol": "CN:000001", "positionPct": 8.5},
@@ -324,8 +345,22 @@ def test_run_intake_skips_already_positioned_symbols() -> None:
 
 def test_run_intake_inserts_only_unfollowed() -> None:
     fake_journal = [
-        {"symbol": "CN:000001", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 80, "sleevePct": 5.0},
-        {"symbol": "CN:600519", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 70, "sleevePct": 5.0},
+        {
+            "symbol": "CN:000001",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 80,
+            "sleevePct": 5.0,
+        },
+        {
+            "symbol": "CN:600519",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 70,
+            "sleevePct": 5.0,
+        },
     ]
     fake_registry = [
         {"symbol": "CN:000001", "positionPct": 8.5},  # already followed
@@ -376,11 +411,19 @@ def test_run_intake_inserts_only_unfollowed() -> None:
     assert mock_insert.call_args.kwargs["entry_date"] == "2026-08-04"
     assert mock_insert.call_args.kwargs["signal_snapshot"]["entryMode"] == "next_open"
 
+
 def test_run_intake_treats_idempotent_insert_as_skip() -> None:
     """If pt_db.insert_paper_trade returns None, the (symbol, date, side)
     row already exists — count it as skipped, not inserted."""
     fake_journal = [
-        {"symbol": "CN:600519", "field": "action", "newValue": "BUY", "why": "MAINLINE_OK", "score": 70, "sleevePct": 5.0},
+        {
+            "symbol": "CN:600519",
+            "field": "action",
+            "newValue": "BUY",
+            "why": "MAINLINE_OK",
+            "score": 70,
+            "sleevePct": 5.0,
+        },
     ]
     with (
         patch(
@@ -430,8 +473,14 @@ def _patched_run_update(open_rows, bars_by_ts, today_iso="2026-08-06", registry=
     if registry is None:
         registry = [{"symbol": t.get("symbol") or ""} for t in open_rows]
     return (
-        patch("data_sync_service.service.paper_trading.pt_db.get_open_paper_trades", return_value=open_rows),
-        patch("data_sync_service.service.paper_trading.fetch_last_ohlcv_batch", return_value=bars_by_ts),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.get_open_paper_trades",
+            return_value=open_rows,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value=bars_by_ts,
+        ),
         patch(
             "data_sync_service.db.watchlist_automation.list_registry",
             return_value=registry,
@@ -448,12 +497,19 @@ def test_run_update_closes_on_stop_loss() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 9.4, 9.4, 9.3, 9.4, 1000)]}  # -6% drawdown
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -471,12 +527,19 @@ def test_run_update_closes_on_max_hold(monkeypatch) -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 10.3, 10.3, 10.2, 10.3, 1000)]}  # +3% (no stop)
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "max_hold"},
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "max_hold"},
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         # today is 5 days after entry → triggers max_hold.
@@ -491,12 +554,17 @@ def test_run_update_updates_without_closing_when_within_bounds() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 9.8, 9.8, 9.7, 9.8, 1000)]}
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
-        return_value={**_OPEN_ROW, "pnl_pct": -2.0, "holding_days": 2},
-    ) as mock_update, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value={**_OPEN_ROW, "pnl_pct": -2.0, "holding_days": 2},
+        ) as mock_update,
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -513,11 +581,16 @@ def test_run_update_skips_symbols_without_fresh_close() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars: dict[str, list] = {}  # nothing
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -541,12 +614,19 @@ def test_run_update_closes_on_target_hit_even_with_max_hold(monkeypatch) -> None
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 11.2, 11.2, 11.1, 11.2, 1000)]}  # +12%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "target_hit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "target_hit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         # holding_days would be 5 (max_hold) but target beats it.
@@ -562,12 +642,19 @@ def test_run_update_stop_beats_target_on_high_volatility() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 9.4, 9.4, 9.3, 9.4, 1000)]}  # -6%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -587,12 +674,19 @@ def test_run_update_stop_triggers_on_net_not_gross() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 9.52, 9.52, 9.5, 9.52, 1000)]}  # gross -4.8%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -610,12 +704,17 @@ def test_run_update_gross_within_bounds_net_within_bounds_stays_open() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 10.05, 10.05, 10.0, 10.05, 1000)]}  # +0.5%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
-        return_value={**_OPEN_ROW, "pnl_pct": 0.5, "holding_days": 2},
-    ) as mock_update, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value={**_OPEN_ROW, "pnl_pct": 0.5, "holding_days": 2},
+        ) as mock_update,
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -632,12 +731,17 @@ def test_run_update_hk_trade_uses_hk_cost_model() -> None:
     open_rows = [{**_HK_ROW, "entry_price": 480.0, "entryDate": "2026-08-04"}]
     bars = {"00700.HK": [("2026-08-06", 484.8, 485.0, 484.0, 484.8, 5000)]}  # +1%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
-        return_value={**_HK_ROW, "pnl_pct": 1.0, "holding_days": 2},
-    ) as mock_update, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value={**_HK_ROW, "pnl_pct": 1.0, "holding_days": 2},
+        ) as mock_update,
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -653,12 +757,19 @@ def test_run_update_hk_trade_closes_with_hk_costs() -> None:
     open_rows = [{**_HK_ROW, "entry_price": 480.0, "entryDate": "2026-08-04"}]
     bars = {"00700.HK": [("2026-08-06", 446.4, 447.0, 445.0, 446.4, 5000)]}  # -7%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_HK_ROW, "status": "closed", "close_reason": "stop_hit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_HK_ROW, "status": "closed", "close_reason": "stop_hit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -678,12 +789,19 @@ def test_run_update_closes_on_score_floor(monkeypatch) -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}  # +1%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=18.0)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "score_floor"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "score_floor"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -698,12 +816,17 @@ def test_run_update_score_floor_fails_open_without_score_data() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
-        return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
+        ),
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -718,12 +841,19 @@ def test_run_update_closes_on_pool_exit() -> None:
     bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
     # Registry contains the symbol → not a pool exit... then without it → exit.
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, registry=[{"symbol": "CN:999999"}])
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "pool_exit"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "pool_exit"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -738,18 +868,23 @@ def test_run_update_pool_exit_fails_open_when_registry_unreadable() -> None:
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
     p1, p2 = _patched_run_update(open_rows, bars)[:2]
-    with p1, p2, patch(
-        "data_sync_service.db.watchlist_automation.list_registry",
-        side_effect=RuntimeError("db down"),
-    ), patch(
-        "data_sync_service.service.paper_trading.wa_db.fetch_latest_score_since",
-        return_value=90.0,
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
-        return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close:
+    with (
+        p1,
+        p2,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            side_effect=RuntimeError("db down"),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.wa_db.fetch_latest_score_since",
+            return_value=90.0,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
+        ),
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -764,18 +899,22 @@ def test_run_update_pool_exit_fails_open_when_registry_unreadable() -> None:
 
 
 def test_compute_stats_passes_since() -> None:
-    with patch(
-        "data_sync_service.service.paper_trading.pt_db.count_since",
-        return_value=(10, 7),
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
-        return_value=1.23,
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
-        return_value={
-            "CN": {"closedCount": 8, "winningCount": 6, "winRate": 0.75, "avgPnlPct": 1.5},
-            "HK": {"closedCount": 2, "winningCount": 1, "winRate": 0.5, "avgPnlPct": 0.1},
-        },
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_since",
+            return_value=(10, 7),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
+            return_value=1.23,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
+            return_value={
+                "CN": {"closedCount": 8, "winningCount": 6, "winRate": 0.75, "avgPnlPct": 1.5},
+                "HK": {"closedCount": 2, "winningCount": 1, "winRate": 0.5, "avgPnlPct": 0.1},
+            },
+        ),
     ):
         from data_sync_service.service.paper_trading import compute_stats
 
@@ -792,15 +931,19 @@ def test_compute_stats_narrows_to_market() -> None:
         "CN": {"closedCount": 8, "winningCount": 6, "winRate": 0.75, "avgPnlPct": 1.5},
         "HK": {"closedCount": 2, "winningCount": 1, "winRate": 0.5, "avgPnlPct": 0.1},
     }
-    with patch(
-        "data_sync_service.service.paper_trading.pt_db.count_since",
-        return_value=(10, 7),
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
-        return_value=1.23,
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
-        return_value=by_market,
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_since",
+            return_value=(10, 7),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
+            return_value=1.23,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
+            return_value=by_market,
+        ),
     ):
         from data_sync_service.service.paper_trading import compute_stats
 
@@ -814,15 +957,21 @@ def test_compute_stats_narrows_to_market() -> None:
 
 
 def test_compute_stats_market_with_no_trades_is_empty() -> None:
-    with patch(
-        "data_sync_service.service.paper_trading.pt_db.count_since",
-        return_value=(10, 7),
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
-        return_value=1.23,
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
-        return_value={"CN": {"closedCount": 10, "winningCount": 7, "winRate": 0.7, "avgPnlPct": 1.23}},
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_since",
+            return_value=(10, 7),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
+            return_value=1.23,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
+            return_value={
+                "CN": {"closedCount": 10, "winningCount": 7, "winRate": 0.7, "avgPnlPct": 1.23}
+            },
+        ),
     ):
         from data_sync_service.service.paper_trading import compute_stats
 
@@ -833,15 +982,19 @@ def test_compute_stats_market_with_no_trades_is_empty() -> None:
 
 
 def test_compute_stats_handles_empty() -> None:
-    with patch(
-        "data_sync_service.service.paper_trading.pt_db.count_since",
-        return_value=(0, 0),
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
-        return_value=None,
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
-        return_value={},
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_since",
+            return_value=(0, 0),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.avg_pnl_pct_since",
+            return_value=None,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.count_by_market_since",
+            return_value={},
+        ),
     ):
         from data_sync_service.service.paper_trading import compute_stats
 
@@ -1157,12 +1310,19 @@ def test_run_update_trailing_peaks_on_close_not_high() -> None:
         ],
     }
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")
@@ -1180,15 +1340,20 @@ def test_run_update_trailing_fires_on_close_peak_pullback() -> None:
         "000001.SZ": [
             ("2026-08-04", 10.0, 10.1, 9.9, 10.6, 1000),  # close peak 10.6
             ("2026-08-05", 10.6, 10.7, 10.5, 11.0, 1000),  # close peak 11.0
-            ("2026-08-06", 11.0, 11.1, 9.9, 10.0, 1000),   # close 10.0 → -9.1% from 11.0
+            ("2026-08-06", 11.0, 11.1, 9.9, 10.0, 1000),  # close 10.0 → -9.1% from 11.0
         ],
     }
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
+        ) as mock_close,
+        patch("data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"),
     ):
         from data_sync_service.service.paper_trading import run_update
 
@@ -1216,12 +1381,19 @@ def test_run_update_env_shorten_closes_s3_uptrend_at_45(monkeypatch) -> None:
     # +5% price (no stop), day 4 after entry → env-shortened 3 days < 60
     bars = {"000001.SZ": [("2026-08-05", 10.5, 10.5, 10.4, 10.5, 1000)]}
     p1, p2, p3, p4 = _patched_run_update([row], bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
-        return_value={**row, "status": "closed", "close_reason": "max_hold"},
-    ), patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={**row, "status": "closed", "close_reason": "max_hold"},
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-05")
@@ -1246,11 +1418,16 @@ def test_run_update_env_shorten_ignores_non_uptrend(monkeypatch) -> None:
     }
     bars = {"000001.SZ": [("2026-08-05", 10.5, 10.5, 10.4, 10.5, 1000)]}
     p1, p2, p3, p4 = _patched_run_update([row], bars)
-    with p1, p2, p3, p4, patch(
-        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
-    ) as mock_close, patch(
-        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch("data_sync_service.service.paper_trading.pt_db.close_paper_trade") as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+        ) as mock_update,
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-05")

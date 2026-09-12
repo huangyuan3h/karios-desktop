@@ -82,7 +82,9 @@ def sync_adj_factor_full() -> dict[str, Any]:
                 last_successful_ts_code = ts_code
                 continue
 
-            df: pd.DataFrame = pro.adj_factor(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            df: pd.DataFrame = pro.adj_factor(
+                ts_code=ts_code, start_date=start_date, end_date=end_date
+            )
             if df is not None and not df.empty:
                 n = update_adj_factor_from_dataframe(df)
                 total_rows += n
@@ -106,4 +108,3 @@ def get_adj_factor_sync_status() -> dict[str, Any]:
     if run is None:
         return {"job_type": JOB_TYPE, "today_run": None}
     return {"job_type": JOB_TYPE, "today_run": run}
-

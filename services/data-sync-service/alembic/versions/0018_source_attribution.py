@@ -36,10 +36,7 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS idx_paper_trades_source "
         "ON paper_trades(source, entry_date DESC) WHERE source IS NOT NULL;"
     )
-    op.execute(
-        "ALTER TABLE execution_decision_changes "
-        "ADD COLUMN IF NOT EXISTS source TEXT;"
-    )
+    op.execute("ALTER TABLE execution_decision_changes ADD COLUMN IF NOT EXISTS source TEXT;")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_execution_changes_source "
         "ON execution_decision_changes(source, changed_at DESC) "

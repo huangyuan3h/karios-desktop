@@ -154,7 +154,12 @@ class TestLiveSatHoldings:
     def test_etf_pick_counts_all_cn(self) -> None:
         health = {
             "holdings": [
-                {"symbol": "CN:000001", "name": "平安银行", "positionPct": 12.5, "entryDate": "2026-01-19"},
+                {
+                    "symbol": "CN:000001",
+                    "name": "平安银行",
+                    "positionPct": 12.5,
+                    "entryDate": "2026-01-19",
+                },
                 {"symbol": "ETF:518880", "positionPct": 50, "entryDate": "2026-01-01"},
                 {"symbol": "CN:600000", "positionPct": 0, "entryDate": "2026-01-19"},
             ]
@@ -169,9 +174,7 @@ class TestLiveSatHoldings:
                 {"symbol": "CN:600000", "positionPct": 12.5, "entryDate": "2026-01-19"},
             ]
         }
-        live = tsd.live_sat_holdings(
-            health=health, pick_key="STOCK", sat_ts={"600000.SH"}
-        )
+        live = tsd.live_sat_holdings(health=health, pick_key="STOCK", sat_ts={"600000.SH"})
         assert [h["ts"] for h in live] == ["600000.SH"]
 
     def test_none_pick_counts_all_cn(self) -> None:
@@ -190,14 +193,18 @@ class TestReminderPayload:
             "data_sync_service.service.twin_star_intraday.load_intraday_sat",
             lambda today: None,
         )
-        monkeypatch.setattr(tsd, "_sat_signal", lambda today: {
-            "asOf": "2026-01-20",
-            "gateOpen": True,
-            "breadth": 0.8,
-            "gapCount": 2,
-            "candidates": [{"ts": "A.SH", "amp": 1.0, "gapPct": 5.0, "close": 10.5}],
-            "note": None,
-        })
+        monkeypatch.setattr(
+            tsd,
+            "_sat_signal",
+            lambda today: {
+                "asOf": "2026-01-20",
+                "gateOpen": True,
+                "breadth": 0.8,
+                "gapCount": 2,
+                "candidates": [{"ts": "A.SH", "amp": 1.0, "gapPct": 5.0, "close": 10.5}],
+                "note": None,
+            },
+        )
         monkeypatch.setattr(
             tsd,
             "_sat_book",
@@ -265,12 +272,8 @@ class TestCoreTargetPct:
         assert tsd._core_target_pct(gate_open=True, candidates=[], holdings=[]) == 100
 
     def test_open_or_holding_is_50(self) -> None:
-        assert tsd._core_target_pct(
-            gate_open=True, candidates=[{"ts": "A"}], holdings=[]
-        ) == 50
-        assert tsd._core_target_pct(
-            gate_open=False, candidates=[], holdings=[{"ts": "A"}]
-        ) == 50
+        assert tsd._core_target_pct(gate_open=True, candidates=[{"ts": "A"}], holdings=[]) == 50
+        assert tsd._core_target_pct(gate_open=False, candidates=[], holdings=[{"ts": "A"}]) == 50
 
     def test_engine_replay_does_not_count_as_live_occupancy(self, monkeypatch) -> None:
         monkeypatch.setattr(

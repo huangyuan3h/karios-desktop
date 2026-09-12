@@ -58,12 +58,21 @@ def breaker_status() -> dict[str, Any]:
             "proxy_degraded": bool(_PROXY_DEGRADED),
         }
     except Exception:  # noqa: BLE001
-        return {"ban_latched": False, "cooldown_remaining_s": 0, "fail_streak": 0, "proxy_degraded": False}
+        return {
+            "ban_latched": False,
+            "cooldown_remaining_s": 0,
+            "fail_streak": 0,
+            "proxy_degraded": False,
+        }
 
 
 def _em_headers(referer: str) -> dict[str, str]:
     parsed = urllib.parse.urlparse(referer)
-    origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://quote.eastmoney.com"
+    origin = (
+        f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme and parsed.netloc
+        else "https://quote.eastmoney.com"
+    )
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -143,7 +152,11 @@ def _urllib_get_json(
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": _PROXY, "https": _PROXY})
         )
-    with (opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)) as resp:
+    with (
+        opener.open(req, timeout=timeout)
+        if opener
+        else urllib.request.urlopen(req, timeout=timeout)
+    ) as resp:
         raw = resp.read()
         status = getattr(resp, "status", 200)
     if int(status) >= 400:
@@ -179,7 +192,9 @@ def _em_get_json_no_proxy(url, *, params, referer, timeout):
     except Exception as e:  # noqa: BLE001
         errors.append(f"curl:{e}")
     try:
-        return _urllib_get_json(url, params=params, referer=referer, timeout=timeout, use_proxy=False)
+        return _urllib_get_json(
+            url, params=params, referer=referer, timeout=timeout, use_proxy=False
+        )
     except Exception as e:  # noqa: BLE001
         errors.append(f"urllib:{e}")
     raise RuntimeError("; ".join(errors[-3:]))

@@ -40,11 +40,14 @@ def _data(n_names: int = 15, drift: float = 0.001):
 def test_future_return_edges():
     data = _data()
     day = data.calendar[10]
-    assert _future_return(data, "TS000", day, 5) == (
-        data.close_by_ts_day["TS000"][data.calendar[15]]
-        / data.close_by_ts_day["TS000"][day]
-        - 1.0
-    ) * 100.0
+    assert (
+        _future_return(data, "TS000", day, 5)
+        == (
+            data.close_by_ts_day["TS000"][data.calendar[15]] / data.close_by_ts_day["TS000"][day]
+            - 1.0
+        )
+        * 100.0
+    )
     assert _future_return(data, "TS000", "2099-01-01", 5) is None  # unknown day
     assert _future_return(data, "TS000", data.calendar[-1], 5) is None  # overflow
     assert _future_return(data, "NOPE", day, 5) is None  # unknown symbol
@@ -103,8 +106,7 @@ def test_compute_signal_ic_paths():
     mid = data.calendar[50]
     out = compute_signal_ic(
         data,
-        lambda day, ts: float(data.close_by_ts_day[ts][day])
-        * (1.0 if day < mid else -1.0),
+        lambda day, ts: float(data.close_by_ts_day[ts][day]) * (1.0 if day < mid else -1.0),
         horizons=[5],
     )
     assert out[5]["icir"] is not None
@@ -126,7 +128,5 @@ def test_stratified_paths():
     assert out["<70"]["n"] > 0 and out[">=90"]["n"] == 0
     out = stratified_returns(data, lambda day, ts: None, horizon=5)
     assert all(v["n"] == 0 for v in out.values())
-    out = stratified_returns(
-        data, lambda day, ts: 87.0, horizon=5, buckets=[("mid", 80, 90)]
-    )
+    out = stratified_returns(data, lambda day, ts: 87.0, horizon=5, buckets=[("mid", 80, 90)])
     assert out["mid"]["n"] > 0 and out["mid"]["win_rate"] is not None

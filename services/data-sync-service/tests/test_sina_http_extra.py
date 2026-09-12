@@ -18,9 +18,11 @@ def test_requests_get_ok_gbk(monkeypatch) -> None:
     class R:
         status_code = 200
         encoding = None
-        text = "var hq_str_hk00700=\"a,b\""
+        text = 'var hq_str_hk00700="a,b"'
 
-    monkeypatch.setitem(sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())}))
+    monkeypatch.setitem(
+        sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())})
+    )
     out = sh._requests_get("https://hq.sinajs.cn", timeout=5.0)
     assert out == 'var hq_str_hk00700="a,b"'
     assert out.strip()  # body returned
@@ -32,7 +34,9 @@ def test_requests_get_ok_utf8_kept(monkeypatch) -> None:
         encoding = "utf-8"
         text = "x"
 
-    monkeypatch.setitem(sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())}))
+    monkeypatch.setitem(
+        sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())})
+    )
     assert sh._requests_get("https://hq.sinajs.cn", timeout=5.0) == "x"
     assert R.encoding == "utf-8"
 
@@ -42,7 +46,9 @@ def test_requests_get_http_error(monkeypatch) -> None:
         status_code = 403
         text = "forbidden"
 
-    monkeypatch.setitem(sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())}))
+    monkeypatch.setitem(
+        sys.modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R())})
+    )
     try:
         sh._requests_get("https://hq.sinajs.cn", timeout=5.0)
         raise AssertionError("expected RuntimeError")
@@ -66,13 +72,17 @@ class _Resp:
 
 
 def test_urllib_get_ok(monkeypatch) -> None:
-    monkeypatch.setattr(sh.urllib.request, "urlopen", lambda req, timeout=10: _Resp("中文内容".encode("gb18030")))
+    monkeypatch.setattr(
+        sh.urllib.request, "urlopen", lambda req, timeout=10: _Resp("中文内容".encode("gb18030"))
+    )
     out = sh._urllib_get("https://hq.sinajs.cn", timeout=10.0)
     assert out == "中文内容"
 
 
 def test_urllib_get_http_error(monkeypatch) -> None:
-    monkeypatch.setattr(sh.urllib.request, "urlopen", lambda req, timeout=10: _Resp(b"err", status=500))
+    monkeypatch.setattr(
+        sh.urllib.request, "urlopen", lambda req, timeout=10: _Resp(b"err", status=500)
+    )
     try:
         sh._urllib_get("https://hq.sinajs.cn", timeout=10.0)
         raise AssertionError("expected RuntimeError")
@@ -82,19 +92,27 @@ def test_urllib_get_http_error(monkeypatch) -> None:
 
 def test_sina_get_text_requests_path(monkeypatch) -> None:
     monkeypatch.setattr(sh, "_requests_get", lambda url, timeout=10.0: "body")
-    monkeypatch.setattr(sh, "_urllib_get", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("not used")))
+    monkeypatch.setattr(
+        sh, "_urllib_get", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("not used"))
+    )
     assert sh.sina_get_text("https://hq.sinajs.cn") == "body"
 
 
 def test_sina_get_text_fallback(monkeypatch) -> None:
-    monkeypatch.setattr(sh, "_requests_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("r dead")))
+    monkeypatch.setattr(
+        sh, "_requests_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("r dead"))
+    )
     monkeypatch.setattr(sh, "_urllib_get", lambda url, timeout=10.0: "urllib body")
     assert sh.sina_get_text("https://hq.sinajs.cn") == "urllib body"
 
 
 def test_sina_get_text_all_fail(monkeypatch) -> None:
-    monkeypatch.setattr(sh, "_requests_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("r dead")))
-    monkeypatch.setattr(sh, "_urllib_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("u dead")))
+    monkeypatch.setattr(
+        sh, "_requests_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("r dead"))
+    )
+    monkeypatch.setattr(
+        sh, "_urllib_get", lambda url, timeout=10.0: (_ for _ in ()).throw(RuntimeError("u dead"))
+    )
     try:
         sh.sina_get_text("https://hq.sinajs.cn")
         raise AssertionError("expected RuntimeError")
@@ -120,6 +138,8 @@ def test_parse_hq_lines_basic() -> None:
 
 def test_parse_hq_lines_empty_and_malformed() -> None:
     assert sh.parse_hq_lines("") == []
-    assert sh.parse_hq_lines('var hq_str_hk00700="";') == [("00700", ";")]  # impl keeps trailing sep
-    assert sh.parse_hq_lines("var hq_str_hkabc=\"x\"") == []
+    assert sh.parse_hq_lines('var hq_str_hk00700="";') == [
+        ("00700", ";")
+    ]  # impl keeps trailing sep
+    assert sh.parse_hq_lines('var hq_str_hkabc="x"') == []
     assert sh.parse_hq_lines('var hq_str_hk00700="a') == [("00700", "a")]

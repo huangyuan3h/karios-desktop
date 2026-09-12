@@ -18,18 +18,26 @@ client = TestClient(app)
 def _patch_deps(monkeypatch):
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "list_registry", lambda: [
-        {"symbol": "CN:600000", "name": "浦发", "color": "red"},
-        {"symbol": "HK:00700", "name": None},
-    ])
+    monkeypatch.setattr(
+        wr,
+        "list_registry",
+        lambda: [
+            {"symbol": "CN:600000", "name": "浦发", "color": "red"},
+            {"symbol": "HK:00700", "name": None},
+        ],
+    )
     monkeypatch.setattr(wr, "upsert_registry", lambda items: len(items))
     monkeypatch.setattr(wr, "get_automation_pending", lambda td: None)
     monkeypatch.setattr(wr, "get_automation_latest", lambda: None)
     monkeypatch.setattr(wr, "get_automation_runs", lambda limit=10: [{"run_id": "r1"}])
     monkeypatch.setattr(wr, "run_watchlist_automation", lambda trigger, force=False: {"ok": True})
-    monkeypatch.setattr(wr, "list_fallback_universe_symbols", lambda max_total=80: {"symbols": ["CN:600000"]})
+    monkeypatch.setattr(
+        wr, "list_fallback_universe_symbols", lambda max_total=80: {"symbols": ["CN:600000"]}
+    )
     monkeypatch.setattr(wr, "get_automation_run", lambda rid: None)
-    monkeypatch.setattr(wr, "ack_automation_run", lambda rid, screener_added=None, funnel=None: None)
+    monkeypatch.setattr(
+        wr, "ack_automation_run", lambda rid, screener_added=None, funnel=None: None
+    )
     yield
 
 
@@ -49,7 +57,9 @@ def test_get_registry_error(monkeypatch) -> None:
 
 
 def test_post_registry() -> None:
-    r = client.post("/watchlist/registry", json={"items": [{"symbol": "CN:600000", "name": "浦发"}]})
+    r = client.post(
+        "/watchlist/registry", json={"items": [{"symbol": "CN:600000", "name": "浦发"}]}
+    )
     assert r.status_code == 200
     assert r.json()["count"] == 1
 
@@ -57,7 +67,9 @@ def test_post_registry() -> None:
 def test_post_registry_error(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "upsert_registry", lambda items: (_ for _ in ()).throw(ValueError("bad")))
+    monkeypatch.setattr(
+        wr, "upsert_registry", lambda items: (_ for _ in ()).throw(ValueError("bad"))
+    )
     r = client.post("/watchlist/registry", json={"items": [{"symbol": "CN:600000"}]})
     assert r.status_code == 500
 
@@ -105,7 +117,9 @@ def test_backfill_names_fills(monkeypatch) -> None:
 def test_backfill_names_db_error(monkeypatch) -> None:
     from data_sync_service import db as dblib
 
-    monkeypatch.setattr(dblib, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("down")))
+    monkeypatch.setattr(
+        dblib, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("down"))
+    )
     items = [{"symbol": "CN:600000", "name": None}]
     assert _backfill_names(items) == items
 
@@ -123,7 +137,9 @@ def test_to_ts_code() -> None:
 def test_backfill_registry_names(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "_backfill_names", lambda items: [dict(x, name="浦发银行") for x in items])
+    monkeypatch.setattr(
+        wr, "_backfill_names", lambda items: [dict(x, name="浦发银行") for x in items]
+    )
     monkeypatch.setattr(wr, "upsert_registry", lambda items: len(items))
     r = client.post("/watchlist/registry/backfill-names")
     assert r.status_code == 200
@@ -142,7 +158,9 @@ def test_automation_pending() -> None:
 def test_automation_pending_true(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "get_automation_pending", lambda td: {"runId": "r9", "tradeDate": "2026-08-07"})
+    monkeypatch.setattr(
+        wr, "get_automation_pending", lambda td: {"runId": "r9", "tradeDate": "2026-08-07"}
+    )
     r = client.get("/watchlist/automation/pending")
     body = r.json()
     assert body["pending"] is True and body["runId"] == "r9"
@@ -183,7 +201,11 @@ def test_automation_run_manual() -> None:
 def test_automation_run_error(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "run_watchlist_automation", lambda trigger, force=False: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        wr,
+        "run_watchlist_automation",
+        lambda trigger, force=False: (_ for _ in ()).throw(RuntimeError("x")),
+    )
     assert client.post("/watchlist/automation/run").status_code == 500
 
 
@@ -204,7 +226,9 @@ def test_automation_ack_not_found() -> None:
 def test_automation_ack_found(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
 
-    monkeypatch.setattr(wr, "ack_automation_run", lambda rid, screener_added=None, funnel=None: {"runId": rid})
+    monkeypatch.setattr(
+        wr, "ack_automation_run", lambda rid, screener_added=None, funnel=None: {"runId": rid}
+    )
     r = client.post("/watchlist/automation/r1/ack", json={"screenerAdded": 3, "funnel": {"a": 1}})
     assert r.status_code == 200
     assert r.json()["runId"] == "r1"

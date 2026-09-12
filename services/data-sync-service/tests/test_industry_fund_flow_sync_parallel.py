@@ -20,7 +20,19 @@ def _reset_hist_short_circuit():
     iflow._EM_HIST_FAIL_STREAK = 0
     iflow._EM_HIST_SKIP = False
 
-_TOP_NAMES = ["电子", "计算机", "有色金属", "非银金融", "银行", "通信", "汽车", "医药生物", "电力设备", "机械设备"]
+
+_TOP_NAMES = [
+    "电子",
+    "计算机",
+    "有色金属",
+    "非银金融",
+    "银行",
+    "通信",
+    "汽车",
+    "医药生物",
+    "电力设备",
+    "机械设备",
+]
 
 _TOP_ITEMS = [
     {

@@ -62,9 +62,7 @@ def _bucket_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "avgWinPct": round(avg_win, 3) if avg_win is not None else None,
         "avgLossPct": round(abs(avg_loss), 3) if avg_loss is not None else None,
         "expectancyPct": round(gross, 3) if gross is not None else None,
-        "netExpectancyPct": round(gross - ROUND_TRIP_COST_PCT, 3)
-        if gross is not None
-        else None,
+        "netExpectancyPct": round(gross - ROUND_TRIP_COST_PCT, 3) if gross is not None else None,
         "profitFactor": round(profit_factor, 3) if profit_factor is not None else None,
         "avgHoldingDays": round(fmean(holding), 1) if holding else None,
     }
@@ -84,12 +82,8 @@ def compute_trade_stats() -> dict[str, Any]:
             by_symbol[sym] = []
         by_source[source].append(r)
         by_symbol[sym].append(r)
-    stats["bySource"] = {
-        source: _bucket_stats(rows) for source, rows in sorted(by_source.items())
-    }
-    stats["bySymbol"] = {
-        sym: _bucket_stats(rows) for sym, rows in sorted(by_symbol.items())
-    }
+    stats["bySource"] = {source: _bucket_stats(rows) for source, rows in sorted(by_source.items())}
+    stats["bySymbol"] = {sym: _bucket_stats(rows) for sym, rows in sorted(by_symbol.items())}
     stats["roundTripCostPct"] = ROUND_TRIP_COST_PCT
     stats["total"] = len(rows)
     return stats

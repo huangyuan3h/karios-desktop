@@ -99,7 +99,9 @@ def get_system_prompt_preset(preset_id: str) -> dict[str, str]:
 
 
 @router.put("/system-prompts/{preset_id}")
-def put_system_prompt_preset(preset_id: str, req: UpdateSystemPromptPresetRequest) -> dict[str, bool]:
+def put_system_prompt_preset(
+    preset_id: str, req: UpdateSystemPromptPresetRequest
+) -> dict[str, bool]:
     try:
         return spsvc.update_preset(preset_id=preset_id, title=req.title, content=req.content)
     except HTTPException:
@@ -116,4 +118,3 @@ def delete_system_prompt_preset(preset_id: str) -> dict[str, bool]:
         raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e) or e.__class__.__name__) from e
-

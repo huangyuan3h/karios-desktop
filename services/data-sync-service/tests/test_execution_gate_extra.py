@@ -297,9 +297,7 @@ class TestComputeHkGate:
 
     def test_diverging_allows_entries(self) -> None:
         # S-3 HK 定案（gates=regime）：Diverging 允许开仓，与回测一致
-        out = compute_hk_gate(
-            index_signals=[HK, {"name": "恒生科技指数", "signal": "green"}]
-        )
+        out = compute_hk_gate(index_signals=[HK, {"name": "恒生科技指数", "signal": "green"}])
         assert out["mode"] == MODE_ATTACK
         assert out["allowNewEntries"] is True
         assert "REGIME_DIVERGING" in out["reasons"]

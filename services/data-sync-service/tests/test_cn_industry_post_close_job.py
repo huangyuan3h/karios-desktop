@@ -59,7 +59,9 @@ def test_run_calls_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cn_industry_post_close_job,
         "insert_record",
-        lambda jt, success, last_ts_code=None, error_message=None: captured.append((jt, success, error_message)),
+        lambda jt, success, last_ts_code=None, error_message=None: captured.append(
+            (jt, success, error_message)
+        ),
     )
 
     cn_industry_post_close_job.run()
@@ -123,7 +125,9 @@ def test_run_logs_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cn_industry_post_close_job,
         "insert_record",
-        lambda jt, success, last_ts_code=None, error_message=None: captured.append((jt, success, error_message)),
+        lambda jt, success, last_ts_code=None, error_message=None: captured.append(
+            (jt, success, error_message)
+        ),
     )
 
     msgs = _capture_logs(monkeypatch)

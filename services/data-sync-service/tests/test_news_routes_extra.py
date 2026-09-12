@@ -104,7 +104,9 @@ def test_enrichment_status() -> None:
 def test_run_enrichment(monkeypatch) -> None:
     from data_sync_service.service import news_enrich
 
-    monkeypatch.setattr(news_enrich, "run_enrichment_cycle", lambda max_batches=10: {"batches": max_batches})
+    monkeypatch.setattr(
+        news_enrich, "run_enrichment_cycle", lambda max_batches=10: {"batches": max_batches}
+    )
     r = client.post("/api/news/enrichment/run", params={"max_batches": 3})
     assert r.status_code == 200 and r.json()["batches"] == 3
 
@@ -112,7 +114,9 @@ def test_run_enrichment(monkeypatch) -> None:
 def test_get_latest_brief(monkeypatch) -> None:
     from data_sync_service.db import morning_brief
 
-    monkeypatch.setattr(morning_brief, "fetch_latest_brief", lambda brief_type=None: {"briefDate": "d"})
+    monkeypatch.setattr(
+        morning_brief, "fetch_latest_brief", lambda brief_type=None: {"briefDate": "d"}
+    )
     r = client.get("/api/news/brief/latest")
     assert r.status_code == 200 and r.json()["brief"]["briefDate"] == "d"
 
@@ -128,6 +132,8 @@ def test_get_recent_briefs(monkeypatch) -> None:
 def test_generate_brief(monkeypatch) -> None:
     from data_sync_service.service import morning_brief
 
-    monkeypatch.setattr(morning_brief, "generate_brief", lambda brief_type="morning": {"briefType": brief_type})
+    monkeypatch.setattr(
+        morning_brief, "generate_brief", lambda brief_type="morning": {"briefType": brief_type}
+    )
     r = client.post("/api/news/brief/generate", params={"brief_type": "midday"})
     assert r.status_code == 200 and r.json()["brief"]["briefType"] == "midday"

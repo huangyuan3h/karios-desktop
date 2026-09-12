@@ -116,4 +116,3 @@ def get_market_bars(symbol: str, days: int = 60, *, force: bool = False) -> dict
         "currency": currency,
         "bars": bars,
     }
-

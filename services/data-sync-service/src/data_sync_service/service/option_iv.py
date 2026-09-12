@@ -83,9 +83,7 @@ def _em_option_value_request(params: dict[str, str]) -> dict[str, Any]:
 
 def _fetch_em_option_value_rows() -> list[dict[str, Any]]:
     """Paginated fetch matching akshare option_value_analysis_em field layout."""
-    fields = (
-        "f1,f2,f3,f12,f13,f14,f298,f299,f249,f300,f330,f331,f332,f333,f334,f335,f336,f301,f152"
-    )
+    fields = "f1,f2,f3,f12,f13,f14,f298,f299,f249,f300,f330,f331,f332,f333,f334,f335,f336,f301,f152"
     rows: list[dict[str, Any]] = []
     page_number = 1
     total_pages = 1
@@ -304,7 +302,11 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True, use_cache: bool = True
     now = time.monotonic()
     cached = _PUT_IV_SNAPSHOT_CACHE.get("value")
     cached_ts = float(_PUT_IV_SNAPSHOT_CACHE.get("ts") or 0.0)
-    if use_cache and isinstance(cached, dict) and now - cached_ts < PUT_IV_SNAPSHOT_CACHE_TTL_SECONDS:
+    if (
+        use_cache
+        and isinstance(cached, dict)
+        and now - cached_ts < PUT_IV_SNAPSHOT_CACHE_TTL_SECONDS
+    ):
         return {**cached, "cached": True}
 
     prev_row = get_latest_row(SID_510300_PUT_IV)
@@ -395,7 +397,9 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True, use_cache: bool = True
                 "signalLabel": signal_label,
                 "underlyingTsCode": UNDERLYING_TS_CODE,
                 "realtime": False,
-                "warning": PUT_IV_LIVE_FETCH_FAILED_USING_DB if warning == "put_iv_fetch_failed" else warning,
+                "warning": PUT_IV_LIVE_FETCH_FAILED_USING_DB
+                if warning == "put_iv_fetch_failed"
+                else warning,
                 "diagnostics": diagnostics or {},
                 "cached": False,
             }
@@ -465,7 +469,12 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
     if not force:
         existing = get_today_run(JOB_TYPE)
         if existing and existing.get("success"):
-            return {"ok": True, "skipped": True, "reason": "already_synced_today", "jobType": JOB_TYPE}
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "already_synced_today",
+                "jobType": JOB_TYPE,
+            }
 
     td_yyyymmdd = str(trade_date or _today_yyyymmdd()).strip()
     td_iso = f"{td_yyyymmdd[:4]}-{td_yyyymmdd[4:6]}-{td_yyyymmdd[6:8]}"
@@ -541,5 +550,7 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
         "contractName": picked.get("contractName"),
         "source": data_source,
         "rowsUpserted": n,
-        "diagnostics": picked.get("diagnostics") if isinstance(picked.get("diagnostics"), dict) else {},
+        "diagnostics": picked.get("diagnostics")
+        if isinstance(picked.get("diagnostics"), dict)
+        else {},
     }

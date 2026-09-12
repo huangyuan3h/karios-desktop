@@ -76,7 +76,17 @@ def upsert_brief(
                     created_at = EXCLUDED.created_at
                 RETURNING id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at
                 """,
-                (brief_id, brief_date, brief_type, items_json, macro_overview, model_version, source_item_ids, markdown, now),
+                (
+                    brief_id,
+                    brief_date,
+                    brief_type,
+                    items_json,
+                    macro_overview,
+                    model_version,
+                    source_item_ids,
+                    markdown,
+                    now,
+                ),
             )
             row = cur.fetchone()
         conn.commit()

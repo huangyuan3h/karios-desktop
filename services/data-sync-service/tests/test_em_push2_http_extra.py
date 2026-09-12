@@ -64,7 +64,12 @@ class _Proc:
 
 def test_curl_get_json_ok(monkeypatch) -> None:
     monkeypatch.setattr(eh.subprocess, "run", lambda args, **kw: _Proc(stdout='{"a":1}\n200'))
-    out = eh._curl_get_json("https://push2.eastmoney.com/api", params={"p": "1"}, referer="https://quote.eastmoney.com", timeout=25.0)
+    out = eh._curl_get_json(
+        "https://push2.eastmoney.com/api",
+        params={"p": "1"},
+        referer="https://quote.eastmoney.com",
+        timeout=25.0,
+    )
     assert out == {"a": 1}
 
 
@@ -74,7 +79,9 @@ def test_curl_get_json_no_status(monkeypatch) -> None:
 
 
 def test_curl_get_json_nonzero(monkeypatch) -> None:
-    monkeypatch.setattr(eh.subprocess, "run", lambda args, **kw: _Proc(returncode=7, stderr="conn refused"))
+    monkeypatch.setattr(
+        eh.subprocess, "run", lambda args, **kw: _Proc(returncode=7, stderr="conn refused")
+    )
     try:
         eh._curl_get_json("https://x", params={}, referer="r", timeout=25.0)
         raise AssertionError("expected RuntimeError")
@@ -108,11 +115,15 @@ class _Resp:
 
 def test_urllib_get_json_ok(monkeypatch) -> None:
     monkeypatch.setattr(eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b'{"k":1}'))
-    assert eh._urllib_get_json("https://push2", params={"a": "b"}, referer="r", timeout=25.0) == {"k": 1}
+    assert eh._urllib_get_json("https://push2", params={"a": "b"}, referer="r", timeout=25.0) == {
+        "k": 1
+    }
 
 
 def test_urllib_get_json_http_error(monkeypatch) -> None:
-    monkeypatch.setattr(eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b"err", status=502))
+    monkeypatch.setattr(
+        eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b"err", status=502)
+    )
     try:
         eh._urllib_get_json("https://push2", params={}, referer="r", timeout=25.0)
         raise AssertionError("expected RuntimeError")
@@ -140,8 +151,14 @@ def test_em_get_json_requests_path(monkeypatch) -> None:
         def json():
             return {"data": 1}
 
-    fake_requests = type("requests", (), {"get": staticmethod(lambda *a, **kw: seen.update(kw) or FakeResp())})
-    monkeypatch.setitem(eh.sys.modules if hasattr(eh, "sys") else __import__("sys").modules, "requests", fake_requests)
+    fake_requests = type(
+        "requests", (), {"get": staticmethod(lambda *a, **kw: seen.update(kw) or FakeResp())}
+    )
+    monkeypatch.setitem(
+        eh.sys.modules if hasattr(eh, "sys") else __import__("sys").modules,
+        "requests",
+        fake_requests,
+    )
     out = eh.em_get_json("https://push2", params={"p": "1"}, referer="r")
     assert out == {"data": 1}
     assert seen["timeout"] == 25.0
@@ -156,7 +173,11 @@ def test_em_get_json_requests_non_object(monkeypatch) -> None:
         def json():
             return [1]
 
-    monkeypatch.setitem(__import__("sys").modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R2())}))
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "requests",
+        type("requests", (), {"get": staticmethod(lambda *a, **kw: R2())}),
+    )
     monkeypatch.setattr(eh, "_curl_get_json", lambda *a, **kw: {"from": "curl"})
     out = eh.em_get_json("https://push2", params={}, referer="r")
     assert out == {"from": "curl"}
@@ -167,15 +188,23 @@ def test_em_get_json_requests_http_error(monkeypatch) -> None:
         status_code = 429
         text = "too many"
 
-    monkeypatch.setitem(__import__("sys").modules, "requests", type("requests", (), {"get": staticmethod(lambda *a, **kw: R3())}))
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "requests",
+        type("requests", (), {"get": staticmethod(lambda *a, **kw: R3())}),
+    )
     monkeypatch.setattr(eh, "_curl_get_json", lambda *a, **kw: {"from": "curl"})
     assert eh.em_get_json("https://push2", params={}, referer="r") == {"from": "curl"}
 
 
 def test_em_get_json_all_fallbacks_fail(monkeypatch) -> None:
     monkeypatch.setitem(__import__("sys").modules, "requests", None)
-    monkeypatch.setattr(eh, "_curl_get_json", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("curl dead")))
-    monkeypatch.setattr(eh, "_urllib_get_json", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("urllib dead")))
+    monkeypatch.setattr(
+        eh, "_curl_get_json", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("curl dead"))
+    )
+    monkeypatch.setattr(
+        eh, "_urllib_get_json", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("urllib dead"))
+    )
     try:
         eh.em_get_json("https://push2", params={}, referer="r")
         raise AssertionError("expected RuntimeError")

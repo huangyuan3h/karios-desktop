@@ -70,7 +70,11 @@ def run() -> None:
         )
         logger.info(
             "[bar_5min_close] pending=%d ok=%d stored=%d failed=%d skipped=%d",
-            res["pending"], res["ok"], res["stored"], res["failed"], res["skipped"],
+            res["pending"],
+            res["ok"],
+            res["stored"],
+            res["failed"],
+            res["skipped"],
         )
     except Exception as exc:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])

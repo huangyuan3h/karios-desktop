@@ -81,6 +81,7 @@ class TestYfinance:
 
     def test_ok(self, monkeypatch) -> None:
         hist = _hist_df(25)
+
         class Yf:
             @staticmethod
             def Ticker(t):
@@ -97,6 +98,7 @@ class TestYfinance:
     def test_bad_closes(self, monkeypatch) -> None:
         idx = pd.bdate_range(end=pd.Timestamp(date.today()), periods=25)
         df = pd.DataFrame({"Close": ["x"] * len(idx)}, index=idx)
+
         class Yf:
             @staticmethod
             def Ticker(t):
@@ -128,10 +130,13 @@ class TestSina:
 
     def test_ok(self, monkeypatch) -> None:
         monkeypatch.setattr(mod.sys, "platform", "linux")
-        df = pd.DataFrame({
-            "date": ["2026-08-07", "2026-08-06", "2026-08-05"],
-            "close": [1.0, 2.0, 3.0],
-        })
+        df = pd.DataFrame(
+            {
+                "date": ["2026-08-07", "2026-08-06", "2026-08-05"],
+                "close": [1.0, 2.0, 3.0],
+            }
+        )
+
         class Ak:
             @staticmethod
             def stock_hk_index_daily_sina(symbol="HSTECH"):
@@ -144,6 +149,7 @@ class TestSina:
 
     def test_no_closes(self, monkeypatch) -> None:
         monkeypatch.setattr(mod.sys, "platform", "linux")
+
         class Ak:
             @staticmethod
             def stock_hk_index_daily_sina(symbol="HSTECH"):
@@ -154,6 +160,7 @@ class TestSina:
 
     def test_bad_asof(self, monkeypatch) -> None:
         monkeypatch.setattr(mod.sys, "platform", "linux")
+
         class Ak:
             @staticmethod
             def stock_hk_index_daily_sina(symbol="HSTECH"):
@@ -171,10 +178,12 @@ class TestDfToMetrics:
         assert mod._df_to_metrics(pd.DataFrame([{"trade_date": "20260807"}])) == {}
 
     def test_settle_fillna(self) -> None:
-        df = pd.DataFrame([
-            {"trade_date": "20260806", "close": None, "settle": 2.0},
-            {"trade_date": "20260807", "close": 1.0, "settle": 3.0},
-        ])
+        df = pd.DataFrame(
+            [
+                {"trade_date": "20260806", "close": None, "settle": 2.0},
+                {"trade_date": "20260807", "close": 1.0, "settle": 3.0},
+            ]
+        )
         out = mod._df_to_metrics(df)
         assert out["close"] == pytest.approx(1.0)
         assert out["asOfDate"] == "2026-08-07"
@@ -201,10 +210,12 @@ class TestDfToMetrics:
         assert mod._df_to_metrics(df4)["pctChg"] is None
 
     def test_pct_computed(self) -> None:
-        df = pd.DataFrame([
-            {"trade_date": "20260806", "close": 100.0},
-            {"trade_date": "20260807", "close": 110.0},
-        ])
+        df = pd.DataFrame(
+            [
+                {"trade_date": "20260806", "close": 100.0},
+                {"trade_date": "20260807", "close": 110.0},
+            ]
+        )
         out = mod._df_to_metrics(df)
         assert out["pctChg"] == pytest.approx(10.0)
 
@@ -366,14 +377,33 @@ class TestOnDemandSeries:
 class TestEnrich:
     def test_no_fetch(self, monkeypatch) -> None:
         monkeypatch.setattr(mod, "try_tushare_pro", lambda: None)
-        items = [{"seriesId": "X", "close": 1.0, "realtime": True, "asOfDate": date.today().isoformat()}]
+        items = [
+            {"seriesId": "X", "close": 1.0, "realtime": True, "asOfDate": date.today().isoformat()}
+        ]
         out = mod.enrich_macro_items_on_demand(items)
         assert out == items
 
     def test_fetch_all_paths(self, monkeypatch) -> None:
         monkeypatch.setattr(mod, "try_tushare_pro", lambda: None)
         seen = {}
-        monkeypatch.setattr(mod, "_fetch_on_demand_series", lambda pro, sid: seen.update(sid=sid) or ({"close": 9.0, "pctChg": 1.0, "asOfDate": "2026-08-07", "ma5": 1.0, "ma20": 2.0}, "src", "und"))
+        monkeypatch.setattr(
+            mod,
+            "_fetch_on_demand_series",
+            lambda pro, sid: (
+                seen.update(sid=sid)
+                or (
+                    {
+                        "close": 9.0,
+                        "pctChg": 1.0,
+                        "asOfDate": "2026-08-07",
+                        "ma5": 1.0,
+                        "ma20": 2.0,
+                    },
+                    "src",
+                    "und",
+                )
+            ),
+        )
         items = [
             {"seriesId": "X", "close": None},
             {"seriesId": SID_IXIC, "close": 1.0},
@@ -396,7 +426,9 @@ class TestEnrich:
 class TestPublic:
     def test_fetch_hk_index(self, monkeypatch) -> None:
         monkeypatch.setattr(mod, "try_tushare_pro", lambda: None)
-        monkeypatch.setattr(mod, "_fetch_on_demand_series", lambda pro, sid: ({"close": 1.0}, "yf", "HSTECH"))
+        monkeypatch.setattr(
+            mod, "_fetch_on_demand_series", lambda pro, sid: ({"close": 1.0}, "yf", "HSTECH")
+        )
         metrics, src = mod.fetch_hk_index_on_demand(SID_HSTECH)
         assert metrics == {"close": 1.0} and src == "yf"
 

@@ -34,10 +34,14 @@ def _records(monkeypatch: pytest.MonkeyPatch, module_path: str):
 def _patch_ptj(monkeypatch: pytest.MonkeyPatch, *, intake=None, update=None):
     monkeypatch.setattr(ptj, "shanghai_today_iso", lambda: "2026-09-06")
     monkeypatch.setattr(
-        ptj, "run_intake_twin_star", lambda trade_date: intake if intake is not None else {"inserted": 1, "skipped": 0}
+        ptj,
+        "run_intake_twin_star",
+        lambda trade_date: intake if intake is not None else {"inserted": 1, "skipped": 0},
     )
     monkeypatch.setattr(
-        ptj, "run_update_twin_star", lambda today_iso_s: update if update is not None else {"closed": 2}
+        ptj,
+        "run_update_twin_star",
+        lambda today_iso_s: update if update is not None else {"closed": 2},
     )
     return _records(monkeypatch, "data_sync_service.scheduler.paper_twin_star_job.insert_record")
 
@@ -86,10 +90,13 @@ def _noon(status="ok"):
     return datetime(2026, 9, 6, 12, 31, tzinfo=CN)
 
 
-def _patch_tsj(monkeypatch: pytest.MonkeyPatch, *, now=None, in_window=True, sat="sat", status=None, exc=None):
+def _patch_tsj(
+    monkeypatch: pytest.MonkeyPatch, *, now=None, in_window=True, sat="sat", status=None, exc=None
+):
     monkeypatch.setattr(tsj, "now_cn", lambda: now or _noon())
     monkeypatch.setattr(tsj, "in_live_tape_window", lambda n: in_window)
     if exc is not None:
+
         def _raise(*, now):
             raise exc
 
@@ -97,7 +104,9 @@ def _patch_tsj(monkeypatch: pytest.MonkeyPatch, *, now=None, in_window=True, sat
     else:
         monkeypatch.setattr(tsj, "maybe_refresh_intraday_sat", lambda *, now: sat)
     monkeypatch.setattr(
-        tsj, "intraday_snapshot_status", lambda *, now: status if status is not None else {"ok": True}
+        tsj,
+        "intraday_snapshot_status",
+        lambda *, now: status if status is not None else {"ok": True},
     )
     return _records(monkeypatch, "data_sync_service.db.sync_job_record.insert_record")
 
@@ -152,7 +161,13 @@ def test_tsj_no_sat_no_record(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tsj_success_records_once(monkeypatch: pytest.MonkeyPatch) -> None:
     rows = _patch_tsj(
         monkeypatch,
-        sat={"gateOpen": True, "breadth": 1, "gapCount": 2, "frozen": False, "candidates": [{"ts": "x"}]},
+        sat={
+            "gateOpen": True,
+            "breadth": 1,
+            "gapCount": 2,
+            "frozen": False,
+            "candidates": [{"ts": "x"}],
+        },
     )
     _prev(monkeypatch, None)
     tsj.run()

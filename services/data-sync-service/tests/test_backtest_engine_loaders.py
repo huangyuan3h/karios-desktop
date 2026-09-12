@@ -120,7 +120,9 @@ def _data(
     data.close_by_ts_day = {ts: {d: float(px) for d, px in m.items()} for ts, m in prices.items()}
     data.regime_by_day = {d: regime for d in calendar}
     data.flow_any_positive_by_day = {d: flow_any_positive for d in calendar}
-    data.mainline_allow_by_day = {d: set(mainline_allow or {"\u8ba1\u7b97\u673a"}) for d in calendar}
+    data.mainline_allow_by_day = {
+        d: set(mainline_allow or {"\u8ba1\u7b97\u673a"}) for d in calendar
+    }
     data.flow5d_by_day = {}
     if industry_by_ts is None:
         industry_by_ts = {ts: "\u8ba1\u7b97\u673a" for ts in prices}
@@ -406,9 +408,7 @@ def test_loader_flow_empty_lookback_continue(monkeypatch: pytest.MonkeyPatch) ->
 # ---------------------------------------------------------------------------
 
 
-def _ind_handler(
-    ind_rows: list, daily_rows: list
-) -> object:
+def _ind_handler(ind_rows: list, daily_rows: list) -> object:
     def handler(sql: str, params: object) -> list:
         if "stock_eastmoney_industry" in sql:
             return ind_rows
@@ -431,12 +431,8 @@ def test_loader_industry_happy_mom_and_neutral(monkeypatch: pytest.MonkeyPatch) 
     daily_rows = [(d1, ts, float(i)) for i, ts in enumerate(codes)]
     daily_rows.append((d1, codes[0], None))  # None ret skipped
     daily_rows.append((d1, "999999.SH", 999.0))  # no industry mapping skipped
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows))
-    )
-    cfg = _cfg(
-        start_date=d1, end_date=d2, ind_mom_days=20, ind_neutral_days=20
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows)))
+    cfg = _cfg(start_date=d1, end_date=d2, ind_mom_days=20, ind_neutral_days=20)
     universe = set(codes[:10])
     ind_rank, within = _load_industry_data(cfg, [d1, d2], universe)
     assert set(ind_rank[d1].keys()) == set(industries)
@@ -451,9 +447,7 @@ def test_loader_industry_thin_market_skips(monkeypatch: pytest.MonkeyPatch) -> N
     codes = [f"{i + 1:06d}.SH" for i in range(10)]
     ind_rows = [(ts, "IND0") for ts in codes]
     daily_rows = [(d1, ts, float(i)) for i, ts in enumerate(codes)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows)))
     cfg = _cfg(start_date=d1, end_date=d1, ind_mom_days=20, ind_neutral_days=20)
     ind_rank, within = _load_industry_data(cfg, [d1], set(codes))
     assert ind_rank == {} and within == {}
@@ -464,9 +458,7 @@ def test_loader_industry_few_industries_skips_mom(monkeypatch: pytest.MonkeyPatc
     codes = [f"{i + 1:06d}.SH" for i in range(60)]
     ind_rows = [(ts, f"IND{i % 3}") for i, ts in enumerate(codes)]
     daily_rows = [(d1, ts, float(i)) for i, ts in enumerate(codes)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows)))
     cfg = _cfg(start_date=d1, end_date=d1, ind_mom_days=20, ind_neutral_days=0)
     ind_rank, within = _load_industry_data(cfg, [d1], set(codes[:5]))
     assert ind_rank == {} and within == {}
@@ -480,9 +472,7 @@ def test_loader_industry_mom_thin_after_min_members(monkeypatch: pytest.MonkeyPa
     ind_rows = [(ts, f"IND{i % 2}") for i, ts in enumerate(big)]
     ind_rows += [(ts, f"SMALL{i}") for i, ts in enumerate(small)]
     daily_rows = [(d1, ts, float(i)) for i, ts in enumerate(big + small)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows)))
     cfg = _cfg(start_date=d1, end_date=d1, ind_mom_days=20, ind_neutral_days=0)
     ind_rank, within = _load_industry_data(cfg, [d1], set(big[:5]))
     assert ind_rank == {} and within == {}
@@ -498,9 +488,7 @@ def test_loader_industry_small_within_group_skipped(
     ind_rows = [(ts, f"IND{i % 5}") for i, ts in enumerate(codes)]
     ind_rows += [(ts, "TINY") for ts in tiny]
     daily_rows = [(d1, ts, float(i)) for i, ts in enumerate(codes + tiny)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_ind_handler(ind_rows, daily_rows)))
     cfg = _cfg(start_date=d1, end_date=d1, ind_mom_days=0, ind_neutral_days=20)
     _ind_rank, within = _load_industry_data(cfg, [d1], set(codes[:5] + tiny))
     assert d1 in within
@@ -592,9 +580,7 @@ def test_loader_rs_happy_thin_and_missing_bench(monkeypatch: pytest.MonkeyPatch)
     ret_rows += [(b2, codes[i], float(i)) for i in range(5)]  # thin day
     ret_rows += [(missing, codes[i], float(i)) for i in range(35)]  # no bench
     bench_rows = [(b0, 100.0), (b1, 101.0), (b2, 102.0), (b3, 103.0)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_rs_handler(ret_rows, bench_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_rs_handler(ret_rows, bench_rows)))
     cfg = _cfg(start_date=b0, end_date=missing, rs_rank_min=0.5)
     out = _load_rs_ranks(cfg, [b3, b2, missing], set(codes[:4]))
     assert b3 in out
@@ -611,9 +597,7 @@ def test_loader_rs_day_without_rows_skipped(monkeypatch: pytest.MonkeyPatch) -> 
     codes = [f"{i + 1:06d}.SH" for i in range(35)]
     ret_rows = [(b3, ts, float(i)) for i, ts in enumerate(codes)]
     bench_rows = [(b0, 100.0), (b1, 101.0), (b2, 102.0), (b3, 103.0)]
-    monkeypatch.setattr(
-        be, "get_connection", lambda: FakeConn(_rs_handler(ret_rows, bench_rows))
-    )
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(_rs_handler(ret_rows, bench_rows)))
     cfg = _cfg(start_date=b0, end_date=empty, rs_rank_min=0.5)
     out = _load_rs_ranks(cfg, [b3, empty], set(codes[:4]))
     assert b3 in out and empty not in out
@@ -636,7 +620,10 @@ def test_loader_trend_score_no_closes_and_short_history() -> None:
 
 
 def test_loader_trend_score_full_alignment_near_high() -> None:
-    closes = [(f"2026-01-{i + 1:02d}" if i < 30 else f"2026-02-{(i - 30) + 1:02d}", 10.0 + i * 0.1) for i in range(70)]
+    closes = [
+        (f"2026-01-{i + 1:02d}" if i < 30 else f"2026-02-{(i - 30) + 1:02d}", 10.0 + i * 0.1)
+        for i in range(70)
+    ]
     asof = closes[-1][0]
     score = _trend_score(0.9, closes, asof)
     assert score == pytest.approx(0.9 * 40.0 + 30.0 + 30.0)

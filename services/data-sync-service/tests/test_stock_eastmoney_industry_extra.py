@@ -66,11 +66,18 @@ def _patch(monkeypatch, cur=None):
 
 def test_upsert_rows_filters_bad(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    n = sei.upsert_rows([
-        {"ts_code": "600000.SH", "industry_name": "银行", "industry_code": "BK0475", "updated_at": "u"},
-        {"ts_code": " ", "industry_name": "银行"},  # no ts_code → skipped
-        {"ts_code": "600001.SH", "industry_name": "  "},  # no name → skipped
-    ])
+    n = sei.upsert_rows(
+        [
+            {
+                "ts_code": "600000.SH",
+                "industry_name": "银行",
+                "industry_code": "BK0475",
+                "updated_at": "u",
+            },
+            {"ts_code": " ", "industry_name": "银行"},  # no ts_code → skipped
+            {"ts_code": "600001.SH", "industry_name": "  "},  # no name → skipped
+        ]
+    )
     assert n == 1
     assert cur.executemany_args == [("600000.SH", "银行", "BK0475", "u")]
 
@@ -83,7 +90,9 @@ def test_upsert_rows_empty(monkeypatch) -> None:
 
 
 def test_lookup_by_ts_codes(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchall=[("600000.SH", "银行"), ("600001.SH", None), (None, "x")]))
+    cur = _patch(
+        monkeypatch, _Cur(fetchall=[("600000.SH", "银行"), ("600001.SH", None), (None, "x")])
+    )
     out = sei.lookup_by_ts_codes(["600000.SH", "600001.SH"])
     assert out == {"600000.SH": "银行"}
     assert cur.params == (["600000.SH", "600001.SH"],)
@@ -98,7 +107,9 @@ def test_lookup_by_ts_codes_empty(monkeypatch) -> None:
 
 def test_lookup_by_ts_codes_error_returns_empty(monkeypatch) -> None:
     _patch(monkeypatch)
-    monkeypatch.setattr(sei, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(
+        sei, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down"))
+    )
     assert sei.lookup_by_ts_codes(["600000.SH"]) == {}
 
 
@@ -153,12 +164,25 @@ def test_list_stale_cn_ts_codes_defaults(monkeypatch) -> None:
 
 
 def test_search_stocks_by_industry_keyword(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchall=[
-        ("600000.SH", "600000", "浦发银行"),
-        ("000001.SZ", "bad", "x"),  # non-6-digit symbol → skipped
-    ]))
+    cur = _patch(
+        monkeypatch,
+        _Cur(
+            fetchall=[
+                ("600000.SH", "600000", "浦发银行"),
+                ("000001.SZ", "bad", "x"),  # non-6-digit symbol → skipped
+            ]
+        ),
+    )
     out = sei.search_stocks_by_industry_keyword("银行")
-    assert out == [{"symbol": "CN:600000", "ticker": "600000", "name": "浦发银行", "market": "CN", "source": "emIndustry"}]
+    assert out == [
+        {
+            "symbol": "CN:600000",
+            "ticker": "600000",
+            "name": "浦发银行",
+            "market": "CN",
+            "source": "emIndustry",
+        }
+    ]
     assert cur.params == ("%银行%", 12)
 
 
@@ -170,5 +194,7 @@ def test_search_stocks_by_industry_keyword_empty_kw(monkeypatch) -> None:
 
 def test_search_stocks_by_industry_keyword_error(monkeypatch) -> None:
     _patch(monkeypatch)
-    monkeypatch.setattr(sei, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(
+        sei, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down"))
+    )
     assert sei.search_stocks_by_industry_keyword("银行") == []

@@ -51,15 +51,12 @@ def _run() -> None:
     sentiment = sync_cn_sentiment(date_str=today, force=False)
 
     ok = bool(industry.get("ok")) and bool(mainline.get("ok")) and bool(sentiment.get("ok"))
-    skipped = bool(industry.get("skipped")) and bool(mainline.get("ok")) and bool(sentiment.get("ok"))
+    skipped = (
+        bool(industry.get("skipped")) and bool(mainline.get("ok")) and bool(sentiment.get("ok"))
+    )
 
     if not ok:
-        err = (
-            industry.get("error")
-            or mainline.get("error")
-            or sentiment.get("error")
-            or "unknown"
-        )
+        err = industry.get("error") or mainline.get("error") or sentiment.get("error") or "unknown"
         # 2026-08-09: include per-part status so a silent part (ok=False with
         # no error field) is diagnosable instead of a bare "unknown".
         detail = {
@@ -68,7 +65,12 @@ def _run() -> None:
             "sentiment": (sentiment.get("ok"), sentiment.get("error")),
         }
         insert_record(JOB_ID, success=False, error_message=f"{err} {detail}")
-        logger.warning("cn_industry_post_close_sync failed: industry=%s mainline=%s sentiment=%s", industry, mainline, sentiment)
+        logger.warning(
+            "cn_industry_post_close_sync failed: industry=%s mainline=%s sentiment=%s",
+            industry,
+            mainline,
+            sentiment,
+        )
         return
 
     insert_record(JOB_ID, success=True)

@@ -85,4 +85,4 @@ def test_to_json_obj_invalid_json():
 
 
 def test_to_json_obj_non_dict_json():
-    assert _to_json_obj('[1, 2, 3]') == {}
+    assert _to_json_obj("[1, 2, 3]") == {}

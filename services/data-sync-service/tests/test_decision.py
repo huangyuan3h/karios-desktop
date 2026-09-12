@@ -297,19 +297,41 @@ def test_apply_daily_outcomes_attaches_paper_and_fired(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.execution_journal.list_changes",
         lambda trade_date=None, limit=200: [
-            {"id": "c1", "symbol": "CN:600519.SH", "field": "action",
-             "newValue": "BUY", "source": "alpha_radar"},
-            {"id": "c2", "symbol": "CN:600000.SH", "field": "hardStop",
-             "newValue": "33.5", "source": "TV"},
+            {
+                "id": "c1",
+                "symbol": "CN:600519.SH",
+                "field": "action",
+                "newValue": "BUY",
+                "source": "alpha_radar",
+            },
+            {
+                "id": "c2",
+                "symbol": "CN:600000.SH",
+                "field": "hardStop",
+                "newValue": "33.5",
+                "source": "TV",
+            },
         ],
     )
     monkeypatch.setattr(
         "data_sync_service.db.paper_trading.list_paper_trades",
         lambda limit=100: [
-            {"id": "p1", "symbol": "CN:600519.SH", "side": "BUY", "status": "closed",
-             "entryDate": "2026-08-07", "pnlPct": 3.2},
-            {"id": "p2", "symbol": "CN:000001.SZ", "side": "BUY", "status": "open",
-             "entryDate": "2026-08-01", "pnlPct": -1.1},
+            {
+                "id": "p1",
+                "symbol": "CN:600519.SH",
+                "side": "BUY",
+                "status": "closed",
+                "entryDate": "2026-08-07",
+                "pnlPct": 3.2,
+            },
+            {
+                "id": "p2",
+                "symbol": "CN:000001.SZ",
+                "side": "BUY",
+                "status": "open",
+                "entryDate": "2026-08-01",
+                "pnlPct": -1.1,
+            },
         ],
     )
     monkeypatch.setattr(svc, "upsert_snapshot", lambda **kw: upserted.append(kw) or {"ok": True})
@@ -403,7 +425,9 @@ def test_analysis_stats_win_rate_and_failures(monkeypatch) -> None:
     assert stats["paper"]["losses"] == 1
     assert stats["paper"]["winRate"] == 0.667
     assert stats["paper"]["avgPnlPct"] == 1.17  # (4.0 - 2.0 + 1.5) / 3
-    assert stats["paper"]["byMarket"] == {"CN": {"total": 3, "wins": 2, "losses": 1, "winRate": 0.667}}
+    assert stats["paper"]["byMarket"] == {
+        "CN": {"total": 3, "wins": 2, "losses": 1, "winRate": 0.667}
+    }
 
     monkeypatch.setattr(
         "data_sync_service.db.paper_trading.list_paper_trades",
@@ -431,7 +455,12 @@ def test_build_daily_snapshot_truncates_exchanges(monkeypatch) -> None:
     messages = []
     for i in range(25):
         messages.append(
-            (f"session-{i}", "user", f"message {i} {'X' * 300}", f"2026-08-07T0{i % 10}:00:00+00:00")
+            (
+                f"session-{i}",
+                "user",
+                f"message {i} {'X' * 300}",
+                f"2026-08-07T0{i % 10}:00:00+00:00",
+            )
         )
     monkeypatch.setattr(svc, "get_connection", lambda: _fake_conn([messages]))
     monkeypatch.setattr(
@@ -443,7 +472,12 @@ def test_build_daily_snapshot_truncates_exchanges(monkeypatch) -> None:
 
     def fake_upsert(**kw):
         captured.update(kw)
-        return {"id": 1, "snapshotDate": kw["snapshot_date"], "status": "open", "createdAt": "2026-08-07T08:00:00+00:00"}
+        return {
+            "id": 1,
+            "snapshotDate": kw["snapshot_date"],
+            "status": "open",
+            "createdAt": "2026-08-07T08:00:00+00:00",
+        }
 
     monkeypatch.setattr(svc, "upsert_snapshot", fake_upsert)
 
@@ -486,18 +520,44 @@ def test_extract_pending_actions(monkeypatch) -> None:
             return json.dumps(self._payload).encode()
 
     calls: list[list[dict]] = []
-    monkeypatch.setattr(svc, "get_connection", lambda: _fake_conn([[(
-        11, "s-1", "## 操作建议\nBUY CN:600519.SH", "2026-08-07T08:00:00+00:00",
-    ), (
-        12, "s-2", "## 操作建议\nEXIT CN:000001.SZ", "2026-08-07T09:00:00+00:00",
-    )]]))
+    monkeypatch.setattr(
+        svc,
+        "get_connection",
+        lambda: _fake_conn(
+            [
+                [
+                    (
+                        11,
+                        "s-1",
+                        "## 操作建议\nBUY CN:600519.SH",
+                        "2026-08-07T08:00:00+00:00",
+                    ),
+                    (
+                        12,
+                        "s-2",
+                        "## 操作建议\nEXIT CN:000001.SZ",
+                        "2026-08-07T09:00:00+00:00",
+                    ),
+                ]
+            ]
+        ),
+    )
 
     def fake_urlopen(req, timeout=30):
         if getattr(fake_urlopen, "_first", True):
             fake_urlopen._first = False
-            return _FakeResp({"actions": [
-                {"symbol": "CN:600519.SH", "action": "BUY", "rationale": "r", "confidence": 0.9},
-            ]})
+            return _FakeResp(
+                {
+                    "actions": [
+                        {
+                            "symbol": "CN:600519.SH",
+                            "action": "BUY",
+                            "rationale": "r",
+                            "confidence": 0.9,
+                        },
+                    ]
+                }
+            )
         raise RuntimeError("ai down")
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
@@ -565,10 +625,9 @@ def test_track_action_outcomes(monkeypatch) -> None:
     updates: list[dict] = []
     monkeypatch.setattr(
         "data_sync_service.db.decision.update_action_status",
-        lambda action_id, status, matched_change_id=None, outcome=None: updates.append(
-            {"id": action_id, "status": status, "outcome": outcome}
-        )
-        or True,
+        lambda action_id, status, matched_change_id=None, outcome=None: (
+            updates.append({"id": action_id, "status": status, "outcome": outcome}) or True
+        ),
     )
 
     result = svc.track_action_outcomes(horizon_days=5)
@@ -606,8 +665,9 @@ def test_track_action_outcomes_skips_unpriced(monkeypatch) -> None:
     tracked: list[int] = []
     monkeypatch.setattr(
         "data_sync_service.db.decision.update_action_status",
-        lambda action_id, status, matched_change_id=None, outcome=None: tracked.append(action_id)
-        or True,
+        lambda action_id, status, matched_change_id=None, outcome=None: (
+            tracked.append(action_id) or True
+        ),
     )
 
     result = svc.track_action_outcomes(horizon_days=5)
@@ -658,15 +718,32 @@ def test_extract_pending_actions_skips_empty_actions(monkeypatch) -> None:
     from data_sync_service.service import decision as svc
 
     def fake_urlopen(req, timeout=30):
-        return type("R", (), {
-            "__enter__": lambda s: s,
-            "__exit__": lambda *a: False,
-            "read": lambda: json.dumps({"actions": []}).encode(),
-        })()
+        return type(
+            "R",
+            (),
+            {
+                "__enter__": lambda s: s,
+                "__exit__": lambda *a: False,
+                "read": lambda: json.dumps({"actions": []}).encode(),
+            },
+        )()
 
-    monkeypatch.setattr(svc, "get_connection", lambda: _fake_conn([[(
-        13, "s-1", "## 操作建议\n无操作", "2026-08-07T08:00:00+00:00",
-    )]]))
+    monkeypatch.setattr(
+        svc,
+        "get_connection",
+        lambda: _fake_conn(
+            [
+                [
+                    (
+                        13,
+                        "s-1",
+                        "## 操作建议\n无操作",
+                        "2026-08-07T08:00:00+00:00",
+                    )
+                ]
+            ]
+        ),
+    )
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(
         "data_sync_service.config.get_settings",
@@ -698,23 +775,28 @@ def test_track_action_outcomes_zero_close_skipped(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "data_sync_service.db.decision.list_actions",
-        lambda days=14, limit=300: [{
-            "id": 3,
-            "symbol": "CN:600519.SH",
-            "status": "executed",
-            "outcome": None,
-            "createdAt": "2026-08-01T08:00:00+00:00",
-        }],
+        lambda days=14, limit=300: [
+            {
+                "id": 3,
+                "symbol": "CN:600519.SH",
+                "status": "executed",
+                "outcome": None,
+                "createdAt": "2026-08-01T08:00:00+00:00",
+            }
+        ],
     )
     monkeypatch.setattr(
         "data_sync_service.db.daily.fetch_daily_for_codes",
-        lambda codes, start, end: [{"ts_code": "600519.SH", "trade_date": "2026-08-01", "close": 0.0}],
+        lambda codes, start, end: [
+            {"ts_code": "600519.SH", "trade_date": "2026-08-01", "close": 0.0}
+        ],
     )
     tracked: list[int] = []
     monkeypatch.setattr(
         "data_sync_service.db.decision.update_action_status",
-        lambda action_id, status, matched_change_id=None, outcome=None: tracked.append(action_id)
-        or True,
+        lambda action_id, status, matched_change_id=None, outcome=None: (
+            tracked.append(action_id) or True
+        ),
     )
 
     result = svc.track_action_outcomes(horizon_days=5)
@@ -727,12 +809,14 @@ def test_search_archive_respects_limit(monkeypatch) -> None:
 
     snapshots = []
     for i in range(25):
-        snapshots.append({
-            "snapshotDate": date(2026, 8, 7 - (i % 7)),
-            "status": "open",
-            "agentExchanges": [{"role": "user", "content": f"CN:600519.SH day {i}"}],
-            "outcome": None,
-        })
+        snapshots.append(
+            {
+                "snapshotDate": date(2026, 8, 7 - (i % 7)),
+                "status": "open",
+                "agentExchanges": [{"role": "user", "content": f"CN:600519.SH day {i}"}],
+                "outcome": None,
+            }
+        )
     monkeypatch.setattr(
         "data_sync_service.service.decision.list_snapshots",
         lambda limit=60: snapshots,
@@ -754,17 +838,28 @@ def test_messages_on_uses_shanghai_day_boundary() -> None:
     captured: list[tuple] = []
 
     class _Cur:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
         def execute(self, sql, params=None):
             captured.append(tuple(params or ()))
             return None
-        def fetchall(self): return []
+
+        def fetchall(self):
+            return []
 
     class _Conn:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def cursor(self): return _Cur()
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return _Cur()
 
     import data_sync_service.service.decision as mod
 

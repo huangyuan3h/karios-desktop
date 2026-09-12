@@ -19,9 +19,15 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS taxonomy TEXT NOT NULL DEFAULT 'UNKNOWN';")
-    op.execute("ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS industry_level INTEGER;")
-    op.execute("ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'eastmoney_bkzj';")
+    op.execute(
+        "ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS taxonomy TEXT NOT NULL DEFAULT 'UNKNOWN';"
+    )
+    op.execute(
+        "ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS industry_level INTEGER;"
+    )
+    op.execute(
+        "ALTER TABLE market_cn_industry_fund_flow_daily ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'eastmoney_bkzj';"
+    )
     op.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_cn_industry_fund_flow_taxonomy_level_date
@@ -33,5 +39,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_cn_industry_fund_flow_taxonomy_level_date;")
     op.execute("ALTER TABLE market_cn_industry_fund_flow_daily DROP COLUMN IF EXISTS source;")
-    op.execute("ALTER TABLE market_cn_industry_fund_flow_daily DROP COLUMN IF EXISTS industry_level;")
+    op.execute(
+        "ALTER TABLE market_cn_industry_fund_flow_daily DROP COLUMN IF EXISTS industry_level;"
+    )
     op.execute("ALTER TABLE market_cn_industry_fund_flow_daily DROP COLUMN IF EXISTS taxonomy;")

@@ -47,7 +47,9 @@ def test_ensure_5min_success_and_failure(monkeypatch) -> None:
     seen: dict = {}
     fake = SimpleNamespace(
         SOURCE_BAOSTOCK="baostock",
-        backfill_symbols=lambda **k: seen.update(k) or {"ok": True, "stored": 3, "failed": 0, "skipped": 0},
+        backfill_symbols=lambda **k: (
+            seen.update(k) or {"ok": True, "stored": 3, "failed": 0, "skipped": 0}
+        ),
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.bar_5min", fake)
     _real_ensure_5min(["000001.SZ", "000001.SZ"], "2026-09-02")
@@ -159,7 +161,10 @@ def test_intake_close_fetch_uses_daily_and_survives_error(monkeypatch) -> None:
         pts,
         "fetch_last_ohlcv_batch",
         lambda ts, days=5: {
-            "000001.SZ": [["2026-09-01", 1, 2, 3, 10.0], ["2026-09-02", 1, 2, 3]],  # short row → None
+            "000001.SZ": [
+                ["2026-09-01", 1, 2, 3, 10.0],
+                ["2026-09-02", 1, 2, 3],
+            ],  # short row → None
             "000002.SZ": [],  # empty rows → skip
         },
     )
@@ -172,7 +177,9 @@ def test_intake_close_fetch_uses_daily_and_survives_error(monkeypatch) -> None:
     monkeypatch.setattr(
         pts,
         "fetch_last_ohlcv_batch",
-        lambda ts, days=5: {"000001.SZ": [["2026-09-01", 1, 2, 3, 10.0], ["2026-09-02", 1, 2, 3, 10.4]]},
+        lambda ts, days=5: {
+            "000001.SZ": [["2026-09-01", 1, 2, 3, 10.0], ["2026-09-02", 1, 2, 3, 10.4]]
+        },
     )
     out = pts.run_intake_twin_star(trade_date="2026-09-02")
     assert out["inserted"] == 1

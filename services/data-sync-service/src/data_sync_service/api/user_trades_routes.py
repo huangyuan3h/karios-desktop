@@ -100,8 +100,7 @@ def record_trade(req: TradeLegRequest) -> dict:
             alpha_snapshot=_alpha_snapshot_for(req.symbol, trade_date),
             # OPT-149: SELL/ADD without an explicit leg inherit the open
             # position's leg so exits can't be misfiled into the wrong book.
-            leg=req.leg
-            or (latest_buy_leg(req.symbol) if req.side in ("SELL", "ADD") else LEG_S3),
+            leg=req.leg or (latest_buy_leg(req.symbol) if req.side in ("SELL", "ADD") else LEG_S3),
         )
         return {"ok": True, "trade": row}
     except HTTPException:

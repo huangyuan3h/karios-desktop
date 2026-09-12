@@ -8,8 +8,21 @@ import pandas as pd
 
 from data_sync_service.db import macro_daily as md
 
-COLS = ["series_id", "trade_date", "source", "underlying_ts_code",
-        "open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"]
+COLS = [
+    "series_id",
+    "trade_date",
+    "source",
+    "underlying_ts_code",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "change",
+    "pct_chg",
+    "vol",
+    "amount",
+]
 
 
 class _Cur:
@@ -79,16 +92,38 @@ def test_get_last_trade_date(monkeypatch) -> None:
 def test_upsert_from_dataframe(monkeypatch) -> None:
     df = pd.DataFrame(
         [
-            {"trade_date": "2026-08-07", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5,
-             "pre_close": 1.4, "change": 0.1, "pct_chg": 7.1, "vol": 100, "amount": 200},
-            {"trade_date": "2026-08-06", "open": None, "high": None, "low": None, "close": None,
-             "pre_close": None, "change": None, "pct_change": None, "vol": None, "amount": None},
+            {
+                "trade_date": "2026-08-07",
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "pre_close": 1.4,
+                "change": 0.1,
+                "pct_chg": 7.1,
+                "vol": 100,
+                "amount": 200,
+            },
+            {
+                "trade_date": "2026-08-06",
+                "open": None,
+                "high": None,
+                "low": None,
+                "close": None,
+                "pre_close": None,
+                "change": None,
+                "pct_change": None,
+                "vol": None,
+                "amount": None,
+            },
             {"trade_date": "junk", "close": 1.0},
             {"trade_date": "", "close": 1.0},
         ]
     )
     cur = _patch(monkeypatch)
-    n = md.upsert_from_dataframe(df, series_id="SPX", source="tushare", underlying_ts_code="000001.SH")
+    n = md.upsert_from_dataframe(
+        df, series_id="SPX", source="tushare", underlying_ts_code="000001.SH"
+    )
     assert n == 3  # "" skipped; "junk" kept (not None)
     rows = cur.executed[0][1]
     assert rows[0][0] == "SPX"
@@ -99,9 +134,7 @@ def test_upsert_from_dataframe(monkeypatch) -> None:
 
 
 def test_upsert_uses_pct_change_and_settle(monkeypatch) -> None:
-    df = pd.DataFrame(
-        [{"trade_date": "2026-08-07", "pct_change": 2.5, "settle": 3.0}]
-    )
+    df = pd.DataFrame([{"trade_date": "2026-08-07", "pct_change": 2.5, "settle": 3.0}])
     cur = _patch(monkeypatch)
     n = md.upsert_from_dataframe(df, series_id="SPX", source="yfinance")
     assert n == 1
@@ -111,17 +144,35 @@ def test_upsert_uses_pct_change_and_settle(monkeypatch) -> None:
 
 def test_upsert_empty(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    assert md.upsert_from_dataframe(pd.DataFrame({"trade_date": []}), series_id="X", source="s") == 0
+    assert (
+        md.upsert_from_dataframe(pd.DataFrame({"trade_date": []}), series_id="X", source="s") == 0
+    )
     assert cur.executed == []
 
 
 def test_fetch_macro_daily_all_filters(monkeypatch) -> None:
     rows = [
         ("SPX", datetime(2026, 8, 7), "tushare", "000001.SH", 1, 2, 3, 4, 5, 6, 7, 8, 9),
-        ("SPX", datetime(2026, 8, 6), "tushare", None, None, None, None, None, None, None, None, None, None),
+        (
+            "SPX",
+            datetime(2026, 8, 6),
+            "tushare",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
     ]
     cur = _patch(monkeypatch, rows)
-    out = md.fetch_macro_daily(series_id="SPX", start_date="2026-08-01", end_date="2026-08-07", limit=10)
+    out = md.fetch_macro_daily(
+        series_id="SPX", start_date="2026-08-01", end_date="2026-08-07", limit=10
+    )
     assert len(out) == 2
     assert out[0]["trade_date"] == "2026-08-06"
     assert out[0]["close"] is None and out[0]["underlying_ts_code"] is None

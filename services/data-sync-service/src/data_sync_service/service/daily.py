@@ -191,4 +191,3 @@ def get_daily_sync_status() -> dict[str, Any]:
     if run is None:
         return {"job_type": JOB_TYPE, "today_run": None}
     return {"job_type": JOB_TYPE, "today_run": run}
-

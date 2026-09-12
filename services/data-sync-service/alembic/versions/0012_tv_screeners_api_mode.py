@@ -27,8 +27,7 @@ def upgrade() -> None:
     # mode: 'api' (TV Scanner API) | 'chrome' (legacy CDP).
     # Default 'chrome' to preserve backward-compat for all existing rows.
     op.execute(
-        "ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS "
-        "mode TEXT NOT NULL DEFAULT 'chrome';"
+        "ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'chrome';"
     )
     # market: 'cn' | 'hk' | 'us' | NULL (any). Only relevant when mode='api'.
     op.execute("ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS market TEXT;")

@@ -26,7 +26,13 @@ def test_recon_ok_records_success() -> None:
 
 
 def test_recon_mismatch_records_failure() -> None:
-    recon = {"day": "d", "ok": False, "missedBuys": ["ETF:513100"], "missedSells": [], "extraOpens": []}
+    recon = {
+        "day": "d",
+        "ok": False,
+        "missedBuys": ["ETF:513100"],
+        "missedSells": [],
+        "extraOpens": [],
+    }
     rec = []
     with (
         patch(f"{_RECON}.sleeve_paper_recon", return_value=recon),

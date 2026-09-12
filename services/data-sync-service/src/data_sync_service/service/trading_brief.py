@@ -70,16 +70,18 @@ def _regime_section(h: dict[str, Any]) -> list[dict[str, Any]]:
         block = h if key == "" else h.get("hkHealth") or {}
         if not block:
             continue
-        out.append({
-            "type": "regime",
-            "market": label,
-            "regime": block.get("regime"),
-            "strength": block.get("strength"),
-            "sentiment": block.get("sentiment"),
-            "panicActive": bool(block.get("panicCooldown", {}).get("active")),
-            "panicCooldownEnd": block.get("panicCooldown", {}).get("cooldownEndDate"),
-            "candidateTotal": block.get("s3CandidateTotal"),
-        })
+        out.append(
+            {
+                "type": "regime",
+                "market": label,
+                "regime": block.get("regime"),
+                "strength": block.get("strength"),
+                "sentiment": block.get("sentiment"),
+                "panicActive": bool(block.get("panicCooldown", {}).get("active")),
+                "panicCooldownEnd": block.get("panicCooldown", {}).get("cooldownEndDate"),
+                "candidateTotal": block.get("s3CandidateTotal"),
+            }
+        )
     return out
 
 
@@ -87,15 +89,17 @@ def _candidates_section(h: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for market in ("CN", "HK"):
         for c in _candidates(market):
-            rows.append({
-                "type": "candidate",
-                "market": market,
-                "symbol": c.get("symbol"),
-                "name": c.get("name"),
-                "industry": c.get("industry"),
-                "score": c.get("score"),
-                "rs": c.get("rs"),
-            })
+            rows.append(
+                {
+                    "type": "candidate",
+                    "market": market,
+                    "symbol": c.get("symbol"),
+                    "name": c.get("name"),
+                    "industry": c.get("industry"),
+                    "score": c.get("score"),
+                    "rs": c.get("rs"),
+                }
+            )
     # Score freshness: portfolio-health already exposes it; fall back to text.
     return rows
 
@@ -108,23 +112,25 @@ def _holdings_section(h: dict[str, Any]) -> list[dict[str, Any]]:
         for hold in block.get("holdings") or []:
             stop = hold.get("stopLossLine")
             trail = hold.get("trailingLine")
-            rows.append({
-                "type": "holding",
-                "market": market,
-                "symbol": hold.get("symbol"),
-                "name": hold.get("name"),
-                "action": hold.get("action"),  # EXIT / HOLD
-                "reason": hold.get("reason"),
-                "stopLossLine": stop,
-                "trailingLine": trail,
-                "pnlPct": hold.get("pnlPct"),
-                "expireDate": hold.get("expireDate"),
-                "lineOps": hold.get("lineOps") or {},
-                "pyramidTriggerLine": hold.get("pyramidTriggerLine"),
-                "pyramidAdded": bool(hold.get("pyramidAdded")),
-                "lastClose": hold.get("lastClose"),
-                "costPrice": hold.get("costPrice"),
-            })
+            rows.append(
+                {
+                    "type": "holding",
+                    "market": market,
+                    "symbol": hold.get("symbol"),
+                    "name": hold.get("name"),
+                    "action": hold.get("action"),  # EXIT / HOLD
+                    "reason": hold.get("reason"),
+                    "stopLossLine": stop,
+                    "trailingLine": trail,
+                    "pnlPct": hold.get("pnlPct"),
+                    "expireDate": hold.get("expireDate"),
+                    "lineOps": hold.get("lineOps") or {},
+                    "pyramidTriggerLine": hold.get("pyramidTriggerLine"),
+                    "pyramidAdded": bool(hold.get("pyramidAdded")),
+                    "lastClose": hold.get("lastClose"),
+                    "costPrice": hold.get("costPrice"),
+                }
+            )
     return rows
 
 
@@ -134,8 +140,10 @@ def _alerts_section(h: dict[str, Any]) -> list[dict[str, Any]]:
     for key, market in (("", "CN"), ("hkHealth", "HK")):
         block = h if key == "" else h.get("hkHealth") or {}
         for hold in block.get("holdings") or []:
-            for line_name, line in (("stop", hold.get("stopLossLine")),
-                                    ("trailing", hold.get("trailingLine"))):
+            for line_name, line in (
+                ("stop", hold.get("stopLossLine")),
+                ("trailing", hold.get("trailingLine")),
+            ):
                 if not line or not hold.get("pnlPct"):
                     continue
                 try:
@@ -143,16 +151,18 @@ def _alerts_section(h: dict[str, Any]) -> list[dict[str, Any]]:
                 except (TypeError, ValueError):
                     continue
                 if distance <= ALERT_MARGIN_PT and hold.get("action") != "EXIT":
-                    out.append({
-                        "type": "alert",
-                        "market": market,
-                        "symbol": hold.get("symbol"),
-                        "name": hold.get("name"),
-                        "line": line_name,
-                        "lineValue": line,
-                        "pnlPct": hold.get("pnlPct"),
-                        "distancePct": round(distance, 2),
-                    })
+                    out.append(
+                        {
+                            "type": "alert",
+                            "market": market,
+                            "symbol": hold.get("symbol"),
+                            "name": hold.get("name"),
+                            "line": line_name,
+                            "lineValue": line,
+                            "pnlPct": hold.get("pnlPct"),
+                            "distancePct": round(distance, 2),
+                        }
+                    )
     return out
 
 
@@ -160,16 +170,18 @@ def _news_section(top: int = 5) -> list[dict[str, Any]]:
     items = select_brief_items(hours=24)
     out = []
     for it in items[:top]:
-        out.append({
-            "type": "news",
-            "id": str(it.get("id") or it.get("title") or ""),
-            "title": it.get("title"),
-            "category": it.get("category"),
-            "importance": it.get("importance"),
-            "tickers": it.get("tickers") or [],
-            "aiSummary": it.get("aiSummary"),
-            "score": it.get("score"),
-        })
+        out.append(
+            {
+                "type": "news",
+                "id": str(it.get("id") or it.get("title") or ""),
+                "title": it.get("title"),
+                "category": it.get("category"),
+                "importance": it.get("importance"),
+                "tickers": it.get("tickers") or [],
+                "aiSummary": it.get("aiSummary"),
+                "score": it.get("score"),
+            }
+        )
     return out
 
 
@@ -185,23 +197,23 @@ def _recon_section(top: int = 5) -> list[dict[str, Any]]:
     rows = latest_recon(limit=2)
     out: list[dict[str, Any]] = []
     for r in rows:
-        missing = [
-            x for x in (r.get("detail") or []) if x.get("type") == "missing"
-        ]
-        out.append({
-            "type": "recon",
-            "reconDate": r.get("reconDate"),
-            "market": r.get("market"),
-            "expected": r.get("expected"),
-            "actual": r.get("actual"),
-            "missing": r.get("missing"),
-            "extra": r.get("extra"),
-            "alignedReturnDiffPct": r.get("alignedReturnDiffPct"),
-            "missingTop": sorted(
-                missing,
-                key=lambda x: -(float(x.get("score") or 0)),
-            )[:top],
-        })
+        missing = [x for x in (r.get("detail") or []) if x.get("type") == "missing"]
+        out.append(
+            {
+                "type": "recon",
+                "reconDate": r.get("reconDate"),
+                "market": r.get("market"),
+                "expected": r.get("expected"),
+                "actual": r.get("actual"),
+                "missing": r.get("missing"),
+                "extra": r.get("extra"),
+                "alignedReturnDiffPct": r.get("alignedReturnDiffPct"),
+                "missingTop": sorted(
+                    missing,
+                    key=lambda x: -(float(x.get("score") or 0)),
+                )[:top],
+            }
+        )
     return out
 
 
@@ -219,7 +231,11 @@ def _twin_star_recon_section() -> list[dict[str, Any]]:
         logger.warning("trading_brief twin_star recon failed: %s", exc)
         return [{"type": "twin_star_recon", "ok": False, "error": str(exc)}]
     out = [{"type": "twin_star_recon", **recon}]
-    mismatches = (recon.get("missedBuys") or []) + (recon.get("extraOpens") or []) + (recon.get("missedExits") or [])
+    mismatches = (
+        (recon.get("missedBuys") or [])
+        + (recon.get("extraOpens") or [])
+        + (recon.get("missedExits") or [])
+    )
     if mismatches and not recon.get("error"):
         try:
             from data_sync_service.db.webhook import emit_event
@@ -305,9 +321,7 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
         lines.append("**Regime**")
         for r in regime:
             p = "· panic 冷却" if r["panicActive"] else ""
-            lines.append(
-                f"- {r['market']}: {r['regime']}（强度 {r['strength']}）{p}"
-            )
+            lines.append(f"- {r['market']}: {r['regime']}（强度 {r['strength']}）{p}")
 
     if cands:
         lines.append("")
@@ -324,7 +338,9 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
     if holds:
         lines.append("")
         lines.append("**持仓 / 条件单**")
-        for h in sorted(holds, key=lambda x: -(float(x["pnlPct"]) if x["pnlPct"] not in (None, "") else -99)):
+        for h in sorted(
+            holds, key=lambda x: -(float(x["pnlPct"]) if x["pnlPct"] not in (None, "") else -99)
+        ):
             stop = f" 止损 {h['stopLossLine']}" if h["stopLossLine"] else ""
             trail = f" 移动 {h['trailingLine']}" if h["trailingLine"] else ""
             exp = f" 到期 {h['expireDate']}" if h["expireDate"] else ""
@@ -483,8 +499,7 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
                     "distance_pct": alert.get("distancePct"),
                 },
                 dedupe_key=(
-                    f"near_stop:{alert.get('symbol')}:{alert.get('line')}:"
-                    f"{_now().split('T')[0]}"
+                    f"near_stop:{alert.get('symbol')}:{alert.get('line')}:{_now().split('T')[0]}"
                 ),
             )
     if brief_type == "action":
@@ -509,7 +524,10 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
         # Only actionable sleeve actions reach the phone push; DONT_BUY stays
         # on the watchlist banner (a closed-gate day must never push "buy").
         _sleeve_pushed = (
-            {k: _sleeve.get(k) for k in ("action", "label", "message", "price", "ma200", "idlePct", "asOfDate")}
+            {
+                k: _sleeve.get(k)
+                for k in ("action", "label", "message", "price", "ma200", "idlePct", "asOfDate")
+            }
             if _sleeve.get("active") and _sleeve.get("action") not in ("NONE", "DONT_BUY")
             else None
         )
@@ -523,13 +541,15 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
                 continue
             try:
                 if float(h.get("lastClose") or 0) >= float(h.get("pyramidTriggerLine") or 0):
-                    pyramid_triggers.append({
-                        "market": h.get("market"),
-                        "symbol": h.get("symbol"),
-                        "name": h.get("name"),
-                        "lastClose": h.get("lastClose"),
-                        "triggerLine": h.get("pyramidTriggerLine"),
-                    })
+                    pyramid_triggers.append(
+                        {
+                            "market": h.get("market"),
+                            "symbol": h.get("symbol"),
+                            "name": h.get("name"),
+                            "lastClose": h.get("lastClose"),
+                            "triggerLine": h.get("pyramidTriggerLine"),
+                        }
+                    )
             except (TypeError, ValueError):
                 continue
         emit_event(

@@ -87,7 +87,11 @@ def insert_record(
             severity=sev,
             title=f"任务失败 · {job_type}",
             detail=(error_message or "unknown error")[:500],
-            payload={"job_type": job_type, "error": error_message or "unknown error", "last_ts_code": last_ts_code},
+            payload={
+                "job_type": job_type,
+                "error": error_message or "unknown error",
+                "last_ts_code": last_ts_code,
+            },
             dedupe_key=dedupe,
         )
         # OPT-144: peripheral (low-severity) jobs don't page the phone on a

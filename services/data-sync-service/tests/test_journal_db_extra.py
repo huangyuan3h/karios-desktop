@@ -72,8 +72,11 @@ class TestCreate:
         _ok(cur)
         monkeypatch.setattr(journal, "get_connection", lambda: _fake_conn(cur))
         out = journal.create_journal(
-            journal_id="j1", title="T", content_md="md",
-            created_at="2026-08-01T08:00:00+00:00", updated_at="2026-08-07T08:00:00+00:00",
+            journal_id="j1",
+            title="T",
+            content_md="md",
+            created_at="2026-08-01T08:00:00+00:00",
+            updated_at="2026-08-07T08:00:00+00:00",
         )
         assert out["id"] == "j1"
 
@@ -90,15 +93,21 @@ class TestUpdate:
         _ok(cur)
         monkeypatch.setattr(journal, "get_connection", lambda: _fake_conn(cur))
         journal.update_journal(journal_id="j1", title="T2", updated_at="2026-08-08T08:00:00+00:00")
-        update_call = next(c for c in cur.execute.call_args_list if "UPDATE trade_journals" in c.args[0])
+        update_call = next(
+            c for c in cur.execute.call_args_list if "UPDATE trade_journals" in c.args[0]
+        )
         assert update_call.args[1] == ("T2", "md", "2026-08-08T08:00:00+00:00", "j1")
 
     def test_content_only(self, monkeypatch) -> None:
         cur = Mock()
         _ok(cur)
         monkeypatch.setattr(journal, "get_connection", lambda: _fake_conn(cur))
-        journal.update_journal(journal_id="j1", content_md="md2", updated_at="2026-08-08T08:00:00+00:00")
-        update_call = next(c for c in cur.execute.call_args_list if "UPDATE trade_journals" in c.args[0])
+        journal.update_journal(
+            journal_id="j1", content_md="md2", updated_at="2026-08-08T08:00:00+00:00"
+        )
+        update_call = next(
+            c for c in cur.execute.call_args_list if "UPDATE trade_journals" in c.args[0]
+        )
         assert update_call.args[1] == ("T", "md2", "2026-08-08T08:00:00+00:00", "j1")
 
 

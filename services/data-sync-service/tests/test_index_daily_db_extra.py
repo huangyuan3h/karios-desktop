@@ -8,7 +8,19 @@ import pandas as pd
 
 from data_sync_service.db import index_daily as idd
 
-COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"]
+COLS = [
+    "ts_code",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "change",
+    "pct_chg",
+    "vol",
+    "amount",
+]
 
 
 class _Cur:
@@ -73,6 +85,7 @@ def _row(*vals):
 
 # ---- fetch_index_daily -----------------------------------------------------
 
+
 def test_fetch_index_daily_all_filters(monkeypatch) -> None:
     from datetime import datetime
 
@@ -81,7 +94,9 @@ def test_fetch_index_daily_all_filters(monkeypatch) -> None:
         ("000001.SH", datetime(2026, 8, 6), None, None, None, None, None, None, None, None, None),
     ]
     cur = _patch(monkeypatch, rows)
-    out = idd.fetch_index_daily(ts_code="000001.SH", start_date="2026-08-01", end_date="2026-08-07", limit=10)
+    out = idd.fetch_index_daily(
+        ts_code="000001.SH", start_date="2026-08-01", end_date="2026-08-07", limit=10
+    )
     assert len(out) == 2
     assert out[0]["trade_date"] == "2026-08-06"  # reversed: oldest first
     assert out[0]["close"] is None
@@ -104,6 +119,7 @@ def test_fetch_index_daily_empty(monkeypatch) -> None:
 
 
 # ---- fetch_last_closes family ----------------------------------------------
+
 
 def test_fetch_last_closes(monkeypatch) -> None:
     rows = [(date(2026, 8, 7), 4.5), (date(2026, 8, 6), 4.2)]
@@ -168,13 +184,36 @@ def test_fetch_last_closes_vol_batch_with_as_of(monkeypatch) -> None:
 
 # ---- upsert / get_last_trade_date -----------------------------------------
 
+
 def test_upsert_from_dataframe(monkeypatch) -> None:
     df = pd.DataFrame(
         [
-            {"ts_code": "000001.SH", "trade_date": 20260807, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5,
-             "pre_close": 1.4, "change": 0.1, "pct_chg": 7.1, "vol": 100, "amount": 200},
-            {"ts_code": "000001.SH", "trade_date": "2026-08-06", "open": None, "high": None, "low": None,
-             "close": None, "pre_close": None, "change": None, "pct_chg": None, "vol": None, "amount": None},
+            {
+                "ts_code": "000001.SH",
+                "trade_date": 20260807,
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "pre_close": 1.4,
+                "change": 0.1,
+                "pct_chg": 7.1,
+                "vol": 100,
+                "amount": 200,
+            },
+            {
+                "ts_code": "000001.SH",
+                "trade_date": "2026-08-06",
+                "open": None,
+                "high": None,
+                "low": None,
+                "close": None,
+                "pre_close": None,
+                "change": None,
+                "pct_chg": None,
+                "vol": None,
+                "amount": None,
+            },
         ]
     )
     cur = _patch(monkeypatch)

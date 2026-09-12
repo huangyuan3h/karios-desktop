@@ -68,10 +68,12 @@ def _patch_conn(monkeypatch, cur: _FakeCur):
 
 
 def test_repair_updates_mislabeled(monkeypatch) -> None:
-    cur = _FakeCur([
-        [("2025-06-16", "CN:00004", "strong_scoop_exhaustion")],  # bad rows
-        [],  # no HK twin → UPDATE
-    ])
+    cur = _FakeCur(
+        [
+            [("2025-06-16", "CN:00004", "strong_scoop_exhaustion")],  # bad rows
+            [],  # no HK twin → UPDATE
+        ]
+    )
     conn = _patch_conn(monkeypatch, cur)
     out = fss.repair_hk_symbols()
     assert out == {"repaired": 1, "dropped_duplicates": 0}
@@ -81,10 +83,12 @@ def test_repair_updates_mislabeled(monkeypatch) -> None:
 
 
 def test_repair_drops_duplicate_when_twin_exists(monkeypatch) -> None:
-    cur = _FakeCur([
-        [("2025-06-16", "CN:00004", "strong_scoop_exhaustion")],
-        [(1,)],  # HK twin exists → DELETE duplicate
-    ])
+    cur = _FakeCur(
+        [
+            [("2025-06-16", "CN:00004", "strong_scoop_exhaustion")],
+            [(1,)],  # HK twin exists → DELETE duplicate
+        ]
+    )
     _patch_conn(monkeypatch, cur)
     out = fss.repair_hk_symbols()
     assert out == {"repaired": 0, "dropped_duplicates": 1}

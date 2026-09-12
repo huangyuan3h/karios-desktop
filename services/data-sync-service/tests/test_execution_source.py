@@ -61,6 +61,7 @@ def test_infer_source_empty_symbol_falls_back_to_manual():
     assert infer_source(symbol="") == "MANUAL"
     assert infer_source(symbol="  ") == "MANUAL"
 
+
 def test_aggregate_source_stats_handles_db_failures(monkeypatch) -> None:
     """Every upstream read failing must still yield the lean shape (no crash)."""
     from data_sync_service.service import execution_source as es
@@ -75,7 +76,13 @@ def test_aggregate_source_stats_handles_db_failures(monkeypatch) -> None:
     # UNKNOWN bucket appears because the pre-TIP-011 rows may exist; here the
     # dict contains it only when something was seen — with all-empty reads it
     # stays empty.
-    assert set(out.keys()) >= {"sinceDays", "lookbackDays", "generatedAt", "bySource", "openTradesBySource"}
+    assert set(out.keys()) >= {
+        "sinceDays",
+        "lookbackDays",
+        "generatedAt",
+        "bySource",
+        "openTradesBySource",
+    }
 
 
 def test_aggregate_source_stats_drops_zero_buckets_keeps_unknown(monkeypatch) -> None:

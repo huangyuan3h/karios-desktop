@@ -8,6 +8,7 @@ from data_sync_service.db.trade_calendar import (
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_date_str_none():
     assert _date_str(None) is None
 

@@ -14,7 +14,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-HEALTHCHECK = REPO_ROOT / "services" / "data-sync-service" / "scripts" / "data-source-healthcheck.sh"
+HEALTHCHECK = (
+    REPO_ROOT / "services" / "data-sync-service" / "scripts" / "data-source-healthcheck.sh"
+)
 AUDIT_DOC = REPO_ROOT / "docs" / "designs" / "data-source-audit-2026-08.md"
 
 
@@ -50,7 +52,11 @@ def test_healthcheck_runs_with_no_env() -> None:
     import os
 
     # Strip the inherited env to simulate a fresh machine.
-    clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("TU_", "DATABASE_", "KARIOS_", "AI_", "OPENAI_", "GOOGLE_"))}
+    clean_env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("TU_", "DATABASE_", "KARIOS_", "AI_", "OPENAI_", "GOOGLE_"))
+    }
     result = subprocess.run(
         [str(HEALTHCHECK)],
         capture_output=True,
@@ -59,7 +65,9 @@ def test_healthcheck_runs_with_no_env() -> None:
         env=clean_env,
     )
     # exit code may be 1 (fail) or 2 (degraded) but never 3+.
-    assert result.returncode in (1, 2), f"unexpected exit: {result.returncode}\n{result.stdout}\n{result.stderr}"
+    assert result.returncode in (1, 2), (
+        f"unexpected exit: {result.returncode}\n{result.stdout}\n{result.stderr}"
+    )
     # The summary line must appear.
     assert "Summary" in result.stdout
 
@@ -69,7 +77,9 @@ def test_healthcheck_reports_required_keys_when_missing() -> None:
     them out by name — not silently pass."""
     import os
 
-    clean_env = {k: v for k, v in os.environ.items() if k not in {"TU_SHARE_API_KEY", "DATABASE_URL"}}
+    clean_env = {
+        k: v for k, v in os.environ.items() if k not in {"TU_SHARE_API_KEY", "DATABASE_URL"}
+    }
     result = subprocess.run(
         [str(HEALTHCHECK)],
         capture_output=True,

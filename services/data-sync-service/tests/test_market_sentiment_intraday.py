@@ -12,8 +12,20 @@ def test_fetch_cn_market_breadth_intraday_aggregates(monkeypatch) -> None:
         lambda codes: {
             "ok": True,
             "items": [
-                {"ts_code": "000001.SZ", "price": "10.12", "pre_close": "10.00", "volume": "100", "amount": "1200"},
-                {"ts_code": "000002.SZ", "price": "9.94", "pre_close": "10.00", "volume": "200", "amount": "1800"},
+                {
+                    "ts_code": "000001.SZ",
+                    "price": "10.12",
+                    "pre_close": "10.00",
+                    "volume": "100",
+                    "amount": "1200",
+                },
+                {
+                    "ts_code": "000002.SZ",
+                    "price": "9.94",
+                    "pre_close": "10.00",
+                    "volume": "200",
+                    "amount": "1800",
+                },
             ],
         },
     )

@@ -192,7 +192,9 @@ def _render_markdown(stats: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append(f"# Karios 周度决策质量报告（{w['start']} ~ {w['end']}）")
     lines.append("")
-    lines.append("> 数据驱动报告：数字来自决策日志 / paper（净口径）/ 卖出归因，不含 LLM 推断。样本不足时明确标注。")
+    lines.append(
+        "> 数据驱动报告：数字来自决策日志 / paper（净口径）/ 卖出归因，不含 LLM 推断。样本不足时明确标注。"
+    )
     lines.append("")
 
     # 1) decision volume
@@ -201,9 +203,13 @@ def _render_markdown(stats: dict[str, Any]) -> str:
     if fired["total"] == 0:
         lines.append("- 本周无 BUY/ADD 信号。")
     else:
-        srcs = " · ".join(f"{k} {v}" for k, v in sorted(fired["bySource"].items(), key=lambda x: -x[1]))
+        srcs = " · ".join(
+            f"{k} {v}" for k, v in sorted(fired["bySource"].items(), key=lambda x: -x[1])
+        )
         lines.append(f"- BUY/ADD 信号共 **{fired['total']}** 条：{srcs}")
-    lines.append(f"- Watchlist 池 {stats['registry']['total']} 只（持仓 {stats['registry']['held']}）· Automation 运行 {stats['funnel']['runs']} 次（新增 {stats['funnel']['screenerAdded']}）")
+    lines.append(
+        f"- Watchlist 池 {stats['registry']['total']} 只（持仓 {stats['registry']['held']}）· Automation 运行 {stats['funnel']['runs']} 次（新增 {stats['funnel']['screenerAdded']}）"
+    )
     lines.append("")
 
     # 2) paper outcomes
@@ -284,7 +290,11 @@ def _auto_notes(stats: dict[str, Any]) -> list[str]:
     for src, n in sorted(fired["bySource"].items(), key=lambda x: -x[1]):
         if n >= 5:
             notes.append(f"信号主要来自 {src}（{n} 条）——该通道占比过高时注意供给单一化。")
-    if attr.get("earlyRate") is not None and attr["earlyRate"] >= 0.5 and attr.get("withForward", 0) >= 5:
+    if (
+        attr.get("earlyRate") is not None
+        and attr["earlyRate"] >= 0.5
+        and attr.get("withForward", 0) >= 5
+    ):
         notes.append("卖早率高——Chandelier/止盈阈值可考虑放宽，但改参数前先用 paper 跑一周对照。")
     if stats["funnel"]["runs"] == 0:
         notes.append("本周 Automation 未运行——检查调度（盘后 17:30 cron）。")

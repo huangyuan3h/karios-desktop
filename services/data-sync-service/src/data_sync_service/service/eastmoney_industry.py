@@ -45,7 +45,12 @@ def _em_opener() -> urllib.request.OpenerDirector | None:
 
 def _open_url(req: urllib.request.Request, timeout: float):
     opener = _em_opener()
-    return opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)
+    return (
+        opener.open(req, timeout=timeout)
+        if opener
+        else urllib.request.urlopen(req, timeout=timeout)
+    )
+
 
 JOB_TYPE = "eastmoney_industry_sync"
 
@@ -317,7 +322,9 @@ def sync_eastmoney_industry_incremental(
             ]
             updated = upsert_rows(rows)
             if resolved:
-                insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
+                insert_record(
+                    job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None
+                )
             else:
                 # H10/H1 lesson: an all-empty batch used to be recorded as
                 # success — the job looked green while the upstream source was

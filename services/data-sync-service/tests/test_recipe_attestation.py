@@ -15,12 +15,7 @@ import re
 from pathlib import Path
 
 TS_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "packages"
-    / "shared"
-    / "src"
-    / "schemas"
-    / "twinStar.ts"
+    Path(__file__).resolve().parents[3] / "packages" / "shared" / "src" / "schemas" / "twinStar.ts"
 )
 
 

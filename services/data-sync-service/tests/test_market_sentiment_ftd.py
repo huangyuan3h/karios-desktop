@@ -73,31 +73,38 @@ def test_ftd_triggered_when_all_conditions_met() -> None:
 def test_ftd_overrides_capitulation_in_compute() -> None:
     from data_sync_service.service.market_sentiment import compute_cn_sentiment_for_date
 
-    with patch(
-        "data_sync_service.service.market_sentiment.fetch_cn_market_breadth_eod",
-        return_value={
-            "up_count": 3200,
-            "down_count": 800,
-            "flat_count": 100,
-            "up_down_ratio": 4.0,
-            "total_turnover_cny": 1.8e12,
-            "total_volume": 1.0,
-        },
-    ), patch(
-        "data_sync_service.service.market_sentiment._prev_open_date",
-        return_value=date(2026, 6, 26),
-    ), patch(
-        "data_sync_service.service.market_sentiment._close_limit_up_pool_codes",
-        return_value=[],
-    ), patch(
-        "data_sync_service.service.market_sentiment._failed_limitup_rate_from_db",
-        return_value=(10.0, 5, 2),
-    ), patch(
-        "data_sync_service.service.market_sentiment.check_capitulation_bottom",
-        return_value={"triggered": True, "rule": "cap", "raw": {}},
-    ), patch(
-        "data_sync_service.service.market_sentiment.check_follow_through_day",
-        return_value={"triggered": True, "rule": "ftd_rule", "raw": {"ok": True}},
+    with (
+        patch(
+            "data_sync_service.service.market_sentiment.fetch_cn_market_breadth_eod",
+            return_value={
+                "up_count": 3200,
+                "down_count": 800,
+                "flat_count": 100,
+                "up_down_ratio": 4.0,
+                "total_turnover_cny": 1.8e12,
+                "total_volume": 1.0,
+            },
+        ),
+        patch(
+            "data_sync_service.service.market_sentiment._prev_open_date",
+            return_value=date(2026, 6, 26),
+        ),
+        patch(
+            "data_sync_service.service.market_sentiment._close_limit_up_pool_codes",
+            return_value=[],
+        ),
+        patch(
+            "data_sync_service.service.market_sentiment._failed_limitup_rate_from_db",
+            return_value=(10.0, 5, 2),
+        ),
+        patch(
+            "data_sync_service.service.market_sentiment.check_capitulation_bottom",
+            return_value={"triggered": True, "rule": "cap", "raw": {}},
+        ),
+        patch(
+            "data_sync_service.service.market_sentiment.check_follow_through_day",
+            return_value={"triggered": True, "rule": "ftd_rule", "raw": {"ok": True}},
+        ),
     ):
         out = compute_cn_sentiment_for_date("2026-06-27")
 

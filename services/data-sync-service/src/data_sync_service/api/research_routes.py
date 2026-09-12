@@ -41,7 +41,9 @@ def list_reports_endpoint(
     """Recent research reports (newest first)."""
     from data_sync_service.service.research import list_research_reports
 
-    reports = [_report_row_to_camel(r) for r in list_research_reports(limit=limit, window_days=days)]
+    reports = [
+        _report_row_to_camel(r) for r in list_research_reports(limit=limit, window_days=days)
+    ]
     return {"ok": True, "reports": reports}
 
 

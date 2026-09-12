@@ -27,9 +27,7 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = run_guarded(
-        JOB_ID, lambda: sync_close(exchange="SSE", force=False), log=logger
-    )
+    result = run_guarded(JOB_ID, lambda: sync_close(exchange="SSE", force=False), log=logger)
     if result is None:
         return  # exception path already recorded + logged
     if result.get("ok"):
@@ -52,4 +50,3 @@ def run() -> None:
     else:
         logger.warning("close_sync failed: %s", result.get("error", "unknown"))
         record_failure(JOB_ID, result.get("error", "unknown"))
-

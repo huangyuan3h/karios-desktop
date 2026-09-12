@@ -37,13 +37,15 @@ def _patch(monkeypatch, pro=None, last_ok=None):
 
 
 def _etf_df(n=2):
-    return pd.DataFrame({
-        "ts_code": ["510300.SH", "159915.SZ"],
-        "name": ["沪深300ETF", "创业板ETF"],
-        "fund_type": ["股票型", "股票型"],
-        "list_date": ["2012-05-28", None],
-        "delist_date": [None, "20260101"],
-    })[:n]
+    return pd.DataFrame(
+        {
+            "ts_code": ["510300.SH", "159915.SZ"],
+            "name": ["沪深300ETF", "创业板ETF"],
+            "fund_type": ["股票型", "股票型"],
+            "list_date": ["2012-05-28", None],
+            "delist_date": [None, "20260101"],
+        }
+    )[:n]
 
 
 def test_parse_iso_datetime() -> None:
@@ -68,7 +70,15 @@ def test_is_same_utc_month() -> None:
 
 def test_map_etf_basic_to_stock_basic_df() -> None:
     out = fb.map_etf_basic_to_stock_basic_df(_etf_df())
-    assert list(out.columns) == ["ts_code", "symbol", "name", "industry", "market", "list_date", "delist_date"]
+    assert list(out.columns) == [
+        "ts_code",
+        "symbol",
+        "name",
+        "industry",
+        "market",
+        "list_date",
+        "delist_date",
+    ]
     assert out["symbol"].tolist() == ["510300", "159915"]
     assert out["market"].tolist() == ["ETF", "ETF"]
     assert out["list_date"].tolist()[0] == "2012-05-28"
@@ -93,12 +103,14 @@ def test_map_etf_basic_missing_columns() -> None:
 
 
 def test_map_etf_basic_bad_cells() -> None:
-    df = pd.DataFrame({
-        "ts_code": [None, " ", 12345],
-        "name": ["x", "y", "z"],
-        "fund_type": [None, " ", "股票型"],
-        "list_date": ["20260101", "not-a-date", None],
-    })
+    df = pd.DataFrame(
+        {
+            "ts_code": [None, " ", 12345],
+            "name": ["x", "y", "z"],
+            "fund_type": [None, " ", "股票型"],
+            "list_date": ["20260101", "not-a-date", None],
+        }
+    )
     out = fb.map_etf_basic_to_stock_basic_df(df)
     assert pd.isna(out["symbol"].tolist()[0]) and pd.isna(out["symbol"].tolist()[1])
     assert out["symbol"].tolist()[2] == "12345"

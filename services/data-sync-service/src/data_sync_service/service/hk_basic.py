@@ -41,7 +41,9 @@ def map_hk_basic_to_stock_basic_df(hk_df: pd.DataFrame) -> pd.DataFrame:
     - ts_code, symbol, name, industry, market, list_date, delist_date
     """
     if hk_df is None or hk_df.empty:
-        return pd.DataFrame(columns=["ts_code", "symbol", "name", "industry", "market", "list_date", "delist_date"])
+        return pd.DataFrame(
+            columns=["ts_code", "symbol", "name", "industry", "market", "list_date", "delist_date"]
+        )
 
     def _symbol_from_ts_code(ts_code: object) -> str | None:
         if ts_code is None or pd.isna(ts_code):
@@ -53,8 +55,12 @@ def map_hk_basic_to_stock_basic_df(hk_df: pd.DataFrame) -> pd.DataFrame:
 
     ts_codes = hk_df["ts_code"] if "ts_code" in hk_df.columns else pd.Series([None] * len(hk_df))
     names = hk_df["name"] if "name" in hk_df.columns else pd.Series([None] * len(hk_df))
-    list_dates = hk_df["list_date"] if "list_date" in hk_df.columns else pd.Series([None] * len(hk_df))
-    delist_dates = hk_df["delist_date"] if "delist_date" in hk_df.columns else pd.Series([None] * len(hk_df))
+    list_dates = (
+        hk_df["list_date"] if "list_date" in hk_df.columns else pd.Series([None] * len(hk_df))
+    )
+    delist_dates = (
+        hk_df["delist_date"] if "delist_date" in hk_df.columns else pd.Series([None] * len(hk_df))
+    )
 
     out = pd.DataFrame()
     out["ts_code"] = ts_codes
@@ -117,4 +123,3 @@ def sync_hk_basic(
     except Exception as exc:  # noqa: BLE001
         insert_record(job_type=JOB_TYPE, success=False, last_ts_code=None, error_message=str(exc))
         return {"ok": False, "error": str(exc)}
-

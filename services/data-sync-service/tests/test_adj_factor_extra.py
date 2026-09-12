@@ -60,8 +60,12 @@ def test_sync_no_stock_list(monkeypatch) -> None:
 
 
 def test_sync_resumes_after_marker(monkeypatch) -> None:
-    pro = _patch(monkeypatch, ts_codes=["600000.SH", "600001.SH", "600002.SH"],
-                 run={"success": False, "last_ts_code": "600001.SH"}, last=date(2026, 8, 6))
+    pro = _patch(
+        monkeypatch,
+        ts_codes=["600000.SH", "600001.SH", "600002.SH"],
+        run={"success": False, "last_ts_code": "600001.SH"},
+        last=date(2026, 8, 6),
+    )
     out = af.sync_adj_factor_full()
     assert out["ok"] is True
     assert pro.calls[0]["ts_code"] == "600002.SH"
@@ -69,8 +73,12 @@ def test_sync_resumes_after_marker(monkeypatch) -> None:
 
 
 def test_sync_resume_unknown_marker_restarts(monkeypatch) -> None:
-    pro = _patch(monkeypatch, ts_codes=["600000.SH"],
-                 run={"success": False, "last_ts_code": "nope.UN"}, last=date(2026, 8, 6))
+    pro = _patch(
+        monkeypatch,
+        ts_codes=["600000.SH"],
+        run={"success": False, "last_ts_code": "nope.UN"},
+        last=date(2026, 8, 6),
+    )
     assert af.sync_adj_factor_full()["ok"] is True
     assert pro.calls[0]["ts_code"] == "600000.SH"
 

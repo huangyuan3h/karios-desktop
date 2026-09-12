@@ -37,10 +37,20 @@ class TestUpsert:
         monkeypatch.setattr(tc, "get_connection", lambda: conn)
         df = pd.DataFrame(
             [
-                {"exchange": "SSE", "cal_date": "20240101", "pretrade_date": "20231229", "is_open": 1},
+                {
+                    "exchange": "SSE",
+                    "cal_date": "20240101",
+                    "pretrade_date": "20231229",
+                    "is_open": 1,
+                },
                 {"exchange": None, "cal_date": pd.NA, "pretrade_date": pd.NA, "is_open": 0},
                 {"exchange": "SSE", "cal_date": pd.NaT, "pretrade_date": None, "is_open": 0},
-                {"exchange": " SZSE ", "cal_date": "2024-01-02", "pretrade_date": "2023-12-29", "is_open": 0},
+                {
+                    "exchange": " SZSE ",
+                    "cal_date": "2024-01-02",
+                    "pretrade_date": "2023-12-29",
+                    "is_open": 0,
+                },
             ]
         )
         assert tc.upsert_from_dataframe(df) == 2
@@ -100,7 +110,13 @@ class TestQueries:
         cur.fetchone.return_value = (10, 7)
         monkeypatch.setattr(tc, "get_connection", lambda: _fake_conn(cur))
         out = tc.summary("SSE", date(2024, 1, 1), date(2024, 1, 31))
-        assert out == {"exchange": "SSE", "start_date": "2024-01-01", "end_date": "2024-01-31", "rows": 10, "open_days": 7}
+        assert out == {
+            "exchange": "SSE",
+            "start_date": "2024-01-01",
+            "end_date": "2024-01-31",
+            "rows": 10,
+            "open_days": 7,
+        }
 
     def test_summary_none(self, monkeypatch) -> None:
         cur = Mock()
@@ -112,11 +128,19 @@ class TestQueries:
 
 class TestService:
     def test_missing_api_key(self, monkeypatch) -> None:
-        monkeypatch.setattr(tc_svc, "get_settings", lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()))
+        monkeypatch.setattr(
+            tc_svc,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()),
+        )
         assert tc_svc.sync_trade_calendar()["ok"] is False
 
     def test_single_page(self, monkeypatch) -> None:
-        monkeypatch.setattr(tc_svc, "get_settings", lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            tc_svc,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)),
+        )
         pro = SimpleNamespace(trade_cal=lambda **kw: pd.DataFrame([{"cal_date": "20240101"}]))
         monkeypatch.setattr(tc_svc, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(tc_svc, "upsert_from_dataframe", lambda df: len(df))
@@ -125,7 +149,11 @@ class TestService:
         assert out["ok"] is True and out["updated"] == 1 and out["summary"] == {"rows": 1}
 
     def test_pagination(self, monkeypatch) -> None:
-        monkeypatch.setattr(tc_svc, "get_settings", lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            tc_svc,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)),
+        )
         page = pd.DataFrame([{"cal_date": f"20240{i}01"} for i in range(1, 5000)])
         empty = pd.DataFrame()
         pro = SimpleNamespace(trade_cal=lambda **kw: page if kw["offset"] == 0 else empty)
@@ -136,7 +164,11 @@ class TestService:
         assert out["updated"] == 4999
 
     def test_empty_first_page(self, monkeypatch) -> None:
-        monkeypatch.setattr(tc_svc, "get_settings", lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            tc_svc,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key="k", tushare_tokens=("k",)),
+        )
         pro = SimpleNamespace(trade_cal=lambda **kw: pd.DataFrame())
         monkeypatch.setattr(tc_svc, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(tc_svc, "upsert_from_dataframe", lambda df: len(df))

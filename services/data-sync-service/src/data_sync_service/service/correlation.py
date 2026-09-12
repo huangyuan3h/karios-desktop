@@ -46,7 +46,13 @@ RETURN_WINDOW_DAYS = 20
 
 # ETF ticker-prefix → tracked-index bucket (CN-listed ETFs).
 ETF_CLUSTER_PREFIXES: dict[tuple[str, ...], str] = {
-    ("513180", "159740", "513330", "513050", "159605"): "tech_hk",  # 恒生科技 / 恒生互联网 / 中概互联
+    (
+        "513180",
+        "159740",
+        "513330",
+        "513050",
+        "159605",
+    ): "tech_hk",  # 恒生科技 / 恒生互联网 / 中概互联
     ("512480", "159995", "512760", "159813"): "semiconductor",  # 半导体 / 芯片
     ("512660", "159516"): "tech_comm",  # 军工通信（近似）— 通信 ETF 516880/159519 另列
     ("516880", "159519", "159383"): "tech_comm",  # 通信 / CPO ETF
@@ -286,11 +292,13 @@ def _symbol_to_ts_code_corr(symbol: str) -> str | None:
     if s.startswith("ETF:"):
         t = s.split(":", 1)[1]
         if len(t) == 6 and t.isdigit():
-            return f"{t}.{'SH' if t[0] in ('5','6','9') else 'SZ'}"
+            return f"{t}.{'SH' if t[0] in ('5', '6', '9') else 'SZ'}"
     return None
 
 
-def correlation_matrix(symbols: list[str], days: int = 20) -> tuple[dict[tuple[str, str], float], int]:
+def correlation_matrix(
+    symbols: list[str], days: int = 20
+) -> tuple[dict[tuple[str, str], float], int]:
     """20-day close-return correlation across a UNION calendar.
 
     Returns ((pair) -> pearson r, aligned_sample_count). Returns empty dict
@@ -342,8 +350,7 @@ def correlation_matrix(symbols: list[str], days: int = 20) -> tuple[dict[tuple[s
 
     # Aligned sample: days where ALL series have a close.
     aligned_dates = [
-        d for i, d in enumerate(union_dates)
-        if all(v[i] is not None for v in series.values())
+        d for i, d in enumerate(union_dates) if all(v[i] is not None for v in series.values())
     ]
     if len(aligned_dates) < MIN_ALIGNED_DAYS:
         return {}, len(aligned_dates)
@@ -368,7 +375,7 @@ def correlation_matrix(symbols: list[str], days: int = 20) -> tuple[dict[tuple[s
     syms = [s for s in series if len(returns[s]) >= MIN_ALIGNED_DAYS - 1]
     out: dict[tuple[str, str], float] = {}
     for i, a in enumerate(syms):
-        for b in syms[i + 1:]:
+        for b in syms[i + 1 :]:
             n = min(len(returns[a]), len(returns[b]))
             if n < MIN_ALIGNED_DAYS - 1:
                 continue

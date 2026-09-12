@@ -183,7 +183,9 @@ def pipeline_status() -> dict[str, Any]:
     }
 
 
-def run_alpha_radar_ingest(*, trigger: str = "manual", force_reprocess: bool = False) -> dict[str, Any]:
+def run_alpha_radar_ingest(
+    *, trigger: str = "manual", force_reprocess: bool = False
+) -> dict[str, Any]:
     add_default_sources()
     ingest_result = fetch_all_sources(
         enrich_fulltext=None,
@@ -216,7 +218,9 @@ def run_alpha_radar_ingest(*, trigger: str = "manual", force_reprocess: bool = F
         "ingest": ingest_result,
         "ingestStats": ingest_stats,
         "rawBacklogCount": count_documents_by_status("raw"),
-        "errors": [{"error": error_message, "sourceErrors": source_errors}] if error_message else [],
+        "errors": [{"error": error_message, "sourceErrors": source_errors}]
+        if error_message
+        else [],
     }
 
 
@@ -328,7 +332,9 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
         kept_previous = True
         success = False
         if errors:
-            error_message = str(errors[0].get("error") or "LLM produced 0 trends; kept previous cards")
+            error_message = str(
+                errors[0].get("error") or "LLM produced 0 trends; kept previous cards"
+            )
             for err in errors:
                 msg = str(err.get("error") or "")
                 if "ai-service" in msg or "LLM returned" in msg:

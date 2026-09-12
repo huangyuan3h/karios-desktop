@@ -87,24 +87,41 @@ class TestWinRates:
 class TestSectorFlow:
     def test_top_empty(self, monkeypatch) -> None:
         monkeypatch.setattr(qa, "get_latest_industry_date", lambda: "")
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: None)
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.trade_dates_upto", lambda *a, **k: [])
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: None
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.trade_dates_upto", lambda *a, **k: []
+        )
         assert qa._recent_sector_flow_top() == {}
         assert qa._recent_sector_flow_out() == {}
 
     def test_top_dates_empty(self, monkeypatch) -> None:
         monkeypatch.setattr(qa, "get_latest_industry_date", lambda: "2026-08-07")
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: None)
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.trade_dates_upto", lambda *a, **k: [])
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: None
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.trade_dates_upto", lambda *a, **k: []
+        )
         assert qa._recent_sector_flow_top() == {}
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: "2026-08-07")
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.resolve_effective_as_of",
+            lambda d: "2026-08-07",
+        )
         assert qa._recent_sector_flow_out() == {}
         assert qa._recent_sector_flow_top() == {}
 
     def test_top_and_out(self, monkeypatch) -> None:
         monkeypatch.setattr(qa, "get_latest_industry_date", lambda: "2026-08-07")
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.resolve_effective_as_of", lambda d: "2026-08-07")
-        monkeypatch.setattr("data_sync_service.service.trade_calendar_utils.trade_dates_upto", lambda *a, **k: ["2026-08-07"])
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.resolve_effective_as_of",
+            lambda d: "2026-08-07",
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.trade_dates_upto",
+            lambda *a, **k: ["2026-08-07"],
+        )
         sums = [
             {"industry_name": "电子", "sum_inflow": 100.0},
             {"industry_name": "银行", "sum_inflow": -50.0},
@@ -128,7 +145,9 @@ class TestPenalty:
         seed.write_text(json.dumps({"themes": {"T1": ["半导体"]}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed))
         monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒"})
-        r = qa.compute_auto_qa_penalty(symbol="CN:600519", macro_theme="T1", confidence=0.9, config=cfg)
+        r = qa.compute_auto_qa_penalty(
+            symbol="CN:600519", macro_theme="T1", confidence=0.9, config=cfg
+        )
         assert r["penalty"] == 0.6
         assert "industry_mismatch" in r["signals"]
         assert r["signals"]["industry_mismatch"]["expected"] == ["半导体"]
@@ -138,7 +157,9 @@ class TestPenalty:
         seed.write_text(json.dumps({"themes": {"T1": ["白酒"]}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed))
         monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒"})
-        r = qa.compute_auto_qa_penalty(symbol="CN:600519", macro_theme="T1", confidence=0.9, config=cfg)
+        r = qa.compute_auto_qa_penalty(
+            symbol="CN:600519", macro_theme="T1", confidence=0.9, config=cfg
+        )
         assert r["penalty"] == 0.0 and r["industry"] == "白酒"
 
     def test_ambiguous(self, monkeypatch, tmp_path) -> None:
@@ -146,7 +167,9 @@ class TestPenalty:
         seed.write_text(json.dumps({"themes": {}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed))
         monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {})
-        r = qa.compute_auto_qa_penalty(symbol="CN:600519", macro_theme=None, confidence=0.5, name_ambiguous=True, config=cfg)
+        r = qa.compute_auto_qa_penalty(
+            symbol="CN:600519", macro_theme=None, confidence=0.5, name_ambiguous=True, config=cfg
+        )
         assert r["penalty"] == 0.4
         assert "name_ambiguous" in r["signals"]
 
@@ -155,7 +178,9 @@ class TestPenalty:
         seed.write_text(json.dumps({"themes": {}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed))
         monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒"})
-        r = qa.compute_auto_qa_penalty(symbol="CN:600519", macro_theme="NOPE", confidence=0.5, config=cfg)
+        r = qa.compute_auto_qa_penalty(
+            symbol="CN:600519", macro_theme="NOPE", confidence=0.5, config=cfg
+        )
         assert r["penalty"] == 0.0
 
 
@@ -164,11 +189,18 @@ class TestCatalyst:
         seed = tmp_path / "map.json"
         seed.write_text(json.dumps({"themes": {"T1": ["半导体"]}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed))
-        monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "300750.SZ": "半导体"})
+        monkeypatch.setattr(
+            qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "300750.SZ": "半导体"}
+        )
         items = [
             {"symbol": "CN:600519", "macroTheme": "T1", "nameAmbiguous": True},
             {"symbol": "CN:300750", "macroTheme": "T1", "nameAmbiguous": False},
-            {"symbol": "CN:300750", "macroTheme": None, "articles": [{"macroTheme": "T1"}], "nameAmbiguous": False},
+            {
+                "symbol": "CN:300750",
+                "macroTheme": None,
+                "articles": [{"macroTheme": "T1"}],
+                "nameAmbiguous": False,
+            },
             {"symbol": "bad", "macroTheme": "T1", "nameAmbiguous": False},
         ]
         out = qa.compute_auto_qa_penalty_for_catalyst(items, config=cfg)
@@ -183,24 +215,34 @@ class TestStats:
         seed = tmp_path / "map.json"
         seed.write_text(json.dumps({"themes": {"T1": ["半导体"]}}))
         cfg = qa.AutoQaConfig(seed_path=str(seed), lookback_days=30, min_win_rate=0.3)
-        monkeypatch.setattr(qa, "fetch_trends", lambda **kw: (
-            [],
-            [
-                {
-                    "id": "tr-1",
-                    "trendName": "半导体链",
-                    "macroTheme": "T1",
-                    "cnSymbols": [
-                        {"symbol": "CN:600519", "name": "贵州茅台"},
-                        {"symbol": "CN:300750", "name": "宁德时代"},
-                        "not-a-dict",
-                    ],
-                },
-                {"id": "tr-2", "trendName": "", "macroTheme": "", "cnSymbols": []},
-            ],
-        ))
-        monkeypatch.setattr(qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "300750.SZ": "半导体"})
-        monkeypatch.setattr(qa, "fetch_theme_win_rates", lambda **kw: {"T1": {"wins": 1, "total": 5, "winRate": 0.2}})
+        monkeypatch.setattr(
+            qa,
+            "fetch_trends",
+            lambda **kw: (
+                [],
+                [
+                    {
+                        "id": "tr-1",
+                        "trendName": "半导体链",
+                        "macroTheme": "T1",
+                        "cnSymbols": [
+                            {"symbol": "CN:600519", "name": "贵州茅台"},
+                            {"symbol": "CN:300750", "name": "宁德时代"},
+                            "not-a-dict",
+                        ],
+                    },
+                    {"id": "tr-2", "trendName": "", "macroTheme": "", "cnSymbols": []},
+                ],
+            ),
+        )
+        monkeypatch.setattr(
+            qa, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "300750.SZ": "半导体"}
+        )
+        monkeypatch.setattr(
+            qa,
+            "fetch_theme_win_rates",
+            lambda **kw: {"T1": {"wins": 1, "total": 5, "winRate": 0.2}},
+        )
         out = qa.get_auto_qa_stats(since_days=7, config=cfg)
         assert out["sinceDays"] == 7
         assert out["themesCovered"] == 1
@@ -221,9 +263,17 @@ class TestNameAmbiguity:
 
     def test_search_ambiguous(self) -> None:
         assert not qa.name_search_is_ambiguous(candidates=[])
-        assert not qa.name_search_is_ambiguous(candidates=[{"name": "a"}, {"name": "b"}], min_candidates=3)
-        assert not qa.name_search_is_ambiguous(candidates=[{"name": "a"}, "not-dict", {"name": "b"}])
-        cands = [{"name": "x", "score": 0.9}, {"name": "y", "score": 0.85}, {"name": "z", "score": 0.1}]
+        assert not qa.name_search_is_ambiguous(
+            candidates=[{"name": "a"}, {"name": "b"}], min_candidates=3
+        )
+        assert not qa.name_search_is_ambiguous(
+            candidates=[{"name": "a"}, "not-dict", {"name": "b"}]
+        )
+        cands = [
+            {"name": "x", "score": 0.9},
+            {"name": "y", "score": 0.85},
+            {"name": "z", "score": 0.1},
+        ]
         assert qa.name_search_is_ambiguous(candidates=cands, gap_threshold=0.1)
         assert not qa.name_search_is_ambiguous(candidates=cands, gap_threshold=0.02)
         no_score = [{"name": "东方财富"}, {"name": "东方财富网"}, {"name": "别的"}]

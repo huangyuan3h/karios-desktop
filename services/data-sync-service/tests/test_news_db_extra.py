@@ -6,9 +6,24 @@ from data_sync_service.db import news as nw
 
 SRC_COLS = ["id", "name", "url", "enabled", "last_fetch", "created_at", "tier", "category"]
 ITEM_COLS = [
-    "id", "source_id", "title", "link", "summary", "published_at", "fetched_at",
-    "is_read", "is_important", "tickers", "sectors", "event_type", "importance",
-    "relevance_score", "ai_summary", "enrichment_status", "enriched_at", "enrichment_model",
+    "id",
+    "source_id",
+    "title",
+    "link",
+    "summary",
+    "published_at",
+    "fetched_at",
+    "is_read",
+    "is_important",
+    "tickers",
+    "sectors",
+    "event_type",
+    "importance",
+    "relevance_score",
+    "ai_summary",
+    "enrichment_status",
+    "enriched_at",
+    "enrichment_model",
     "actionability",
 ]
 
@@ -79,9 +94,19 @@ def _item_row(*vals):
 
 # ---- sources ---------------------------------------------------------------
 
+
 def test_fetch_sources_enabled_and_all(monkeypatch) -> None:
     rows = [
-        ("s1", "财经网", "http://a.com", True, "2026-08-07T10:00:00", "2026-08-01T00:00:00", "B", "macro"),
+        (
+            "s1",
+            "财经网",
+            "http://a.com",
+            True,
+            "2026-08-07T10:00:00",
+            "2026-08-01T00:00:00",
+            "B",
+            "macro",
+        ),
         ("s2", "科创", "http://b.com", False, None, "2026-08-01T00:00:00", None, None),
     ]
     cur = _patch(monkeypatch, rows, [type("C", (), {"name": n})() for n in SRC_COLS])
@@ -100,7 +125,9 @@ def test_fetch_sources_enabled_and_all(monkeypatch) -> None:
 def test_create_source(monkeypatch) -> None:
     row = ("s1", "财经网", "http://a.com", True, None, "2026-08-01T00:00:00", "C", "sector")
     cur = _patch(monkeypatch, [row], [type("C", (), {"name": n})() for n in SRC_COLS])
-    out = nw.create_source(source_id="s1", name="财经网", url="http://a.com", tier="C", category="sector")
+    out = nw.create_source(
+        source_id="s1", name="财经网", url="http://a.com", tier="C", category="sector"
+    )
     assert out["id"] == "s1"
     assert out["tier"] == "C"
     assert out["category"] == "sector"
@@ -138,10 +165,30 @@ def test_delete_source(monkeypatch) -> None:
 
 # ---- items -----------------------------------------------------------------
 
+
 def test_fetch_items_all_filters(monkeypatch) -> None:
     rows = [
-        ("i1", "s1", "标题 <b>x</b>", "http://l", "<p>摘要</p>", "2026-08-07T09:00:00", "2026-08-07T09:00:00",
-         False, True, ["600000"], ["银行"], "宏观", 3, 80, "AI 摘要", "done", "2026-08-07T09:00:00", "gpt-4o", "执行"),
+        (
+            "i1",
+            "s1",
+            "标题 <b>x</b>",
+            "http://l",
+            "<p>摘要</p>",
+            "2026-08-07T09:00:00",
+            "2026-08-07T09:00:00",
+            False,
+            True,
+            ["600000"],
+            ["银行"],
+            "宏观",
+            3,
+            80,
+            "AI 摘要",
+            "done",
+            "2026-08-07T09:00:00",
+            "gpt-4o",
+            "执行",
+        ),
     ]
     cur = _patch(monkeypatch, rows)
     cur.rowcount = 1
@@ -165,11 +212,33 @@ def test_fetch_items_no_filters(monkeypatch) -> None:
 
 
 def test_upsert_item_strips_html(monkeypatch) -> None:
-    row = ("i1", "s1", "标题 x", "http://l", "摘要 y", None, "2026-08-07T09:00:00",
-           False, False, None, None, None, None, None, None, None, None, None)
+    row = (
+        "i1",
+        "s1",
+        "标题 x",
+        "http://l",
+        "摘要 y",
+        None,
+        "2026-08-07T09:00:00",
+        False,
+        False,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     cur = _patch(monkeypatch, [row])
     out = nw.upsert_item(
-        item_id="i1", source_id="s1", title="标题 <b>x</b>", link="http://l", summary="摘要 <i>y</i>",
+        item_id="i1",
+        source_id="s1",
+        title="标题 <b>x</b>",
+        link="http://l",
+        summary="摘要 <i>y</i>",
         fetched_at="2026-08-07T09:00:00",
     )
     assert out["title"] == "标题 x"
@@ -200,10 +269,29 @@ def test_update_source_last_fetch_and_delete_old(monkeypatch) -> None:
 
 # ---- enrichment helpers ----------------------------------------------------
 
+
 def test_fetch_pending_enrichment(monkeypatch) -> None:
     rows = [
-        ("i1", "s1", "t", "http://l", "s", None, "2026-08-07T09:00:00",
-         False, False, None, None, None, None, None, "AI", "failed", None, "gpt"),
+        (
+            "i1",
+            "s1",
+            "t",
+            "http://l",
+            "s",
+            None,
+            "2026-08-07T09:00:00",
+            False,
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "AI",
+            "failed",
+            None,
+            "gpt",
+        ),
     ]
     cur = _patch(monkeypatch, rows)
     out = nw.fetch_pending_enrichment(limit=50)

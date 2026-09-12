@@ -44,10 +44,7 @@ def _days(n: int, start: str = "2025-01-01") -> list[str]:
 # rising +1/day -> close always above the ~100 MA200.
 def _bull_etf(n: int = 220) -> dict[str, float]:
     days = _days(n)
-    return {
-        d: float(100.0 if i < 200 else 101.0 + (i - 200))
-        for i, d in enumerate(days)
-    }
+    return {d: float(100.0 if i < 200 else 101.0 + (i - 200)) for i, d in enumerate(days)}
 
 
 def _flat_then_break_etf(n: int = 220) -> dict[str, float]:
@@ -129,7 +126,12 @@ def test_deployed_cash_not_charged_to_sleeve():
         {
             "date": d,
             "positions": [
-                {"symbol": "CN:600000", "ts_code": "600000.SH", "entry_date": days[0], "position_pct": 0.5}
+                {
+                    "symbol": "CN:600000",
+                    "ts_code": "600000.SH",
+                    "entry_date": days[0],
+                    "position_pct": 0.5,
+                }
             ],
         }
         for d in days

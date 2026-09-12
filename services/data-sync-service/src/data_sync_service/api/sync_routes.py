@@ -146,7 +146,12 @@ def sync_daily_endpoint() -> dict:
     result = sync_close(exchange="SSE", force=False)
     if isinstance(result, dict):
         return {**result, "deprecated": "use /sync/close", "legacy": "sync_daily_full"}
-    return {"ok": True, "result": result, "deprecated": "use /sync/close", "legacy": "sync_daily_full"}
+    return {
+        "ok": True,
+        "result": result,
+        "deprecated": "use /sync/close",
+        "legacy": "sync_daily_full",
+    }
 
 
 @router.post("/sync/hk-daily")
@@ -168,7 +173,9 @@ def sync_hk_industry_endpoint(
         None,
         description="Optional explicit HK ts_codes, e.g. 00700.HK. Overrides limit when set.",
     ),
-    limit: int = Query(500, ge=1, le=5000, description="Max HK codes to update when symbols is empty"),
+    limit: int = Query(
+        500, ge=1, le=5000, description="Max HK codes to update when symbols is empty"
+    ),
 ) -> dict:
     """Sync HK stock industry labels from Xueqiu mbu into stock_basic.industry."""
     from data_sync_service.service.hk_industry import sync_hk_industry
@@ -192,10 +199,13 @@ def sync_adj_factor_endpoint() -> dict:
 
 
 @router.post("/sync/index-daily")
-def sync_index_daily_endpoint(force: bool = Query(False, description="Force sync even if already synced today")) -> dict:
+def sync_index_daily_endpoint(
+    force: bool = Query(False, description="Force sync even if already synced today"),
+) -> dict:
     # Purpose: full index daily sync for selected indices; skip if today already succeeded.
     """Trigger full sync of index daily bars. Skips if today already succeeded; resumes from failure."""
     from data_sync_service.db.sync_job_record import ensure_table, get_connection
+
     if force:
         ensure_table()
         with get_connection() as conn:
@@ -228,9 +238,12 @@ def sync_sleeve_etfs_endpoint() -> dict:
 
 
 @router.post("/sync/macro-daily")
-def sync_macro_daily_endpoint(force: bool = Query(False, description="Force sync even if already synced today")) -> dict:
+def sync_macro_daily_endpoint(
+    force: bool = Query(False, description="Force sync even if already synced today"),
+) -> dict:
     """Trigger full sync of macro/global daily series. Skips if today already succeeded; resumes from failure."""
     from data_sync_service.db.sync_job_record import ensure_table, get_connection
+
     if force:
         ensure_table()
         with get_connection() as conn:
@@ -271,7 +284,9 @@ def sync_option_iv_daily_endpoint(
 @router.post("/sync/top-inst-watchlist")
 def sync_top_inst_watchlist_endpoint(
     force: bool = Query(False, description="Force sync even if already synced today"),
-    trade_date: str | None = Query(None, description="Trade date YYYYMMDD; default latest open day"),
+    trade_date: str | None = Query(
+        None, description="Trade date YYYYMMDD; default latest open day"
+    ),
 ) -> dict:
     """Sync dragon-tiger institutional flow for watchlist symbols."""
     return sync_top_inst_watchlist(force=bool(force), trade_date=trade_date)

@@ -25,8 +25,7 @@ def upgrade() -> None:
     # contains this column, so the statements must be idempotent (IF NOT EXISTS).
     op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS actionability TEXT;")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_news_items_actionability "
-        "ON news_items (actionability);"
+        "CREATE INDEX IF NOT EXISTS idx_news_items_actionability ON news_items (actionability);"
     )
 
 

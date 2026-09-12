@@ -59,4 +59,3 @@ def get_dashboard_sync_stream(force: bool = Query(True)) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
-

@@ -98,7 +98,16 @@ def _bars(
     out = []
     for d in dates:
         c = (closes or {}).get(d, 10.0)
-        out.append((d, str(c), str(high if high is not None else c), str(low if low is not None else c), str(c), vol))
+        out.append(
+            (
+                d,
+                str(c),
+                str(high if high is not None else c),
+                str(low if low is not None else c),
+                str(c),
+                vol,
+            )
+        )
     return out
 
 
@@ -109,18 +118,39 @@ def _bars(
 
 def test_trade_and_summary_to_dict() -> None:
     trade = BacktestTrade(
-        symbol=CN1, market="CN", entry_date="2026-06-18", entry_price=10.0,
-        close_date="2026-06-19", close_price=11.0, gross_pnl_pct=10.0,
-        costs_pct=0.3, pnl_pct=9.7, holding_days=1, close_reason="target_hit",
+        symbol=CN1,
+        market="CN",
+        entry_date="2026-06-18",
+        entry_price=10.0,
+        close_date="2026-06-19",
+        close_price=11.0,
+        gross_pnl_pct=10.0,
+        costs_pct=0.3,
+        pnl_pct=9.7,
+        holding_days=1,
+        close_reason="target_hit",
         score_at_entry=90.0,
     )
     assert trade.to_dict()["close_reason"] == "target_hit"
     summary = BacktestSummary(
-        config={}, calendar_days=2, trades=1, closed=1, open_at_end=0,
-        wins=1, losses=0, win_rate=1.0, avg_net_pnl_pct=9.7,
-        avg_gross_pnl_pct=10.0, avg_costs_pct=0.3, max_drawdown_pct=0.0,
-        total_net_pnl_pct=0.5, annual_net_pnl_pct=1.0, avg_win_pct=9.7,
-        avg_loss_pct=None, sharpe=None, excess_vs_best_benchmark_pct=0.0,
+        config={},
+        calendar_days=2,
+        trades=1,
+        closed=1,
+        open_at_end=0,
+        wins=1,
+        losses=0,
+        win_rate=1.0,
+        avg_net_pnl_pct=9.7,
+        avg_gross_pnl_pct=10.0,
+        avg_costs_pct=0.3,
+        max_drawdown_pct=0.0,
+        total_net_pnl_pct=0.5,
+        annual_net_pnl_pct=1.0,
+        avg_win_pct=9.7,
+        avg_loss_pct=None,
+        sharpe=None,
+        excess_vs_best_benchmark_pct=0.0,
         best_benchmark="",
     )
     assert summary.to_dict()["closed"] == 1
@@ -129,7 +159,8 @@ def test_trade_and_summary_to_dict() -> None:
 def test_init_rejects_unknown_trendok_params(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(be, "_load_calendar", lambda s, e: ["2026-06-18"])
     cfg = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-18",
+        start_date="2026-06-18",
+        end_date="2026-06-18",
         trendok_params={"no_such_param": 1.0},
     )
     with pytest.raises(ValueError, match="unknown trendok_params"):
@@ -142,17 +173,21 @@ def test_init_loads_all_optional_layers(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(be, "_load_scores", lambda s, e, m: {"2026-06-18": {"CN:600001": 90.0}})
     monkeypatch.setattr(be, "_load_delist_dates", lambda ts: {})
     monkeypatch.setattr(
-        be, "fetch_ohlcv_batch_between",
-        lambda ts, s, e: {"600001.SH": [
-            ("2026-06-18", "10", "10", "9", "10", "1000"),
-            ("2026-06-19", "10", "10", "9", "BAD", "1000"),  # unparseable -> skip
-            ("2026-06-19", "10", "10", "9", "-1", "1000"),  # non-positive -> skip
-        ]},
+        be,
+        "fetch_ohlcv_batch_between",
+        lambda ts, s, e: {
+            "600001.SH": [
+                ("2026-06-18", "10", "10", "9", "10", "1000"),
+                ("2026-06-19", "10", "10", "9", "BAD", "1000"),  # unparseable -> skip
+                ("2026-06-19", "10", "10", "9", "-1", "1000"),  # non-positive -> skip
+            ]
+        },
     )
     monkeypatch.setattr(be, "_load_regime_by_day", lambda cfg, cal: dict.fromkeys(cal, "Strong"))
     monkeypatch.setattr(be, "_load_light_red_days", lambda cfg, cal: set())
     monkeypatch.setattr(
-        be, "_load_flow_mainline_data",
+        be,
+        "_load_flow_mainline_data",
         lambda cfg, cal: ({d: True for d in cal}, {d: {"计算机"} for d in cal}, {}),
     )
     monkeypatch.setattr(be, "_load_industries", lambda ts: {})
@@ -170,9 +205,15 @@ def test_init_loads_all_optional_layers(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(be, "_load_industry_data", lambda cfg, cal, ts: ({}, {}))
     monkeypatch.setattr(be, "_load_mom_ranks", lambda cfg, cal, ts: {})
     cfg = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", light_red_block=True,
-        exclude_st=True, pead_days=5, entry_style="auto", min_avg_amount=1.0,
-        ind_mom_days=20, mom_ret_days=60,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        light_red_block=True,
+        exclude_st=True,
+        pead_days=5,
+        entry_style="auto",
+        min_avg_amount=1.0,
+        ind_mom_days=20,
+        mom_ret_days=60,
     )
     data = BacktestData(cfg)
     assert data.calendar == ["2026-06-18", "2026-06-19"]
@@ -208,9 +249,7 @@ def test_recompute_flow_context_failure_falls_back(monkeypatch: pytest.MonkeyPat
     def _boom(day: str) -> dict:
         raise RuntimeError("no db")
 
-    monkeypatch.setattr(
-        "data_sync_service.service.trendok._build_industry_flow_context", _boom
-    )
+    monkeypatch.setattr("data_sync_service.service.trendok._build_industry_flow_context", _boom)
     calendar = ["2026-06-18", "2026-06-19"]
     scores = {"2026-06-18": {CN1: 40.0}}
     data = _recompute_data(calendar, scores, {TS1: _flat(calendar)})
@@ -302,8 +341,14 @@ def test_simulate_loads_data_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_drawdown_circuit_halts_entries_after_losses() -> None:
     calendar = [
-        "2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23",
-        "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-29",
+        "2026-06-18",
+        "2026-06-19",
+        "2026-06-22",
+        "2026-06-23",
+        "2026-06-24",
+        "2026-06-25",
+        "2026-06-26",
+        "2026-06-29",
     ]
     px = [10.0, 9.7, 9.4, 9.1, 8.8, 8.5, 8.2, 8.2]
     data = _data(
@@ -313,9 +358,14 @@ def test_drawdown_circuit_halts_entries_after_losses() -> None:
     )
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            stop_loss_pct=-1.0, target_pnl_pct=100.0, max_hold_days=60,
-            drawdown_circuit_pct=-5.0, drawdown_circuit_window_days=30,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            stop_loss_pct=-1.0,
+            target_pnl_pct=100.0,
+            max_hold_days=60,
+            drawdown_circuit_pct=-5.0,
+            drawdown_circuit_window_days=30,
         ),
         data=data,
     )
@@ -337,7 +387,9 @@ def test_national_team_gate_blocks_entries() -> None:
     data.national_team_by_day = {d: True for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             national_team_gate=True,
         ),
         data=data,
@@ -415,7 +467,9 @@ def test_entry_last_hour_without_bar_uses_close() -> None:
     data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: _flat(calendar)})
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_mode="last_hour_low",
         ),
         data=data,
@@ -430,7 +484,9 @@ def test_entry_last_hour_with_bad_bar_uses_close() -> None:
     data.bars_by_ts = {TS1: [("2026-06-18", "10", "BAD", "BAD", "10", "100")]}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_mode="last_hour_low",
         ),
         data=data,
@@ -445,7 +501,9 @@ def test_entry_last_hour_with_invalid_range_uses_close() -> None:
     data.bars_by_ts = {TS1: [("2026-06-18", "10", "10", "0", "10", "100")]}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_mode="last_hour_low",
         ),
         data=data,
@@ -460,7 +518,9 @@ def test_entry_last_hour_hl_midpoint() -> None:
     data.bars_by_ts = {TS1: [("2026-06-18", "9", "11", "8", "10", "100")]}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_mode="last_hour_hl",
         ),
         data=data,
@@ -504,9 +564,7 @@ def test_atr_size_with_short_history_keeps_base_sleeve() -> None:
 def test_atr_size_with_zero_volatility_keeps_base_sleeve() -> None:
     hist = _days("2026-05-20", 21)
     calendar = hist[-3:]
-    data = _data(
-        calendar, {calendar[0]: {CN1: 90.0}}, {TS1: {d: 10.0 for d in hist}}
-    )
+    data = _data(calendar, {calendar[0]: {CN1: 90.0}}, {TS1: {d: 10.0 for d in hist}})
     data.bars_by_ts = {TS1: _bars(hist)}  # high == low everywhere -> ATR 0
     run = simulate(
         BacktestConfig(
@@ -525,16 +583,22 @@ def test_atr_size_with_zero_volatility_keeps_base_sleeve() -> None:
 
 def _atr_stop_config(calendar: list[str]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=calendar[0], end_date=calendar[-1], gates="none",
-        stop_loss_pct=-5.0, target_pnl_pct=100.0, max_hold_days=60,
-        trailing_stop_pct=0.0, atr_stop_mult=2.0,
+        start_date=calendar[0],
+        end_date=calendar[-1],
+        gates="none",
+        stop_loss_pct=-5.0,
+        target_pnl_pct=100.0,
+        max_hold_days=60,
+        trailing_stop_pct=0.0,
+        atr_stop_mult=2.0,
     )
 
 
 def test_atr14_without_bars_uses_fixed_stop() -> None:
     calendar = ["2026-06-18", "2026-06-19"]
     data = _data(
-        calendar, {"2026-06-18": {CN1: 90.0}},
+        calendar,
+        {"2026-06-18": {CN1: 90.0}},
         {TS1: {"2026-06-18": 10.0, "2026-06-19": 9.3}},
     )
     run = simulate(_atr_stop_config(calendar), data=data)
@@ -545,7 +609,8 @@ def test_atr14_without_bars_uses_fixed_stop() -> None:
 def test_atr14_with_short_bars_uses_fixed_stop() -> None:
     calendar = ["2026-06-18", "2026-06-19"]
     data = _data(
-        calendar, {"2026-06-18": {CN1: 90.0}},
+        calendar,
+        {"2026-06-18": {CN1: 90.0}},
         {TS1: {"2026-06-18": 10.0, "2026-06-19": 9.3}},
     )
     data.bars_by_ts = {TS1: _bars(calendar, high=10.2, low=9.8)}
@@ -592,7 +657,9 @@ def test_ret5_without_closes_blocks_style() -> None:
     data.rs_rank_by_day = {d: {TS1: 0.9} for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_style="momentum",
         ),
         data=data,
@@ -610,7 +677,9 @@ def test_ret5_with_zero_base_blocks_style() -> None:
     data.rs_rank_by_day = {d: {TS1: 0.9} for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             entry_style="momentum",
         ),
         data=data,
@@ -634,7 +703,9 @@ def test_strength_cached_across_positions(monkeypatch: pytest.MonkeyPatch) -> No
     data = _data(calendar, scores, prices)
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
             atr_stop_strength_min=60.0,
         ),
         data=data,
@@ -653,8 +724,12 @@ def test_strength_exception_falls_back_to_fixed(monkeypatch: pytest.MonkeyPatch)
     data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: _flat(calendar)})
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            stop_loss_pct=-15.0, atr_stop_mult=2.0, atr_stop_strength_min=60.0,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            stop_loss_pct=-15.0,
+            atr_stop_mult=2.0,
+            atr_stop_strength_min=60.0,
         ),
         data=data,
     )
@@ -676,9 +751,14 @@ def _swap_base() -> tuple[list[str], dict[str, dict[str, float]], dict[str, dict
 
 def _swap_config(**kw: object) -> BacktestConfig:
     base = {
-        "start_date": "2026-06-18", "end_date": "2026-06-22", "score_threshold": 65.0,
-        "gates": "none", "swap_weak_rs_below": 0.3, "swap_strong_rs_at_least": 0.8,
-        "swap_min_hold_days": 1, "swap_max_per_day": 2,
+        "start_date": "2026-06-18",
+        "end_date": "2026-06-22",
+        "score_threshold": 65.0,
+        "gates": "none",
+        "swap_weak_rs_below": 0.3,
+        "swap_strong_rs_at_least": 0.8,
+        "swap_min_hold_days": 1,
+        "swap_max_per_day": 2,
     }
     base.update(kw)
     return BacktestConfig(**base)  # type: ignore[arg-type]
@@ -762,8 +842,12 @@ def test_entry_sort_score_rs_blends_score_and_rs() -> None:
     data.rs_rank_by_day = {"2026-06-18": {TS1: 0.1, TS2: 0.9}, "2026-06-19": {}}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, max_positions=1, entry_sort="score_rs",
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            max_positions=1,
+            entry_sort="score_rs",
         ),
         data=data,
     )
@@ -779,9 +863,13 @@ def test_entry_sort_score_rs_blends_score_and_rs() -> None:
 
 def _risk_config(calendar: list[str], **kw: object) -> BacktestConfig:
     base: dict[str, object] = {
-        "start_date": calendar[0], "end_date": calendar[-1], "gates": "none",
-        "score_threshold": 65.0, "risk_adj_mom_ret_days": 60,
-        "risk_adj_mom_vol_days": 30, "risk_adj_mom_min": 1.0,
+        "start_date": calendar[0],
+        "end_date": calendar[-1],
+        "gates": "none",
+        "score_threshold": 65.0,
+        "risk_adj_mom_ret_days": 60,
+        "risk_adj_mom_vol_days": 30,
+        "risk_adj_mom_min": 1.0,
     }
     base.update(kw)
     return BacktestConfig(**base)  # type: ignore[arg-type]
@@ -839,8 +927,11 @@ def test_ind_mom_missing_rank_blocks() -> None:
     data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: _flat(calendar)})
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, ind_mom_days=20,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            ind_mom_days=20,
         ),
         data=data,
     )
@@ -854,8 +945,11 @@ def test_ind_mom_top_rank_passes() -> None:
     data.ind_industry_rank_by_day = {d: {"计算机": 0.9} for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, ind_mom_days=20,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            ind_mom_days=20,
         ),
         data=data,
     )
@@ -867,8 +961,11 @@ def test_ind_neutral_missing_rank_blocks() -> None:
     data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: _flat(calendar)})
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, ind_neutral_days=20,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            ind_neutral_days=20,
         ),
         data=data,
     )
@@ -882,8 +979,11 @@ def test_ind_neutral_top_rank_passes() -> None:
     data.ind_within_rank_by_day = {d: {TS1: 0.9} for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, ind_neutral_days=20,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            ind_neutral_days=20,
         ),
         data=data,
     )
@@ -897,8 +997,11 @@ def test_ind_neutral_top_rank_passes() -> None:
 
 def _high52w_config(calendar: list[str]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=calendar[0], end_date=calendar[-1], gates="none",
-        score_threshold=65.0, high_52w_min_pct=80.0,
+        start_date=calendar[0],
+        end_date=calendar[-1],
+        gates="none",
+        score_threshold=65.0,
+        high_52w_min_pct=80.0,
     )
 
 
@@ -947,8 +1050,11 @@ def test_mom_missing_rank_blocks() -> None:
     data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: _flat(calendar)})
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, mom_ret_days=60,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            mom_ret_days=60,
         ),
         data=data,
     )
@@ -962,8 +1068,11 @@ def test_mom_top_rank_passes() -> None:
     data.mom_rank_by_day = {d: {TS1: 0.9} for d in calendar}
     run = simulate(
         BacktestConfig(
-            start_date=calendar[0], end_date=calendar[-1], gates="none",
-            score_threshold=65.0, mom_ret_days=60,
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            gates="none",
+            score_threshold=65.0,
+            mom_ret_days=60,
         ),
         data=data,
     )
@@ -1043,7 +1152,8 @@ def test_breakout_missing_closes_blocks() -> None:
 def test_breakout_day_missing_from_series_blocks() -> None:
     calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"]
     data = _data(
-        calendar, {"2026-06-15": {CN1: 90.0}},
+        calendar,
+        {"2026-06-15": {CN1: 90.0}},
         {TS1: {d: 10.0 for d in calendar}},
     )
     data.closes_by_ts[TS1] = [(d, c) for d, c in data.closes_by_ts[TS1] if d != "2026-06-15"]
@@ -1064,7 +1174,9 @@ def test_breakout_day_missing_from_series_blocks() -> None:
 
 def _volume_config(calendar: list[str]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=calendar[0], end_date=calendar[-1], gates="none",
+        start_date=calendar[0],
+        end_date=calendar[-1],
+        gates="none",
         volume_breakout_mult=2.0,
     )
 
@@ -1274,7 +1386,9 @@ def test_rsi_early_index_blocks() -> None:
 
 def _down_config(calendar: list[str]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=calendar[0], end_date=calendar[-1], gates="none",
+        start_date=calendar[0],
+        end_date=calendar[-1],
+        gates="none",
         down_day_reversal_pct=5.0,
     )
 
@@ -1303,8 +1417,11 @@ def test_down_day_first_day_blocks() -> None:
 
 def _liq_config(calendar: list[str]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=calendar[0], end_date=calendar[-1], gates="none",
-        score_threshold=65.0, min_avg_amount=5.0,
+        start_date=calendar[0],
+        end_date=calendar[-1],
+        gates="none",
+        score_threshold=65.0,
+        min_avg_amount=5.0,
     )
 
 
@@ -1372,9 +1489,7 @@ def test_cash_cap_blocks_second_sleeve() -> None:
 
 def test_delisted_force_close_uses_last_close() -> None:
     calendar = ["2026-06-18", "2026-06-19"]
-    data = _data(
-        calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: {"2026-06-18": 10.0}}
-    )
+    data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: {"2026-06-18": 10.0}})
     data.delist_by_ts = {TS1: "2026-06-19"}
     run = simulate(
         BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="none"),
@@ -1387,9 +1502,7 @@ def test_delisted_force_close_uses_last_close() -> None:
 
 def test_delisted_without_last_close_holds_to_window_end() -> None:
     calendar = ["2026-06-18", "2026-06-19"]
-    data = _data(
-        calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: {"2026-06-18": 10.0}}
-    )
+    data = _data(calendar, {"2026-06-18": {CN1: 90.0}}, {TS1: {"2026-06-18": 10.0}})
     data.closes_by_ts = {TS1: []}  # no last close available
     data.delist_by_ts = {TS1: "2026-06-19"}
     run = simulate(

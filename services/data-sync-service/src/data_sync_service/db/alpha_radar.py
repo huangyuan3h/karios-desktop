@@ -113,9 +113,7 @@ def _migrate_trend_columns(cur: Any) -> None:
     for column_name, column_type in TREND_COLUMN_MIGRATIONS:
         if _trend_column_exists(cur, column_name):
             continue
-        cur.execute(
-            f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN {column_name} {column_type}"
-        )
+        cur.execute(f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN {column_name} {column_type}")
 
 
 def _ensure_tables_once() -> None:
@@ -201,7 +199,9 @@ def disable_sources_except(source_ids: set[str]) -> int:
     return disabled
 
 
-def fetch_sources(*, enabled_only: bool = True, category: str | None = None) -> list[dict[str, Any]]:
+def fetch_sources(
+    *, enabled_only: bool = True, category: str | None = None
+) -> list[dict[str, Any]]:
     ensure_tables()
     conditions = []
     params: list[Any] = []
@@ -525,8 +525,10 @@ def delete_trends_for_day(day: str) -> int:
     ensure_tables()
     day_start = shanghai_day_start_iso(day)
     day_end = (
-        datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) + timedelta(days=1)
-    ).astimezone(UTC).isoformat()
+        (datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) + timedelta(days=1))
+        .astimezone(UTC)
+        .isoformat()
+    )
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -705,9 +707,10 @@ def fetch_trends(
     if day:
         day_start = shanghai_day_start_iso(day)
         day_end = (
-            datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
-            + timedelta(days=1)
-        ).astimezone(UTC).isoformat()
+            (datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) + timedelta(days=1))
+            .astimezone(UTC)
+            .isoformat()
+        )
         conditions.append("t.created_at >= %s AND t.created_at < %s")
         params.extend([day_start, day_end])
     if max_age_days is not None:
@@ -756,13 +759,15 @@ def fetch_trends_as_of(
     lim = max(1, min(int(limit), 500))
     days = max(1, int(window_days))
     day_end = (
-        datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
-        + timedelta(days=1)
-    ).astimezone(UTC).isoformat()
+        (datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) + timedelta(days=1))
+        .astimezone(UTC)
+        .isoformat()
+    )
     window_start = (
-        datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
-        - timedelta(days=days)
-    ).astimezone(UTC).isoformat()
+        (datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) - timedelta(days=days))
+        .astimezone(UTC)
+        .isoformat()
+    )
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -973,7 +978,9 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
     event_focus = str(event_focus_raw) if event_focus_raw else (str(row[3]) if row[3] else None)
     driver_type = str(driver_type_raw) if driver_type_raw else None
     if not driver_type:
-        driver_type = str(trend_json.get("driver_type") or trend_json.get("driverType") or "Global_Tech")
+        driver_type = str(
+            trend_json.get("driver_type") or trend_json.get("driverType") or "Global_Tech"
+        )
 
     return {
         "id": str(row[0]),

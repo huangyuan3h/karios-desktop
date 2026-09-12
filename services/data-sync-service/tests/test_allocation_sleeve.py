@@ -19,22 +19,28 @@ def test_weights_from_regimes_unchanged():
 
 
 def test_sleeve_ignored_when_a_market_is_tradable():
-    with patch("data_sync_service.service.allocation.live_regimes",
-               return_value={"CN": "Strong", "HK": "Weak"}):
+    with patch(
+        "data_sync_service.service.allocation.live_regimes",
+        return_value={"CN": "Strong", "HK": "Weak"},
+    ):
         w = weights_with_sleeve(as_of_date="2026-08-01", etf_above_ma200=True)
     assert w == (1.0, 0.0, 0.0)
 
 
 def test_sleeve_takes_idle_when_both_weak_and_above_ma():
-    with patch("data_sync_service.service.allocation.live_regimes",
-               return_value={"CN": "Weak", "HK": "Weak"}):
+    with patch(
+        "data_sync_service.service.allocation.live_regimes",
+        return_value={"CN": "Weak", "HK": "Weak"},
+    ):
         w = weights_with_sleeve(as_of_date="2026-08-21", etf_above_ma200=True)
     assert w == (0.0, 0.0, 1.0)
 
 
 def test_no_sleeve_when_both_weak_and_below_ma():
-    with patch("data_sync_service.service.allocation.live_regimes",
-               return_value={"CN": "Weak", "HK": "Weak"}):
+    with patch(
+        "data_sync_service.service.allocation.live_regimes",
+        return_value={"CN": "Weak", "HK": "Weak"},
+    ):
         w = weights_with_sleeve(as_of_date="2026-08-21", etf_above_ma200=False)
     assert w == (0.0, 0.0, 0.0)
 
@@ -42,8 +48,10 @@ def test_no_sleeve_when_both_weak_and_below_ma():
 def test_resolve_weights_with_sleeve_shape():
     # Hermetic: stub the multi-asset _pick() instead of reading live ETF bars.
     # (CI runs on a fresh-migrated empty DB where _pick() finds no bars.)
-    with patch("data_sync_service.service.allocation.live_regimes",
-               return_value={"CN": "Weak", "HK": "Weak"}):
+    with patch(
+        "data_sync_service.service.allocation.live_regimes",
+        return_value={"CN": "Weak", "HK": "Weak"},
+    ):
         with patch(
             "data_sync_service.service.multi_asset_sleeve._pick",
             return_value={"key": "NASDAQ", "above_ma200": True},

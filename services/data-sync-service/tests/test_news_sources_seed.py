@@ -53,8 +53,14 @@ def test_removed_noise_sources_in_disabled_list() -> None:
     """Sources removed for noise (36kr, huxiu, yicai, etc.) are in disabled list."""
     active_ids = {sid for sid, *_ in DEFAULT_NEWS_SOURCES}
     noise_sources = [
-        "36kr-news", "huxiu-finance", "yicai-news", "gelonghui-home",
-        "caixin-headline", "wallstreetcn-us", "7e2ce389", "jin10-data",
+        "36kr-news",
+        "huxiu-finance",
+        "yicai-news",
+        "gelonghui-home",
+        "caixin-headline",
+        "wallstreetcn-us",
+        "7e2ce389",
+        "jin10-data",
     ]
     for sid in noise_sources:
         assert sid not in active_ids, f"{sid} should not be active"

@@ -42,7 +42,8 @@ CANDIDATE_SYMBOLS = {c["symbol"] for c in CANDIDATES}
 
 def _open_sleeve_legs() -> list[dict[str, Any]]:
     return [
-        t for t in list_paper_trades(status="open")
+        t
+        for t in list_paper_trades(status="open")
         if str(t.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
     ]
 
@@ -64,7 +65,11 @@ def _build_multi_for_paper(day: str) -> dict[str, Any]:
     cn_block = _health_block(market="CN", day=day)
     open_trades = list_paper_trades(status="open")
     holdings = [
-        {"symbol": t.get("symbol"), "ts_code": t.get("ts_code"), "sleeve_pct": t.get("sleeve_pct") or 0}
+        {
+            "symbol": t.get("symbol"),
+            "ts_code": t.get("ts_code"),
+            "sleeve_pct": t.get("sleeve_pct") or 0,
+        }
         for t in open_trades
         if str(t.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
     ]
@@ -163,5 +168,11 @@ def apply_sleeve_to_paper(*, day: str) -> dict[str, Any]:
                 close_reason=CLOSE_REASON_SLEEVE_EXIT,
             ):
                 closed += 1
-        return {"day": day, "action": action, "changed": closed > 0, "reason": f"multi closed {closed}", "price": price}
+        return {
+            "day": day,
+            "action": action,
+            "changed": closed > 0,
+            "reason": f"multi closed {closed}",
+            "price": price,
+        }
     return {"day": day, "action": action or "NONE", "changed": False, "reason": "multi no-op"}

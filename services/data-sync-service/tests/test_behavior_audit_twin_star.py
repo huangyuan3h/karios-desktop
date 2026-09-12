@@ -27,8 +27,14 @@ def _fake_run():
             {
                 "date": "2026-08-07",
                 "positions": [
-                    {"symbol": "CN:600001", "market": "CN", "ts_code": "600001.SH",
-                     "entry_date": "2026-08-05", "score_at_entry": 88.0, "position_pct": 0.1},
+                    {
+                        "symbol": "CN:600001",
+                        "market": "CN",
+                        "ts_code": "600001.SH",
+                        "entry_date": "2026-08-05",
+                        "score_at_entry": 88.0,
+                        "position_pct": 0.1,
+                    },
                 ],
             }
         ]
@@ -38,12 +44,27 @@ def _fake_run():
 
 
 REGISTRY = [
-    {"symbol": "CN:600001", "positionPct": 10.0, "entryDate": "2026-08-05",
-     "name": "核心对齐", "costPrice": 10.0},
-    {"symbol": "CN:600099", "positionPct": 12.5, "entryDate": "2026-08-06",
-     "name": "卫星一号", "costPrice": 20.0},  # engine-book satellite, not S-3
-    {"symbol": "CN:600003", "positionPct": 8.0, "entryDate": "2026-08-06",
-     "name": "真不该买", "costPrice": 12.0},  # leftover S-3 name
+    {
+        "symbol": "CN:600001",
+        "positionPct": 10.0,
+        "entryDate": "2026-08-05",
+        "name": "核心对齐",
+        "costPrice": 10.0,
+    },
+    {
+        "symbol": "CN:600099",
+        "positionPct": 12.5,
+        "entryDate": "2026-08-06",
+        "name": "卫星一号",
+        "costPrice": 20.0,
+    },  # engine-book satellite, not S-3
+    {
+        "symbol": "CN:600003",
+        "positionPct": 8.0,
+        "entryDate": "2026-08-06",
+        "name": "真不该买",
+        "costPrice": 12.0,
+    },  # leftover S-3 name
 ]
 
 # pick=STOCK day: only names in the sat set are satellite.
@@ -51,11 +72,11 @@ LEG_CTX = {"pick": "STOCK", "sat_ts": {"600099.SH"}, "book_ts": {"600099.SH", "6
 
 
 def test_satellite_holding_not_s3_extra(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
-    )
-    with patch.object(recon, "simulate", return_value=_fake_run()), \
-         patch.object(recon, "BacktestData", return_value=None):
+    monkeypatch.setattr("data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY)
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
         out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=LEG_CTX)
     m = out["markets"]["CN"]
     # core leg only: 600001 aligned, 600003 never_entered
@@ -75,12 +96,12 @@ def test_satellite_holding_not_s3_extra(monkeypatch) -> None:
 
 def test_non_stock_pick_all_cn_satellite(monkeypatch) -> None:
     """pick≠STOCK → every A-share is satellite (shared holding_book rule)."""
-    monkeypatch.setattr(
-        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
-    )
+    monkeypatch.setattr("data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY)
     leg = {"pick": "NASDAQ", "sat_ts": set(), "book_ts": set()}
-    with patch.object(recon, "simulate", return_value=_fake_run()), \
-         patch.object(recon, "BacktestData", return_value=None):
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
         out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
     m = out["markets"]["CN"]
     assert m["extra"] == 0
@@ -92,13 +113,17 @@ def test_non_stock_pick_all_cn_satellite(monkeypatch) -> None:
 def test_pushed_satellite_not_flagged_off_book(monkeypatch) -> None:
     """A holding the signal actually pushed (14:20-14:35 candidates) is
     sanctioned, even when the coarse engine book disagrees."""
-    monkeypatch.setattr(
-        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
-    )
-    leg = {"pick": "STOCK", "sat_ts": {"600099.SH"}, "book_ts": {"600088.SH"},
-           "push_ts": {"600099.SH"}}
-    with patch.object(recon, "simulate", return_value=_fake_run()), \
-         patch.object(recon, "BacktestData", return_value=None):
+    monkeypatch.setattr("data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY)
+    leg = {
+        "pick": "STOCK",
+        "sat_ts": {"600099.SH"},
+        "book_ts": {"600088.SH"},
+        "push_ts": {"600099.SH"},
+    }
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
         out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
     m = out["markets"]["CN"]
     assert m["satExtra"] == 0
@@ -109,13 +134,17 @@ def test_pushed_satellite_not_flagged_off_book(monkeypatch) -> None:
 
 def test_sanctioned_satellite_missing_counted(monkeypatch) -> None:
     """A pushed name the engine book holds but the user did not buy is missing."""
-    monkeypatch.setattr(
-        "data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY
-    )
-    leg = {"pick": "STOCK", "sat_ts": {"600099.SH"}, "book_ts": {"600088.SH"},
-           "push_ts": {"600099.SH", "600088.SH"}}
-    with patch.object(recon, "simulate", return_value=_fake_run()), \
-         patch.object(recon, "BacktestData", return_value=None):
+    monkeypatch.setattr("data_sync_service.db.watchlist_automation.list_registry", lambda: REGISTRY)
+    leg = {
+        "pick": "STOCK",
+        "sat_ts": {"600099.SH"},
+        "book_ts": {"600088.SH"},
+        "push_ts": {"600099.SH", "600088.SH"},
+    }
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
         out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
     m = out["markets"]["CN"]
     assert m["satMissingList"] == [{"symbol": "CN:600088"}]
@@ -129,12 +158,12 @@ def test_real_book_reconstructed_from_user_trades(monkeypatch) -> None:
         ("CN:600003", "BUY", "2026-08-06", 12.0, 8.0),
         ("CN:600003", "SELL", "2026-08-07", 12.5, 8.0),
     ]
-    monkeypatch.setattr(
-        recon, "_load_user_trades", lambda day: [t for t in trades if t[2] <= day]
-    )
+    monkeypatch.setattr(recon, "_load_user_trades", lambda day: [t for t in trades if t[2] <= day])
     leg = {"pick": "NASDAQ", "sat_ts": set(), "book_ts": set(), "push_ts": set()}
-    with patch.object(recon, "simulate", return_value=_fake_run()), \
-         patch.object(recon, "BacktestData", return_value=None):
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
         out = recon.reconcile_registry("2026-08-07", mode="twin_star", leg_ctx=leg)
     m = out["markets"]["CN"]
     assert m["actual"] == 1

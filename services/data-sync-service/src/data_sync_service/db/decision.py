@@ -124,7 +124,15 @@ def list_sessions(limit: int = 50) -> list[dict[str, Any]]:
                 (limit,),
             )
             rows = cur.fetchall()
-    cols = ("id", "title", "model_profile", "system_prompt", "created_at", "last_active_at", "message_count")
+    cols = (
+        "id",
+        "title",
+        "model_profile",
+        "system_prompt",
+        "created_at",
+        "last_active_at",
+        "message_count",
+    )
     return [_row_dict(cols, r) for r in rows]
 
 
@@ -233,7 +241,12 @@ def append_message(
                 VALUES (%s, %s, %s, %s)
                 RETURNING id, session_id, role, content, context_snapshot, created_at
                 """,
-                (session_id, role, content, None if context_snapshot is None else json.dumps(context_snapshot)),
+                (
+                    session_id,
+                    role,
+                    content,
+                    None if context_snapshot is None else json.dumps(context_snapshot),
+                ),
             )
             row = cur.fetchone()
         conn.commit()
@@ -333,7 +346,7 @@ def list_actions(
                 SELECT id, session_id, message_id, symbol, action, rationale, confidence,
                        status, source, snapshot_date, matched_change_id, outcome, created_at
                 FROM {ACTIONS_TABLE}
-                WHERE {' AND '.join(clauses)}
+                WHERE {" AND ".join(clauses)}
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -341,8 +354,19 @@ def list_actions(
             )
             rows = cur.fetchall()
     cols = (
-        "id", "session_id", "message_id", "symbol", "action", "rationale", "confidence",
-        "status", "source", "snapshot_date", "matchedChangeId", "outcome", "createdAt",
+        "id",
+        "session_id",
+        "message_id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshot_date",
+        "matchedChangeId",
+        "outcome",
+        "createdAt",
     )
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -412,7 +436,15 @@ def list_snapshots(limit: int = 30) -> list[dict[str, Any]]:
                 (limit,),
             )
             rows = cur.fetchall()
-    cols = ("id", "snapshot_date", "active_layer_ref", "agent_exchanges", "outcome", "status", "created_at")
+    cols = (
+        "id",
+        "snapshot_date",
+        "active_layer_ref",
+        "agent_exchanges",
+        "outcome",
+        "status",
+        "created_at",
+    )
     return [_row_dict(cols, r) for r in rows]
 
 
@@ -431,7 +463,11 @@ def _row_dict(cols: tuple[str, ...], row: tuple[Any, ...]) -> dict[str, Any]:
     rec: dict[str, Any] = {}
     for key, value in zip(cols, row, strict=False):
         out_key = camel_map.get(key, key)
-        if out_key in ("createdAt", "lastActiveAt") and value is not None and hasattr(value, "isoformat"):
+        if (
+            out_key in ("createdAt", "lastActiveAt")
+            and value is not None
+            and hasattr(value, "isoformat")
+        ):
             value = value.isoformat()
         rec[out_key] = value
     return rec

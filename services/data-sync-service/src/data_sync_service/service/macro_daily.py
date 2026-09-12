@@ -185,14 +185,16 @@ def _fetch_hk_index_via_tencent(
             continue
         if not (start_dt <= d <= end_dt):
             continue
-        parsed_rows.append({
-            "trade_date": d.isoformat(),
-            "open": float(r[1]),
-            "high": float(r[2]),
-            "close": float(r[3]),
-            "low": float(r[4]),
-            "vol": float(r[5]),
-        })
+        parsed_rows.append(
+            {
+                "trade_date": d.isoformat(),
+                "open": float(r[1]),
+                "high": float(r[2]),
+                "close": float(r[3]),
+                "low": float(r[4]),
+                "vol": float(r[5]),
+            }
+        )
     if not parsed_rows:
         return None
     out = pd.DataFrame(parsed_rows).sort_values("trade_date").reset_index(drop=True)
@@ -279,7 +281,9 @@ def _fetch_hstech_bars_via_yf(start_date: str, end_date: str) -> pd.DataFrame | 
 def resolve_sgx_a50_main(pro: Any) -> str | None:
     """Best-effort SGX FTSE China A50 futures main contract."""
     try:
-        df = pro.fut_basic(exchange="SGX", fut_type="1", fields="ts_code,name,list_date,delist_date")
+        df = pro.fut_basic(
+            exchange="SGX", fut_type="1", fields="ts_code,name,list_date,delist_date"
+        )
     except Exception:
         return None
     if df is None or df.empty:
@@ -390,7 +394,9 @@ def sync_macro_daily_full() -> dict[str, Any]:
         df = _paged_index_global(pro, "IXIC", start, end)
         if df is None or df.empty:
             return 0
-        return upsert_from_dataframe(df, series_id=SID_IXIC, source="index_global", underlying_ts_code="IXIC")
+        return upsert_from_dataframe(
+            df, series_id=SID_IXIC, source="index_global", underlying_ts_code="IXIC"
+        )
 
     def sync_dji() -> int:
         last = get_last_trade_date(SID_DJI)
@@ -401,7 +407,9 @@ def sync_macro_daily_full() -> dict[str, Any]:
         df = _paged_index_global(pro, "DJI", start, end)
         if df is None or df.empty:
             return 0
-        return upsert_from_dataframe(df, series_id=SID_DJI, source="index_global", underlying_ts_code="DJI")
+        return upsert_from_dataframe(
+            df, series_id=SID_DJI, source="index_global", underlying_ts_code="DJI"
+        )
 
     def sync_spx() -> int:
         last = get_last_trade_date(SID_SPX)
@@ -412,7 +420,9 @@ def sync_macro_daily_full() -> dict[str, Any]:
         df = _paged_index_global(pro, "SPX", start, end)
         if df is None or df.empty:
             return 0
-        return upsert_from_dataframe(df, series_id=SID_SPX, source="index_global", underlying_ts_code="SPX")
+        return upsert_from_dataframe(
+            df, series_id=SID_SPX, source="index_global", underlying_ts_code="SPX"
+        )
 
     def sync_fx_usdcnh() -> int:
         last = get_last_trade_date(SID_USDCNH)
@@ -427,7 +437,9 @@ def sync_macro_daily_full() -> dict[str, Any]:
         df = _normalize_fx_daily_df(df)
         if df is None or df.empty:
             return 0
-        return upsert_from_dataframe(df, series_id=SID_USDCNH, source="fx_daily", underlying_ts_code="USDCNH.FXCM")
+        return upsert_from_dataframe(
+            df, series_id=SID_USDCNH, source="fx_daily", underlying_ts_code="USDCNH.FXCM"
+        )
 
     def sync_a50() -> int:
         last = get_last_trade_date(SID_A50)
@@ -439,11 +451,15 @@ def sync_macro_daily_full() -> dict[str, Any]:
         if fut_code:
             df = _paged_fut_daily(pro, fut_code, start, end)
             if df is not None and not df.empty:
-                return upsert_from_dataframe(df, series_id=SID_A50, source="fut_daily", underlying_ts_code=fut_code)
+                return upsert_from_dataframe(
+                    df, series_id=SID_A50, source="fut_daily", underlying_ts_code=fut_code
+                )
         df2 = _paged_index_global(pro, "XIN9", start, end)
         if df2 is None or df2.empty:
             return 0
-        return upsert_from_dataframe(df2, series_id=SID_A50, source="index_global", underlying_ts_code="XIN9")
+        return upsert_from_dataframe(
+            df2, series_id=SID_A50, source="index_global", underlying_ts_code="XIN9"
+        )
 
     def sync_comm(exchange: str, prefix: str, source_label: str) -> int:
         series_id = (
@@ -458,13 +474,19 @@ def sync_macro_daily_full() -> dict[str, Any]:
         end = _today_yyyymmdd()
         if start > end:
             return 0
-        und = resolve_ine_sc_main(pro) if exchange == "INE" else resolve_main_fut_by_prefix(pro, exchange, prefix)
+        und = (
+            resolve_ine_sc_main(pro)
+            if exchange == "INE"
+            else resolve_main_fut_by_prefix(pro, exchange, prefix)
+        )
         if not und:
             return 0
         df = _paged_fut_daily(pro, und, start, end)
         if df is None or df.empty:
             return 0
-        return upsert_from_dataframe(df, series_id=series_id, source=source_label, underlying_ts_code=und)
+        return upsert_from_dataframe(
+            df, series_id=series_id, source=source_label, underlying_ts_code=und
+        )
 
     def sync_hsi() -> int:
         last = get_last_trade_date(SID_HSI)
@@ -478,8 +500,12 @@ def sync_macro_daily_full() -> dict[str, Any]:
             df = _fetch_hk_index_via_tencent("hkHSI", start, end)
             if df is None or df.empty:
                 return 0
-            return upsert_from_dataframe(df, series_id=SID_HSI, source="tencent", underlying_ts_code="hkHSI")
-        return upsert_from_dataframe(df, series_id=SID_HSI, source="index_global", underlying_ts_code="HSI")
+            return upsert_from_dataframe(
+                df, series_id=SID_HSI, source="tencent", underlying_ts_code="hkHSI"
+            )
+        return upsert_from_dataframe(
+            df, series_id=SID_HSI, source="index_global", underlying_ts_code="HSI"
+        )
 
     def sync_hstech() -> int:
         last = get_last_trade_date(SID_HSTECH)
@@ -502,8 +528,12 @@ def sync_macro_daily_full() -> dict[str, Any]:
                 return upsert_from_dataframe(
                     df, series_id=SID_HSTECH, source="yfinance", underlying_ts_code="^HSTECH"
                 )
-            return upsert_from_dataframe(df, series_id=SID_HSTECH, source="akshare", underlying_ts_code="HSTECH")
-        return upsert_from_dataframe(df, series_id=SID_HSTECH, source="index_global", underlying_ts_code="HSTECH")
+            return upsert_from_dataframe(
+                df, series_id=SID_HSTECH, source="akshare", underlying_ts_code="HSTECH"
+            )
+        return upsert_from_dataframe(
+            df, series_id=SID_HSTECH, source="index_global", underlying_ts_code="HSTECH"
+        )
 
     sync_funcs: dict[str, Callable[[], int]] = {
         SID_IXIC: sync_ixic,

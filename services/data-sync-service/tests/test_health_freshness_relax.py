@@ -47,8 +47,6 @@ def test_open_day_no_relax(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_unseeded_falls_back_to_weekend_rule(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "data_sync_service.db.trade_calendar.get_open_dates", lambda **kw: []
-    )
+    monkeypatch.setattr("data_sync_service.db.trade_calendar.get_open_dates", lambda **kw: [])
     assert hr._relax_extra_hours(datetime(2026, 9, 5, 10, 0, tzinfo=UTC8)) == 48
     assert hr._relax_extra_hours(datetime(2026, 9, 7, 10, 0, tzinfo=UTC8)) == 0

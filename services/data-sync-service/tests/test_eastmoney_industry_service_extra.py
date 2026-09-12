@@ -31,15 +31,26 @@ class TestSecid:
         assert ei._ts_code_to_secid("abc.SH") is None
 
     def test_symbol_to_ts_code(self, monkeypatch) -> None:
-        monkeypatch.setattr("data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: f"CN:{s}" if s.startswith("6") else s)
+        monkeypatch.setattr(
+            "data_sync_service.service.market_quotes.normalize_market_symbol",
+            lambda s: f"CN:{s}" if s.startswith("6") else s,
+        )
         assert ei._symbol_to_ts_code("600519") == "600519.SH"
-        monkeypatch.setattr("data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "X")
+        monkeypatch.setattr(
+            "data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "X"
+        )
         assert ei._symbol_to_ts_code("600519") is None
-        monkeypatch.setattr("data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:abc")
+        monkeypatch.setattr(
+            "data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:abc"
+        )
         assert ei._symbol_to_ts_code("600519") is None
-        monkeypatch.setattr("data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:12345")
+        monkeypatch.setattr(
+            "data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:12345"
+        )
         assert ei._symbol_to_ts_code("600519") is None
-        monkeypatch.setattr("data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:000001")
+        monkeypatch.setattr(
+            "data_sync_service.service.market_quotes.normalize_market_symbol", lambda s: "CN:000001"
+        )
         assert ei._symbol_to_ts_code("600519") == "000001.SZ"
 
 
@@ -66,7 +77,11 @@ class TestPush2:
 
         monkeypatch.setattr(ei.urllib.request, "urlopen", lambda req, timeout: Resp())
         assert ei._push2_get_label("https://x", "600519.SH") == "白酒"
-        monkeypatch.setattr(ei.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(OSError("down")))
+        monkeypatch.setattr(
+            ei.urllib.request,
+            "urlopen",
+            lambda req, timeout: (_ for _ in ()).throw(OSError("down")),
+        )
         with pytest.raises(OSError):
             ei._push2_get_label("https://x", "600519.SH")
 
@@ -87,7 +102,9 @@ class TestPush2:
     def test_fetch_push2(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "_push2_get_label", lambda url, code: "半导体")
         assert ei._fetch_em_industry_push2("600519.SH") == "半导体"
-        monkeypatch.setattr(ei, "_push2_get_label", lambda url, code: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            ei, "_push2_get_label", lambda url, code: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         assert ei._fetch_em_industry_push2("600519.SH") is None
         assert ei._fetch_em_industry_push2("bad") is None
         assert ei._fetch_em_industry_push2delay("bad") is None
@@ -112,7 +129,11 @@ class TestEmweb:
         assert ei._fetch_em_industry_emweb("600519.SH") == "化学制药"
 
     def test_fetch_emweb_paths(self, monkeypatch) -> None:
-        monkeypatch.setattr(ei.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(OSError("down")))
+        monkeypatch.setattr(
+            ei.urllib.request,
+            "urlopen",
+            lambda req, timeout: (_ for _ in ()).throw(OSError("down")),
+        )
         assert ei._fetch_em_industry_emweb("600519.SH") is None
         assert ei._fetch_em_industry_emweb("bad") is None
         assert ei._fetch_em_industry_emweb("60051.SH") is None
@@ -170,11 +191,15 @@ class TestEmweb:
 
 class TestFetchCodes:
     def test_fetch(self, monkeypatch) -> None:
-        monkeypatch.setattr(ei, "_fetch_em_industry_for_ts_code", lambda c: "白酒" if c == "600519.SH" else None)
+        monkeypatch.setattr(
+            ei, "_fetch_em_industry_for_ts_code", lambda c: "白酒" if c == "600519.SH" else None
+        )
         monkeypatch.setattr(ei.time, "sleep", lambda s: None)
         out = ei.fetch_em_industries_for_ts_codes(["600519.SH", "000001.SZ", "  ", None])
         assert out == {"600519.SH": "白酒"}
-        monkeypatch.setattr(ei, "_fetch_em_industry_for_ts_code", lambda c: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            ei, "_fetch_em_industry_for_ts_code", lambda c: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         assert ei.fetch_em_industries_for_ts_codes(["600519.SH"]) == {}
 
 
@@ -212,17 +237,23 @@ class TestListCodes:
 
 class TestCoverage:
     def test_result_with_coverage(self, monkeypatch) -> None:
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 100, "emMapped": 50, "missingCount": 50})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 100, "emMapped": 50, "missingCount": 50}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 50)
         out = ei._result_with_coverage(ok=True)
         assert out["coveragePct"] == 50.0 and out["totalInDb"] == 50
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0}
+        )
         assert ei._result_with_coverage(ok=True)["coveragePct"] == 0.0
 
     def test_resume(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "get_today_run", lambda j: None)
         assert ei._resume_after_ts_code() is None
-        monkeypatch.setattr(ei, "get_today_run", lambda j: {"success": False, "last_ts_code": "600519.SH"})
+        monkeypatch.setattr(
+            ei, "get_today_run", lambda j: {"success": False, "last_ts_code": "600519.SH"}
+        )
         assert ei._resume_after_ts_code() == "600519.SH"
         monkeypatch.setattr(ei, "get_today_run", lambda j: {"success": True})
         assert ei._resume_after_ts_code() is None
@@ -233,7 +264,9 @@ class TestSyncIncremental:
         monkeypatch.setattr(ei, "_resume_after_ts_code", lambda: None)
         monkeypatch.setattr(ei, "list_missing_cn_ts_codes", lambda **kw: [])
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 0)
         out = ei.sync_eastmoney_industry_incremental()
         assert out["skipped"] is True and out["message"] == "no codes to sync"
@@ -241,12 +274,16 @@ class TestSyncIncremental:
     def test_ok(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "_resume_after_ts_code", lambda: None)
         monkeypatch.setattr(ei, "list_missing_cn_ts_codes", lambda **kw: ["600519.SH", "000001.SZ"])
-        monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"})
+        monkeypatch.setattr(
+            ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"}
+        )
         seen = {}
-        monkeypatch.setattr(ei, "upsert_rows", lambda rows: (seen.update(rows=rows) or 1))
+        monkeypatch.setattr(ei, "upsert_rows", lambda rows: seen.update(rows=rows) or 1)
         monkeypatch.setattr(ei, "insert_record", lambda **kw: None)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 1, "missingCount": 1})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 1, "missingCount": 1}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 1)
         out = ei.sync_eastmoney_industry_incremental()
         assert out["ok"] is True
@@ -261,7 +298,9 @@ class TestSyncIncremental:
         monkeypatch.setattr(ei, "upsert_rows", lambda rows: 0)
         monkeypatch.setattr(ei, "insert_record", lambda **kw: seen.update(kw))
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 0, "missingCount": 2})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 0, "missingCount": 2}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 0)
         out = ei.sync_eastmoney_industry_incremental()
         assert out["ok"] is False
@@ -271,27 +310,38 @@ class TestSyncIncremental:
     def test_exception(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "_resume_after_ts_code", lambda: None)
         monkeypatch.setattr(ei, "list_missing_cn_ts_codes", lambda **kw: ["600519.SH"])
-        monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            ei,
+            "fetch_em_industries_for_ts_codes",
+            lambda codes, sleep_s: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
         monkeypatch.setattr(ei, "insert_record", lambda **kw: None)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 0, "missingCount": 2})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 0, "missingCount": 2}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 0)
         out = ei.sync_eastmoney_industry_incremental()
         assert out["ok"] is False and out["error"] == "boom"
 
     def test_stale_mode_second_batch_break(self, monkeypatch) -> None:
         calls = {"n": 0}
+
         def stale(**kw):
             calls["n"] += 1
             return ["600519.SH"] if calls["n"] == 1 else []
 
         monkeypatch.setattr(ei, "_resume_after_ts_code", lambda: None)
         monkeypatch.setattr(ei, "list_stale_cn_ts_codes", stale)
-        monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"})
+        monkeypatch.setattr(
+            ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"}
+        )
         monkeypatch.setattr(ei, "upsert_rows", lambda rows: 1)
         monkeypatch.setattr(ei, "insert_record", lambda **kw: None)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 1, "missingCount": 1})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 2, "emMapped": 1, "missingCount": 1}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 1)
         out = ei.sync_eastmoney_industry_incremental(mode="stale", max_batches=2)
         assert out["ok"] is True and out["batchesRun"] == 1
@@ -300,12 +350,18 @@ class TestSyncIncremental:
 
 class TestSyncFull:
     def test_with_symbols(self, monkeypatch) -> None:
-        monkeypatch.setattr(ei, "_symbol_to_ts_code", lambda s: "600519.SH" if s == "600519" else None)
-        monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"})
+        monkeypatch.setattr(
+            ei, "_symbol_to_ts_code", lambda s: "600519.SH" if s == "600519" else None
+        )
+        monkeypatch.setattr(
+            ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"600519.SH": "白酒"}
+        )
         seen = {}
-        monkeypatch.setattr(ei, "upsert_rows", lambda rows: (seen.update(rows=rows) or 1))
+        monkeypatch.setattr(ei, "upsert_rows", lambda rows: seen.update(rows=rows) or 1)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 1, "emMapped": 1, "missingCount": 0})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 1, "emMapped": 1, "missingCount": 0}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 1)
         out = ei.sync_eastmoney_industry(symbols=["600519", "bad"])
         assert out["ok"] is True and out["requested"] == 1
@@ -315,7 +371,9 @@ class TestSyncFull:
         monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {})
         monkeypatch.setattr(ei, "upsert_rows", lambda rows: 0)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 1, "emMapped": 0, "missingCount": 1})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 1, "emMapped": 0, "missingCount": 1}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 0)
         out = ei.sync_eastmoney_industry()
         assert out["ok"] is True and out["resolved"] == 0
@@ -323,7 +381,9 @@ class TestSyncFull:
     def test_no_ts_codes(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "_list_cn_ts_codes", lambda **kw: [])
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 0, "emMapped": 0, "missingCount": 0}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 0)
         out = ei.sync_eastmoney_industry()
         assert out["ok"] is False and out["error"] == "no_ts_codes"
@@ -338,14 +398,18 @@ class TestLookup:
 
     def test_sync_missing(self, monkeypatch) -> None:
         monkeypatch.setattr(ei, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒"})
-        monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"000001.SZ": "银行"})
+        monkeypatch.setattr(
+            ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {"000001.SZ": "银行"}
+        )
         seen = {}
-        monkeypatch.setattr(ei, "upsert_rows", lambda rows: (seen.update(rows=rows) or 1))
+        monkeypatch.setattr(ei, "upsert_rows", lambda rows: seen.update(rows=rows) or 1)
         monkeypatch.setattr(ei, "_now_iso", lambda: "now")
         ei._sync_missing_em_industries(["600519.SH", "000001.SZ"])
         assert seen["rows"][0]["ts_code"] == "000001.SZ"
         ei._sync_missing_em_industries([])
-        monkeypatch.setattr(ei, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "000001.SZ": "银行"})
+        monkeypatch.setattr(
+            ei, "lookup_by_ts_codes", lambda codes: {"600519.SH": "白酒", "000001.SZ": "银行"}
+        )
         ei._sync_missing_em_industries(["600519.SH"])
         monkeypatch.setattr(ei, "lookup_by_ts_codes", lambda codes: {})
         monkeypatch.setattr(ei, "fetch_em_industries_for_ts_codes", lambda codes, sleep_s: {})
@@ -359,7 +423,9 @@ class TestLookup:
         assert seen == [["600519.SH"]]
 
     def test_sync_status(self, monkeypatch) -> None:
-        monkeypatch.setattr(ei, "coverage_stats", lambda: {"totalCnStocks": 100, "emMapped": 80, "missingCount": 20})
+        monkeypatch.setattr(
+            ei, "coverage_stats", lambda: {"totalCnStocks": 100, "emMapped": 80, "missingCount": 20}
+        )
         monkeypatch.setattr(ei, "count_rows", lambda: 80)
         monkeypatch.setattr(ei, "get_today_run", lambda j: {"success": True})
         out = ei.get_eastmoney_industry_sync_status()

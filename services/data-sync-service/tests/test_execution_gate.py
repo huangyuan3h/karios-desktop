@@ -342,6 +342,7 @@ def test_hk_position_range_hint_removed_by_backtest() -> None:
 
 # ---------- V6.4 ETF flow confirmation layer ----------
 
+
 def _etf(verdict: str, *, incomplete: bool = False) -> dict:
     return {
         "verdict": verdict,

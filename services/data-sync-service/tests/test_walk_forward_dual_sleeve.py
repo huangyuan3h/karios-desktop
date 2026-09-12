@@ -51,8 +51,12 @@ def test_joint_stats_sleeve_charges_idle_only():
     # joint_stats[i] uses calendar[i] — idle must key the DAYS (d2, d3).
     idle = {"CN": {"d2": 0.5, "d3": 0.5}, "HK": {"d2": 0.0, "d3": 0.0}}
     stats = joint_stats(
-        nav_cn, nav_hk, ["d1", "d2", "d3"], {"d1": (1.0, 0.0)},
-        sleeve_nav=sleeve, idle_by_day=idle,
+        nav_cn,
+        nav_hk,
+        ["d1", "d2", "d3"],
+        {"d1": (1.0, 0.0)},
+        sleeve_nav=sleeve,
+        idle_by_day=idle,
     )
     # d2: +0.5*10% = +5%; d3: +0.5*10% = +5% -> ~10.25% compounded
     assert stats["totalNetPnlPct"] == pytest.approx(10.25, abs=0.1)
@@ -63,8 +67,12 @@ def test_joint_stats_sleeve_full_pool_when_both_weak():
     nav = [1.0, 1.0, 1.0]
     sleeve = [1.0, 1.05, 1.05]
     stats = joint_stats(
-        nav, nav, ["d1", "d2", "d3"], {"d1": (0.0, 0.0)},
-        sleeve_nav=sleeve, idle_by_day={"CN": {}, "HK": {}},
+        nav,
+        nav,
+        ["d1", "d2", "d3"],
+        {"d1": (0.0, 0.0)},
+        sleeve_nav=sleeve,
+        idle_by_day={"CN": {}, "HK": {}},
     )
     assert stats["totalNetPnlPct"] == pytest.approx(5.0, abs=0.1)
 

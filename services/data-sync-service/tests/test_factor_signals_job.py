@@ -39,12 +39,12 @@ def test_run_scans_latest_open_date(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_insert(job_type, success, last_ts_code=None, error_message=None):
         captured.append((job_type, success, error_message))
 
-    monkeypatch.setattr(
-        "data_sync_service.scheduler._job_guard.insert_record", fake_insert
-    )
+    monkeypatch.setattr("data_sync_service.scheduler._job_guard.insert_record", fake_insert)
     msgs: list[str] = []
     monkeypatch.setattr(
-        factor_signals_job.logger, "info", lambda m, *a, **k: msgs.append(str(m) % a if a else str(m))
+        factor_signals_job.logger,
+        "info",
+        lambda m, *a, **k: msgs.append(str(m) % a if a else str(m)),
     )
 
     factor_signals_job.run()
@@ -69,9 +69,7 @@ def test_run_records_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_insert(job_type, success, last_ts_code=None, error_message=None):
         captured.append((job_type, success, error_message))
 
-    monkeypatch.setattr(
-        "data_sync_service.scheduler._job_guard.insert_record", fake_insert
-    )
+    monkeypatch.setattr("data_sync_service.scheduler._job_guard.insert_record", fake_insert)
 
     factor_signals_job.run()
 
@@ -94,9 +92,7 @@ def test_latest_open_date_clamps_weekend(monkeypatch: pytest.MonkeyPatch) -> Non
     # get_open_dates is imported inside the function; patch at source module.
     import data_sync_service.db.trade_calendar as tc
 
-    monkeypatch.setattr(
-        tc, "get_open_dates", lambda *a, **k: [date_cls(2026, 9, 4)]
-    )
+    monkeypatch.setattr(tc, "get_open_dates", lambda *a, **k: [date_cls(2026, 9, 4)])
     assert job._latest_open_date() == "2026-09-04"
 
     monkeypatch.setattr(tc, "get_open_dates", lambda *a, **k: [])

@@ -83,11 +83,17 @@ def row_is_sw_l1(row: dict[str, Any]) -> bool:
     return False
 
 
-def with_sw_l1_metadata(row: dict[str, Any], *, source: str = DEFAULT_INDUSTRY_FLOW_SOURCE) -> dict[str, Any]:
+def with_sw_l1_metadata(
+    row: dict[str, Any], *, source: str = DEFAULT_INDUSTRY_FLOW_SOURCE
+) -> dict[str, Any]:
     out = dict(row)
     meta = classify_sw_l1_industry(out.get("industry_name"))
     out["industry_name"] = meta["industry_name"]
     out["taxonomy"] = out.get("taxonomy") or meta["taxonomy"]
-    out["industry_level"] = out.get("industry_level") if out.get("industry_level") is not None else meta["industry_level"]
+    out["industry_level"] = (
+        out.get("industry_level")
+        if out.get("industry_level") is not None
+        else meta["industry_level"]
+    )
     out["source"] = out.get("source") or source
     return out

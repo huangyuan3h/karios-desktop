@@ -42,7 +42,9 @@ def candidate_diff(*, trade_date: str | None = None) -> dict:
     added_by_market: dict[str, list[str]] = {}
     for market in ("CN", "HK"):
         try:
-            today_cands = {_symbol_of(c) for c in build_s3_candidates(trade_date=day, market=market)}
+            today_cands = {
+                _symbol_of(c) for c in build_s3_candidates(trade_date=day, market=market)
+            }
             # last_trading_day is on-or-before semantics → step back one day
             # first so we get the STRICT previous trading day.
             prev_day = last_trading_day(market, date.fromisoformat(day) - timedelta(days=1))

@@ -18,8 +18,14 @@ def _fake_conn(cur: Mock) -> Mock:
 
 
 ROW = (
-    "2026-08-07-morning", "2026-08-07", "morning",
-    '[{"id": "n1", "title": "x"}]', "overview", "v1", ["n1", "n2"], "2026-08-07T08:30:00+00:00",
+    "2026-08-07-morning",
+    "2026-08-07",
+    "morning",
+    '[{"id": "n1", "title": "x"}]',
+    "overview",
+    "v1",
+    ["n1", "n2"],
+    "2026-08-07T08:30:00+00:00",
 )
 
 
@@ -29,8 +35,11 @@ class TestUpsert:
         cur.fetchone.return_value = ROW
         monkeypatch.setattr(mb, "get_connection", lambda: _fake_conn(cur))
         out = mb.upsert_brief(
-            brief_date="2026-08-07", brief_type="morning",
-            items=[{"id": "n1"}], macro_overview="overview", model_version="v1",
+            brief_date="2026-08-07",
+            brief_type="morning",
+            items=[{"id": "n1"}],
+            macro_overview="overview",
+            model_version="v1",
             source_item_ids=["n1", "n2"],
         )
         assert out["briefDate"] == "2026-08-07"

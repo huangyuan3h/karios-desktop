@@ -10,6 +10,7 @@ Used by:
 
 Truth doc: docs/modules/pick-strong-track.md
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -196,7 +197,11 @@ def build_mom_compare_timeline(
             held_etf = None
             etf_peak = 0.0
 
-        pick_ts = "STOCK_BASKET" if pick == "STOCK" else ("GC001" if pick == "REPO" else MULTI_TS.get(pick, ""))
+        pick_ts = (
+            "STOCK_BASKET"
+            if pick == "STOCK"
+            else ("GC001" if pick == "REPO" else MULTI_TS.get(pick, ""))
+        )
 
         if pick == "STOCK":
             single_ret = stock_ret
@@ -323,10 +328,7 @@ def _circuit_flags_by_day(
     pnl_pct simple-sum <= ``threshold`` -> circuit ON. Display-only (the
     posture band); the engine state remains authoritative.
     """
-    closes = sorted(
-        (str(t.close_date or ""), float(t.pnl_pct or 0.0))
-        for t in (trades or [])
-    )
+    closes = sorted((str(t.close_date or ""), float(t.pnl_pct or 0.0)) for t in (trades or []))
     out: dict[str, bool] = {}
     for day in calendar:
         try:
@@ -478,9 +480,7 @@ def build_twin_star_timeline(
 
         if has_sim:
             sim_ret = sim_core_ret if sim_core_ret is not None else core_ret
-            sim_multi_ret = (
-                sim_ret + sat_weight * (sat_ret - sim_ret) if has_sat else sim_ret
-            )
+            sim_multi_ret = sim_ret + sat_weight * (sat_ret - sim_ret) if has_sat else sim_ret
             nav_sim *= 1.0 + sim_ret
             nav_sim_multi *= 1.0 + sim_multi_ret
             sim_peak = max(sim_peak, nav_sim)
@@ -520,9 +520,7 @@ def build_twin_star_timeline(
                 "navSim": round(nav_sim, 6) if has_sim else None,
                 "navSimReturnPct": round((nav_sim - 1) * 100, 2) if has_sim else None,
                 "navSimMulti": round(nav_sim_multi, 6) if has_sim else None,
-                "navSimMultiReturnPct": round((nav_sim_multi - 1) * 100, 2)
-                if has_sim
-                else None,
+                "navSimMultiReturnPct": round((nav_sim_multi - 1) * 100, 2) if has_sim else None,
             }
         )
     sat_active_days = sum(1 for row in blended if row.get("satActive"))

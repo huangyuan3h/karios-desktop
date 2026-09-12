@@ -117,9 +117,7 @@ def test_fetch_intraday_counts_from_realtime(monkeypatch) -> None:
 
     d = datetime.date(2026, 7, 1)
     ms._INTRADAY_BREADTH_CACHE.clear()
-    monkeypatch.setattr(
-        ms, "fetch_stock_ts_codes", lambda: [f"00000{i}.SZ" for i in range(3)]
-    )
+    monkeypatch.setattr(ms, "fetch_stock_ts_codes", lambda: [f"00000{i}.SZ" for i in range(3)])
     monkeypatch.setattr(
         ms,
         "fetch_realtime_quotes",
@@ -145,9 +143,7 @@ def test_fetch_intraday_uses_cache(monkeypatch) -> None:
     import datetime
 
     d = datetime.date(2026, 7, 1)
-    monkeypatch.setattr(
-        ms, "fetch_stock_ts_codes", lambda: ["000001.SZ"]
-    )
+    monkeypatch.setattr(ms, "fetch_stock_ts_codes", lambda: ["000001.SZ"])
     calls = {"n": 0}
 
     def fake_realtime(part):

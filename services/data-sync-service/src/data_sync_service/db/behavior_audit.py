@@ -122,6 +122,7 @@ def latest_audit(limit: int = 2) -> list[dict[str, Any]]:
             rows = cur.fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
+
         def _load(v: str | None) -> list[dict[str, Any]]:
             if not v:
                 return []
@@ -130,20 +131,22 @@ def latest_audit(limit: int = 2) -> list[dict[str, Any]]:
             except (TypeError, json.JSONDecodeError):
                 return []
 
-        out.append({
-            "auditDate": str(r[0]),
-            "market": str(r[1]),
-            "expected": r[2],
-            "actual": r[3],
-            "extra": r[4],
-            "missing": r[5],
-            "extraList": _load(r[6]),
-            "missingList": _load(r[7]),
-            "satExpected": r[8] or 0,
-            "actualSat": r[9] or 0,
-            "satExtra": r[10] or 0,
-            "satMissing": r[11] or 0,
-            "satExtraList": _load(r[12]),
-            "satMissingList": _load(r[13]),
-        })
+        out.append(
+            {
+                "auditDate": str(r[0]),
+                "market": str(r[1]),
+                "expected": r[2],
+                "actual": r[3],
+                "extra": r[4],
+                "missing": r[5],
+                "extraList": _load(r[6]),
+                "missingList": _load(r[7]),
+                "satExpected": r[8] or 0,
+                "actualSat": r[9] or 0,
+                "satExtra": r[10] or 0,
+                "satMissing": r[11] or 0,
+                "satExtraList": _load(r[12]),
+                "satMissingList": _load(r[13]),
+            }
+        )
     return out

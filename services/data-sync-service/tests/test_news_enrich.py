@@ -14,7 +14,13 @@ from data_sync_service.service import news_enrich
 
 class TestPreFilter:
     def test_tier_a_source_always_passes(self):
-        for sid in ("cls-telegraph", "wallstreetcn-global", "jin10-flash", "cls-depth", "csrc-news"):
+        for sid in (
+            "cls-telegraph",
+            "wallstreetcn-global",
+            "jin10-flash",
+            "cls-depth",
+            "csrc-news",
+        ):
             item = {"title": "Random unrelated title", "summary": "", "source_id": sid}
             assert news_enrich._passes_pre_filter(item) is True, sid
 
@@ -105,13 +111,17 @@ class TestRelevanceScore:
             assert score == 30 + 30  # base 30 + boost 30
 
     def test_watchlist_boost_capped(self):
-        with patch.object(news_enrich, "_get_watchlist_symbols", return_value=["CN:1", "CN:2", "CN:3", "CN:4"]):
+        with patch.object(
+            news_enrich, "_get_watchlist_symbols", return_value=["CN:1", "CN:2", "CN:3", "CN:4"]
+        ):
             # 4 matches × 30 = 120, capped at 60
             score = news_enrich._compute_relevance(3, ["1", "2", "3", "4"])
             assert score == min(45 + 60, 100)
 
     def test_relevance_capped_at_100(self):
-        with patch.object(news_enrich, "_get_watchlist_symbols", return_value=["CN:600519", "HK:00700"]):
+        with patch.object(
+            news_enrich, "_get_watchlist_symbols", return_value=["CN:600519", "HK:00700"]
+        ):
             # importance=5 (75) + 2 × 30 boost (60) = 135, cap at 100
             score = news_enrich._compute_relevance(5, ["600519", "00700"])
             assert score == 100
@@ -141,7 +151,15 @@ class TestPromptStructure:
     def test_prompt_includes_required_keys(self):
         items = [{"id": "x1", "title": "Fed holds rates", "summary": "Detail"}]
         prompt = news_enrich._build_prompt(items)
-        for key in ("id", "tickers", "sectors", "eventType", "importance", "aiSummary", "actionability"):
+        for key in (
+            "id",
+            "tickers",
+            "sectors",
+            "eventType",
+            "importance",
+            "aiSummary",
+            "actionability",
+        ):
             assert key in prompt, key
 
     def test_prompt_truncates_summary_at_200(self):
@@ -234,9 +252,7 @@ class TestValidateEntry:
     def test_importance_zero_clears_ai_summary(self):
         """Tier 2 early-exit: importance=0 items don't get ai_summary
         (saves brief scoring time)."""
-        out = news_enrich._validate_entry(
-            {"id": "a", "importance": 0, "aiSummary": "Some summary"}
-        )
+        out = news_enrich._validate_entry({"id": "a", "importance": 0, "aiSummary": "Some summary"})
         assert out["importance"] == 0
         assert out["ai_summary"] == ""
 

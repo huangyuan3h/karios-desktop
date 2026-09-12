@@ -16,12 +16,14 @@ def _action(monkeypatch, cands, gate=True, bad=False):
     monkeypatch.setattr(
         pts,
         "build_twin_star_daily_action",
-        lambda day: {"sat": {
-            "gateOpen": gate,
-            "candidates": [{"ts": c} for c in cands],
-            "snapshotMissing": bad,
-            "snapshotStale": False,
-        }},
+        lambda day: {
+            "sat": {
+                "gateOpen": gate,
+                "candidates": [{"ts": c} for c in cands],
+                "snapshotMissing": bad,
+                "snapshotStale": False,
+            }
+        },
     )
 
 

@@ -5,6 +5,7 @@ Executable口径: skip_t1_limit + ST/BJ/delist filter (via state_bucket_track lo
 
 Design: docs/designs/state-bucket-slice-stock-leg.md
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -89,7 +90,7 @@ def _day_state_fv(
         if not cur["close"] or not cur["high"] or not cur["low"] or cur["close"] <= 0:
             continue
         amp = (cur["high"] - cur["low"]) / cur["close"]
-        amts = [r["amount"] for r in series[idx - 20: idx + 1] if r["amount"]]
+        amts = [r["amount"] for r in series[idx - 20 : idx + 1] if r["amount"]]
         if len(amts) < 15:
             continue
         avg20 = sum(amts[:-1]) / max(len(amts) - 1, 1) if len(amts) > 1 else amts[0]
@@ -136,7 +137,7 @@ def _day_state_fv(
         idx = date_idx.get(ts, {}).get(day, -1)
         if idx < 20 or ts not in mv_map.get(day, {}):
             continue
-        closes = [r["close"] for r in series[idx - 19: idx + 1] if r["close"]]
+        closes = [r["close"] for r in series[idx - 19 : idx + 1] if r["close"]]
         if len(closes) < 20:
             continue
         tot += 1
@@ -215,7 +216,9 @@ def simulate_state_nav(
         mtm = 0.0
         for ts, p in positions.items():
             cc = close_by_ts.get(ts, {}).get(day)
-            mtm += POSITION_PCT * (cc / p["entry_price"]) if cc and p["entry_price"] else POSITION_PCT
+            mtm += (
+                POSITION_PCT * (cc / p["entry_price"]) if cc and p["entry_price"] else POSITION_PCT
+            )
         nav_curve.append(1.0 + realized + (mtm - len(positions) * POSITION_PCT))
 
     last = cal[-1] if cal else window_start
@@ -269,7 +272,9 @@ def nav_metrics(nav: list[float]) -> dict[str, float | int | None]:
     }
 
 
-def _warm_context(start: str, end: str) -> tuple[
+def _warm_context(
+    start: str, end: str
+) -> tuple[
     list[str],
     dict[str, list[dict[str, Any]]],
     dict[str, dict[str, float]],

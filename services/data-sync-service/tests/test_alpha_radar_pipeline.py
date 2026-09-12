@@ -157,9 +157,17 @@ def test_run_alpha_radar_process_drives_loops(monkeypatch) -> None:
 def test_run_alpha_radar_pipeline_cooldown_skips(monkeypatch) -> None:
     from datetime import UTC, datetime, timedelta
 
-    monkeypatch.setattr(ap, "get_meta", lambda k: (datetime.now(UTC) - timedelta(minutes=5)).isoformat() if k == "lastRunAt" else None)
+    monkeypatch.setattr(
+        ap,
+        "get_meta",
+        lambda k: (
+            (datetime.now(UTC) - timedelta(minutes=5)).isoformat() if k == "lastRunAt" else None
+        ),
+    )
     monkeypatch.setattr(ap, "_within_cooldown", lambda last: True)
-    monkeypatch.setattr(ap, "fetch_trends", lambda limit=50, since=None: ([{"id": "t1"}], [{"id": "t1"}]))
+    monkeypatch.setattr(
+        ap, "fetch_trends", lambda limit=50, since=None: ([{"id": "t1"}], [{"id": "t1"}])
+    )
     monkeypatch.setattr(ap, "count_trends_total", lambda: 1)
     monkeypatch.setattr(ap, "count_documents_by_status", lambda s: 0)
 
@@ -174,7 +182,11 @@ def test_run_alpha_radar_pipeline_no_stored_docs(monkeypatch) -> None:
     monkeypatch.setattr(
         ap,
         "run_alpha_radar_ingest",
-        lambda trigger="manual": {"ok": True, "ingest": {"sourceErrors": {}}, "ingestStats": {"stored": 0}},
+        lambda trigger="manual": {
+            "ok": True,
+            "ingest": {"sourceErrors": {}},
+            "ingestStats": {"stored": 0},
+        },
     )
     monkeypatch.setattr(ap, "insert_record", lambda *a, **k: None)
     monkeypatch.setattr(ap, "fetch_trends", lambda limit=50: ([{"id": "t1"}], [{"id": "t1"}]))

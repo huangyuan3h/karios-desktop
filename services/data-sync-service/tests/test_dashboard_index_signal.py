@@ -5,7 +5,9 @@ from typing import Any
 import pytest
 
 
-def _series_const(start_day: int = 1, days: int = 21, close: float = 100.0) -> list[tuple[str, float]]:
+def _series_const(
+    start_day: int = 1, days: int = 21, close: float = 100.0
+) -> list[tuple[str, float]]:
     out: list[tuple[str, float]] = []
     for i in range(days):
         d = f"2025-02-{start_day + i:02d}"
@@ -71,8 +73,14 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
     monkeypatch.setattr(dashboard, "compute_market_status", lambda: {"isPreMarket": False})
     monkeypatch.setattr(dashboard, "_today_iso_date", lambda: today)
     _ = in_sync  # realtime-window behavior retired 2026-08-12: always day-close signals
-    monkeypatch.setattr(dashboard, "_build_industry_bundle", lambda **_: {"dates": [], "topByDate": {}, "flow5d": {}})
-    monkeypatch.setattr(dashboard, "_news_items", lambda *a, **k: {"hours": 24, "total": 0, "items": []})
+    monkeypatch.setattr(
+        dashboard,
+        "_build_industry_bundle",
+        lambda **_: {"dates": [], "topByDate": {}, "flow5d": {}},
+    )
+    monkeypatch.setattr(
+        dashboard, "_news_items", lambda *a, **k: {"hours": 24, "total": 0, "items": []}
+    )
     monkeypatch.setattr(
         dashboard,
         "build_macro_snapshot",
@@ -92,6 +100,7 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
             "executionGate": {},
         },
     )
+
 
 def test_dashboard_summary_calls_get_index_signals_once_when_as_of_is_today(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]

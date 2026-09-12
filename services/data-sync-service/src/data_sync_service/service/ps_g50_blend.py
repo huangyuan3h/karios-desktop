@@ -16,6 +16,7 @@ to the core. Slot occupancy includes the body-exit day (same as satActive).
 Empty book (idle=1, sat_ret=0) → 100% core.
 Full book (idle=0, ≥4 slots at 25%) → classic PS-G50 50/50.
 """
+
 from __future__ import annotations
 
 from data_sync_service.service.state_bucket_track import POSITION_PCT
@@ -55,7 +56,10 @@ def blend_nav_idle_to_core(
         core_ret = core_nav[i] / c0 - 1.0 if c0 > 0 else 0.0
         sat_ret = sat_nav[i] / s0 - 1.0 if s0 > 0 else 0.0
         idle = sat_idle_frac(sat_slots[i], position_pct)
-        out.append(out[-1] * (1.0 + daily_ret_idle_to_core(core_ret, sat_ret, idle, core_weight=core_weight)))
+        out.append(
+            out[-1]
+            * (1.0 + daily_ret_idle_to_core(core_ret, sat_ret, idle, core_weight=core_weight))
+        )
     return out
 
 

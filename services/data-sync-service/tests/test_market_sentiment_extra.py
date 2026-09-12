@@ -62,7 +62,10 @@ class TestPanicRules:
         assert len(rules) == 1
 
     def test_apply_index_signals(self) -> None:
-        sigs = [{"name": "上证指数", "signal": "green", "rules": []}, {"name": "恒生指数", "signal": "green", "rules": []}]
+        sigs = [
+            {"name": "上证指数", "signal": "green", "rules": []},
+            {"name": "恒生指数", "signal": "green", "rules": []},
+        ]
         out = ms.apply_breadth_panic_index_signals(sigs, 100)
         assert out[0]["signal"] == "green"
         out2 = ms.apply_breadth_panic_index_signals(sigs, 4000)
@@ -90,7 +93,11 @@ class TestCapitulation:
         monkeypatch.setattr(md, "get_latest_row", lambda sid: {"close": 25.0})
         monkeypatch.setattr(smd, "SID_510300_PUT_IV", "M510300")
         monkeypatch.setattr(eff, "get_last_trade_date", lambda code: date(2026, 8, 7))
-        monkeypatch.setattr(eff, "fetch_row", lambda code, d: {"main_net_inflow": 3e9, "super_large_net_inflow": 0.0})
+        monkeypatch.setattr(
+            eff,
+            "fetch_row",
+            lambda code, d: {"main_net_inflow": 3e9, "super_large_net_inflow": 0.0},
+        )
         out = ms.check_capitulation_bottom(down=4000, as_of=date(2026, 8, 7))
         assert out["triggered"] is True
         assert out["raw"]["ivPct"] == 25.0
@@ -104,7 +111,11 @@ class TestCapitulation:
         monkeypatch.setattr(md, "get_latest_row", lambda sid: {"close": 25.0})
         monkeypatch.setattr(smd, "SID_510300_PUT_IV", "M510300")
         monkeypatch.setattr(eff, "get_last_trade_date", lambda code: date(2026, 8, 7))
-        monkeypatch.setattr(eff, "fetch_row", lambda code, d: {"main_net_inflow": 3e9, "super_large_net_inflow": 0.0})
+        monkeypatch.setattr(
+            eff,
+            "fetch_row",
+            lambda code, d: {"main_net_inflow": 3e9, "super_large_net_inflow": 0.0},
+        )
         out = ms.check_capitulation_bottom(down=1000, as_of=date(2026, 8, 7))
         assert out["triggered"] is False
         assert out["raw"]["down"] == 1000
@@ -133,7 +144,9 @@ class TestCapitulation:
     def test_errors_silent(self, monkeypatch) -> None:
         from data_sync_service.db import macro_daily as md
 
-        monkeypatch.setattr(md, "get_latest_row", lambda sid: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            md, "get_latest_row", lambda sid: (_ for _ in ()).throw(RuntimeError("down"))
+        )
         out = ms.check_capitulation_bottom(down=1000, as_of=date(2026, 8, 7))
         assert out["triggered"] is False
 
@@ -142,49 +155,65 @@ class TestFollowThroughDay:
     def test_all(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "list_days", lambda **kw: [{"riskMode": "capitulation_v_bottom"}])
         out = ms.check_follow_through_day(
-            as_of=date(2026, 8, 7), index_chg_max_pct=2.0,
-            today_turnover_cny=2e12, prev_turnover_cny=1e12,
+            as_of=date(2026, 8, 7),
+            index_chg_max_pct=2.0,
+            today_turnover_cny=2e12,
+            prev_turnover_cny=1e12,
         )
         assert out["triggered"] is True
 
     def test_missing_cap(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "list_days", lambda **kw: [{"riskMode": "normal"}])
         out = ms.check_follow_through_day(
-            as_of=date(2026, 8, 7), index_chg_max_pct=2.0,
-            today_turnover_cny=2e12, prev_turnover_cny=1e12,
+            as_of=date(2026, 8, 7),
+            index_chg_max_pct=2.0,
+            today_turnover_cny=2e12,
+            prev_turnover_cny=1e12,
         )
         assert out["triggered"] is False
 
     def test_low_chg(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "list_days", lambda **kw: [{"riskMode": "capitulation_v_bottom"}])
         out = ms.check_follow_through_day(
-            as_of=date(2026, 8, 7), index_chg_max_pct=1.0,
-            today_turnover_cny=2e12, prev_turnover_cny=1e12,
+            as_of=date(2026, 8, 7),
+            index_chg_max_pct=1.0,
+            today_turnover_cny=2e12,
+            prev_turnover_cny=1e12,
         )
         assert out["triggered"] is False
 
     def test_turnover_down(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "list_days", lambda **kw: [{"riskMode": "capitulation_v_bottom"}])
         out = ms.check_follow_through_day(
-            as_of=date(2026, 8, 7), index_chg_max_pct=2.0,
-            today_turnover_cny=5e11, prev_turnover_cny=1e12,
+            as_of=date(2026, 8, 7),
+            index_chg_max_pct=2.0,
+            today_turnover_cny=5e11,
+            prev_turnover_cny=1e12,
         )
         assert out["triggered"] is False
 
     def test_capitulation_in_lookback_errors(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "list_days", lambda **kw: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            ms, "list_days", lambda **kw: (_ for _ in ()).throw(RuntimeError("down"))
+        )
         assert ms._capitulation_in_lookback(date(2026, 8, 7)) is False
 
     def test_compute_index_max_chg_pct(self, monkeypatch) -> None:
         from data_sync_service.db import index_daily as idm
 
-        monkeypatch.setattr(idm, "fetch_last_closes_upto", lambda code, d, days: [("d1", 100.0), ("d2", 103.0)])
+        monkeypatch.setattr(
+            idm, "fetch_last_closes_upto", lambda code, d, days: [("d1", 100.0), ("d2", 103.0)]
+        )
         assert ms._compute_index_max_chg_pct(date(2026, 8, 7)) == pytest.approx(3.0)
 
     def test_compute_index_max_chg_pct_errors(self, monkeypatch) -> None:
         from data_sync_service.db import index_daily as idm
 
-        monkeypatch.setattr(idm, "fetch_last_closes_upto", lambda code, d, days: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            idm,
+            "fetch_last_closes_upto",
+            lambda code, d, days: (_ for _ in ()).throw(RuntimeError("down")),
+        )
         assert ms._compute_index_max_chg_pct(date(2026, 8, 7)) is None
 
     def test_read_prev_day_turnover(self, monkeypatch) -> None:
@@ -282,7 +311,9 @@ class TestParsing:
         from data_sync_service import config
         from data_sync_service.clients.tushare_pool import PooledPro, reset_pool
 
-        monkeypatch.setattr(config, "get_settings", lambda: type("S", (), {"tushare_tokens": ("k",)})())
+        monkeypatch.setattr(
+            config, "get_settings", lambda: type("S", (), {"tushare_tokens": ("k",)})()
+        )
         reset_pool()
         try:
             pro = ms._tushare_pro()
@@ -318,8 +349,10 @@ class TestBreadthEod:
         return calls
 
     def test_eod_paged(self, monkeypatch) -> None:
-        page1 = [{"ts_code": "600000.SH", "pct_chg": 1.0, "vol": 100.0, "amount": 5.0},
-                 {"ts_code": "000001.SZ", "pct_chg": -2.0, "vol": 200.0, "amount": 6.0}] * 2500
+        page1 = [
+            {"ts_code": "600000.SH", "pct_chg": 1.0, "vol": 100.0, "amount": 5.0},
+            {"ts_code": "000001.SZ", "pct_chg": -2.0, "vol": 200.0, "amount": 6.0},
+        ] * 2500
         page2 = [{"ts_code": "300001.SZ", "pct_chg": 0.0, "vol": 300.0, "amount": 7.0}]
         self._fake_pro(monkeypatch, [page1, page2])
         out = ms.fetch_cn_market_breadth_eod(date(2026, 8, 7))
@@ -329,7 +362,9 @@ class TestBreadthEod:
         assert out["total_turnover_cny"] == pytest.approx((5.0 * 2500 + 6.0 * 2500 + 7.0) * 1000.0)
 
     def test_eod_single_page(self, monkeypatch) -> None:
-        self._fake_pro(monkeypatch, [[{"ts_code": "600000.SH", "pct_chg": 1.0, "vol": 100.0, "amount": 5.0}]])
+        self._fake_pro(
+            monkeypatch, [[{"ts_code": "600000.SH", "pct_chg": 1.0, "vol": 100.0, "amount": 5.0}]]
+        )
         out = ms.fetch_cn_market_breadth_eod(date(2026, 8, 7))
         assert out["up_count"] == 1 and out["down_count"] == 0
         assert out["up_down_ratio"] == 1.0
@@ -340,7 +375,9 @@ class TestBreadthEod:
         assert out["total_count"] == 0 and out["up_down_ratio"] == 0.0
 
     def test_eod_bad_pct(self, monkeypatch) -> None:
-        self._fake_pro(monkeypatch, [[{"ts_code": "600000.SH", "pct_chg": "x", "vol": "y", "amount": "z"}]])
+        self._fake_pro(
+            monkeypatch, [[{"ts_code": "600000.SH", "pct_chg": "x", "vol": "y", "amount": "z"}]]
+        )
         out = ms.fetch_cn_market_breadth_eod(date(2026, 8, 7))
         assert out["flat_count"] == 1
 
@@ -366,7 +403,12 @@ class TestBreadthIntraday:
         monkeypatch.setattr(ms, "fetch_stock_ts_codes", lambda: codes)
 
         def quotes(part):
-            return {"ok": True, "items": [{"ts_code": c, "pct_chg": 1.0, "volume": 100.0, "amount": 200.0} for c in part]}
+            return {
+                "ok": True,
+                "items": [
+                    {"ts_code": c, "pct_chg": 1.0, "volume": 100.0, "amount": 200.0} for c in part
+                ],
+            }
 
         monkeypatch.setattr(ms, "fetch_realtime_quotes", quotes)
         out = ms.fetch_cn_market_breadth_intraday(date(2026, 8, 7))
@@ -379,7 +421,9 @@ class TestBreadthIntraday:
         ms._INTRADAY_BREADTH_CACHE.clear()
         monkeypatch.setattr(ms, "ensure_stock_basic", lambda: None)
         monkeypatch.setattr(ms, "fetch_stock_ts_codes", lambda: ["600000.SH"])
-        monkeypatch.setattr(ms, "fetch_realtime_quotes", lambda part: {"ok": False, "error": "quota"})
+        monkeypatch.setattr(
+            ms, "fetch_realtime_quotes", lambda part: {"ok": False, "error": "quota"}
+        )
         out = ms.fetch_cn_market_breadth_intraday(date(2026, 8, 7))
         assert out["total_count"] == 0
         assert "quota" in out["raw"]["errors"]
@@ -427,7 +471,10 @@ class TestTushareHelpers:
         monkeypatch.setattr(ms, "_tushare_pro", lambda: FakePro())
 
     def test_daily_pct_chg_map(self, monkeypatch) -> None:
-        self._fake_pro(monkeypatch, daily_df=[{"ts_code": "600000.SH", "pct_chg": 1.2}, {"ts_code": "bad", "pct_chg": "x"}])
+        self._fake_pro(
+            monkeypatch,
+            daily_df=[{"ts_code": "600000.SH", "pct_chg": 1.2}, {"ts_code": "bad", "pct_chg": "x"}],
+        )
         out = ms._tushare_daily_pct_chg_map(date(2026, 8, 7))
         assert out == {"600000.SH": 1.2}
 
@@ -455,7 +502,9 @@ class TestTushareHelpers:
         def limit(**kw):
             return [{"ts_code": "600000.SH"}, {"ts_code": "000001.SZ"}]
 
-        self._fake_pro(monkeypatch, limit=limit, daily_df=[{"ts_code": "600000.SH", "pct_chg": 2.0}])
+        self._fake_pro(
+            monkeypatch, limit=limit, daily_df=[{"ts_code": "600000.SH", "pct_chg": 2.0}]
+        )
         out = ms.fetch_cn_yesterday_limitup_premium_tushare(date(2026, 8, 7))
         assert out["premium"] == 2.0
         assert out["count"] == 2
@@ -469,37 +518,54 @@ class TestTushareHelpers:
 
 class TestLimitupPool:
     def test_close_limit_up_pool(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_daily_rows_for_date", lambda d: [
-            ("600000.SH", 10.0, 11.0, 11.0, 10.0, "平安银行"),
-            ("300001.SZ", 10.0, 12.0, 12.0, 20.0, "创业板股"),
-            ("000002.SZ", 10.0, 10.1, 10.05, 0.5, "未涨停"),
-            ("600100.SH", None, None, None, None, None),
-            ("bad", "x", "y", "z", "w", None),
-        ])
+        monkeypatch.setattr(
+            ms,
+            "_daily_rows_for_date",
+            lambda d: [
+                ("600000.SH", 10.0, 11.0, 11.0, 10.0, "平安银行"),
+                ("300001.SZ", 10.0, 12.0, 12.0, 20.0, "创业板股"),
+                ("000002.SZ", 10.0, 10.1, 10.05, 0.5, "未涨停"),
+                ("600100.SH", None, None, None, None, None),
+                ("bad", "x", "y", "z", "w", None),
+            ],
+        )
         codes = ms._close_limit_up_pool_codes(date(2026, 8, 7))
         assert "600000.SH" in codes and "300001.SZ" in codes and "000002.SZ" not in codes
 
     def test_failed_limitup_rate_from_db(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_daily_rows_for_date", lambda d: [
-            ("600000.SH", 10.0, 11.0, 11.0, 10.0, None),
-            ("300001.SZ", 10.0, 12.0, 10.5, 5.0, None),
-            ("000002.SZ", 10.0, 10.1, 10.05, 0.5, None),
-        ])
+        monkeypatch.setattr(
+            ms,
+            "_daily_rows_for_date",
+            lambda d: [
+                ("600000.SH", 10.0, 11.0, 11.0, 10.0, None),
+                ("300001.SZ", 10.0, 12.0, 10.5, 5.0, None),
+                ("000002.SZ", 10.0, 10.1, 10.05, 0.5, None),
+            ],
+        )
         rate, ever, close = ms._failed_limitup_rate_from_db(date(2026, 8, 7))
         assert ever == 2 and close == 1
         assert rate == 50.0
 
     def test_avg_pct_chg_from_db(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "ensure_daily", lambda: None)
-        monkeypatch.setattr(ms, "get_connection", lambda: _Conn([("600000.SH", 2.0), ("300001.SZ", 4.0), ("bad", "x")]))
+        monkeypatch.setattr(
+            ms,
+            "get_connection",
+            lambda: _Conn([("600000.SH", 2.0), ("300001.SZ", 4.0), ("bad", "x")]),
+        )
         avg, n = ms._avg_pct_chg_from_db(date(2026, 8, 7), ["600000.SH", "300001.SZ"])
         assert avg == pytest.approx(3.0) and n == 2
         assert ms._avg_pct_chg_from_db(date(2026, 8, 7), []) == (0.0, 0)
 
     def test_avg_pct_chg_from_realtime(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "fetch_realtime_quotes_batched", lambda codes: [
-            {"pct_chg": "1.0"}, {"pct_chg": "3.0"},
-        ])
+        monkeypatch.setattr(
+            ms,
+            "fetch_realtime_quotes_batched",
+            lambda codes: [
+                {"pct_chg": "1.0"},
+                {"pct_chg": "3.0"},
+            ],
+        )
         avg, n = ms._avg_pct_chg_from_realtime(["600000.SH"])
         assert avg == pytest.approx(2.0) and n == 2
         assert ms._avg_pct_chg_from_realtime([]) == (0.0, 0)
@@ -518,17 +584,42 @@ class TestLimitupPool:
     def test_daily_rows_for_date(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "ensure_daily", lambda: None)
         monkeypatch.setattr(ms, "ensure_stock_basic", lambda: None)
-        monkeypatch.setattr(ms, "get_connection", lambda: _Conn([("600000.SH", 1.0, 2.0, 3.0, 4.0, "名")]))
+        monkeypatch.setattr(
+            ms, "get_connection", lambda: _Conn([("600000.SH", 1.0, 2.0, 3.0, 4.0, "名")])
+        )
         out = ms._daily_rows_for_date(date(2026, 8, 7))
         assert out == [("600000.SH", 1.0, 2.0, 3.0, 4.0, "名")]
 
 
 class TestCompute:
-    def _patch_compute_deps(self, monkeypatch, breadth=None, premium=1.0, failed_rate=20.0, down=500, turnover=2e12, ratio=1.6):
-        monkeypatch.setattr(ms, "fetch_cn_market_breadth_eod", lambda dt: breadth if breadth is not None else {
-            "date": dt.isoformat(), "up_count": 2000, "down_count": down, "flat_count": 100,
-            "total_count": 2600, "up_down_ratio": ratio, "total_turnover_cny": turnover, "total_volume": 1e10,
-        })
+    def _patch_compute_deps(
+        self,
+        monkeypatch,
+        breadth=None,
+        premium=1.0,
+        failed_rate=20.0,
+        down=500,
+        turnover=2e12,
+        ratio=1.6,
+    ):
+        monkeypatch.setattr(
+            ms,
+            "fetch_cn_market_breadth_eod",
+            lambda dt: (
+                breadth
+                if breadth is not None
+                else {
+                    "date": dt.isoformat(),
+                    "up_count": 2000,
+                    "down_count": down,
+                    "flat_count": 100,
+                    "total_count": 2600,
+                    "up_down_ratio": ratio,
+                    "total_turnover_cny": turnover,
+                    "total_volume": 1e10,
+                }
+            ),
+        )
         monkeypatch.setattr(ms, "fetch_cn_market_breadth_intraday", lambda dt: {})
         monkeypatch.setattr(ms, "_prev_open_date", lambda exc, d: date(2026, 8, 6))
         monkeypatch.setattr(ms, "_close_limit_up_pool_codes", lambda d: ["600000.SH"])
@@ -537,17 +628,27 @@ class TestCompute:
         monkeypatch.setattr(ms, "_failed_limitup_rate_from_db", lambda d: (failed_rate, 10, 5))
         monkeypatch.setattr(ms, "_compute_index_max_chg_pct", lambda d: 0.5)
         monkeypatch.setattr(ms, "_read_prev_day_turnover", lambda d: 1e12)
-        monkeypatch.setattr(ms, "check_capitulation_bottom", lambda **kw: {"triggered": False, "rule": "", "raw": {}})
-        monkeypatch.setattr(ms, "check_follow_through_day", lambda **kw: {"triggered": False, "rule": "", "raw": {}})
+        monkeypatch.setattr(
+            ms,
+            "check_capitulation_bottom",
+            lambda **kw: {"triggered": False, "rule": "", "raw": {}},
+        )
+        monkeypatch.setattr(
+            ms, "check_follow_through_day", lambda **kw: {"triggered": False, "rule": "", "raw": {}}
+        )
         monkeypatch.setattr(ms, "list_days", lambda **kw: [])
 
     def test_euphoric(self, monkeypatch) -> None:
-        self._patch_compute_deps(monkeypatch, premium=3.5, turnover=2.6e12, ratio=2.2, failed_rate=20.0)
+        self._patch_compute_deps(
+            monkeypatch, premium=3.5, turnover=2.6e12, ratio=2.2, failed_rate=20.0
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "euphoric"
 
     def test_hot(self, monkeypatch) -> None:
-        self._patch_compute_deps(monkeypatch, premium=1.0, turnover=1.9e12, ratio=1.6, failed_rate=20.0)
+        self._patch_compute_deps(
+            monkeypatch, premium=1.0, turnover=1.9e12, ratio=1.6, failed_rate=20.0
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "hot"
 
@@ -568,7 +669,9 @@ class TestCompute:
         assert out["riskMode"] == "caution"
 
     def test_bullish_override(self, monkeypatch) -> None:
-        self._patch_compute_deps(monkeypatch, premium=0.5, failed_rate=80.0, turnover=2.2e12, ratio=1.5)
+        self._patch_compute_deps(
+            monkeypatch, premium=0.5, failed_rate=80.0, turnover=2.2e12, ratio=1.5
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "normal"
         assert any("多头覆盖" in r for r in out["rules"])
@@ -580,43 +683,75 @@ class TestCompute:
 
     def test_capitulation_override(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch, down=4000)
-        monkeypatch.setattr(ms, "check_capitulation_bottom", lambda **kw: {"triggered": True, "rule": "cap rule", "raw": {"x": 1}})
+        monkeypatch.setattr(
+            ms,
+            "check_capitulation_bottom",
+            lambda **kw: {"triggered": True, "rule": "cap rule", "raw": {"x": 1}},
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "capitulation_v_bottom"
         assert out["raw"]["capitulation"] == {"x": 1}
 
     def test_ftd_override(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch)
-        monkeypatch.setattr(ms, "check_follow_through_day", lambda **kw: {"triggered": True, "rule": "ftd rule", "raw": {}})
+        monkeypatch.setattr(
+            ms,
+            "check_follow_through_day",
+            lambda **kw: {"triggered": True, "rule": "ftd rule", "raw": {}},
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "confirmed_uptrend"
 
     def test_breadth_error(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch)
-        monkeypatch.setattr(ms, "fetch_cn_market_breadth_eod", lambda dt: (_ for _ in ()).throw(RuntimeError("down")))
-        monkeypatch.setattr(ms, "fetch_cn_market_breadth_intraday", lambda dt: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            ms,
+            "fetch_cn_market_breadth_eod",
+            lambda dt: (_ for _ in ()).throw(RuntimeError("down")),
+        )
+        monkeypatch.setattr(
+            ms,
+            "fetch_cn_market_breadth_intraday",
+            lambda dt: (_ for _ in ()).throw(RuntimeError("down")),
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "caution"
         assert "breadthError" in out["raw"]
 
     def test_premium_failure_path(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch)
-        monkeypatch.setattr(ms, "_prev_open_date", lambda exc, d: (_ for _ in ()).throw(RuntimeError("cal")))
+        monkeypatch.setattr(
+            ms, "_prev_open_date", lambda exc, d: (_ for _ in ()).throw(RuntimeError("cal"))
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert "yesterdayLimitUpPremiumError" in out["raw"]
 
     def test_failed_rate_error(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch)
-        monkeypatch.setattr(ms, "_failed_limitup_rate_from_db", lambda d: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            ms, "_failed_limitup_rate_from_db", lambda d: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert "failedLimitUpRateError" in out["raw"]
 
     def test_intraday_fallback(self, monkeypatch) -> None:
-        self._patch_compute_deps(monkeypatch, breadth={"date": "2026-08-08", "total_count": 0, "total_turnover_cny": 0.0})
-        monkeypatch.setattr(ms, "fetch_cn_market_breadth_intraday", lambda dt: {
-            "date": dt.isoformat(), "up_count": 1, "down_count": 2, "flat_count": 0,
-            "total_count": 3, "up_down_ratio": 0.5, "total_turnover_cny": 1e12, "total_volume": 1.0,
-        })
+        self._patch_compute_deps(
+            monkeypatch, breadth={"date": "2026-08-08", "total_count": 0, "total_turnover_cny": 0.0}
+        )
+        monkeypatch.setattr(
+            ms,
+            "fetch_cn_market_breadth_intraday",
+            lambda dt: {
+                "date": dt.isoformat(),
+                "up_count": 1,
+                "down_count": 2,
+                "flat_count": 0,
+                "total_count": 3,
+                "up_down_ratio": 0.5,
+                "total_turnover_cny": 1e12,
+                "total_volume": 1.0,
+            },
+        )
         monkeypatch.setattr(ms, "_read_prev_day_turnover", lambda d: None)
         monkeypatch.setattr(ms, "list_days", lambda **kw: [{"riskMode": "capitulation_v_bottom"}])
         today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
@@ -627,21 +762,40 @@ class TestCompute:
 class TestRowAndDates:
     def test_row_from_compute(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "now_iso", lambda: "2026-08-07T10:00:00+00:00")
-        out = ms._sentiment_row_from_compute({"date": "2026-08-07", "asOfDate": "2026-08-07", "up": 1, "down": 2,
-                                              "flat": 3, "ratio": 0.5, "marketTurnoverCny": 1e12, "marketVolume": 2e10,
-                                              "premium": 1.0, "failedRate": 2.0, "riskMode": "hot", "rules": ["a"],
-                                              "updatedAt": "t", "raw": {"b": 1}}, "2026-08-07")
+        out = ms._sentiment_row_from_compute(
+            {
+                "date": "2026-08-07",
+                "asOfDate": "2026-08-07",
+                "up": 1,
+                "down": 2,
+                "flat": 3,
+                "ratio": 0.5,
+                "marketTurnoverCny": 1e12,
+                "marketVolume": 2e10,
+                "premium": 1.0,
+                "failedRate": 2.0,
+                "riskMode": "hot",
+                "rules": ["a"],
+                "updatedAt": "t",
+                "raw": {"b": 1},
+            },
+            "2026-08-07",
+        )
         assert out["total_count"] == 6
         assert out["risk_mode"] == "hot"
 
     def test_item_from_compute(self) -> None:
-        out = ms._sentiment_item_from_compute({"up": 1, "ratio": 0.5}, "2026-08-07", rules_list=["r"])
+        out = ms._sentiment_item_from_compute(
+            {"up": 1, "ratio": 0.5}, "2026-08-07", rules_list=["r"]
+        )
         assert out["upCount"] == 1 and out["rules"] == ["r"]
 
     def test_persist(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "compute_cn_sentiment_for_date", lambda d: {"riskMode": "hot"})
         monkeypatch.setattr(ms, "upsert_daily_rows", lambda rows: None)
-        monkeypatch.setattr(ms, "list_days", lambda **kw: [{"date": "2026-08-07", "riskMode": "hot"}])
+        monkeypatch.setattr(
+            ms, "list_days", lambda **kw: [{"date": "2026-08-07", "riskMode": "hot"}]
+        )
         assert ms._persist_sentiment_for_date("2026-08-07")["riskMode"] == "hot"
 
     def test_persist_no_cached(self, monkeypatch) -> None:
@@ -664,12 +818,22 @@ class TestRowAndDates:
 
 
 class TestSyncDates:
-    def _patch(self, monkeypatch, latest_db="2026-08-07", is_trading=True, cached=None, open_dates=None):
+    def _patch(
+        self, monkeypatch, latest_db="2026-08-07", is_trading=True, cached=None, open_dates=None
+    ):
         monkeypatch.setattr(ms, "last_open_date_on_or_before", lambda d: date(2026, 8, 7))
         monkeypatch.setattr(ms, "get_latest_date", lambda: latest_db)
         monkeypatch.setattr(ms, "is_cn_trading_day", lambda d: is_trading)
-        monkeypatch.setattr(ms, "list_days", lambda **kw: cached if cached is not None else [{"date": "2026-08-07"}])
-        monkeypatch.setattr(ms, "get_open_dates", lambda **kw: open_dates if open_dates is not None else [date(2026, 8, 6), date(2026, 8, 7)])
+        monkeypatch.setattr(
+            ms, "list_days", lambda **kw: cached if cached is not None else [{"date": "2026-08-07"}]
+        )
+        monkeypatch.setattr(
+            ms,
+            "get_open_dates",
+            lambda **kw: (
+                open_dates if open_dates is not None else [date(2026, 8, 6), date(2026, 8, 7)]
+            ),
+        )
 
     def test_up_to_date_force(self, monkeypatch) -> None:
         self._patch(monkeypatch)
@@ -711,7 +875,9 @@ class TestSyncDates:
 
 class TestSync:
     def test_skip_out(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([], {"ok": True, "skipped": True}))
+        monkeypatch.setattr(
+            ms, "_resolve_sentiment_sync_dates", lambda **kw: ([], {"ok": True, "skipped": True})
+        )
         out = ms.sync_cn_sentiment(date_str="2026-08-07", force=False)
         assert out["skipped"] is True
 
@@ -723,24 +889,38 @@ class TestSync:
         assert out["ok"] is True
 
     def test_sync_ok(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None))
-        monkeypatch.setattr(ms, "_persist_sentiment_for_date", lambda d: {"date": d, "riskMode": "hot"})
-        monkeypatch.setattr(ms, "list_days", lambda **kw: [{"date": "2026-08-07", "riskMode": "hot"}])
+        monkeypatch.setattr(
+            ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None)
+        )
+        monkeypatch.setattr(
+            ms, "_persist_sentiment_for_date", lambda d: {"date": d, "riskMode": "hot"}
+        )
+        monkeypatch.setattr(
+            ms, "list_days", lambda **kw: [{"date": "2026-08-07", "riskMode": "hot"}]
+        )
         monkeypatch.setattr(ms, "is_cn_trading_day", lambda d: True)
         out = ms.sync_cn_sentiment(date_str="2026-08-07", force=False)
         assert out["ok"] is True and out["asOfDate"] == "2026-08-07"
 
     def test_sync_catchup(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 6), date(2026, 8, 7)], None))
+        monkeypatch.setattr(
+            ms,
+            "_resolve_sentiment_sync_dates",
+            lambda **kw: ([date(2026, 8, 6), date(2026, 8, 7)], None),
+        )
         monkeypatch.setattr(ms, "_persist_sentiment_for_date", lambda d: {"date": d})
-        monkeypatch.setattr(ms, "list_days", lambda **kw: [{"date": d} for d in ("2026-08-06", "2026-08-07")])
+        monkeypatch.setattr(
+            ms, "list_days", lambda **kw: [{"date": d} for d in ("2026-08-06", "2026-08-07")]
+        )
         monkeypatch.setattr(ms, "is_cn_trading_day", lambda d: False)
         out = ms.sync_cn_sentiment(date_str="2026-08-07", force=False)
         assert out["catchup"] is True
         assert out["syncedDates"] == ["2026-08-06", "2026-08-07"]
 
     def test_sync_error_with_cached(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None))
+        monkeypatch.setattr(
+            ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None)
+        )
 
         def persist(d):
             raise RuntimeError("compute boom")
@@ -753,7 +933,9 @@ class TestSync:
         assert out["errors"] == [{"date": "2026-08-07", "error": "compute boom"}]
 
     def test_sync_error_no_synced(self, monkeypatch) -> None:
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None))
+        monkeypatch.setattr(
+            ms, "_resolve_sentiment_sync_dates", lambda **kw: ([date(2026, 8, 7)], None)
+        )
 
         def persist(d):
             raise RuntimeError("boom")
@@ -765,6 +947,8 @@ class TestSync:
 
     def test_bad_date_str(self, monkeypatch) -> None:
         monkeypatch.setattr(ms, "shanghai_today", lambda: date(2026, 8, 7))
-        monkeypatch.setattr(ms, "_resolve_sentiment_sync_dates", lambda **kw: ([], {"ok": True, "skipped": True}))
+        monkeypatch.setattr(
+            ms, "_resolve_sentiment_sync_dates", lambda **kw: ([], {"ok": True, "skipped": True})
+        )
         out = ms.sync_cn_sentiment(date_str="garbage", force=False)
         assert out["skipped"] is True

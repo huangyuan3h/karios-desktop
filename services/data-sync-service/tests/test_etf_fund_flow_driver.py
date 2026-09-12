@@ -15,29 +15,40 @@ def test_prev_open_iso() -> None:
 
 
 def test_estimate_net_1d_from_em_none_cases() -> None:
-    assert eff._estimate_net_1d_from_em(
-        symbol="ETF:510300", as_of="2026-08-05", rows_by_date={}, open_iso=[], em_spot=None
-    ) is None
-    assert eff._estimate_net_1d_from_em(
-        symbol="ETF:510300", as_of="2026-08-05", rows_by_date={}, open_iso=[],
-        em_spot={"ETF:510300": {"dataDate": "2026-08-04", "mainNetInflow": 100.0}},
-    ) is None  # stale dataDate
+    assert (
+        eff._estimate_net_1d_from_em(
+            symbol="ETF:510300", as_of="2026-08-05", rows_by_date={}, open_iso=[], em_spot=None
+        )
+        is None
+    )
+    assert (
+        eff._estimate_net_1d_from_em(
+            symbol="ETF:510300",
+            as_of="2026-08-05",
+            rows_by_date={},
+            open_iso=[],
+            em_spot={"ETF:510300": {"dataDate": "2026-08-04", "mainNetInflow": 100.0}},
+        )
+        is None
+    )  # stale dataDate
 
 
 def test_estimate_net_1d_from_em_main_net() -> None:
     out = eff._estimate_net_1d_from_em(
-        symbol="ETF:510300", as_of="2026-08-05", rows_by_date={}, open_iso=[],
+        symbol="ETF:510300",
+        as_of="2026-08-05",
+        rows_by_date={},
+        open_iso=[],
         em_spot={"ETF:510300": {"dataDate": "2026-08-05", "mainNetInflow": "123.5"}},
     )
     assert out == 123.5
 
 
 def test_estimate_net_1d_from_em_share_fallback(monkeypatch) -> None:
-    monkeypatch.setattr(
-        eff, "compute_net_inflow_1d", lambda **kw: 42.0
-    )
+    monkeypatch.setattr(eff, "compute_net_inflow_1d", lambda **kw: 42.0)
     out = eff._estimate_net_1d_from_em(
-        symbol="ETF:510300", as_of="2026-08-05",
+        symbol="ETF:510300",
+        as_of="2026-08-05",
         rows_by_date={"2026-08-04": {"fd_share": 100.0, "avg_price": 4.0}},
         open_iso=["2026-08-04"],
         em_spot={"ETF:510300": {"dataDate": "2026-08-05", "fdShareWan": 200.0}},
@@ -94,6 +105,8 @@ def test_aggregate_etf_flow_signal_incomplete_flags() -> None:
     out = eff.aggregate_etf_flow_signal(bundle)
     assert out["verdict"] == "neutral"
     assert out["incomplete"] is True
+
+
 """etf_fund_flow: watchlist sync driver + tushare history + helpers."""
 
 import datetime  # noqa: E402
@@ -124,8 +137,11 @@ def test_sync_full_success(monkeypatch) -> None:
     flow = {}
     for s in symbols:
         flow[s] = {
-            "tsCode": s, "fdShareWan": 100.0, "mainNetInflow": 500.0,
-            "dataDate": "2026-08-07", "pctChg": 1.0,
+            "tsCode": s,
+            "fdShareWan": 100.0,
+            "mainNetInflow": 500.0,
+            "dataDate": "2026-08-07",
+            "pctChg": 1.0,
         }
     monkeypatch.setattr(eff, "_should_skip_etf_sync_today", lambda force: False)
     monkeypatch.setattr(eff, "ensure_table", lambda: None)
@@ -136,7 +152,9 @@ def test_sync_full_success(monkeypatch) -> None:
     monkeypatch.setattr(eff, "get_last_em_etf_fetch_error", lambda: None)
     monkeypatch.setattr(eff, "_em_flow_trade_date", lambda flow, fallback_iso: "2026-08-07")
     monkeypatch.setattr(eff, "_is_current_realtime_trade_date", lambda td, fallback_iso: True)
-    monkeypatch.setattr(eff, "_em_flow_to_daily_row", lambda **kw: {"ts_code": kw["ts_code"], "net_inflow": 500.0})
+    monkeypatch.setattr(
+        eff, "_em_flow_to_daily_row", lambda **kw: {"ts_code": kw["ts_code"], "net_inflow": 500.0}
+    )
     monkeypatch.setattr(eff, "_sync_tushare_history_if_available", lambda **kw: 3)
     monkeypatch.setattr(eff, "upsert_daily_rows", lambda rows: len(rows))
     monkeypatch.setattr(eff, "insert_record", lambda **kw: None)
@@ -169,7 +187,12 @@ def test_sync_stale_symbol(monkeypatch) -> None:
 
 def test_sync_tushare_history_no_key(monkeypatch) -> None:
     monkeypatch.setattr(eff, "get_settings", lambda: type("S", (), {"tushare_tokens": ()})())
-    assert eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="x") == 0
+    assert (
+        eff._sync_tushare_history_if_available(
+            ts_code="510300.SH", end_date="20260807", updated_at="x"
+        )
+        == 0
+    )
 
 
 def test_sync_tushare_history_full_flow(monkeypatch) -> None:
@@ -179,11 +202,15 @@ def test_sync_tushare_history_full_flow(monkeypatch) -> None:
     monkeypatch.setattr(eff, "get_last_trade_date", lambda code: None)
     monkeypatch.setattr(eff, "fetch_rows_for_codes", lambda codes: [1, 2])
     monkeypatch.setattr(eff, "_date_to_yyyymmdd", lambda d: "20260101")
-    monkeypatch.setattr(eff, "_with_retry", lambda fn: type("DF", (), {"empty": lambda self: False})())
+    monkeypatch.setattr(
+        eff, "_with_retry", lambda fn: type("DF", (), {"empty": lambda self: False})()
+    )
     monkeypatch.setattr(eff, "_merge_tushare_frames", lambda code, **kw: [{"r": 1}])
     monkeypatch.setattr(eff, "upsert_daily_rows", lambda merged: 2)
     monkeypatch.setattr(eff, "_recompute_net_inflows_for_code", lambda code, updated_at=None: 1)
-    out = eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="x")
+    out = eff._sync_tushare_history_if_available(
+        ts_code="510300.SH", end_date="20260807", updated_at="x"
+    )
     assert out == 3
 
 
@@ -198,14 +225,21 @@ def test_sync_tushare_history_dates_exhausted(monkeypatch) -> None:
     monkeypatch.setattr(eff, "_merge_tushare_frames", lambda code, **kw: [])
     monkeypatch.setattr(eff, "upsert_daily_rows", lambda merged: 0)
     monkeypatch.setattr(eff, "_recompute_net_inflows_for_code", lambda code, updated_at=None: 0)
-    assert eff._sync_tushare_history_if_available(ts_code="510300.SH", end_date="20260807", updated_at="x") == 0
+    assert (
+        eff._sync_tushare_history_if_available(
+            ts_code="510300.SH", end_date="20260807", updated_at="x"
+        )
+        == 0
+    )
 
 
 def test_sum_net_inflow_for_dates() -> None:
     rows = {"2026-08-05": {"net_inflow": 1.0}, "2026-08-06": {"net_inflow": "2.5"}}
     assert eff._sum_net_inflow_for_dates(rows, ["2026-08-05", "2026-08-06"]) == 3.5
     assert eff._sum_net_inflow_for_dates(rows, ["2026-08-05", "2026-08-07"]) is None
-    assert eff._sum_net_inflow_for_dates({"2026-08-05": {"net_inflow": None}}, ["2026-08-05"]) is None
+    assert (
+        eff._sum_net_inflow_for_dates({"2026-08-05": {"net_inflow": None}}, ["2026-08-05"]) is None
+    )
 
 
 def test_latest_net_inflow_row() -> None:
@@ -230,8 +264,11 @@ def test_apply_em_spot_fallback() -> None:
     monkeypatch.setattr(eff, "upsert_daily_rows", lambda rows: len(rows))
     rows = {"2026-08-07": {"fd_share": 1.0, "net_inflow": None}}
     ok = eff._apply_em_spot_fallback(
-        ts_code="510300.SH", symbol="ETF:510300", trade_date_iso="2026-08-07",
-        rows_by_date=rows, updated_at="x",
+        ts_code="510300.SH",
+        symbol="ETF:510300",
+        trade_date_iso="2026-08-07",
+        rows_by_date=rows,
+        updated_at="x",
     )
     assert ok is True
     assert rows["2026-08-07"]["fd_share"] == 55.0
@@ -246,11 +283,16 @@ def test_apply_em_spot_fallback_noop() -> None:
     monkeypatch.setattr(eff, "upsert_daily_rows", lambda rows: len(rows))
     rows = {}
     ok = eff._apply_em_spot_fallback(
-        ts_code="510300.SH", symbol="ETF:510300", trade_date_iso="2026-08-07",
-        rows_by_date=rows, updated_at="x",
+        ts_code="510300.SH",
+        symbol="ETF:510300",
+        trade_date_iso="2026-08-07",
+        rows_by_date=rows,
+        updated_at="x",
     )
     assert ok is False
     monkeypatch.undo()
+
+
 """etf_fund_flow wave-2: extended universe, frame merge, flow helpers."""
 
 import pandas as pd  # noqa: E402
@@ -262,6 +304,7 @@ def test_fetch_extended_etf_universe(monkeypatch) -> None:
         ("159915.SZ", "159915", "创业板ETF"),
         ("511990.SH", "511990", "华宝添益"),
     ]
+
     class _Cur:
         def execute(self, sql, params):
             pass
@@ -291,7 +334,9 @@ def test_fetch_extended_etf_universe(monkeypatch) -> None:
     monkeypatch.setattr(dbmod, "get_connection", lambda: _Conn())
     monkeypatch.setattr(sbmod, "ensure_table", lambda: None)
     monkeypatch.setattr(eff, "_CORE_ETF_TICKERS", frozenset({"510300"}))
-    monkeypatch.setattr(eff, "_infer_etf_category", lambda sym: "broad" if sym.startswith("51") else "other")
+    monkeypatch.setattr(
+        eff, "_infer_etf_category", lambda sym: "broad" if sym.startswith("51") else "other"
+    )
     out = eff._fetch_extended_etf_universe(max_size=10, exclude_core=True)
     syms = [x["symbol"] for x in out]
     assert "510300" not in syms  # core excluded
@@ -312,7 +357,10 @@ def test_should_skip_etf_sync_today(monkeypatch) -> None:
 
 
 def test_em_flow_trade_date() -> None:
-    assert eff._em_flow_trade_date({"dataDate": "2026-08-07 15:00:00"}, fallback_iso="2026-08-07") == "2026-08-07"
+    assert (
+        eff._em_flow_trade_date({"dataDate": "2026-08-07 15:00:00"}, fallback_iso="2026-08-07")
+        == "2026-08-07"
+    )
     assert eff._em_flow_trade_date({"dataDate": "bad"}, fallback_iso="2026-08-07") == "2026-08-07"
     assert eff._em_flow_trade_date({}, fallback_iso="2026-08-07") == "2026-08-07"
 
@@ -327,16 +375,25 @@ def test_is_current_realtime_trade_date(monkeypatch) -> None:
 
 def test_em_flow_to_daily_row() -> None:
     flow = {"mainNetInflow": 500.0, "fdShareWan": 100.0, "latestPrice": 4.0, "source": "em"}
-    row = eff._em_flow_to_daily_row(ts_code="510300.SH", trade_date_iso="2026-08-07", flow=flow, updated_at="t")
+    row = eff._em_flow_to_daily_row(
+        ts_code="510300.SH", trade_date_iso="2026-08-07", flow=flow, updated_at="t"
+    )
     assert row["net_inflow"] == 500.0
-    assert eff._em_flow_to_daily_row(ts_code="x", trade_date_iso="d", flow={}, updated_at="t") is None
+    assert (
+        eff._em_flow_to_daily_row(ts_code="x", trade_date_iso="d", flow={}, updated_at="t") is None
+    )
 
 
 def test_merge_tushare_frames() -> None:
     share = pd.DataFrame({"trade_date": ["20260806", "20260807"], "fd_share": [100.0, 110.0]})
-    daily = pd.DataFrame({
-        "trade_date": ["20260807"], "close": [4.0], "vol": [100.0], "amount": [400.0],
-    })
+    daily = pd.DataFrame(
+        {
+            "trade_date": ["20260807"],
+            "close": [4.0],
+            "vol": [100.0],
+            "amount": [400.0],
+        }
+    )
     out = eff._merge_tushare_frames("510300.SH", share_df=share, daily_df=daily, updated_at="t")
     assert [x["trade_date"] for x in out] == ["2026-08-06", "2026-08-07"]
     assert out[1]["fd_share"] == 110.0
@@ -348,11 +405,22 @@ def test_merge_tushare_frames() -> None:
 
 
 def test_classify_signal() -> None:
-    assert eff.classify_signal(category="Broad", net_flow_1d=1.0, net_flow_3d=2.0) == "National Team Buy"
-    assert eff.classify_signal(category="broad", net_flow_1d=-1.0, net_flow_3d=-2.0) == "National Team Outflow"
+    assert (
+        eff.classify_signal(category="Broad", net_flow_1d=1.0, net_flow_3d=2.0)
+        == "National Team Buy"
+    )
+    assert (
+        eff.classify_signal(category="broad", net_flow_1d=-1.0, net_flow_3d=-2.0)
+        == "National Team Outflow"
+    )
     assert eff.classify_signal(category="broad", net_flow_1d=1.0, net_flow_3d=-2.0) == "Neutral"
-    assert eff.classify_signal(category="sector", net_flow_1d=1.0, net_flow_3d=1e10) == "Sector Momentum"
-    assert eff.classify_signal(category="sector", net_flow_1d=-1.0, net_flow_3d=-2.0) == "Inst Outflow"
+    assert (
+        eff.classify_signal(category="sector", net_flow_1d=1.0, net_flow_3d=1e10)
+        == "Sector Momentum"
+    )
+    assert (
+        eff.classify_signal(category="sector", net_flow_1d=-1.0, net_flow_3d=-2.0) == "Inst Outflow"
+    )
     assert eff.classify_signal(category="sector", net_flow_1d=1.0, net_flow_3d=1.0) == "Neutral"
     assert eff.classify_signal(category="other", net_flow_1d=1.0, net_flow_3d=2.0) == "Neutral"
     assert eff.classify_signal(category="broad", net_flow_1d=None, net_flow_3d=2.0) == "Neutral"

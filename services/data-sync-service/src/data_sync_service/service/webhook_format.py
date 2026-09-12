@@ -66,10 +66,19 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
             pyramid_lines.insert(0, "「金字塔加仓触发」")
         body = _lines(
             _lines(*(_gate_line(k, v) for k, v in gates.items())),
-            *([""] + [f"  {c.get('name') or c.get('symbol')} score={c.get('score')}"
-                      for c in candidates] or []),
-            *([""] + [f"  🚩退出 {e.get('name') or e.get('symbol')} {e.get('pnlPct')}%"
-                      for e in exits] or []),
+            *(
+                [""]
+                + [
+                    f"  {c.get('name') or c.get('symbol')} score={c.get('score')}"
+                    for c in candidates
+                ]
+                or []
+            ),
+            *(
+                [""]
+                + [f"  🚩退出 {e.get('name') or e.get('symbol')} {e.get('pnlPct')}%" for e in exits]
+                or []
+            ),
             *pyramid_lines,
             *sleeve_lines,
         )
@@ -80,10 +89,10 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
         lines = []
         for m, v in markets.items():
             parts = []
-            for e in (v.get("extra") or []):
+            for e in v.get("extra") or []:
                 kind = "该卖没卖" if e.get("kind") == "exited" else "买了不该买"
                 parts.append(f"  {kind} {e.get('symbol')}")
-            for sym in (v.get("missing") or []):
+            for sym in v.get("missing") or []:
                 parts.append(f"  该持没买 {sym}")
             if parts:
                 lines.append(f"{m}（回测应持 {v.get('expected')} / 实持 {v.get('actual')}）")

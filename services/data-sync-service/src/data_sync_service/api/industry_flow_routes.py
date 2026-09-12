@@ -40,7 +40,9 @@ def market_cn_industry_fund_flow_sync(
     payload: IndustryFundFlowSyncRequest = IndustryFundFlowSyncRequest(),
 ) -> dict:
     try:
-        return sync_cn_industry_fund_flow(days=payload.days, top_n=payload.topN, force=payload.force)
+        return sync_cn_industry_fund_flow(
+            days=payload.days, top_n=payload.topN, force=payload.force
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -56,7 +58,9 @@ def market_cn_industry_mainline(
 
 
 @router.post("/market/cn/industry-mainline/sync")
-def market_cn_industry_mainline_sync(payload: IndustryMainlineSyncRequest = IndustryMainlineSyncRequest()) -> dict:
+def market_cn_industry_mainline_sync(
+    payload: IndustryMainlineSyncRequest = IndustryMainlineSyncRequest(),
+) -> dict:
     as_of = payload.asOfDate or None
     try:
         return sync_cn_industry_mainline(as_of_date=as_of, force=payload.force)

@@ -11,12 +11,18 @@ from data_sync_service.service import option_iv as svc
 
 
 def _live(**kw) -> dict:
-    out = {"ivPct": 22.0, "source": "eastmoney", "contractName": "300ETF沽6月4000", "diagnostics": {"eastmoneyRows": 1}}
+    out = {
+        "ivPct": 22.0,
+        "source": "eastmoney",
+        "contractName": "300ETF沽6月4000",
+        "diagnostics": {"eastmoneyRows": 1},
+    }
     out.update(kw)
     return out
 
 
 # ---- sync_option_iv_daily --------------------------------------------------
+
 
 def test_sync_skips_already_synced_today(monkeypatch) -> None:
     monkeypatch.setattr(svc, "get_today_run", lambda job: {"success": True})
@@ -79,7 +85,9 @@ def test_sync_success_with_prev_close(monkeypatch) -> None:
     monkeypatch.setattr(svc, "get_today_run", lambda job: None)
     monkeypatch.setattr(svc, "is_trading_day", lambda exchange, cal_date: True)
     monkeypatch.setattr(svc, "fetch_510300_atm_put_iv_live", lambda **_: _live(ivPct=24.2))
-    monkeypatch.setattr(svc, "get_latest_row", lambda *_: {"trade_date": "2026-08-06", "close": 20.0})
+    monkeypatch.setattr(
+        svc, "get_latest_row", lambda *_: {"trade_date": "2026-08-06", "close": 20.0}
+    )
     monkeypatch.setattr(svc, "upsert_from_dataframe", lambda *a, **k: 1)
     monkeypatch.setattr(svc, "insert_record", lambda **kw: None)
     out = svc.sync_option_iv_daily(force=True)
@@ -88,6 +96,7 @@ def test_sync_success_with_prev_close(monkeypatch) -> None:
 
 
 # ---- fetch_510300_atm_put_iv_live: akshare fallback ------------------------
+
 
 def test_live_em_fails_akshare_succeeds(monkeypatch) -> None:
     def boom():
@@ -139,6 +148,7 @@ def test_live_source_override(monkeypatch) -> None:
 
 # ---- _fetch_em_option_value_rows (paging) ----------------------------------
 
+
 def test_em_rows_paging(monkeypatch) -> None:
     calls: list[int] = []
 
@@ -156,13 +166,17 @@ def test_em_rows_paging(monkeypatch) -> None:
 
 
 def test_em_rows_empty_diff_breaks(monkeypatch) -> None:
-    monkeypatch.setattr(svc, "_em_option_value_request", lambda params: {"data": {"diff": [], "total": 10}})
+    monkeypatch.setattr(
+        svc, "_em_option_value_request", lambda params: {"data": {"diff": [], "total": 10}}
+    )
     assert svc._fetch_em_option_value_rows() == []
 
 
 def test_em_rows_bad_total(monkeypatch) -> None:
     monkeypatch.setattr(
-        svc, "_em_option_value_request", lambda params: {"data": {"diff": [{"f14": "a"}], "total": "junk"}}
+        svc,
+        "_em_option_value_request",
+        lambda params: {"data": {"diff": [{"f14": "a"}], "total": "junk"}},
     )
     rows = svc._fetch_em_option_value_rows()
     assert len(rows) == 1
@@ -170,16 +184,25 @@ def test_em_rows_bad_total(monkeypatch) -> None:
 
 def test_em_rows_non_dict_entries_skipped(monkeypatch) -> None:
     monkeypatch.setattr(
-        svc, "_em_option_value_request", lambda params: {"data": {"diff": [{"f14": "a"}, "junk"], "total": 2}}
+        svc,
+        "_em_option_value_request",
+        lambda params: {"data": {"diff": [{"f14": "a"}, "junk"], "total": 2}},
     )
     assert len(svc._fetch_em_option_value_rows()) == 1
 
 
 # ---- em rows -> df / select -------------------------------------------------
 
+
 def test_em_rows_to_df_field_variants() -> None:
     rows = [
-        {"f14": "300ETF沽6月4000", "f249": "22.5", "f301": "20260625", "f334": None, "f335": "4.01"},
+        {
+            "f14": "300ETF沽6月4000",
+            "f249": "22.5",
+            "f301": "20260625",
+            "f334": None,
+            "f335": "4.01",
+        },
         {"f14": "", "f249": 1.0},  # empty name skipped
         {"f14": "300ETF沽6月3900", "f249": "bad", "f301": 20260626},
         {"f14": "300ETF沽6月3800", "f249": 19.0, "f301": "2026-06-27"},
@@ -229,6 +252,7 @@ def test_count_510300_put_rows() -> None:
 
 
 # ---- utilities -------------------------------------------------------------
+
 
 def test_akshare_import_error(monkeypatch) -> None:
     import builtins
@@ -287,6 +311,7 @@ def test_safe_float_variants() -> None:
 
 # ---- resolve_put_iv_for_snapshot extra branches ----------------------------
 
+
 def test_resolve_snapshot_fetch_raises(monkeypatch) -> None:
     svc._PUT_IV_SNAPSHOT_CACHE.update({"ts": 0.0, "value": None})
     svc._LAST_PUT_IV_DIAGNOSTICS = {"error": "no_510300_put_iv_candidate"}
@@ -309,7 +334,12 @@ def test_resolve_snapshot_db_fallback_missing_pct_chg(monkeypatch) -> None:
     monkeypatch.setattr(
         svc,
         "get_latest_row",
-        lambda *_: {"trade_date": "2026-08-06", "close": 18.5, "pct_chg": None, "source": "macro_daily"},
+        lambda *_: {
+            "trade_date": "2026-08-06",
+            "close": 18.5,
+            "pct_chg": None,
+            "source": "macro_daily",
+        },
     )
     out = svc.resolve_put_iv_for_snapshot(write_db=False, use_cache=False)
     assert out["close"] == pytest.approx(18.5)

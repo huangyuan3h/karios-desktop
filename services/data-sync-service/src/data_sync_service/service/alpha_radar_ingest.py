@@ -242,7 +242,7 @@ def _quote_url(url: str) -> str:
     "'ascii' codec can't encode character" otherwise. Already-encoded
     sequences (%xx) are preserved."""
     parts = urllib.parse.urlsplit(url)
-    if (parts.path.isascii() and parts.query.isascii()):
+    if parts.path.isascii() and parts.query.isascii():
         return url
     path = urllib.parse.quote(parts.path, safe="/%:@")
     query = urllib.parse.quote(parts.query, safe="=&%?;,")
@@ -252,7 +252,9 @@ def _quote_url(url: str) -> str:
 def fetch_rss_feed(url: str) -> list[dict[str, Any]]:
     if feedparser is None:
         raise RuntimeError("feedparser is not installed")
-    req = urllib.request.Request(_quote_url(url), headers={"User-Agent": RSS_USER_AGENT}, method="GET")
+    req = urllib.request.Request(
+        _quote_url(url), headers={"User-Agent": RSS_USER_AGENT}, method="GET"
+    )
     timeout = rss_timeout_seconds()
     try:
         with _urlopen(req, timeout=timeout) as resp:

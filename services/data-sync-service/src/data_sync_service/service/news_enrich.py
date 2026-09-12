@@ -80,14 +80,39 @@ TIER_A_SOURCE_IDS = frozenset(
 # All case-insensitive.
 NOISE_TITLE_PATTERNS = [
     # Backward-looking recaps — brief excludes these anyway
-    "月度总结", "月度回顾", "本周回顾", "上周复盘", "周复盘",
-    "上半年回顾", "下半年展望", "年度回顾", "年初至今", "YTD",
-    "Year-to-date", "月报", "半年报", "年报", "季度报",
+    "月度总结",
+    "月度回顾",
+    "本周回顾",
+    "上周复盘",
+    "周复盘",
+    "上半年回顾",
+    "下半年展望",
+    "年度回顾",
+    "年初至今",
+    "YTD",
+    "Year-to-date",
+    "月报",
+    "半年报",
+    "年报",
+    "季度报",
     # Lifestyle / off-topic
-    "股评", "荐股", "涨停复盘", "心灵鸡汤", "情感故事",
+    "股评",
+    "荐股",
+    "涨停复盘",
+    "心灵鸡汤",
+    "情感故事",
     # Sports / entertainment / crypto / lifestyle
-    "体育", "娱乐", "明星", "八卦", "旅游", "美食", "养生",
-    "币", "比特币", "以太坊", "NFT",
+    "体育",
+    "娱乐",
+    "明星",
+    "八卦",
+    "旅游",
+    "美食",
+    "养生",
+    "币",
+    "比特币",
+    "以太坊",
+    "NFT",
 ]
 
 NOISE_RE = re.compile("|".join(re.escape(p) for p in NOISE_TITLE_PATTERNS), re.IGNORECASE)
@@ -256,11 +281,7 @@ def _call_llm(prompt: str) -> str:
         try:
             with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_S) as resp:
                 body = json.loads(resp.read().decode("utf-8") or "{}")
-                return (
-                    body.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                )
+                return body.get("choices", [{}])[0].get("message", {}).get("content", "")
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
             last_exc = exc
             if attempt == MAX_RETRIES - 1:
@@ -337,7 +358,17 @@ def _validate_entry(entry: dict[str, Any]) -> dict[str, Any]:
     sectors = [str(s).strip() for s in sectors if s]
 
     event_type = str(entry.get("eventType") or entry.get("event_type") or "other")
-    valid_events = {"earnings", "macro", "policy", "m&a", "ipo", "dividend", "analyst", "sector", "other"}
+    valid_events = {
+        "earnings",
+        "macro",
+        "policy",
+        "m&a",
+        "ipo",
+        "dividend",
+        "analyst",
+        "sector",
+        "other",
+    }
     if event_type not in valid_events:
         event_type = "other"
 
@@ -496,7 +527,10 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
         if kept:
             logger.info(
                 "Enrichment batch %d/%d: %d kept after pre-filter, %d filtered out",
-                batch_idx + 1, max_batches, len(kept), filtered,
+                batch_idx + 1,
+                max_batches,
+                len(kept),
+                filtered,
             )
             try:
                 counts = enrich_batch(kept)
@@ -506,7 +540,9 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
                     first_error = str(counts["error"])
                 logger.info(
                     "Enrichment batch %d: %d enriched, %d failed",
-                    batch_idx + 1, counts["enriched"], counts["failed"],
+                    batch_idx + 1,
+                    counts["enriched"],
+                    counts["failed"],
                 )
             except Exception as exc:
                 logger.error("Enrichment batch %d failed: %s", batch_idx + 1, exc)
@@ -522,7 +558,9 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
         else:
             logger.info(
                 "Enrichment batch %d/%d: all %d items pre-filtered out",
-                batch_idx + 1, max_batches, filtered,
+                batch_idx + 1,
+                max_batches,
+                filtered,
             )
 
         batches_processed += 1

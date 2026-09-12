@@ -120,7 +120,8 @@ def run() -> None:
             logger.warning("paper_chain self-heal close_sync failed: %s", exc)
         if not close_ok:
             insert_record(
-                JOB_ID, success=False,
+                JOB_ID,
+                success=False,
                 error_message=f"close_sync missing; missing={missing}",
             )
             logger.warning("close_sync missing → skipping self-heal for %s", missing)

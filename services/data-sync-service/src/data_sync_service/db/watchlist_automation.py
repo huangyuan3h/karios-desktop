@@ -440,7 +440,11 @@ def _row_to_run(row: tuple[Any, ...]) -> dict[str, Any]:
         "remove": row[5] if isinstance(row[5], list) else [],
         "alphaAdd": row[6] if isinstance(row[6], list) else [],
         "meta": row[7] if isinstance(row[7], dict) else {},
-        "createdAt": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
-        "appliedAt": applied_at.isoformat() if applied_at and hasattr(applied_at, "isoformat") else None,
+        "createdAt": created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else str(created_at),
+        "appliedAt": applied_at.isoformat()
+        if applied_at and hasattr(applied_at, "isoformat")
+        else None,
         "screenerAdded": row[10],
     }

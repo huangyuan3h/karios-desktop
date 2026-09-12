@@ -66,13 +66,19 @@ class TestUpdateJournal:
         assert exc.value.status_code == 400
 
     def test_not_found(self, monkeypatch) -> None:
-        monkeypatch.setattr(journal_db, "update_journal", lambda journal_id, title, content_md, updated_at: None)
+        monkeypatch.setattr(
+            journal_db, "update_journal", lambda journal_id, title, content_md, updated_at: None
+        )
         with pytest.raises(HTTPException) as exc:
             update_journal("j1", TradeJournalUpdateRequest(title="T"))
         assert exc.value.status_code == 404
 
     def test_ok(self, monkeypatch) -> None:
-        monkeypatch.setattr(journal_db, "update_journal", lambda journal_id, title, content_md, updated_at: {**JOURNAL, "title": title})
+        monkeypatch.setattr(
+            journal_db,
+            "update_journal",
+            lambda journal_id, title, content_md, updated_at: {**JOURNAL, "title": title},
+        )
         assert update_journal("j1", TradeJournalUpdateRequest(title="New")).title == "New"
 
 

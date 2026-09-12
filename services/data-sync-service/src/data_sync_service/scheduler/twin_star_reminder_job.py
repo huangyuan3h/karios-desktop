@@ -3,6 +3,7 @@
 Pulls a fresh full-market snapshot (afternoon tape ≈ 14:30 execution price),
 re-runs the S-gap screen, then emits webhook + hub with buys AND sells.
 """
+
 from __future__ import annotations
 
 import logging

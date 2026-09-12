@@ -38,7 +38,10 @@ def test_resolve_trend_storage_fields_full() -> None:
 
 def test_keywords_from_trend_empty_entries() -> None:
     fields = {"macro_theme": "半导体"}
-    assert ap._keywords_from_trend({"a_share_mapping": [" 中芯 ", ""]}, fields) == ["半导体", "中芯"]
+    assert ap._keywords_from_trend({"a_share_mapping": [" 中芯 ", ""]}, fields) == [
+        "半导体",
+        "中芯",
+    ]
     assert ap._keywords_from_trend({}, fields) == ["半导体"]
     assert ap._keywords_from_trend({}, {"macro_theme": ""}) == ["产业趋势"]
 
@@ -86,7 +89,8 @@ def test_process_document_saves_trends(monkeypatch) -> None:
 
 def test_process_document_unmapped_status(monkeypatch) -> None:
     monkeypatch.setattr(
-        ap, "fetch_document_by_id",
+        ap,
+        "fetch_document_by_id",
         lambda doc_id: {"fullTextMd": "y" * 100, "title": "T", "category": "news", "url": "u"},
     )
     monkeypatch.setattr(
@@ -107,6 +111,8 @@ def test_document_text_uses_fulltext_and_title_summary() -> None:
     out = ap._document_text({"title": "T", "summary": "S"})
     assert "T" in out and "S" in out
     assert ap._document_text({"title": "T"}) == "T"
+
+
 """alpha_radar_process wave-2: extract/save/batch/pending drivers."""
 
 import json  # noqa: E402
@@ -122,7 +128,9 @@ def test_ai_service_base_url(monkeypatch) -> None:
     monkeypatch.delenv("AI_SERVICE_BASE_URL")
     monkeypatch.setattr(arp, "get_settings", lambda: type("S", (), {"ai_service_base_url": ""})())
     assert arp._ai_service_base_url() == "http://127.0.0.1:4310"
-    monkeypatch.setattr(arp, "get_settings", lambda: type("S", (), {"ai_service_base_url": "http://cfg:2"})())
+    monkeypatch.setattr(
+        arp, "get_settings", lambda: type("S", (), {"ai_service_base_url": "http://cfg:2"})()
+    )
     assert arp._ai_service_base_url() == "http://cfg:2"
 
 
@@ -177,7 +185,13 @@ def test_ai_extract_trends_http_error(monkeypatch) -> None:
 
 def test_resolve_trend_storage_fields() -> None:
     out = arp._resolve_trend_storage_fields(
-        {"trend_name": "A", "catalystGrade": "a", "driverType": "policy", "eventFocus": "e", "logicSummary": "l" * 50},
+        {
+            "trend_name": "A",
+            "catalystGrade": "a",
+            "driverType": "policy",
+            "eventFocus": "e",
+            "logicSummary": "l" * 50,
+        },
         category_hint="news",
     )
     assert out["catalyst_grade"] == "A"
@@ -187,7 +201,9 @@ def test_resolve_trend_storage_fields() -> None:
     low = arp._resolve_trend_storage_fields({"trendName": "B", "urgencyLevel": "B"})
     assert low is None
 
-    dflt = arp._resolve_trend_storage_fields({"trendName": "C", "catalystGrade": "S"}, category_hint="unknown_cat")
+    dflt = arp._resolve_trend_storage_fields(
+        {"trendName": "C", "catalystGrade": "S"}, category_hint="unknown_cat"
+    )
     assert dflt["driver_type"] == "Global_Tech"
 
 
@@ -197,46 +213,94 @@ def test_keywords_from_trend() -> None:
     assert out[0] == "产业趋势" and "kw1" in out and "kw2" in out
     out2 = arp._keywords_from_trend({}, fields)
     assert out2 == ["产业趋势"]
-    out3 = arp._keywords_from_trend({"keywordsForMapping": ["a", "b", "c", "d", "e", "f", "g", "h", "i"]}, fields)
+    out3 = arp._keywords_from_trend(
+        {"keywordsForMapping": ["a", "b", "c", "d", "e", "f", "g", "h", "i"]}, fields
+    )
     assert len(out3) == 8
 
 
 def test_save_trend_row(monkeypatch) -> None:
-    monkeypatch.setattr(arp, "_resolve_trend_storage_fields", lambda trend, category_hint=None: {
-        "trend_name": "T", "macro_theme": "T", "catalyst_grade": "A", "urgency_level": "A",
-        "driver_type": "policy", "event_focus": "E", "logic_summary": "L",
-    })
+    monkeypatch.setattr(
+        arp,
+        "_resolve_trend_storage_fields",
+        lambda trend, category_hint=None: {
+            "trend_name": "T",
+            "macro_theme": "T",
+            "catalyst_grade": "A",
+            "urgency_level": "A",
+            "driver_type": "policy",
+            "event_focus": "E",
+            "logic_summary": "L",
+        },
+    )
     monkeypatch.setattr(arp, "_keywords_from_trend", lambda trend, fields: ["T"])
     monkeypatch.setattr(arp, "insert_trend", lambda **kw: {**kw, "trend_id": kw["trend_id"]})
-    monkeypatch.setattr(arp, "map_trend_hybrid", lambda **kw: {"cnSymbols": ["600000.SH"], "mappingConfidence": 0.9, "riskStatus": "mapped"})
+    monkeypatch.setattr(
+        arp,
+        "map_trend_hybrid",
+        lambda **kw: {"cnSymbols": ["600000.SH"], "mappingConfidence": 0.9, "riskStatus": "mapped"},
+    )
     monkeypatch.setattr(arp, "map_trend_hk", lambda **kw: {"hkSymbols": ["00700.HK"]})
-    row = arp._save_trend_row(doc_id="d1", trend={"x": 1}, category_hint="news", map_cn=True, hot_names=[], mainline_map={})
+    row = arp._save_trend_row(
+        doc_id="d1",
+        trend={"x": 1},
+        category_hint="news",
+        map_cn=True,
+        hot_names=[],
+        mainline_map={},
+    )
     assert row["cnSymbols"] == ["600000.SH"]
     assert row["hkSymbols"] == ["00700.HK"]
     assert row["trend_json"]["x"] == 1
 
-    monkeypatch.setattr(arp, "_resolve_trend_storage_fields", lambda trend, category_hint=None: None)
-    assert arp._save_trend_row(doc_id="d1", trend={}, category_hint=None, map_cn=True, hot_names=[], mainline_map={}) is None
+    monkeypatch.setattr(
+        arp, "_resolve_trend_storage_fields", lambda trend, category_hint=None: None
+    )
+    assert (
+        arp._save_trend_row(
+            doc_id="d1", trend={}, category_hint=None, map_cn=True, hot_names=[], mainline_map={}
+        )
+        is None
+    )
 
-    monkeypatch.setattr(arp, "_resolve_trend_storage_fields", lambda trend, category_hint=None: {
-        "trend_name": "T", "macro_theme": "T", "catalyst_grade": "A", "urgency_level": "A",
-        "driver_type": "policy", "event_focus": "E", "logic_summary": "L",
-    })
-    monkeypatch.setattr(arp, "map_trend_hybrid", lambda **kw: (_ for _ in ()).throw(RuntimeError("map down")))
-    row2 = arp._save_trend_row(doc_id="d1", trend={}, category_hint=None, map_cn=True, hot_names=[], mainline_map={})
+    monkeypatch.setattr(
+        arp,
+        "_resolve_trend_storage_fields",
+        lambda trend, category_hint=None: {
+            "trend_name": "T",
+            "macro_theme": "T",
+            "catalyst_grade": "A",
+            "urgency_level": "A",
+            "driver_type": "policy",
+            "event_focus": "E",
+            "logic_summary": "L",
+        },
+    )
+    monkeypatch.setattr(
+        arp, "map_trend_hybrid", lambda **kw: (_ for _ in ()).throw(RuntimeError("map down"))
+    )
+    row2 = arp._save_trend_row(
+        doc_id="d1", trend={}, category_hint=None, map_cn=True, hot_names=[], mainline_map={}
+    )
     assert "cnSymbols" not in row2 or row2["cnSymbols"] == []  # mapping failed → field untouched
     assert row2["hkSymbols"] == ["00700.HK"]  # HK mapping independent
 
 
 def test_load_risk_context(monkeypatch) -> None:
-    monkeypatch.setattr(arp, "get_cn_industry_mainline", lambda: {
-        "currentMainline": [{"industryName": " 银行 "}, {"industryName": ""}],
-    })
+    monkeypatch.setattr(
+        arp,
+        "get_cn_industry_mainline",
+        lambda: {
+            "currentMainline": [{"industryName": " 银行 "}, {"industryName": ""}],
+        },
+    )
     monkeypatch.setattr(arp, "build_mainline_score_map", lambda mainline: {"银行": 0.9})
     hot, m = arp._load_risk_context()
     assert hot == ["银行"] and m == {"银行": 0.9}
 
-    monkeypatch.setattr(arp, "get_cn_industry_mainline", lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        arp, "get_cn_industry_mainline", lambda: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     hot2, m2 = arp._load_risk_context()
     assert hot2 == [] and m2 == {}
 
@@ -245,7 +309,11 @@ def test_process_document(monkeypatch) -> None:
     doc = {"id": "d1", "title": "T", "url": "http://u", "category": "news", "summary": "S" * 60}
     monkeypatch.setattr(arp, "fetch_document_by_id", lambda did: doc)
     monkeypatch.setattr(arp, "_document_text", lambda d: "x" * 100)
-    monkeypatch.setattr(arp, "_ai_extract_trends", lambda **kw: {"trends": [{"trendName": "A", "catalystGrade": "S"}]})
+    monkeypatch.setattr(
+        arp,
+        "_ai_extract_trends",
+        lambda **kw: {"trends": [{"trendName": "A", "catalystGrade": "S"}]},
+    )
     monkeypatch.setattr(arp, "delete_trends_for_document", lambda did: 1)
     monkeypatch.setattr(arp, "_load_risk_context", lambda: (["银行"], {"银行": 0.9}))
     monkeypatch.setattr(arp, "_save_trend_row", lambda **kw: {"trendName": "A"})
@@ -303,14 +371,26 @@ def test_ai_extract_batch_ok_and_error(monkeypatch) -> None:
 
 def test_process_document_batch(monkeypatch) -> None:
     docs = [{"id": f"d{i}", "category": "news"} for i in range(3)]
-    monkeypatch.setattr(arp, "fetch_documents_by_status", lambda processing_status, limit, enabled_sources_only=None: docs)
+    monkeypatch.setattr(
+        arp,
+        "fetch_documents_by_status",
+        lambda processing_status, limit, enabled_sources_only=None: docs,
+    )
     monkeypatch.setattr(arp, "_load_risk_context", lambda: (["银行"], {}))
-    monkeypatch.setattr(arp, "_ai_extract_batch", lambda documents: {"trends": [
-        {"sourceIndex": 1, "trendName": "B"},
-        {"source_index": "x", "trendName": "C"},
-    ]})
+    monkeypatch.setattr(
+        arp,
+        "_ai_extract_batch",
+        lambda documents: {
+            "trends": [
+                {"sourceIndex": 1, "trendName": "B"},
+                {"source_index": "x", "trendName": "C"},
+            ]
+        },
+    )
     monkeypatch.setattr(arp, "delete_trends_for_document", lambda did: 1)
-    monkeypatch.setattr(arp, "_save_trend_row", lambda **kw: {"trendName": kw["trend"]["trendName"]})
+    monkeypatch.setattr(
+        arp, "_save_trend_row", lambda **kw: {"trendName": kw["trend"]["trendName"]}
+    )
     monkeypatch.setattr(arp, "update_document_status", lambda did, status: None)
     out = arp.process_document_batch(batch_size=3, map_cn=True)
     assert out["processed"] == 3
@@ -325,20 +405,36 @@ def test_process_document_batch(monkeypatch) -> None:
 
 
 def test_process_document_batch_small_and_empty(monkeypatch) -> None:
-    monkeypatch.setattr(arp, "fetch_documents_by_status", lambda processing_status, limit, enabled_sources_only=None: [])
+    monkeypatch.setattr(
+        arp,
+        "fetch_documents_by_status",
+        lambda processing_status, limit, enabled_sources_only=None: [],
+    )
     out = arp.process_document_batch(batch_size=10)
     assert out["processed"] == 0 and out["mode"] == "batch"
 
-    monkeypatch.setattr(arp, "fetch_documents_by_status", lambda processing_status, limit, enabled_sources_only=None: [{"id": "d1"}])
+    monkeypatch.setattr(
+        arp,
+        "fetch_documents_by_status",
+        lambda processing_status, limit, enabled_sources_only=None: [{"id": "d1"}],
+    )
     monkeypatch.setattr(arp, "process_document", lambda did, map_cn=True: {"trends": [{"t": 1}]})
     out2 = arp.process_document_batch(batch_size=10)
     assert out2["processed"] == 1
 
 
 def test_process_pending_documents(monkeypatch) -> None:
-    monkeypatch.setattr(arp, "fetch_documents_by_status", lambda processing_status, limit: [{"id": "d1"}])
+    monkeypatch.setattr(
+        arp, "fetch_documents_by_status", lambda processing_status, limit: [{"id": "d1"}]
+    )
     monkeypatch.setattr(arp, "_load_risk_context", lambda: ([], {}))
-    monkeypatch.setattr(arp, "process_document", lambda did, map_cn=True, hot_industry_names=None, mainline_by_industry=None: {"documentId": did})
+    monkeypatch.setattr(
+        arp,
+        "process_document",
+        lambda did, map_cn=True, hot_industry_names=None, mainline_by_industry=None: {
+            "documentId": did
+        },
+    )
     out = arp.process_pending_documents(limit=3, mode="single")
     assert out["processed"] == 1
 
@@ -349,10 +445,24 @@ def test_process_pending_documents(monkeypatch) -> None:
     out2 = arp.process_pending_documents(limit=3, mode="single")
     assert out2["processed"] == 0 and len(out2["errors"]) == 1
 
-    monkeypatch.setattr(arp, "process_document_batch", lambda batch_size, map_cn=True: {"processed": 2, "batchSize": 2, "trends": [], "errors": [], "mode": "batch"})
+    monkeypatch.setattr(
+        arp,
+        "process_document_batch",
+        lambda batch_size, map_cn=True: {
+            "processed": 2,
+            "batchSize": 2,
+            "trends": [],
+            "errors": [],
+            "mode": "batch",
+        },
+    )
     out3 = arp.process_pending_documents(limit=3, mode="batch")
     assert out3["processed"] == 2
 
-    monkeypatch.setattr(arp, "process_document_batch", lambda batch_size, map_cn=True: (_ for _ in ()).throw(RuntimeError("batch down")))
+    monkeypatch.setattr(
+        arp,
+        "process_document_batch",
+        lambda batch_size, map_cn=True: (_ for _ in ()).throw(RuntimeError("batch down")),
+    )
     out4 = arp.process_pending_documents(limit=3, mode="batch")
     assert out4["processed"] == 0 and out4["errors"] == [{"error": "batch down"}]

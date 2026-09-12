@@ -182,12 +182,15 @@ def test_select_brief_items_filters_enriched_only() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(3, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(3, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -233,12 +236,15 @@ def test_select_brief_items_filters_historical() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -280,12 +286,15 @@ def test_select_brief_items_filters_excluded_patterns() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -314,12 +323,15 @@ def test_select_brief_items_returns_max_7() -> None:
         for i in range(15)
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(15, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(15, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -359,12 +371,15 @@ def test_select_brief_items_sorted_by_score_desc() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -407,15 +422,19 @@ def test_select_brief_items_watchlist_boost() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=({"600519.SH"}, set()),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watched_symbols",
-        return_value={"600519.SH", "600519"},
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=({"600519.SH"}, set()),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watched_symbols",
+            return_value={"600519.SH", "600519"},
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -475,12 +494,15 @@ def test_select_brief_items_skips_importance_zero() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 
@@ -523,12 +545,15 @@ def test_select_brief_prefers_actionable_over_informational() -> None:
         },
     ]
 
-    with patch(
-        "data_sync_service.service.morning_brief.fetch_items",
-        return_value=(2, mock_items),
-    ), patch(
-        "data_sync_service.service.morning_brief._load_watchlist_context",
-        return_value=(set(), set()),
+    with (
+        patch(
+            "data_sync_service.service.morning_brief.fetch_items",
+            return_value=(2, mock_items),
+        ),
+        patch(
+            "data_sync_service.service.morning_brief._load_watchlist_context",
+            return_value=(set(), set()),
+        ),
     ):
         result = select_brief_items(hours=24)
 

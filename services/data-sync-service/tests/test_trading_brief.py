@@ -30,8 +30,11 @@ def _fake_health() -> dict:
                 "trailingLine": 433.136,
                 "pnlPct": 1.13,
                 "expireDate": "2026-09-27",
-                "lineOps": {"trail_up": [433.136, 440.2], "expire_soon": 4,
-                            "expireDate": "2026-09-27"},
+                "lineOps": {
+                    "trail_up": [433.136, 440.2],
+                    "expire_soon": 4,
+                    "expireDate": "2026-09-27",
+                },
             },
             {
                 "symbol": "CN:300628",
@@ -161,9 +164,17 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
 def test_third_asset_section_renders_when_active() -> None:
     """T6 (2026-08-19): the brief carries the 513100 sleeve hint."""
     sections = [
-        {"type": "third_asset", "active": True, "action": "BUY_513100",
-         "label": "建议买入 513100", "message": "闲置资金 90% 且 ETF:513100 在200日线上",
-         "price": 2.239, "ma200": 1.983, "idlePct": 90.0, "asOfDate": "2026-08-18"},
+        {
+            "type": "third_asset",
+            "active": True,
+            "action": "BUY_513100",
+            "label": "建议买入 513100",
+            "message": "闲置资金 90% 且 ETF:513100 在200日线上",
+            "price": 2.239,
+            "ma200": 1.983,
+            "idlePct": 90.0,
+            "asOfDate": "2026-08-18",
+        },
     ]
     md = tb.render_markdown(sections, "action")
     assert "**择强单轨·对照非实盘（建议买入 513100）**" in md
@@ -220,16 +231,19 @@ def test_action_brief_emits_execution_card_webhook() -> None:
     emit = MagicMock()
     with (
         patch("data_sync_service.service.trading_brief._health", return_value=_fake_health()),
-        patch("data_sync_service.service.trading_brief._candidates", return_value=[
-            {
-                "market": "CN",
-                "symbol": "CN:600801",
-                "name": "华新建材",
-                "industry": "建筑材料",
-                "score": 67.4,
-                "rs": 0.937,
-            },
-        ]),
+        patch(
+            "data_sync_service.service.trading_brief._candidates",
+            return_value=[
+                {
+                    "market": "CN",
+                    "symbol": "CN:600801",
+                    "name": "华新建材",
+                    "industry": "建筑材料",
+                    "score": 67.4,
+                    "rs": 0.937,
+                },
+            ],
+        ),
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._twin_star_recon_section", return_value=[]),
@@ -275,7 +289,9 @@ def test_twin_star_recon_section_mismatch_emits() -> None:
     }
     emit = MagicMock()
     with (
-        patch("data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon),
+        patch(
+            "data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon
+        ),
         patch("data_sync_service.db.webhook.emit_event", emit),
     ):
         sections = tb._twin_star_recon_section()
@@ -305,7 +321,9 @@ def test_twin_star_recon_section_clean_no_emit() -> None:
     }
     emit = MagicMock()
     with (
-        patch("data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon),
+        patch(
+            "data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon
+        ),
         patch("data_sync_service.db.webhook.emit_event", emit),
     ):
         sections = tb._twin_star_recon_section()

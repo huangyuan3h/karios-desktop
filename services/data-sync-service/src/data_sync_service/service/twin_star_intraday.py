@@ -202,7 +202,7 @@ def session_date(now: datetime | None = None) -> date:
     else:
         now = now.astimezone(CN_TZ)
     if now.hour < 9:
-        return (now.date() - timedelta(days=1))
+        return now.date() - timedelta(days=1)
     return now.date()
 
 
@@ -256,10 +256,7 @@ def intraday_snapshot_status(*, now: datetime | None = None) -> dict[str, Any]:
         stale = True
         reason = "no_session_snapshot"
     elif (
-        required
-        and in_live_tape_window(now)
-        and age is not None
-        and age > SNAPSHOT_LIVE_STALE_SEC
+        required and in_live_tape_window(now) and age is not None and age > SNAPSHOT_LIVE_STALE_SEC
     ):
         stale = True
         reason = "snapshot_stale"
@@ -354,9 +351,7 @@ def build_intraday_sat(today: date | None = None) -> dict[str, Any] | None:
 
     gap_stocks = [(ts, d["amp"], d["gap"]) for ts, d in day_all.items() if d["is_gap"]]
     locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
-    picks = select_live_gap_picks(
-        gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
-    )
+    picks = select_live_gap_picks(gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N)
 
     def _pack(rows: list, *, blocked: bool = False) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []

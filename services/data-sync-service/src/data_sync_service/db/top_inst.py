@@ -228,7 +228,9 @@ def fetch_summaries_for_codes(
     return out
 
 
-def fetch_daily_seats_batch(keys: list[tuple[str, str]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
+def fetch_daily_seats_batch(
+    keys: list[tuple[str, str]],
+) -> dict[tuple[str, str], list[dict[str, Any]]]:
     ensure_table()
     normalized: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()

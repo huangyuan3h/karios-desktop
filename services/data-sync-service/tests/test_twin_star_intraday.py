@@ -22,7 +22,7 @@ def _series(closes: list[float], day0: str = "2026-08-01") -> list[dict]:
         prev = closes[i - 1] if i > 0 else c
         rows.append(
             {
-                "date": f"2026-08-{i+1:02d}" if day0 == "2026-08-01" else day0,
+                "date": f"2026-08-{i + 1:02d}" if day0 == "2026-08-01" else day0,
                 "open": c,
                 "high": c * 1.02,
                 "low": c * 0.98,
@@ -96,7 +96,9 @@ class TestBuildIntradaySat:
             "fetch_market_snapshot",
             lambda: _flat_snapshot("2026-08-20"),
         )
-        monkeypatch.setattr(m, "_load_calendar", lambda s, e: [f"2026-08-{i:02d}" for i in range(1, 21)])
+        monkeypatch.setattr(
+            m, "_load_calendar", lambda s, e: [f"2026-08-{i:02d}" for i in range(1, 21)]
+        )
         monkeypatch.setattr(m, "_load_rows", lambda s, e: _mk_per_ts())
         monkeypatch.setattr(
             m,
@@ -149,7 +151,9 @@ class TestBuildIntradaySat:
         assert sat["breadth"] == pytest.approx(2 / 3, abs=0.001)
         assert sat["gateOpen"] is True
 
-    def test_cache_roundtrip(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_cache_roundtrip(
+        self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(m, "_CACHE_DIR", str(tmp_path))
         sat = m.build_intraday_sat(self.today)
         assert sat is not None
@@ -165,7 +169,9 @@ class TestBuildIntradaySat:
         monkeypatch.setattr(m, "fetch_market_snapshot", lambda: {})
         assert m.build_intraday_sat(self.today) is None
 
-    def test_c1_skips_runup_over_3pct_strict_no_refill(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_c1_skips_runup_over_3pct_strict_no_refill(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         def snap() -> dict:
             s = _flat_snapshot("2026-08-20")
             # 600001: 14:30/open-1 = 10.9/10.5-1 = 3.8% > 3% -> C1 skip

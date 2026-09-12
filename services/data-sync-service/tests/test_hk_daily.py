@@ -74,6 +74,7 @@ def test_sync_hk_daily_resume_from_last_ts_code(monkeypatch) -> None:
         return {"ok": True, "updated": 1, "ts_code": ts_code}
 
     import sys
+
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
@@ -84,7 +85,13 @@ def test_sync_hk_daily_resume_from_last_ts_code(monkeypatch) -> None:
         (),
         {
             "sync_hk_daily_for_ts_code_tx": staticmethod(
-                lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"}
+                lambda tc: {
+                    "ok": True,
+                    "updated": 0,
+                    "skipped": True,
+                    "ts_code": tc,
+                    "source": "tencent",
+                }
             )
         },
     )
@@ -116,9 +123,7 @@ def test_sync_hk_daily_skips_when_today_already_succeeded(monkeypatch) -> None:
         "get_today_run",
         lambda _job: {"success": True, "last_ts_code": None},
     )
-    monkeypatch.setattr(
-        hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK", "01810.HK"]
-    )
+    monkeypatch.setattr(hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK", "01810.HK"])
 
     result = hk_daily.sync_hk_daily_full()
     assert result["ok"] is True
@@ -129,7 +134,9 @@ def test_sync_hk_daily_continues_after_single_ticker_failure(monkeypatch) -> Non
     """A bad ticker should not abort the whole batch — count it as failed and continue."""
     import data_sync_service.service.hk_daily as hk_daily
 
-    monkeypatch.setattr(hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK", "BAD.HK", "01810.HK"])
+    monkeypatch.setattr(
+        hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK", "BAD.HK", "01810.HK"]
+    )
     monkeypatch.setattr(hk_daily, "get_today_run", lambda _job: None)
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
 
@@ -139,6 +146,7 @@ def test_sync_hk_daily_continues_after_single_ticker_failure(monkeypatch) -> Non
         return {"ok": True, "updated": 0, "ts_code": tc}
 
     import sys
+
     tx_stub = type("T", (), {"sync_hk_daily_for_ts_code_tx": staticmethod(fake_tx)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
     _stub_akshare(monkeypatch)
@@ -182,10 +190,15 @@ def test_sync_hk_daily_full_priority_chain(monkeypatch) -> None:
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
     import sys
+
     tx_stub = type(
         "T",
         (),
-        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 3, "ts_code": tc, "source": "tencent"})},
+        {
+            "sync_hk_daily_for_ts_code_tx": staticmethod(
+                lambda tc: {"ok": True, "updated": 3, "ts_code": tc, "source": "tencent"}
+            )
+        },
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
     _stub_akshare(monkeypatch)
@@ -216,18 +229,27 @@ def test_sync_hk_daily_full_falls_back_to_yfinance_when_tencent_empty(monkeypatc
     """tencent returns 0 rows → akshare (darwin: skipped) → yfinance tries next → if yfinance gives rows, tushare must NOT be called."""
     import data_sync_service.service.hk_daily as hk_daily
 
-    monkeypatch.setattr(
-        hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"]
-    )
+    monkeypatch.setattr(hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"])
     monkeypatch.setattr(hk_daily, "get_today_run", lambda _j: None)
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
     import sys
+
     tx_stub = type(
         "T",
         (),
-        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
+        {
+            "sync_hk_daily_for_ts_code_tx": staticmethod(
+                lambda tc: {
+                    "ok": True,
+                    "updated": 0,
+                    "skipped": True,
+                    "ts_code": tc,
+                    "source": "tencent",
+                }
+            )
+        },
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
     _stub_akshare(monkeypatch)
@@ -256,18 +278,27 @@ def test_sync_hk_daily_full_falls_back_to_tushare_when_tencent_and_yf_empty(monk
     """tencent and yfinance return 0 → tushare is called as last resort."""
     import data_sync_service.service.hk_daily as hk_daily
 
-    monkeypatch.setattr(
-        hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"]
-    )
+    monkeypatch.setattr(hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"])
     monkeypatch.setattr(hk_daily, "get_today_run", lambda _j: None)
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
     import sys
+
     tx_stub = type(
         "T",
         (),
-        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
+        {
+            "sync_hk_daily_for_ts_code_tx": staticmethod(
+                lambda tc: {
+                    "ok": True,
+                    "updated": 0,
+                    "skipped": True,
+                    "ts_code": tc,
+                    "source": "tencent",
+                }
+            )
+        },
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
     _stub_akshare(monkeypatch)
@@ -282,7 +313,9 @@ def test_sync_hk_daily_full_falls_back_to_tushare_when_tencent_and_yf_empty(monk
     monkeypatch.setattr(
         hk_daily,
         "_tushare_sync_one",
-        lambda tc: ts_calls.append(tc) or {"ok": True, "updated": 4, "ts_code": tc, "source": "tushare"},
+        lambda tc: (
+            ts_calls.append(tc) or {"ok": True, "updated": 4, "ts_code": tc, "source": "tushare"}
+        ),
     )
 
     result = hk_daily.sync_hk_daily_full()
@@ -313,4 +346,3 @@ def test_hk_daily_job_cron_is_daily() -> None:
     # Scheduled at 17:30 Asia/Shanghai
     assert str(fields_by_name["hour"]) == "17"
     assert str(fields_by_name["minute"]) == "30"
-

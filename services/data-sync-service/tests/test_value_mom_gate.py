@@ -115,13 +115,19 @@ class TestLoader:
         rows = []
         for i, ts in enumerate(codes):
             scale = 100.0 - i  # TS1 dominates every leg
-            rows.append({"ts_code": ts, "end_date": pd.Timestamp("2024-03-31"),
-                         "ann_date": pd.Timestamp("2024-04-20"),
-                         "n_income_attr_p_sq_ttm": scale,
-                         "total_revenue_sq_ttm": scale * 10,
-                         "total_hldr_eqy_inc_min_int": 500.0,
-                         "free_cashflow_sq_ttm": scale / 2,
-                         "industry": "A", "is_fin": False})
+            rows.append(
+                {
+                    "ts_code": ts,
+                    "end_date": pd.Timestamp("2024-03-31"),
+                    "ann_date": pd.Timestamp("2024-04-20"),
+                    "n_income_attr_p_sq_ttm": scale,
+                    "total_revenue_sq_ttm": scale * 10,
+                    "total_hldr_eqy_inc_min_int": 500.0,
+                    "free_cashflow_sq_ttm": scale / 2,
+                    "industry": "A",
+                    "is_fin": False,
+                }
+            )
         panel = pd.DataFrame(rows)
         monkeypatch.setattr(fp, "value_panel", lambda *a, **k: panel)
         import datetime as _dt

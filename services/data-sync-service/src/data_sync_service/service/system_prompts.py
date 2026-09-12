@@ -39,7 +39,9 @@ def list_presets() -> dict[str, Any]:
 
 def create_preset(*, title: str, content: str) -> dict[str, str]:
     pid = str(uuid.uuid4())
-    spdb.create_preset(preset_id=pid, title=(title or "").strip() or "Untitled", content=str(content or ""))
+    spdb.create_preset(
+        preset_id=pid, title=(title or "").strip() or "Untitled", content=str(content or "")
+    )
     # Newly created preset becomes active by default.
     spdb.set_active_preset_id(pid)
     return {"id": pid}
@@ -93,4 +95,3 @@ def set_active_prompt(*, preset_id: str | None) -> dict[str, bool]:
         raise HTTPException(status_code=404, detail="Not found")
     spdb.set_active_preset_id(pid)
     return {"ok": True}
-

@@ -99,7 +99,9 @@ def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) 
     return {str(x.get("industry_name") or "").strip() for x in sums[:n] if x.get("industry_name")}
 
 
-def get_top_5d_industry_names_ordered(as_of_date: str | None = None, *, top_n: int = 5) -> list[str]:
+def get_top_5d_industry_names_ordered(
+    as_of_date: str | None = None, *, top_n: int = 5
+) -> list[str]:
     """Same as get_top_5d_industry_names but preserves inflow rank order."""
     flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
     if not flow_date:
@@ -261,7 +263,9 @@ def filter_pullback_window(
         ts_by_symbol[s] = ts
 
     if ts_by_symbol:
-        bars = fetch_last_ohlcv_batch(list(dict.fromkeys(ts_by_symbol.values())), days=PULLBACK_LOOKBACK_BARS)
+        bars = fetch_last_ohlcv_batch(
+            list(dict.fromkeys(ts_by_symbol.values())), days=PULLBACK_LOOKBACK_BARS
+        )
         as_of_date = max(
             (b[0] for rows in bars.values() for b in rows),
             default=as_of or "",
@@ -340,6 +344,7 @@ def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
             out[sym] = str(name).strip()
     return out
 
+
 def get_last_n_trading_dates(n: int, *, end: date | None = None) -> list[str]:
     end_d = end or _cn_today()
     start_d = end_d - timedelta(days=max(n * 4, 14))
@@ -361,7 +366,9 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
 
 
 def record_score_snapshots(
-    symbols: list[str], *, realtime: bool = False,
+    symbols: list[str],
+    *,
+    realtime: bool = False,
 ) -> tuple[str | None, int, list[dict[str, Any]]]:
     if not symbols:
         return None, 0, []
@@ -433,7 +440,9 @@ def symbols_with_max_grade_s(catalyst_payload: dict[str, Any] | None) -> set[str
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
         has_s = any(
-            str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict)
+            str(a.get("catalystGrade") or "").upper() == "S"
+            for a in articles
+            if isinstance(a, dict)
         )
         if not has_s:
             continue
@@ -576,7 +585,9 @@ def compute_alpha_additions(
     passes 70 (RESEARCH_SCORE_MIN) because a fresh 买入 rating is a weaker
     signal than an S-grade news catalyst but still pool-worthy.
     """
-    payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
+    payload = (
+        catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
+    )
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
         return [], {}
@@ -589,6 +600,7 @@ def compute_alpha_additions(
             from data_sync_service.service.alpha_radar_qa import (
                 compute_auto_qa_penalty_for_catalyst,
             )
+
             penalties = compute_auto_qa_penalty_for_catalyst(items)
         except Exception as exc:  # noqa: BLE001
             logger.warning("auto_qa_penalty compute failed: %s", exc)
@@ -608,7 +620,11 @@ def compute_alpha_additions(
             _bump("low_score")
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
-        has_s = any(str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict))
+        has_s = any(
+            str(a.get("catalystGrade") or "").upper() == "S"
+            for a in articles
+            if isinstance(a, dict)
+        )
         if not has_s:
             _bump("no_s_grade")
             continue
@@ -966,6 +982,7 @@ def ack_automation_run(
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:
     return get_run_by_id(run_id)
+
 
 # ---------------------------------------------------------------------------
 # RS whole-market rank (S-2 / OPT-073): 20-day return percentile vs ALL stocks

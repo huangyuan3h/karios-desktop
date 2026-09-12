@@ -21,15 +21,19 @@ class TestIntradayAlarm:
             {"symbol": "HK:00622", "entry_price": 2.0},
         ]
         monkeypatch.setattr(ia.paper_trading, "get_open_paper_trades", lambda: trades)
-        monkeypatch.setattr(ia, "_resolve_ts_code", lambda s: ("CN", "600001.SH") if s == "CN:600001" else ("HK", "00622.HK"))
+        monkeypatch.setattr(
+            ia,
+            "_resolve_ts_code",
+            lambda s: ("CN", "600001.SH") if s == "CN:600001" else ("HK", "00622.HK"),
+        )
         monkeypatch.setattr(
             ia,
             "fetch_realtime_quotes",
             lambda codes: {
                 "ok": True,
                 "items": [
-                    {"ts_code": "600001.SH", "price": "9.1"},   # -9% -> alarm
-                    {"ts_code": "00622.HK", "price": "1.98"},   # -1% -> no alarm
+                    {"ts_code": "600001.SH", "price": "9.1"},  # -9% -> alarm
+                    {"ts_code": "00622.HK", "price": "1.98"},  # -1% -> no alarm
                 ],
             },
         )
@@ -41,12 +45,20 @@ class TestIntradayAlarm:
         assert emitted[0][0][0] == "intraday_drawdown"
         assert emitted[0][0][1]["symbol"] == "CN:600001"
         assert emitted[0][0][1]["drawdown_pct"] == -9.0
-        assert emitted[0][1]["dedupe_key"] == f"intraday_drawdown:CN:600001:{date.today().isoformat()}"
+        assert (
+            emitted[0][1]["dedupe_key"] == f"intraday_drawdown:CN:600001:{date.today().isoformat()}"
+        )
 
     def test_quote_failure_returns_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(ia.paper_trading, "get_open_paper_trades", lambda: [{"symbol": "CN:600001", "entry_price": 10.0}])
+        monkeypatch.setattr(
+            ia.paper_trading,
+            "get_open_paper_trades",
+            lambda: [{"symbol": "CN:600001", "entry_price": 10.0}],
+        )
         monkeypatch.setattr(ia, "_resolve_ts_code", lambda s: ("CN", "600001.SH"))
-        monkeypatch.setattr(ia, "fetch_realtime_quotes", lambda codes: {"ok": False, "error": "no key"})
+        monkeypatch.setattr(
+            ia, "fetch_realtime_quotes", lambda codes: {"ok": False, "error": "no key"}
+        )
         out = ia.check_intraday_drawdowns()
         assert out["ok"] is False
 

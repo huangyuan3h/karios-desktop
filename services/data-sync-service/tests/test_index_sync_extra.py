@@ -37,7 +37,11 @@ class TestIndexDaily:
 
     def test_missing_api_key(self, monkeypatch) -> None:
         monkeypatch.setattr(index_daily, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(index_daily, "get_settings", lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()))
+        monkeypatch.setattr(
+            index_daily,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()),
+        )
         out = index_daily.sync_index_daily_full()
         assert out["ok"] is False and "TU_SHARE_API_KEY" in out["error"]
 
@@ -46,7 +50,11 @@ class TestIndexDaily:
         monkeypatch.setattr(index_daily, "get_settings", _settings)
         monkeypatch.setattr(index_daily, "get_last_trade_date", lambda ts_code: None)
         monkeypatch.setattr(index_daily, "upsert_from_dataframe", lambda df: len(df))
-        pro = SimpleNamespace(index_daily=lambda **kw: pd.DataFrame([{"ts_code": "000001.SH", "trade_date": _today()}]))
+        pro = SimpleNamespace(
+            index_daily=lambda **kw: pd.DataFrame(
+                [{"ts_code": "000001.SH", "trade_date": _today()}]
+            )
+        )
         monkeypatch.setattr(index_daily, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         records = []
         monkeypatch.setattr(index_daily, "insert_record", lambda **kw: records.append(kw))
@@ -67,11 +75,17 @@ class TestIndexDaily:
 
     def test_resume_from_failed_run(self, monkeypatch) -> None:
         calls = []
-        monkeypatch.setattr(index_daily, "get_today_run", lambda job_type: {"success": False, "last_ts_code": "000001.SH"})
+        monkeypatch.setattr(
+            index_daily,
+            "get_today_run",
+            lambda job_type: {"success": False, "last_ts_code": "000001.SH"},
+        )
         monkeypatch.setattr(index_daily, "get_settings", _settings)
         monkeypatch.setattr(index_daily, "get_last_trade_date", lambda ts_code: None)
         monkeypatch.setattr(index_daily, "upsert_from_dataframe", lambda df: len(df))
-        pro = SimpleNamespace(index_daily=lambda **kw: calls.append(kw["ts_code"]) or pd.DataFrame())
+        pro = SimpleNamespace(
+            index_daily=lambda **kw: calls.append(kw["ts_code"]) or pd.DataFrame()
+        )
         monkeypatch.setattr(index_daily, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(index_daily, "insert_record", lambda **kw: None)
         index_daily.sync_index_daily_full()
@@ -79,11 +93,17 @@ class TestIndexDaily:
 
     def test_resume_unknown_last_code(self, monkeypatch) -> None:
         calls = []
-        monkeypatch.setattr(index_daily, "get_today_run", lambda job_type: {"success": False, "last_ts_code": "nope.SH"})
+        monkeypatch.setattr(
+            index_daily,
+            "get_today_run",
+            lambda job_type: {"success": False, "last_ts_code": "nope.SH"},
+        )
         monkeypatch.setattr(index_daily, "get_settings", _settings)
         monkeypatch.setattr(index_daily, "get_last_trade_date", lambda ts_code: None)
         monkeypatch.setattr(index_daily, "upsert_from_dataframe", lambda df: len(df))
-        pro = SimpleNamespace(index_daily=lambda **kw: calls.append(kw["ts_code"]) or pd.DataFrame())
+        pro = SimpleNamespace(
+            index_daily=lambda **kw: calls.append(kw["ts_code"]) or pd.DataFrame()
+        )
         monkeypatch.setattr(index_daily, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(index_daily, "insert_record", lambda **kw: None)
         index_daily.sync_index_daily_full()
@@ -92,8 +112,12 @@ class TestIndexDaily:
     def test_skip_when_up_to_date(self, monkeypatch) -> None:
         monkeypatch.setattr(index_daily, "get_today_run", lambda job_type: None)
         monkeypatch.setattr(index_daily, "get_settings", _settings)
-        monkeypatch.setattr(index_daily, "get_last_trade_date", lambda ts_code: datetime(2030, 1, 1).date())
-        pro = SimpleNamespace(index_daily=lambda **kw: (_ for _ in ()).throw(AssertionError("should be skipped")))
+        monkeypatch.setattr(
+            index_daily, "get_last_trade_date", lambda ts_code: datetime(2030, 1, 1).date()
+        )
+        pro = SimpleNamespace(
+            index_daily=lambda **kw: (_ for _ in ()).throw(AssertionError("should be skipped"))
+        )
         monkeypatch.setattr(index_daily, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(index_daily, "insert_record", lambda **kw: None)
         out = index_daily.sync_index_daily_full()
@@ -120,7 +144,11 @@ class TestIndexBasic:
 
     def test_missing_api_key(self, monkeypatch) -> None:
         monkeypatch.setattr(index_basic, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(index_basic, "get_settings", lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()))
+        monkeypatch.setattr(
+            index_basic,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()),
+        )
         out = index_basic.sync_index_basic_full()
         assert out["ok"] is False and "TU_SHARE_API_KEY" in out["error"]
 
@@ -129,7 +157,11 @@ class TestIndexBasic:
         monkeypatch.setattr(index_basic, "get_settings", _settings)
         monkeypatch.setattr(index_basic, "get_last_trade_date", lambda ts_code: None)
         monkeypatch.setattr(index_basic, "upsert_from_dataframe", lambda df: len(df))
-        pro = SimpleNamespace(index_dailybasic=lambda **kw: pd.DataFrame([{"ts_code": "000001.SH", "trade_date": _today()}]))
+        pro = SimpleNamespace(
+            index_dailybasic=lambda **kw: pd.DataFrame(
+                [{"ts_code": "000001.SH", "trade_date": _today()}]
+            )
+        )
         monkeypatch.setattr(index_basic, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         records = []
         monkeypatch.setattr(index_basic, "insert_record", lambda **kw: records.append(kw))
@@ -149,8 +181,12 @@ class TestIndexBasic:
     def test_skip_when_up_to_date(self, monkeypatch) -> None:
         monkeypatch.setattr(index_basic, "get_today_run", lambda job_type: None)
         monkeypatch.setattr(index_basic, "get_settings", _settings)
-        monkeypatch.setattr(index_basic, "get_last_trade_date", lambda ts_code: datetime(2030, 1, 1).date())
-        pro = SimpleNamespace(index_dailybasic=lambda **kw: (_ for _ in ()).throw(AssertionError("should be skipped")))
+        monkeypatch.setattr(
+            index_basic, "get_last_trade_date", lambda ts_code: datetime(2030, 1, 1).date()
+        )
+        pro = SimpleNamespace(
+            index_dailybasic=lambda **kw: (_ for _ in ()).throw(AssertionError("should be skipped"))
+        )
         monkeypatch.setattr(index_basic, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         monkeypatch.setattr(index_basic, "insert_record", lambda **kw: None)
         assert index_basic.sync_index_basic_full() == {"ok": True, "updated": 0}
@@ -159,7 +195,9 @@ class TestIndexBasic:
         monkeypatch.setattr(index_basic, "get_today_run", lambda job_type: None)
         monkeypatch.setattr(index_basic, "get_settings", _settings)
         monkeypatch.setattr(index_basic, "get_last_trade_date", lambda ts_code: None)
-        pro = SimpleNamespace(index_dailybasic=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+        pro = SimpleNamespace(
+            index_dailybasic=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
         monkeypatch.setattr(index_basic, "get_pool", lambda: SimpleNamespace(pro=lambda: pro))
         records = []
         monkeypatch.setattr(index_basic, "insert_record", lambda **kw: records.append(kw))
@@ -178,7 +216,11 @@ class TestStockBasic:
 
     def test_missing_api_key_records_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(stock_basic, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(stock_basic, "get_settings", lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()))
+        monkeypatch.setattr(
+            stock_basic,
+            "get_settings",
+            lambda: SimpleNamespace(tu_share_api_key=None, tushare_tokens=()),
+        )
         records = []
         monkeypatch.setattr(stock_basic, "insert_record", lambda **kw: records.append(kw))
         out = stock_basic.sync_stock_basic()
@@ -209,7 +251,11 @@ class TestStockBasic:
     def test_exception(self, monkeypatch) -> None:
         monkeypatch.setattr(stock_basic, "get_today_run", lambda job_type: None)
         monkeypatch.setattr(stock_basic, "get_settings", _settings)
-        monkeypatch.setattr(stock_basic, "get_pool", lambda: SimpleNamespace(pro=lambda: (_ for _ in ()).throw(RuntimeError("boom"))))
+        monkeypatch.setattr(
+            stock_basic,
+            "get_pool",
+            lambda: SimpleNamespace(pro=lambda: (_ for _ in ()).throw(RuntimeError("boom"))),
+        )
         records = []
         monkeypatch.setattr(stock_basic, "insert_record", lambda **kw: records.append(kw))
         out = stock_basic.sync_stock_basic()
@@ -218,7 +264,10 @@ class TestStockBasic:
 
     def test_sync_status_none(self, monkeypatch) -> None:
         monkeypatch.setattr(stock_basic, "get_today_run", lambda job_type: None)
-        assert stock_basic.get_stock_basic_sync_status() == {"job_type": stock_basic.JOB_TYPE, "today_run": None}
+        assert stock_basic.get_stock_basic_sync_status() == {
+            "job_type": stock_basic.JOB_TYPE,
+            "today_run": None,
+        }
 
     def test_sync_status_with_run(self, monkeypatch) -> None:
         monkeypatch.setattr(stock_basic, "get_today_run", lambda job_type: {"success": True})

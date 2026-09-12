@@ -62,12 +62,14 @@ def test_map_hk_basic_to_stock_basic_df_empty():
 
 
 def test_map_hk_basic_to_stock_basic_df_valid():
-    hk_df = pd.DataFrame({
-        "ts_code": ["00700.HK", "00001.HK"],
-        "name": ["腾讯控股", "长和"],
-        "list_date": ["20040616", "19990101"],
-        "delist_date": [None, None],
-    })
+    hk_df = pd.DataFrame(
+        {
+            "ts_code": ["00700.HK", "00001.HK"],
+            "name": ["腾讯控股", "长和"],
+            "list_date": ["20040616", "19990101"],
+            "delist_date": [None, None],
+        }
+    )
     result = map_hk_basic_to_stock_basic_df(hk_df)
     assert len(result) == 2
     assert result["ts_code"].tolist() == ["00700.HK", "00001.HK"]

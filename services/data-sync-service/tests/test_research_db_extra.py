@@ -80,22 +80,26 @@ def test_upsert_empty(monkeypatch) -> None:
 
 def test_upsert_full_mapping(monkeypatch) -> None:
     cur = _patch(monkeypatch, _Cur(rowcount=1))
-    n = rs.upsert_research_reports([{
-        "infoCode": " 1 ",
-        "stockCode": "600000.SH",
-        "stockName": "浦发",
-        "title": "深度报告",
-        "orgName": "中金",
-        "rating": "买入",
-        "targetPrice": "12.5",
-        "epsThisYear": "1.2",
-        "peThisYear": "bad",
-        "industryName": "银行",
-        "market": " CN ",
-        "publishDate": "2026-08-07",
-        "encodeUrl": "http://x",
-        "source": "eastmoney",
-    }])
+    n = rs.upsert_research_reports(
+        [
+            {
+                "infoCode": " 1 ",
+                "stockCode": "600000.SH",
+                "stockName": "浦发",
+                "title": "深度报告",
+                "orgName": "中金",
+                "rating": "买入",
+                "targetPrice": "12.5",
+                "epsThisYear": "1.2",
+                "peThisYear": "bad",
+                "industryName": "银行",
+                "market": " CN ",
+                "publishDate": "2026-08-07",
+                "encodeUrl": "http://x",
+                "source": "eastmoney",
+            }
+        ]
+    )
     assert n == 1
     assert cur.params[0] == "1"
     assert cur.params[1] == "600000.SH"
@@ -108,10 +112,18 @@ def test_upsert_full_mapping(monkeypatch) -> None:
 
 def test_upsert_org_sname_fallback(monkeypatch) -> None:
     cur = _patch(monkeypatch, _Cur(rowcount=0))
-    rs.upsert_research_reports([{
-        "infoCode": "2", "stockCode": "s", "stockName": "n", "title": "t",
-        "orgSName": "国泰君安", "publishDate": "2026-08-07",
-    }])
+    rs.upsert_research_reports(
+        [
+            {
+                "infoCode": "2",
+                "stockCode": "s",
+                "stockName": "n",
+                "title": "t",
+                "orgSName": "国泰君安",
+                "publishDate": "2026-08-07",
+            }
+        ]
+    )
     assert cur.params[4] == "国泰君安"
     assert cur.params[6] is None and cur.params[8] is None
     assert cur.params[9] is None and cur.params[12] is None
@@ -119,10 +131,20 @@ def test_upsert_org_sname_fallback(monkeypatch) -> None:
 
 def test_upsert_counts_inserted(monkeypatch) -> None:
     _ = _patch(monkeypatch, _Cur(rowcount=0))
-    assert rs.upsert_research_reports([{
-        "infoCode": "3", "stockCode": "s", "stockName": "n", "title": "t",
-        "publishDate": "2026-08-07",
-    }]) == 0
+    assert (
+        rs.upsert_research_reports(
+            [
+                {
+                    "infoCode": "3",
+                    "stockCode": "s",
+                    "stockName": "n",
+                    "title": "t",
+                    "publishDate": "2026-08-07",
+                }
+            ]
+        )
+        == 0
+    )
 
 
 def test_list_recent_no_filters(monkeypatch) -> None:
@@ -146,7 +168,10 @@ def test_list_recent_window_days_zero(monkeypatch) -> None:
     cur = _patch(monkeypatch, _Cur(fetchall=[], cols=[_Col("id")]))
     rs.list_recent_reports(window_days=0, limit=5)
     assert cur.params == [5]
-    assert "WHERE" not in cur.sql.split("ORDER BY")[0].split("FROM")[1][:0] or "publish_date >=" not in cur.sql
+    assert (
+        "WHERE" not in cur.sql.split("ORDER BY")[0].split("FROM")[1][:0]
+        or "publish_date >=" not in cur.sql
+    )
 
 
 def test_fetch_reports_for_score_window(monkeypatch) -> None:

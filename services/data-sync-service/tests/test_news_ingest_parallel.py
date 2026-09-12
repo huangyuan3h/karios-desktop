@@ -1,4 +1,3 @@
-
 from unittest.mock import patch
 
 import data_sync_service.service.alpha_radar_ingest as alpha_ingest

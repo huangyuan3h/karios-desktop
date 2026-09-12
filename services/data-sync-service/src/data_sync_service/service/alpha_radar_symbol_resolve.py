@@ -200,14 +200,10 @@ def map_trend_hk(
     doesn't generate HK watchlist candidates — which is the right failure
     mode (silent miss > wrong ticker).
     """
-    raw_mapping = list(
-        trend.get("hk_mapping")
-        or trend.get("hkMapping")
-        or []
+    raw_mapping = list(trend.get("hk_mapping") or trend.get("hkMapping") or [])
+    logic_summary = (
+        str(trend.get("logic_summary") or trend.get("logicSummary") or "").strip() or None
     )
-    logic_summary = str(
-        trend.get("logic_summary") or trend.get("logicSummary") or ""
-    ).strip() or None
 
     resolved, unresolved = resolve_hk_mapping(raw_mapping, logic_summary=logic_summary)
 
@@ -278,9 +274,9 @@ def map_trend_hybrid(
         or trend.get("keywordsForMapping")
         or []
     )
-    logic_summary = str(
-        trend.get("logic_summary") or trend.get("logicSummary") or ""
-    ).strip() or None
+    logic_summary = (
+        str(trend.get("logic_summary") or trend.get("logicSummary") or "").strip() or None
+    )
 
     resolved, unresolved = resolve_a_share_mapping(raw_mapping, logic_summary=logic_summary)
 

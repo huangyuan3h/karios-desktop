@@ -51,13 +51,25 @@ def _conn(monkeypatch):
 
 def test_upsert_rows_placeholders_match(monkeypatch) -> None:
     conn = _conn(monkeypatch)
-    n = cn_hot_rank.upsert_rows([
-        {"ts_code": "600000.SH", "trade_date": "2026-09-10", "rank": 2311.0,
-         "new_fans": 0.30, "iron_fans": 0.70},
-        {"ts_code": "", "trade_date": None},
-        {"ts_code": "000001.SZ", "trade_date": "20260910", "rank": "abc",
-         "new_fans": None, "iron_fans": float("nan")},
-    ])
+    n = cn_hot_rank.upsert_rows(
+        [
+            {
+                "ts_code": "600000.SH",
+                "trade_date": "2026-09-10",
+                "rank": 2311.0,
+                "new_fans": 0.30,
+                "iron_fans": 0.70,
+            },
+            {"ts_code": "", "trade_date": None},
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260910",
+                "rank": "abc",
+                "new_fans": None,
+                "iron_fans": float("nan"),
+            },
+        ]
+    )
     assert n == 2
     sql, values = conn.cursors[-1]._executemany_calls[0]
     assert "ON CONFLICT (ts_code, trade_date)" in sql

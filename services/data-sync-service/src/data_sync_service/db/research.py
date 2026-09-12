@@ -212,13 +212,9 @@ def research_stats() -> dict[str, int]:
         with conn.cursor() as cur:
             cur.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}")
             total = int(cur.fetchone()[0] or 0)
-            cur.execute(
-                f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE publish_date >= CURRENT_DATE - 1"
-            )
+            cur.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE publish_date >= CURRENT_DATE - 1")
             last_24h = int(cur.fetchone()[0] or 0)
-            cur.execute(
-                f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE publish_date >= CURRENT_DATE - 7"
-            )
+            cur.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE publish_date >= CURRENT_DATE - 7")
             last_7d = int(cur.fetchone()[0] or 0)
             cur.execute(
                 f"SELECT COUNT(DISTINCT stock_code) FROM {TABLE_NAME} "

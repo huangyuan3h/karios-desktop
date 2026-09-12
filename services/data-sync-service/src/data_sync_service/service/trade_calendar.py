@@ -64,4 +64,3 @@ def sync_trade_calendar(
         end_date=date.fromisoformat(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"),
     )
     return {"ok": True, "updated": total_rows, "summary": s}
-

@@ -79,7 +79,13 @@ def test_pre_decision_holdings_excludes_todays_decision_rows() -> None:
         _open_row(created=DAY),  # the job's own BUY today — excluded
         _open_row(symbol="ETF:518880"),  # pre-existing sleeve leg — kept
         _open_row(symbol="CN:600000", created=DAY),  # S-3 intake today — kept
-        {"symbol": "HK:00700", "whyAtEntry": "", "signalSnapshot": {}, "createdAt": None, "sleevePct": 0},
+        {
+            "symbol": "HK:00700",
+            "whyAtEntry": "",
+            "signalSnapshot": {},
+            "createdAt": None,
+            "sleevePct": 0,
+        },
     ]
     closed = [_closed_row(symbol="ETF:513350")]
     holdings = _pre_decision_holdings(rows, closed, DAY)
@@ -219,18 +225,20 @@ def test_sleeve_recon_section_clean_no_emit() -> None:
 
 
 def test_sleeve_recon_markdown_renders() -> None:
-    sections = [{
-        "type": "sleeve_recon",
-        "day": DAY,
-        "ok": False,
-        "action": "BUY",
-        "expectedBuys": [TEST_SYMBOL],
-        "expectedSells": [],
-        "missedBuys": [TEST_SYMBOL],
-        "missedSells": [],
-        "extraOpens": [],
-        "userAlignment": "missing",
-    }]
+    sections = [
+        {
+            "type": "sleeve_recon",
+            "day": DAY,
+            "ok": False,
+            "action": "BUY",
+            "expectedBuys": [TEST_SYMBOL],
+            "expectedSells": [],
+            "missedBuys": [TEST_SYMBOL],
+            "missedSells": [],
+            "extraOpens": [],
+            "userAlignment": "missing",
+        }
+    ]
     md = tb.render_markdown(sections, "action")
     assert f"**核心纸账对账 {DAY}** 🔴有差异 · 你未执行" in md
     assert f"缺 {TEST_SYMBOL}" in md

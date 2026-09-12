@@ -60,7 +60,9 @@ def _patch(monkeypatch, cur=None):
 
 
 def test_list_accounts_all(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchall=[("a1", "citic", "主账户", None, "2026-08-01T00:00:00")]))
+    cur = _patch(
+        monkeypatch, _Cur(fetchall=[("a1", "citic", "主账户", None, "2026-08-01T00:00:00")])
+    )
     out = bk.list_accounts()
     assert out[0]["id"] == "a1" and out[0]["accountMasked"] is None
     assert cur.params is None
@@ -74,7 +76,14 @@ def test_list_accounts_filtered(monkeypatch) -> None:
 
 def test_create_account(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    out = bk.create_account(account_id="a1", broker="citic", title="t", account_masked="1234", created_at="c", updated_at="u")
+    out = bk.create_account(
+        account_id="a1",
+        broker="citic",
+        title="t",
+        account_masked="1234",
+        created_at="c",
+        updated_at="u",
+    )
     assert out["accountMasked"] == "1234" and out["id"] == "a1"
     assert cur.params == ("a1", "citic", "t", "1234", "c", "u")
 
@@ -131,9 +140,16 @@ def test_upsert_account_state_partial_update(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(bk, "ensure_tables", lambda: None)
     monkeypatch.setattr(bk, "ensure_account_state", lambda **kw: calls.append(("ensure", kw)))
-    monkeypatch.setattr(bk, "get_account_state_row", lambda aid: {
-        "overview": {"old": 1}, "positions": [{"p": 1}], "conditionalOrders": [{"c": 1}], "trades": [{"t": 1}],
-    })
+    monkeypatch.setattr(
+        bk,
+        "get_account_state_row",
+        lambda aid: {
+            "overview": {"old": 1},
+            "positions": [{"p": 1}],
+            "conditionalOrders": [{"c": 1}],
+            "trades": [{"t": 1}],
+        },
+    )
 
     class C2(_Cur):
         def __init__(self) -> None:
@@ -148,8 +164,15 @@ def test_upsert_account_state_partial_update(monkeypatch) -> None:
 
     cur = C2()
     monkeypatch.setattr(bk, "get_connection", lambda: _Conn(cur))
-    bk.upsert_account_state(account_id="a1", broker="citic", updated_at="u2",
-                            overview=None, positions=None, conditional_orders=None, trades=None)
+    bk.upsert_account_state(
+        account_id="a1",
+        broker="citic",
+        updated_at="u2",
+        overview=None,
+        positions=None,
+        conditional_orders=None,
+        trades=None,
+    )
     assert "UPDATE broker_account_state" in cur.executed[0]
     assert len(cur.all_params) == 2  # state update + accounts touch
     assert cur.all_params[0][1].obj == {"old": 1}  # merged from current
@@ -174,9 +197,15 @@ def test_upsert_account_state_full_new(monkeypatch) -> None:
 
     cur = C3()
     monkeypatch.setattr(bk, "get_connection", lambda: _Conn(cur))
-    bk.upsert_account_state(account_id="a1", broker="citic", updated_at="u",
-                            overview={"k": 1}, positions=[{"p": 1}],
-                            conditional_orders=[], trades=[])
+    bk.upsert_account_state(
+        account_id="a1",
+        broker="citic",
+        updated_at="u",
+        overview={"k": 1},
+        positions=[{"p": 1}],
+        conditional_orders=[],
+        trades=[],
+    )
     assert "UPDATE broker_account_state" in cur.executed[0]
     assert cur.all_params[0][0] == "u"
     assert cur.all_params[0][1].obj == {"k": 1}
@@ -186,9 +215,19 @@ def test_upsert_account_state_full_new(monkeypatch) -> None:
 
 def test_insert_snapshot(monkeypatch) -> None:
     cur = _patch(monkeypatch)
-    bk.insert_snapshot(snapshot_id="s1", broker="citic", account_id="a1", captured_at="c",
-                       kind="positions", sha256="h", image_bytes=b"\x89PNG", image_type="png",
-                       image_name="shot.png", extracted={"k": 1}, created_at="c2")
+    bk.insert_snapshot(
+        snapshot_id="s1",
+        broker="citic",
+        account_id="a1",
+        captured_at="c",
+        kind="positions",
+        sha256="h",
+        image_bytes=b"\x89PNG",
+        image_type="png",
+        image_name="shot.png",
+        extracted={"k": 1},
+        created_at="c2",
+    )
     assert cur.params[9].obj == {"k": 1}
     assert "ON CONFLICT" in cur.sql
 

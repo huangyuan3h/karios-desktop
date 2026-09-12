@@ -125,7 +125,9 @@ def test_lookup_name_missing(monkeypatch) -> None:
 
 
 def test_lookup_name_error(monkeypatch) -> None:
-    monkeypatch.setattr(md, "ensure_stock_basic", lambda: (_ for _ in ()).throw(Exception("db down")))
+    monkeypatch.setattr(
+        md, "ensure_stock_basic", lambda: (_ for _ in ()).throw(Exception("db down"))
+    )
     assert md._lookup_name("600000.SH") is None
 
 
@@ -137,12 +139,22 @@ def test_fetch_cn_a_chip_summary_darwin() -> None:
 
 def test_fetch_cn_a_chip_summary_linux(monkeypatch) -> None:
     monkeypatch.setattr(md.sys, "platform", "linux")
-    df = _Df([
-        {"日期": "2026-08-01", "获利比例": "0.8", "平均成本": "10.1",
-         "90成本-低": "9", "90成本-高": "11", "90集中度": "0.1",
-         "70成本-低": "9.5", "70成本-高": "10.5", "70集中度": "0.05"},
-        {"日期": "", "获利比例": "0.7"},  # empty date skipped
-    ])
+    df = _Df(
+        [
+            {
+                "日期": "2026-08-01",
+                "获利比例": "0.8",
+                "平均成本": "10.1",
+                "90成本-低": "9",
+                "90成本-高": "11",
+                "90集中度": "0.1",
+                "70成本-低": "9.5",
+                "70成本-高": "10.5",
+                "70集中度": "0.05",
+            },
+            {"日期": "", "获利比例": "0.7"},  # empty date skipped
+        ]
+    )
     out = _chip_with_df(monkeypatch, df)
     assert out[0]["date"] == "2026-08-01" and out[0]["profitRatio"] == "0.8"
     assert len(out) == 1
@@ -191,12 +203,20 @@ def test_fetch_cn_a_chip_summary_no_func(monkeypatch) -> None:
 
 def test_fetch_cn_a_fund_flow_linux(monkeypatch) -> None:
     monkeypatch.setattr(md.sys, "platform", "linux")
-    df = _Df([
-        {"日期": "2026-08-01", "收盘价": "10.0", "涨跌幅": "1.0",
-         "主力净流入-净额": "100", "主力净流入-净占比": "0.1",
-         "超大单净流入-净额": "50", "超大单净流入-净占比": "0.05"},
-        {"日期": "", "收盘价": "9.0"},
-    ])
+    df = _Df(
+        [
+            {
+                "日期": "2026-08-01",
+                "收盘价": "10.0",
+                "涨跌幅": "1.0",
+                "主力净流入-净额": "100",
+                "主力净流入-净占比": "0.1",
+                "超大单净流入-净额": "50",
+                "超大单净流入-净占比": "0.05",
+            },
+            {"日期": "", "收盘价": "9.0"},
+        ]
+    )
     calls = {"n": 0}
 
     def fund_flow(stock=None, market=None, **kw):
@@ -269,7 +289,11 @@ def test_get_market_chips_fetches_and_upserts(monkeypatch) -> None:
         return [{"date": "2026-08-08", "avgCost": "10.5"}]
 
     monkeypatch.setattr(md, "fetch_cn_a_chip_summary", fake_fetch)
-    monkeypatch.setattr(md, "upsert_chips", lambda sym, items, updated_at=None: upserted.update(sym=sym, items=items, ts=updated_at))
+    monkeypatch.setattr(
+        md,
+        "upsert_chips",
+        lambda sym, items, updated_at=None: upserted.update(sym=sym, items=items, ts=updated_at),
+    )
     out = md.get_market_chips(symbol="CN:600000", days=60, force=True)
     assert out["items"][0]["avgCost"] == "10.5"
     assert upserted["sym"] == "CN:600000"
@@ -291,7 +315,9 @@ def test_get_market_chips_fetch_fail_uses_cache(monkeypatch) -> None:
 def test_get_market_chips_fetch_fail_empty(monkeypatch) -> None:
     _patch_parse(monkeypatch)
     monkeypatch.setattr(md, "list_chips_cached", lambda sym, limit: [])
-    monkeypatch.setattr(md, "fetch_cn_a_chip_summary", lambda t, days: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        md, "fetch_cn_a_chip_summary", lambda t, days: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     out = md.get_market_chips(symbol="CN:600000", days=60, force=True)
     assert out["items"] == []
 
@@ -322,8 +348,12 @@ def test_get_market_fund_flow_fetches(monkeypatch) -> None:
     _patch_parse(monkeypatch)
     monkeypatch.setattr(md, "list_fund_flow_cached", lambda sym, limit: [])
     upserted = {}
-    monkeypatch.setattr(md, "fetch_cn_a_fund_flow", lambda t, days: [{"date": "2026-08-08", "close": "10"}])
-    monkeypatch.setattr(md, "upsert_fund_flow", lambda sym, items, updated_at=None: upserted.update(sym=sym))
+    monkeypatch.setattr(
+        md, "fetch_cn_a_fund_flow", lambda t, days: [{"date": "2026-08-08", "close": "10"}]
+    )
+    monkeypatch.setattr(
+        md, "upsert_fund_flow", lambda sym, items, updated_at=None: upserted.update(sym=sym)
+    )
     out = md.get_market_fund_flow(symbol="CN:600000", days=60, force=True)
     assert out["items"][0]["close"] == "10" and upserted["sym"] == "CN:600000"
 
@@ -345,7 +375,9 @@ def test_get_market_fund_flow_fail_uses_cache_with_warning(monkeypatch) -> None:
 def test_get_market_fund_flow_fail_empty_with_warning(monkeypatch) -> None:
     _patch_parse(monkeypatch)
     monkeypatch.setattr(md, "list_fund_flow_cached", lambda sym, limit: [])
-    monkeypatch.setattr(md, "fetch_cn_a_fund_flow", lambda t, days: (_ for _ in ()).throw(ValueError("bad")))
+    monkeypatch.setattr(
+        md, "fetch_cn_a_fund_flow", lambda t, days: (_ for _ in ()).throw(ValueError("bad"))
+    )
     out = md.get_market_fund_flow(symbol="CN:600000", days=60, force=True)
     assert out["items"] == [] and "fund flow unavailable" in out["warning"]
 

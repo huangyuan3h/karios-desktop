@@ -74,7 +74,6 @@ def test_macro_lock_reader_uses_cache_without_repeat_db_calls() -> None:
     assert list_days.call_count == 1
 
 
-
 def test_macro_lock_fails_closed_on_sentiment_read_failure(monkeypatch) -> None:
     """H5 (2026-08-08): a sentiment read failure must not disable the crash
     lock — the read degrades to extreme_caution (lock active) and is NOT

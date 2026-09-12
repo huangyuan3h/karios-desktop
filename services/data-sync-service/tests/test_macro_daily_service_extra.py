@@ -74,7 +74,10 @@ class TestPaged:
 
     def test_paged_index_global_errors(self) -> None:
         pro = Mock()
-        pro.index_global.side_effect = [RuntimeError("x"), pd.DataFrame([{"trade_date": "2023-01-02", "close": 1.0}])]
+        pro.index_global.side_effect = [
+            RuntimeError("x"),
+            pd.DataFrame([{"trade_date": "2023-01-02", "close": 1.0}]),
+        ]
         out = md._paged_index_global(pro, "IXIC", "20230101", "20240201")
         assert out is not None and len(out) == 1
         pro.index_global.side_effect = [RuntimeError("x"), RuntimeError("y")]
@@ -101,19 +104,53 @@ class TestPaged:
 class FakeAk:
     @staticmethod
     def stock_hk_index_daily_sina(symbol="HSTECH"):
-        return pd.DataFrame([
-            {"date": "2026-08-07", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100.0, "amount": 200.0},
-            {"date": "2020-01-01", "open": 1.0, "high": 2.0, "low": 0.5, "close": None, "volume": 100.0, "amount": 200.0},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "date": "2026-08-07",
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": 1.5,
+                    "volume": 100.0,
+                    "amount": 200.0,
+                },
+                {
+                    "date": "2020-01-01",
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": None,
+                    "volume": 100.0,
+                    "amount": 200.0,
+                },
+            ]
+        )
 
 
 class FakeTicker:
     @staticmethod
     def history(start=None, end=None):
-        return pd.DataFrame([
-            {"Date": pd.Timestamp("2026-08-07"), "Open": 1.0, "High": 2.0, "Low": 0.5, "Close": 1.5, "Volume": 100},
-            {"Date": pd.Timestamp("2020-01-01"), "Open": 1.0, "High": 2.0, "Low": 0.5, "Close": None, "Volume": 100},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "Date": pd.Timestamp("2026-08-07"),
+                    "Open": 1.0,
+                    "High": 2.0,
+                    "Low": 0.5,
+                    "Close": 1.5,
+                    "Volume": 100,
+                },
+                {
+                    "Date": pd.Timestamp("2020-01-01"),
+                    "Open": 1.0,
+                    "High": 2.0,
+                    "Low": 0.5,
+                    "Close": None,
+                    "Volume": 100,
+                },
+            ]
+        )
 
 
 class FakeYf:
@@ -155,7 +192,9 @@ class TestHstech:
         ak.stock_hk_index_daily_sina.return_value = pd.DataFrame()
         monkeypatch.setitem(sys.modules, "akshare", ak)
         assert md._fetch_hstech_bars_via_ak("20230101", "20260808") is None
-        ak.stock_hk_index_daily_sina.return_value = pd.DataFrame([{"date": "2026-08-07", "close": None}])
+        ak.stock_hk_index_daily_sina.return_value = pd.DataFrame(
+            [{"date": "2026-08-07", "close": None}]
+        )
         assert md._fetch_hstech_bars_via_ak("20230101", "20260808") is None
 
     def test_yf_empty_hist(self, monkeypatch) -> None:
@@ -163,7 +202,9 @@ class TestHstech:
         yf.Ticker.return_value.history.return_value = pd.DataFrame()
         monkeypatch.setitem(sys.modules, "yfinance", yf)
         assert md._fetch_hstech_bars_via_yf("20230101", "20260808") is None
-        yf.Ticker.return_value.history.return_value = pd.DataFrame([{"Date": pd.Timestamp("2026-08-07"), "Close": None}])
+        yf.Ticker.return_value.history.return_value = pd.DataFrame(
+            [{"Date": pd.Timestamp("2026-08-07"), "Close": None}]
+        )
         assert md._fetch_hstech_bars_via_yf("20230101", "20260808") is None
 
     def test_resolver_sort_failure(self, monkeypatch) -> None:
@@ -171,13 +212,23 @@ class TestHstech:
         pro = Mock()
         pro.fut_basic.return_value = df
         orig = pd.DataFrame.sort_values
-        monkeypatch.setattr(pd.DataFrame, "sort_values", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")))
+        monkeypatch.setattr(
+            pd.DataFrame,
+            "sort_values",
+            lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")),
+        )
         assert md.resolve_sgx_a50_main(pro) == "FTXA50"
         assert md.resolve_main_fut_by_prefix(pro, "SGX", "FT") == "FTXA50"
         monkeypatch.setattr(pd.DataFrame, "sort_values", orig)
         pro2 = Mock()
-        pro2.fut_basic.return_value = pd.DataFrame([{"ts_code": "SC2601.INE", "name": "x", "list_date": "2025-01-01"}])
-        monkeypatch.setattr(pd.DataFrame, "sort_values", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")))
+        pro2.fut_basic.return_value = pd.DataFrame(
+            [{"ts_code": "SC2601.INE", "name": "x", "list_date": "2025-01-01"}]
+        )
+        monkeypatch.setattr(
+            pd.DataFrame,
+            "sort_values",
+            lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")),
+        )
         assert md.resolve_ine_sc_main(pro2) == "SC2601.INE"
 
     def test_ak_out_of_window(self, monkeypatch) -> None:
@@ -215,14 +266,18 @@ class TestResolvers:
         assert md.resolve_sgx_a50_main(pro) is None
         pro.fut_basic.return_value = pd.DataFrame([{"ts_code": "X"}])
         assert md.resolve_sgx_a50_main(pro) is None
-        df = pd.DataFrame([
-            {"ts_code": "FTXA50", "name": "FTSE China A50", "list_date": "2020-01-01"},
-            {"ts_code": "FTXCN2", "name": "CN futures", "list_date": "2021-01-01"},
-            {"ts_code": "OTHR", "name": "Other", "list_date": "2022-01-01"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"ts_code": "FTXA50", "name": "FTSE China A50", "list_date": "2020-01-01"},
+                {"ts_code": "FTXCN2", "name": "CN futures", "list_date": "2021-01-01"},
+                {"ts_code": "OTHR", "name": "Other", "list_date": "2022-01-01"},
+            ]
+        )
         pro.fut_basic.return_value = df
         assert md.resolve_sgx_a50_main(pro) == "FTXCN2"
-        df_no_match = pd.DataFrame([{"ts_code": "OTHR", "name": "Other", "list_date": "2022-01-01"}])
+        df_no_match = pd.DataFrame(
+            [{"ts_code": "OTHR", "name": "Other", "list_date": "2022-01-01"}]
+        )
         pro.fut_basic.return_value = df_no_match
         assert md.resolve_sgx_a50_main(pro) == "OTHR"
         df_nan = pd.DataFrame([{"ts_code": None, "name": "x"}])
@@ -241,10 +296,12 @@ class TestResolvers:
         assert md.resolve_main_fut_by_prefix(pro, "SHFE", "AU") is None
         pro.fut_basic.return_value = pd.DataFrame([{"ts_code": "X"}])
         assert md.resolve_main_fut_by_prefix(pro, "SHFE", "AU") is None
-        df = pd.DataFrame([
-            {"ts_code": "AU2512.SHF", "name": "au2512", "list_date": "2024-01-01"},
-            {"ts_code": "CU2601.SHF", "name": "cu2601", "list_date": "2025-01-01"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"ts_code": "AU2512.SHF", "name": "au2512", "list_date": "2024-01-01"},
+                {"ts_code": "CU2601.SHF", "name": "cu2601", "list_date": "2025-01-01"},
+            ]
+        )
         pro.fut_basic.return_value = df
         assert md.resolve_main_fut_by_prefix(pro, "SHFE", "au") == "AU2512.SHF"
         df_none = pd.DataFrame([{"ts_code": None}])
@@ -256,13 +313,25 @@ class TestResolvers:
         pro.fut_basic.side_effect = RuntimeError("x")
         assert md.resolve_ine_sc_main(pro) is None
         pro.fut_basic.side_effect = None
-        pro.fut_basic.return_value = pd.DataFrame([{"ts_code": "SC2601.INE", "name": "原油", "list_date": "2025-01-01"}])
+        pro.fut_basic.return_value = pd.DataFrame(
+            [{"ts_code": "SC2601.INE", "name": "原油", "list_date": "2025-01-01"}]
+        )
         assert md.resolve_ine_sc_main(pro) == "SC2601.INE"
-        pro.fut_basic.side_effect = [pd.DataFrame([{"ts_code": "OTHER.INE", "name": "x"}]), RuntimeError("x")]
+        pro.fut_basic.side_effect = [
+            pd.DataFrame([{"ts_code": "OTHER.INE", "name": "x"}]),
+            RuntimeError("x"),
+        ]
         assert md.resolve_ine_sc_main(pro) is None
-        pro.fut_basic.side_effect = [pd.DataFrame([{"ts_code": "OTHER.INE", "name": "x"}]), pd.DataFrame([{"ts_code": "SC2601.INE", "name": "y", "list_date": "2025-01-01"}])]
+        pro.fut_basic.side_effect = [
+            pd.DataFrame([{"ts_code": "OTHER.INE", "name": "x"}]),
+            pd.DataFrame([{"ts_code": "SC2601.INE", "name": "y", "list_date": "2025-01-01"}]),
+        ]
         orig_sort = pd.DataFrame.sort_values
-        monkeypatch.setattr(pd.DataFrame, "sort_values", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")))
+        monkeypatch.setattr(
+            pd.DataFrame,
+            "sort_values",
+            lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no sort")),
+        )
         assert md.resolve_ine_sc_main(pro) == "SC2601.INE"
         monkeypatch.setattr(pd.DataFrame, "sort_values", orig_sort)
         pro.fut_basic.side_effect = None
@@ -281,16 +350,26 @@ def _ok_df():
 class TestSyncFull:
     def test_already_synced(self, monkeypatch) -> None:
         monkeypatch.setattr(md, "get_today_run", lambda job: {"success": True})
-        assert md.sync_macro_daily_full() == {"ok": True, "skipped": True, "message": "already synced today"}
+        assert md.sync_macro_daily_full() == {
+            "ok": True,
+            "skipped": True,
+            "message": "already synced today",
+        }
 
     def test_no_api_key(self, monkeypatch) -> None:
         monkeypatch.setattr(md, "get_today_run", lambda job: None)
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
+        monkeypatch.setattr(
+            md, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=())
+        )
         assert md.sync_macro_daily_full() == {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     def _happy(self, monkeypatch, *, fail=None, last_ts=None):
-        monkeypatch.setattr(md, "get_today_run", lambda job: {"success": False, "last_ts_code": last_ts})
-        monkeypatch.setattr(md, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            md, "get_today_run", lambda job: {"success": False, "last_ts_code": last_ts}
+        )
+        monkeypatch.setattr(
+            md, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",))
+        )
         monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
         monkeypatch.setattr(md, "_paged_index_global", lambda pro, code, s, e: _ok_df())
         monkeypatch.setattr(md, "_paged_fut_daily", lambda pro, code, s, e: _ok_df())
@@ -299,7 +378,9 @@ class TestSyncFull:
         monkeypatch.setattr(md, "resolve_main_fut_by_prefix", lambda pro, exch, pre: "AU2512.SHF")
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_ak", lambda s, e: None)
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())
-        upsert = Mock(side_effect=lambda df, series_id=None, source=None, underlying_ts_code=None: len(df))
+        upsert = Mock(
+            side_effect=lambda df, series_id=None, source=None, underlying_ts_code=None: len(df)
+        )
         monkeypatch.setattr(md, "upsert_from_dataframe", upsert)
         pro = Mock()
         pro.fx_daily.return_value = pd.DataFrame([{"trade_date": "2026-08-07", "bid_close": 7.0}])
@@ -312,7 +393,12 @@ class TestSyncFull:
         pro, upsert, seen = self._happy(monkeypatch)
         out = md.sync_macro_daily_full()
         assert out["ok"] is True and out["updated"] == 10
-        assert seen == {"job_type": md.JOB_TYPE, "success": True, "last_ts_code": None, "error_message": None}
+        assert seen == {
+            "job_type": md.JOB_TYPE,
+            "success": True,
+            "last_ts_code": None,
+            "error_message": None,
+        }
         assert pro.fx_daily.call_count == 1
 
     def test_resume_from_last(self, monkeypatch) -> None:
@@ -349,17 +435,27 @@ class TestSyncFull:
     def test_fx_raise_and_a50_xin9(self, monkeypatch) -> None:
         pro, upsert, seen = self._happy(monkeypatch)
         pro.fx_daily.side_effect = RuntimeError("fx down")
-        monkeypatch.setattr(md, "_paged_fut_daily", lambda pro2, code, s, e: None if code == "FTXA50" else _ok_df())
-        monkeypatch.setattr(md, "_paged_index_global", lambda pro2, code, s, e: _ok_df() if code == "XIN9" else None)
+        monkeypatch.setattr(
+            md, "_paged_fut_daily", lambda pro2, code, s, e: None if code == "FTXA50" else _ok_df()
+        )
+        monkeypatch.setattr(
+            md, "_paged_index_global", lambda pro2, code, s, e: _ok_df() if code == "XIN9" else None
+        )
         out = md.sync_macro_daily_full()
         assert out["ok"] is True
-        xin9 = [c.kwargs for c in upsert.call_args_list if c.kwargs.get("underlying_ts_code") == "XIN9"]
+        xin9 = [
+            c.kwargs for c in upsert.call_args_list if c.kwargs.get("underlying_ts_code") == "XIN9"
+        ]
         assert len(xin9) == 1
 
     def test_hstech_ak_fallback(self, monkeypatch) -> None:
         _, upsert, _ = self._happy(monkeypatch)
         monkeypatch.setattr(md, "get_today_run", lambda job: None)
-        monkeypatch.setattr(md, "_paged_index_global", lambda pro2, code, s, e: None if code == "HSTECH" else _ok_df())
+        monkeypatch.setattr(
+            md,
+            "_paged_index_global",
+            lambda pro2, code, s, e: None if code == "HSTECH" else _ok_df(),
+        )
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_ak", lambda s, e: _ok_df())
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())
         monkeypatch.setattr(md, "_fetch_hk_index_via_tencent", lambda sym, s, e: None)
@@ -370,7 +466,11 @@ class TestSyncFull:
     def test_hstech_yf_fallback(self, monkeypatch) -> None:
         _, upsert, _ = self._happy(monkeypatch)
         monkeypatch.setattr(md, "get_today_run", lambda job: None)
-        monkeypatch.setattr(md, "_paged_index_global", lambda pro2, code, s, e: None if code == "HSTECH" else _ok_df())
+        monkeypatch.setattr(
+            md,
+            "_paged_index_global",
+            lambda pro2, code, s, e: None if code == "HSTECH" else _ok_df(),
+        )
         monkeypatch.setattr(md.sys, "platform", "linux")
         monkeypatch.setitem(sys.modules, "akshare", Mock())
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())

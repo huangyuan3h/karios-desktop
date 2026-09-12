@@ -34,7 +34,9 @@ class QuotaWindowSnapshot(BaseModel):
 
     used: int = Field(description="Number of requests consumed in the current sliding window.")
     limit: int = Field(description="Configured cap for this window; 0 means unlimited.")
-    window_seconds: int = Field(description="Size of the sliding window in seconds (60/3600/86400).")
+    window_seconds: int = Field(
+        description="Size of the sliding window in seconds (60/3600/86400)."
+    )
 
 
 class QuotaResponse(BaseModel):
@@ -76,7 +78,9 @@ def get_quota(auth: AuthenticatedKey = Depends(enforce_quota)) -> QuotaResponse:
     key = auth.key
     raw = quota_tracker.usage(key)
     windows = {
-        name: QuotaWindowSnapshot(used=s["used"], limit=s["limit"], window_seconds=s["window_seconds"])
+        name: QuotaWindowSnapshot(
+            used=s["used"], limit=s["limit"], window_seconds=s["window_seconds"]
+        )
         for name, s in raw.items()
     }
     return QuotaResponse(

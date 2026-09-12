@@ -21,9 +21,7 @@ class _Pro:
 
     def fund_daily(self, **kw) -> pd.DataFrame:
         self.calls.append(kw)
-        return pd.DataFrame(
-            {"ts_code": ["510300.SH"], "trade_date": ["20260807"], "close": [4.0]}
-        )
+        return pd.DataFrame({"ts_code": ["510300.SH"], "trade_date": ["20260807"], "close": [4.0]})
 
 
 def _patch(monkeypatch, pro=None, ts_codes=None, last=None, run=None):
@@ -33,7 +31,11 @@ def _patch(monkeypatch, pro=None, ts_codes=None, last=None, run=None):
     monkeypatch.setattr(ed, "get_today_run", lambda jt: run)
     monkeypatch.setattr(ed, "_fetch_etf_ts_codes", lambda: ts_codes or [])
     monkeypatch.setattr(ed, "get_last_trade_date", lambda code: last)
-    monkeypatch.setattr(ed, "upsert_from_dataframe", lambda df: state.__setitem__("upserted", state["upserted"] + len(df)) or len(df))
+    monkeypatch.setattr(
+        ed,
+        "upsert_from_dataframe",
+        lambda df: state.__setitem__("upserted", state["upserted"] + len(df)) or len(df),
+    )
     monkeypatch.setattr(ed, "insert_record", lambda **kw: None)
     return state
 
@@ -65,8 +67,13 @@ def test_sync_no_etf_list(monkeypatch) -> None:
 
 def test_sync_resumes_from_last_ts_code(monkeypatch) -> None:
     pro = _Pro()
-    _patch(monkeypatch, pro=pro, ts_codes=["510300.SH", "510500.SH", "588000.SH"],
-           last=date(2026, 8, 6), run={"success": False, "last_ts_code": "510500.SH"})
+    _patch(
+        monkeypatch,
+        pro=pro,
+        ts_codes=["510300.SH", "510500.SH", "588000.SH"],
+        last=date(2026, 8, 6),
+        run={"success": False, "last_ts_code": "510500.SH"},
+    )
     out = ed.sync_etf_daily_full()
     assert out["ok"] is True and out["updated"] == 1
     assert pro.calls[0]["ts_code"] == "588000.SH"
@@ -75,8 +82,12 @@ def test_sync_resumes_from_last_ts_code(monkeypatch) -> None:
 
 def test_sync_resume_unknown_code_restarts(monkeypatch) -> None:
     pro = _Pro()
-    _patch(monkeypatch, pro=pro, ts_codes=["510300.SH"],
-           run={"success": False, "last_ts_code": "unknown.UN"})
+    _patch(
+        monkeypatch,
+        pro=pro,
+        ts_codes=["510300.SH"],
+        run={"success": False, "last_ts_code": "unknown.UN"},
+    )
     out = ed.sync_etf_daily_full()
     assert out["ok"] is True
     assert pro.calls[0]["ts_code"] == "510300.SH"
@@ -192,11 +203,15 @@ def test_sync_single_success_clears_trendok_cache(monkeypatch) -> None:
 
     class P5:
         def fund_daily(self, **kw):
-            return pd.DataFrame({"ts_code": ["510300.SH"], "trade_date": ["20260807"], "close": [4.0]})
+            return pd.DataFrame(
+                {"ts_code": ["510300.SH"], "trade_date": ["20260807"], "close": [4.0]}
+            )
 
     import data_sync_service.service.trendok as tk
 
-    monkeypatch.setattr(tk, "clear_trendok_cache", lambda: cleared.__setitem__("n", cleared["n"] + 1))
+    monkeypatch.setattr(
+        tk, "clear_trendok_cache", lambda: cleared.__setitem__("n", cleared["n"] + 1)
+    )
     _patch(monkeypatch, pro=P5(), last=date(2026, 8, 6))
     out = ed.sync_etf_daily_for_ts_code("510300.SH")
     assert out["ok"] is True and out["updated"] == 1

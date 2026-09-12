@@ -114,17 +114,27 @@ def build_trendok_flow_context_from_rows(
     rows_yesterday = _rows_for_date(rows, yesterday) if yesterday else []
 
     top_today = sorted(rows_today, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
-    top_today_5 = [str(x.get("industry_name") or "") for x in top_today[:5] if x.get("industry_name")]
+    top_today_5 = [
+        str(x.get("industry_name") or "") for x in top_today[:5] if x.get("industry_name")
+    ]
     top_today_3 = top_today_5[:3]
 
     # Calculate top 3 outflow industries today (lowest net_inflow = largest outflow)
     outflow_today = sorted(rows_today, key=lambda x: float(x.get("net_inflow") or 0.0))
-    outflow_today_3 = [str(x.get("industry_name") or "") for x in outflow_today[:3] if x.get("industry_name")]
+    outflow_today_3 = [
+        str(x.get("industry_name") or "") for x in outflow_today[:3] if x.get("industry_name")
+    ]
 
-    top_yesterday = sorted(rows_yesterday, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
-    top_yesterday_3 = [str(x.get("industry_name") or "") for x in top_yesterday[:3] if x.get("industry_name")]
+    top_yesterday = sorted(
+        rows_yesterday, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True
+    )
+    top_yesterday_3 = [
+        str(x.get("industry_name") or "") for x in top_yesterday[:3] if x.get("industry_name")
+    ]
 
-    net_today = {str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_today}
+    net_today = {
+        str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_today
+    }
     net_yesterday = {
         str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_yesterday
     }
@@ -315,7 +325,13 @@ def build_dashboard_industry_bundle(
         return {**base, "dailyRankings": daily_rankings, "flow5d": empty, "flow5dOut": empty}
     top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
     top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
-    flow5d = {"asOfDate": as_of_date, "days": days2, "topN": 10, "dates": dates_sorted, "top": top_in}
+    flow5d = {
+        "asOfDate": as_of_date,
+        "days": days2,
+        "topN": 10,
+        "dates": dates_sorted,
+        "top": top_in,
+    }
     flow5d_out = {
         "asOfDate": as_of_date,
         "days": days2,

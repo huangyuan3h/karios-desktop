@@ -20,6 +20,7 @@ def test_safe_float_valid():
 
 def test_safe_float_nan():
     import math
+
     assert _safe_float(math.nan) is None
 
 

@@ -52,7 +52,9 @@ def list_presets() -> list[dict[str, Any]]:
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT id, title, updated_at FROM {PRESETS_TABLE} ORDER BY updated_at DESC")
+            cur.execute(
+                f"SELECT id, title, updated_at FROM {PRESETS_TABLE} ORDER BY updated_at DESC"
+            )
             rows = cur.fetchall()
     return [{"id": str(r[0]), "title": str(r[1]), "updatedAt": str(r[2])} for r in rows]
 
@@ -171,4 +173,3 @@ def set_legacy_content(value: str) -> None:
                 (value, ts),
             )
         conn.commit()
-

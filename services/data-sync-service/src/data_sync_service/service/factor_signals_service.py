@@ -58,6 +58,7 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
     Returns number of signals written for that date (replaces same key).
     """
     from data_sync_service.db.stock_basic import get_connection as _unused  # noqa: F401
+
     # load 80 days of daily up to trade_date for 60-day lookback
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -81,6 +82,7 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
 
     # group by ts_code
     from collections import defaultdict
+
     by_ts: dict[str, list] = defaultdict(list)
     for r in rows:
         by_ts[r[0]].append(r)
@@ -103,8 +105,8 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
         # uptrend gate at t
         if not (ma20[t] > ma60[t] and closes[t - 30] > ma60[t - 30]):
             continue
-        ph = highs[t - 40:t - 20].max()
-        bw = lows[t - 20:t + 1]
+        ph = highs[t - 40 : t - 20].max()
+        bw = lows[t - 20 : t + 1]
         bottom = bw.min()
         bi = t - 20 + int(np.argmin(bw))
         depth = (ph - bottom) / ph if ph > 0 else 0
@@ -114,7 +116,7 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
             continue
         if bi < t - 15:
             continue
-        scoop_vol = vols[t - 20:t + 1].mean()
+        scoop_vol = vols[t - 20 : t + 1].mean()
         vr = float(vols[t] / scoop_vol) if scoop_vol > 0 else 1.0
         ret60 = closes[t] / closes[t - 60] - 1 if closes[t - 60] > 0 else 0
         if ret60 <= 0.30:
@@ -128,14 +130,26 @@ def scan_strong_scoop_exhaustion(trade_date: str) -> int:
         symbol = _symbol_for_ts(ts_code)
         meta = basic.get(ts_code, {})
         board_map = {"主板": "主板", "创业板": "创业板", "科创板": "科创板", "北交所": "北交所"}
-        signals.append(dict(
-            trade_date=trade_date, symbol=symbol, factor_name="strong_scoop_exhaustion",
-            direction="short", entry_price=entry, target_price=target, stop_price=stop,
-            probability=prob, hold_days=20, status="pending",
-            ret60=float(ret60), vol_ratio=float(vr),
-            industry=meta.get("industry"), board=board_map.get(str(meta.get("board") or ""), str(meta.get("board") or "")) or None,
-            symbol_name=meta.get("name"),
-        ))
+        signals.append(
+            dict(
+                trade_date=trade_date,
+                symbol=symbol,
+                factor_name="strong_scoop_exhaustion",
+                direction="short",
+                entry_price=entry,
+                target_price=target,
+                stop_price=stop,
+                probability=prob,
+                hold_days=20,
+                status="pending",
+                ret60=float(ret60),
+                vol_ratio=float(vr),
+                industry=meta.get("industry"),
+                board=board_map.get(str(meta.get("board") or ""), str(meta.get("board") or ""))
+                or None,
+                symbol_name=meta.get("name"),
+            )
+        )
     if signals:
         upsert_rows(signals)
     return len(signals)
@@ -190,6 +204,7 @@ def sync_for_range(start_date: str, end_date: str) -> dict:
     from datetime import date
 
     from data_sync_service.db.trade_calendar import get_open_dates
+
     dates = get_open_dates("SSE", date.fromisoformat(start_date), date.fromisoformat(end_date))
     total = 0
     for d in dates:

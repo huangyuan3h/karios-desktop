@@ -61,7 +61,9 @@ def _clean_book_cache():
 def test_count_sessions_exception_returns_zero(monkeypatch) -> None:
     import data_sync_service.service.trade_calendar_utils as tcu
 
-    monkeypatch.setattr(tcu, "count_open_sessions", lambda a, b: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        tcu, "count_open_sessions", lambda a, b: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     assert tsd.count_sessions_inclusive("2026-01-19", "2026-01-21") == 0
 
 
@@ -70,7 +72,9 @@ def test_sat_body_progress_missing_and_nth_raises(monkeypatch) -> None:
 
     out = tsd.sat_body_progress(None, "2026-01-21")
     assert out["missingEntry"] is True and out["heldDays"] is None
-    monkeypatch.setattr(tcu, "nth_open_session", lambda d, n: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        tcu, "nth_open_session", lambda d, n: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     out = tsd.sat_body_progress("2026-01-19", "2026-01-21")
     assert out["exitDue"] is None and out["missingEntry"] is False
 
@@ -93,7 +97,9 @@ def test_action_intraday_load_failure_survives(monkeypatch) -> None:
     tsi = _stub_action_base(monkeypatch, health={"multiAssetSleeve": {}, "holdings": []})
     day = date(2026, 1, 21)
     monkeypatch.setattr(tsi, "session_date", lambda now=None: day)
-    monkeypatch.setattr(tsi, "load_intraday_sat", lambda d: (_ for _ in ()).throw(RuntimeError("cache down")))
+    monkeypatch.setattr(
+        tsi, "load_intraday_sat", lambda d: (_ for _ in ()).throw(RuntimeError("cache down"))
+    )
     out = tsd.build_twin_star_daily_action(day)
     assert out["sat"]["asOf"] == "2026-01-20"  # T-1 signal kept, snapshot flags default False
 
@@ -136,19 +142,25 @@ def test_sat_book_cache_evicts_at_16(monkeypatch, _clean_book_cache) -> None:
 def test_live_sat_ts_codes_all_sources_fail(monkeypatch) -> None:
     import data_sync_service.service.twin_star_intraday as tsi
 
-    monkeypatch.setattr(tsi, "load_intraday_sat", lambda day: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(
+        tsi, "load_intraday_sat", lambda day: (_ for _ in ()).throw(RuntimeError("x"))
+    )
     monkeypatch.setattr(
         "data_sync_service.db.paper_trading.list_paper_trades",
         lambda **k: (_ for _ in ()).throw(RuntimeError("db")),
     )
-    monkeypatch.setattr(tsd, "sat_book_ts_codes", lambda day: (_ for _ in ()).throw(RuntimeError("y")))
+    monkeypatch.setattr(
+        tsd, "sat_book_ts_codes", lambda day: (_ for _ in ()).throw(RuntimeError("y"))
+    )
     assert tsd.live_sat_ts_codes(date(2026, 1, 21)) == set()
 
 
 def test_live_sat_ts_codes_merges_three_legs(monkeypatch, _clean_book_cache) -> None:
     import data_sync_service.service.twin_star_intraday as tsi
 
-    monkeypatch.setattr(tsi, "load_intraday_sat", lambda day: {"candidates": [{"ts": "A.SH"}], "blocked": []})
+    monkeypatch.setattr(
+        tsi, "load_intraday_sat", lambda day: {"candidates": [{"ts": "A.SH"}], "blocked": []}
+    )
     monkeypatch.setattr(tsi, "session_date", lambda now=None: date(2026, 1, 21))
     monkeypatch.setattr(
         "data_sync_service.db.paper_trading.list_paper_trades",
@@ -173,7 +185,9 @@ def test_live_sat_holdings_bad_pct_skipped() -> None:
             {"symbol": "CN:000002", "positionPct": 5.0},
         ]
     }
-    assert [h["ts"] for h in tsd.live_sat_holdings(health=health, pick_key=None, sat_ts=set())] == ["000002.SZ"]
+    assert [h["ts"] for h in tsd.live_sat_holdings(health=health, pick_key=None, sat_ts=set())] == [
+        "000002.SZ"
+    ]
 
 
 def test_fill_candidate_names_edges(monkeypatch) -> None:
@@ -200,7 +214,9 @@ def test_fill_candidate_names_edges(monkeypatch) -> None:
 
 
 def test_sat_signal_load_failure_and_empty_trim(monkeypatch) -> None:
-    monkeypatch.setattr(tsd, "_load_calendar", lambda w, e: (_ for _ in ()).throw(RuntimeError("db")))
+    monkeypatch.setattr(
+        tsd, "_load_calendar", lambda w, e: (_ for _ in ()).throw(RuntimeError("db"))
+    )
     assert tsd._sat_signal(date(2026, 2, 1)) is None
 
     # Only today in calendar → trimmed to empty → None.
@@ -235,7 +251,11 @@ def test_sat_book_unavailable_and_exits_branches(monkeypatch) -> None:
     assert out["error"] == "book_unavailable" and out["holdings"] == []
 
     due = {"ts": "A.SH", "daysLeft": 0}
-    monkeypatch.setattr(tsd, "build_sgap_timeline", lambda **k: {"openPositions": [due, {"ts": "B.SH", "daysLeft": 2}]})
+    monkeypatch.setattr(
+        tsd,
+        "build_sgap_timeline",
+        lambda **k: {"openPositions": [due, {"ts": "B.SH", "daysLeft": 2}]},
+    )
     out = tsd._sat_book(date(2026, 1, 21))
     assert [h["ts"] for h in out["exitsDue"]] == ["A.SH"]
 
@@ -249,11 +269,25 @@ def test_sat_book_unavailable_and_exits_branches(monkeypatch) -> None:
 
 
 def _stub_action_base(monkeypatch, **kw):
-    monkeypatch.setattr(tsd, "_sat_signal", lambda today: kw.get("signal", {
-        "asOf": "2026-01-20", "gateOpen": True, "breadth": 0.8, "gapCount": 1,
-        "candidates": [{"ts": "A.SH", "amp": 1.0, "gapPct": 5.0, "close": 10.5}],
-    }))
-    monkeypatch.setattr(tsd, "_sat_book", lambda today: kw.get("book", {"asOf": "x", "holdings": [], "exitsDue": [], "body": 3}))
+    monkeypatch.setattr(
+        tsd,
+        "_sat_signal",
+        lambda today: kw.get(
+            "signal",
+            {
+                "asOf": "2026-01-20",
+                "gateOpen": True,
+                "breadth": 0.8,
+                "gapCount": 1,
+                "candidates": [{"ts": "A.SH", "amp": 1.0, "gapPct": 5.0, "close": 10.5}],
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        tsd,
+        "_sat_book",
+        lambda today: kw.get("book", {"asOf": "x", "holdings": [], "exitsDue": [], "body": 3}),
+    )
     monkeypatch.setattr(tsd, "fill_candidate_names", lambda *a, **k: None)
     monkeypatch.setattr(tsd, "sat_book_ts_codes", lambda day: set())
     import data_sync_service.db.paper_trading as ptdb
@@ -266,7 +300,9 @@ def _stub_action_base(monkeypatch, **kw):
         import data_sync_service.service.portfolio_health as ph
 
         if kw.get("health_raises"):
-            monkeypatch.setattr(ph, "build_portfolio_health", lambda **k: (_ for _ in ()).throw(RuntimeError("db")))
+            monkeypatch.setattr(
+                ph, "build_portfolio_health", lambda **k: (_ for _ in ()).throw(RuntimeError("db"))
+            )
         else:
             health = kw.get("health")
             monkeypatch.setattr(ph, "build_portfolio_health", lambda **k: health)
@@ -285,10 +321,19 @@ def test_action_intraday_overrides_and_snapshot_status(monkeypatch) -> None:
     day = date(2026, 1, 21)
     monkeypatch.setattr(tsi, "session_date", lambda now=None: day)
     monkeypatch.setattr(
-        tsi, "load_intraday_sat", lambda d: {"candidates": [{"ts": "B.SH"}], "blocked": [], "alternates": [], "skippedC1": []}
+        tsi,
+        "load_intraday_sat",
+        lambda d: {
+            "candidates": [{"ts": "B.SH"}],
+            "blocked": [],
+            "alternates": [],
+            "skippedC1": [],
+        },
     )
     monkeypatch.setattr(
-        tsi, "intraday_snapshot_status", lambda **k: {"missing": False, "stale": True, "ageSeconds": 99, "reason": "late"}
+        tsi,
+        "intraday_snapshot_status",
+        lambda **k: {"missing": False, "stale": True, "ageSeconds": 99, "reason": "late"},
     )
     out = tsd.build_twin_star_daily_action(day)
     assert out["sat"]["candidates"] == [{"ts": "B.SH"}]
@@ -300,7 +345,14 @@ def test_action_exithhmm_none_defaults(monkeypatch) -> None:
     _stub_action_base(
         monkeypatch,
         health_raises=True,
-        signal={"asOf": "2026-01-20", "gateOpen": False, "breadth": 0.1, "gapCount": 0, "candidates": [], "exitHhmm": None},
+        signal={
+            "asOf": "2026-01-20",
+            "gateOpen": False,
+            "breadth": 0.1,
+            "gapCount": 0,
+            "candidates": [],
+            "exitHhmm": None,
+        },
     )
     out = tsd.build_twin_star_daily_action(date(2026, 1, 21))
     assert out["sat"]["exitHhmm"] == tsd.HABIT_EXIT_HHMM
@@ -324,7 +376,16 @@ def test_payload_no_data_and_gate_closed(monkeypatch) -> None:
     detail = tsd.build_twin_star_reminder_payload(date(2026, 1, 21))["detail"]
     assert "卫星: 数据不可用" in detail
 
-    _stub_payload(monkeypatch, {"asOf": "2026-01-20", "gateOpen": False, "breadth": 0.123, "gapCount": 0, "candidates": []})
+    _stub_payload(
+        monkeypatch,
+        {
+            "asOf": "2026-01-20",
+            "gateOpen": False,
+            "breadth": 0.123,
+            "gapCount": 0,
+            "candidates": [],
+        },
+    )
     detail = tsd.build_twin_star_reminder_payload(date(2026, 1, 21))["detail"]
     assert "R-wide 关闸" in detail
 
@@ -333,10 +394,16 @@ def test_payload_blocked_swap_c1_approx_note(monkeypatch) -> None:
     _stub_payload(
         monkeypatch,
         {
-            "asOf": "2026-01-20", "gateOpen": True, "breadth": 0.9, "gapCount": 3,
+            "asOf": "2026-01-20",
+            "gateOpen": True,
+            "breadth": 0.9,
+            "gapCount": 3,
             "candidates": [{"ts": "A.SH", "amp": 1.0, "gapPct": 5.0}],
-            "blocked": [{"ts": "B.SH"}], "alternates": [{"ts": "C.SH"}],
-            "skippedC1": [{"ts": "D.SH"}], "approx": True, "snapshotAt": None,
+            "blocked": [{"ts": "B.SH"}],
+            "alternates": [{"ts": "C.SH"}],
+            "skippedC1": [{"ts": "D.SH"}],
+            "approx": True,
+            "snapshotAt": None,
             "note": "lag note",
         },
     )

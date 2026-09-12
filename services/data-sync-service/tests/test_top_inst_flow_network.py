@@ -53,6 +53,7 @@ def _patch_urlopen(monkeypatch, payload) -> None:
 
 # ---- _with_retry -----------------------------------------------------------
 
+
 def test_with_retry_succeeds_first_try(monkeypatch) -> None:
     _monkey_no_sleep(monkeypatch)
     out = tif._with_retry(lambda: "ok")
@@ -100,6 +101,7 @@ def test_with_retry_clamps_tries(monkeypatch) -> None:
 
 # ---- _em_request -----------------------------------------------------------
 
+
 def test_em_request_ok(monkeypatch) -> None:
     _patch_urlopen(monkeypatch, {"success": True, "result": {"data": [{"a": 1}]}})
     j = tif._em_request({"reportName": "X"})
@@ -126,10 +128,13 @@ def test_em_request_raises_on_error(monkeypatch) -> None:
 
 # ---- _em_fetch_pages -------------------------------------------------------
 
+
 def test_em_fetch_pages_single_page(monkeypatch) -> None:
     _monkey_no_sleep(monkeypatch)
     monkeypatch.setattr(
-        tif, "_em_request", lambda params: _em_page(1, [{"SECURITY_CODE": "600000"}, {"SECURITY_CODE": "600001"}])
+        tif,
+        "_em_request",
+        lambda params: _em_page(1, [{"SECURITY_CODE": "600000"}, {"SECURITY_CODE": "600001"}]),
     )
     rows = tif._em_fetch_pages(report_name="R", filter_expr="(TRADE_DATE='2026-08-07')")
     assert len(rows) == 2
@@ -160,7 +165,11 @@ def test_em_fetch_pages_empty_data_breaks(monkeypatch) -> None:
 
 def test_em_fetch_pages_bad_pages_field(monkeypatch) -> None:
     _monkey_no_sleep(monkeypatch)
-    monkeypatch.setattr(tif, "_em_request", lambda params: {"success": True, "result": {"data": [{"a": 1}], "pages": "abc"}})
+    monkeypatch.setattr(
+        tif,
+        "_em_request",
+        lambda params: {"success": True, "result": {"data": [{"a": 1}], "pages": "abc"}},
+    )
     rows = tif._em_fetch_pages(report_name="R", filter_expr="f")
     assert len(rows) == 1
 
@@ -184,6 +193,7 @@ def test_em_fetch_pages_non_dict_rows_skipped(monkeypatch) -> None:
 
 # ---- EM public fetchers ----------------------------------------------------
 
+
 def test_fetch_em_lhb_tickers_on_date(monkeypatch) -> None:
     _monkey_no_sleep(monkeypatch)
     monkeypatch.setattr(
@@ -191,7 +201,12 @@ def test_fetch_em_lhb_tickers_on_date(monkeypatch) -> None:
         "_em_request",
         lambda params: _em_page(
             1,
-            [{"SECURITY_CODE": "600000"}, {"SECURITY_CODE": "abc"}, {"SECURITY_CODE": None}, {"SECURITY_CODE": " 000001 "}],
+            [
+                {"SECURITY_CODE": "600000"},
+                {"SECURITY_CODE": "abc"},
+                {"SECURITY_CODE": None},
+                {"SECURITY_CODE": " 000001 "},
+            ],
         ),
     )
     out = tif.fetch_em_lhb_tickers_on_date("2026-08-07")
@@ -203,7 +218,9 @@ def test_fetch_em_org_trades_on_date(monkeypatch) -> None:
     monkeypatch.setattr(
         tif,
         "_em_request",
-        lambda params: _em_page(1, [{"SECURITY_CODE": "600000", "NET_BUY_AMT": 1.0}, {"SECURITY_CODE": ""}]),
+        lambda params: _em_page(
+            1, [{"SECURITY_CODE": "600000", "NET_BUY_AMT": 1.0}, {"SECURITY_CODE": ""}]
+        ),
     )
     out = tif.fetch_em_org_trades_on_date("2026-08-07")
     assert set(out) == {"600000"}
@@ -213,7 +230,12 @@ def test_fetch_em_org_trades_on_date(monkeypatch) -> None:
 def test_seat_rows_from_report_invalid_ticker(monkeypatch) -> None:
     _monkey_no_sleep(monkeypatch)
     monkeypatch.setattr(tif, "_em_request", lambda params: _em_page(1, []))
-    assert tif._seat_rows_from_report(report_name="R", ts_code="bad", trade_date_iso="2026-08-07", side="buy") == []
+    assert (
+        tif._seat_rows_from_report(
+            report_name="R", ts_code="bad", trade_date_iso="2026-08-07", side="buy"
+        )
+        == []
+    )
 
 
 def test_seat_rows_from_report_parses_and_filters(monkeypatch) -> None:
@@ -224,13 +246,27 @@ def test_seat_rows_from_report_parses_and_filters(monkeypatch) -> None:
         lambda params: _em_page(
             1,
             [
-                {"OPERATEDEPT_NAME": "机构专用", "BUY": "1.5", "SELL": "0.5", "NET": "1.0", "EXPLANATION": "三日涨幅偏离"},
-                {"OPERATEDEPT_NAME_ABBR": "拉萨团结路", "BUY": "bad", "SELL": None, "NET": "x", "EXPLAIN": ""},
+                {
+                    "OPERATEDEPT_NAME": "机构专用",
+                    "BUY": "1.5",
+                    "SELL": "0.5",
+                    "NET": "1.0",
+                    "EXPLANATION": "三日涨幅偏离",
+                },
+                {
+                    "OPERATEDEPT_NAME_ABBR": "拉萨团结路",
+                    "BUY": "bad",
+                    "SELL": None,
+                    "NET": "x",
+                    "EXPLAIN": "",
+                },
                 {"BUY": "3"},  # no name -> skipped
             ],
         ),
     )
-    rows = tif._seat_rows_from_report(report_name="R", ts_code="600000.SH", trade_date_iso="2026-08-07", side="buy")
+    rows = tif._seat_rows_from_report(
+        report_name="R", ts_code="600000.SH", trade_date_iso="2026-08-07", side="buy"
+    )
     assert len(rows) == 2
     assert rows[0]["exalter"] == "机构专用"
     assert rows[0]["buy"] == 1.5
@@ -249,7 +285,12 @@ def test_seat_rows_from_report_swallows_http_error(monkeypatch) -> None:
         raise RuntimeError("net down")
 
     monkeypatch.setattr(tif, "_em_request", boom)
-    assert tif._seat_rows_from_report(report_name="R", ts_code="600000.SH", trade_date_iso="2026-08-07", side="buy") == []
+    assert (
+        tif._seat_rows_from_report(
+            report_name="R", ts_code="600000.SH", trade_date_iso="2026-08-07", side="buy"
+        )
+        == []
+    )
 
 
 def test_fetch_em_lhb_buy_seats(monkeypatch) -> None:
@@ -258,7 +299,14 @@ def test_fetch_em_lhb_buy_seats(monkeypatch) -> None:
         tif,
         "_seat_rows_from_report",
         lambda **kw: [
-            {"exalter": "机构专用", "buy": 5.0, "sell": None, "net_buy": 5.0, "side": "buy", "reason": None},
+            {
+                "exalter": "机构专用",
+                "buy": 5.0,
+                "sell": None,
+                "net_buy": 5.0,
+                "side": "buy",
+                "reason": None,
+            },
             {"exalter": "拉萨", "buy": 3.0},
         ],
     )
@@ -312,6 +360,7 @@ def test_fetch_em_seat_bundles_parallel_isolates_worker_error(monkeypatch) -> No
 
 # ---- tushare layer ---------------------------------------------------------
 
+
 def _fake_pro():
     class _Pro:
         def top_list(self, trade_date: str):
@@ -319,7 +368,14 @@ def _fake_pro():
 
         def top_inst(self, trade_date: str):
             return [
-                {"ts_code": "600000.SH", "exalter": "机构专用", "buy": 100.0, "net": 95.0, "side": "0", "上榜理由": "日换手率达20%"},
+                {
+                    "ts_code": "600000.SH",
+                    "exalter": "机构专用",
+                    "buy": 100.0,
+                    "net": 95.0,
+                    "side": "0",
+                    "上榜理由": "日换手率达20%",
+                },
                 {"ts_code": "600000.SH", "exalter": "拉萨团结路", "side": "1", "net": -5.0},
                 {"ts_code": "bad", "exalter": "机构专用", "buy": 1.0},
             ]
@@ -360,7 +416,9 @@ def test_fetch_tushare_pool_failure_propagates(monkeypatch) -> None:
 
 def test_fetch_eastmoney_top_inst_on_date(monkeypatch) -> None:
     monkeypatch.setattr(tif, "fetch_em_lhb_tickers_on_date", lambda td: {"600000"})
-    monkeypatch.setattr(tif, "fetch_em_org_trades_on_date", lambda td: {"600000": {"NET_BUY_AMT": 1.0}})
+    monkeypatch.setattr(
+        tif, "fetch_em_org_trades_on_date", lambda td: {"600000": {"NET_BUY_AMT": 1.0}}
+    )
     out = tif.fetch_eastmoney_top_inst_on_date("2026-08-07")
     assert out.source == "eastmoney"
     assert out.lhb_tickers == {"600000"}
@@ -368,6 +426,7 @@ def test_fetch_eastmoney_top_inst_on_date(monkeypatch) -> None:
 
 
 # ---- provider orchestration ------------------------------------------------
+
 
 def test_configured_providers_default(monkeypatch) -> None:
     monkeypatch.delenv("TOP_INST_PROVIDER", raising=False)
@@ -419,6 +478,7 @@ def test_fetch_top_inst_provider_result_all_fail(monkeypatch) -> None:
 
 # ---- payload builders ------------------------------------------------------
 
+
 def test_build_top_buy_seats_payload(monkeypatch) -> None:
     seats = [
         {"exalter": "拉萨团结路", "buy": 9.0},
@@ -448,14 +508,24 @@ def test_format_seats_summary(monkeypatch) -> None:
 
 
 def test_build_inst_flow_payload_incomplete_yi(monkeypatch) -> None:
-    summary = {"trade_date": "2026-08-07", "on_board": True, "inst_net_buy_yi": None, "seat_label": ""}
+    summary = {
+        "trade_date": "2026-08-07",
+        "on_board": True,
+        "inst_net_buy_yi": None,
+        "seat_label": "",
+    }
     out = tif.build_inst_flow_payload(summary, buy_seats=[{"exalter": "a", "buy": 1.0}])
     assert out["display"] == "上榜(数据不完整)"
     assert out["topBuySeats"][0]["name"] == "a"
 
 
 def test_build_inst_flow_payload_bad_yi(monkeypatch) -> None:
-    summary = {"trade_date": "2026-08-07", "on_board": True, "inst_net_buy_yi": "abc", "seat_label": "机构主买"}
+    summary = {
+        "trade_date": "2026-08-07",
+        "on_board": True,
+        "inst_net_buy_yi": "abc",
+        "seat_label": "机构主买",
+    }
     out = tif.build_inst_flow_payload(summary)
     assert out["display"] == "上榜(数据不完整)"
 
@@ -469,7 +539,8 @@ def test_build_inst_flow_payload_full(monkeypatch) -> None:
         "lhasa_dominant": False,
     }
     out = tif.build_inst_flow_payload(
-        summary, buy_seats=[{"exalter": "拉萨团结路", "buy": 1.0}, {"exalter": "机构专用", "buy": 2.0}]
+        summary,
+        buy_seats=[{"exalter": "拉萨团结路", "buy": 1.0}, {"exalter": "机构专用", "buy": 2.0}],
     )
     assert out["instNetBuyYi"] == -0.25
     assert out["label"] == "机构净卖"
@@ -477,6 +548,7 @@ def test_build_inst_flow_payload_full(monkeypatch) -> None:
 
 
 # ---- util helpers ----------------------------------------------------------
+
 
 def test_parse_cal_date_variants(monkeypatch) -> None:
     from datetime import date
@@ -554,7 +626,9 @@ def test_latest_cn_trade_date_no_open_dates(monkeypatch) -> None:
 
 def test_missing_summary_codes(monkeypatch) -> None:
     monkeypatch.setattr(tif, "fetch_summaries_for_codes", lambda codes, trade_date: {"600000.SH"})
-    assert tif._missing_summary_codes(["600000.SH", "000001.SZ"], trade_date_iso="2026-08-07") == ["000001.SZ"]
+    assert tif._missing_summary_codes(["600000.SH", "000001.SZ"], trade_date_iso="2026-08-07") == [
+        "000001.SZ"
+    ]
 
 
 def test_sync_no_trade_date(monkeypatch) -> None:
@@ -609,7 +683,14 @@ def test_sync_eastmoney_bundle_success_path(monkeypatch) -> None:
             "600000.SH": tif.EastMoneySeatBundle(
                 buy_seats=[{"exalter": "拉萨团结路", "buy": 1.0}],
                 inst_seats=[
-                    {"exalter": "机构专用", "buy": 1.0, "sell": 0.0, "net_buy": 1.0, "side": "buy", "reason": None}
+                    {
+                        "exalter": "机构专用",
+                        "buy": 1.0,
+                        "sell": 0.0,
+                        "net_buy": 1.0,
+                        "side": "buy",
+                        "reason": None,
+                    }
                 ],
             )
         },

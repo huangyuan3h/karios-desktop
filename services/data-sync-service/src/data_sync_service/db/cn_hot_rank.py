@@ -91,8 +91,7 @@ def fresh_codes(cutoff: str) -> set[str]:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT ts_code FROM {TABLE_NAME} WHERE trade_date >= %s "
-                    "GROUP BY ts_code",
+                    f"SELECT ts_code FROM {TABLE_NAME} WHERE trade_date >= %s GROUP BY ts_code",
                     (cutoff,),
                 )
                 return {str(r[0]) for r in cur.fetchall() if r[0]}

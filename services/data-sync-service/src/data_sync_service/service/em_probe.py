@@ -86,15 +86,29 @@ def _probe_host(target: dict[str, Any]) -> dict[str, Any]:
             timeout=PROBE_TIMEOUT,
             use_proxy=False,
         )
-        return {"host": target["host"], "ok": True, "ms": int((time.monotonic() - start) * 1000), "error": None}
+        return {
+            "host": target["host"],
+            "ok": True,
+            "ms": int((time.monotonic() - start) * 1000),
+            "error": None,
+        }
     except Exception as exc:  # noqa: BLE001
-        return {"host": target["host"], "ok": False, "ms": int((time.monotonic() - start) * 1000), "error": str(exc)[:300]}
+        return {
+            "host": target["host"],
+            "ok": False,
+            "ms": int((time.monotonic() - start) * 1000),
+            "error": str(exc)[:300],
+        }
 
 
 def probe_once() -> dict[str, Any]:
     """Run all host checks now (network I/O; isolated per host)."""
     checks = [_probe_host(t) for t in PROBE_TARGETS]
-    return {"at": time.time(), "checks": checks, "failed": [c["host"] for c in checks if not c["ok"]]}
+    return {
+        "at": time.time(),
+        "checks": checks,
+        "failed": [c["host"] for c in checks if not c["ok"]],
+    }
 
 
 def run_em_probe() -> dict[str, Any]:
@@ -119,8 +133,16 @@ def run_em_probe() -> dict[str, Any]:
         _last_run["at"] = result["at"]
         _last_run["checks"] = result["checks"]
         streaks = dict(_streaks)
-        new_outage = [c for c in result["checks"] if not c["ok"] and streaks.get(c["host"]) == PROBE_FAIL_STREAK_ALERT]
-        still_down = [c for c in result["checks"] if not c["ok"] and streaks.get(c["host"], 0) > PROBE_FAIL_STREAK_ALERT]
+        new_outage = [
+            c
+            for c in result["checks"]
+            if not c["ok"] and streaks.get(c["host"]) == PROBE_FAIL_STREAK_ALERT
+        ]
+        still_down = [
+            c
+            for c in result["checks"]
+            if not c["ok"] and streaks.get(c["host"], 0) > PROBE_FAIL_STREAK_ALERT
+        ]
     for check in new_outage:
         host = check["host"]
         title = f"East Money egress failing: {host} ({PROBE_FAIL_STREAK_ALERT}x)"
@@ -139,7 +161,11 @@ def run_em_probe() -> dict[str, Any]:
     for check in new_outage + still_down:
         host = check["host"]
         try:
-            emit_event("em_probe_failed", {"host": host, "error": check["error"]}, dedupe_key=f"em_probe:{host}")
+            emit_event(
+                "em_probe_failed",
+                {"host": host, "error": check["error"]},
+                dedupe_key=f"em_probe:{host}",
+            )
         except Exception:  # noqa: BLE001
             logger.warning("em_probe emit failed for %s", host, exc_info=True)
     result["alerted"] = [c["host"] for c in new_outage]
@@ -154,7 +180,12 @@ def probe_status() -> dict[str, Any]:
             checks = [dict(c) for c in _last_run.get("checks", [])]
             at = _last_run.get("at")
             streaks = dict(_streaks)
-        return {"at": at, "checks": checks, "streaks": streaks, "failing": [c["host"] for c in checks if not c["ok"]]}
+        return {
+            "at": at,
+            "checks": checks,
+            "streaks": streaks,
+            "failing": [c["host"] for c in checks if not c["ok"]],
+        }
     except Exception:  # noqa: BLE001
         return {"at": None, "checks": [], "streaks": {}, "failing": []}
 

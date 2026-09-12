@@ -53,9 +53,7 @@ def _patch_day_gates(*, regime="Strong", flow_ok=True, mainline=None):
             {day: set(mainline or ["计算机"])},
             {},
         ),
-        _load_rs_ranks=lambda cfg, cal, universe: {
-            day: {ts: 0.8 for ts in universe}
-        },
+        _load_rs_ranks=lambda cfg, cal, universe: {day: {ts: 0.8 for ts in universe}},
         _load_industries=lambda ts_codes: {ts: "计算机" for ts in ts_codes},
         # Circuit reads live paper rows — neutralize here (dedicated circuit
         # tests cover it with mocked ledgers); these tests target other gates.
@@ -132,12 +130,30 @@ def test_circuit_blocked_losing_streak() -> None:
     defence (2022/2023), mirroring backtest drawdown_circuit_pct=-25."""
 
     closed = [
-        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
-         "close_date": "2026-07-20", "pnlPct": -6.0, "pnl_pct": -6.0},
-        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-07-25",
-         "close_date": "2026-07-25", "pnlPct": -5.5, "pnl_pct": -5.5},
-        {"symbol": "CN:600003", "status": "closed", "closeDate": "2026-08-01",
-         "close_date": "2026-08-01", "pnlPct": -14.0, "pnl_pct": -14.0},
+        {
+            "symbol": "CN:600001",
+            "status": "closed",
+            "closeDate": "2026-07-20",
+            "close_date": "2026-07-20",
+            "pnlPct": -6.0,
+            "pnl_pct": -6.0,
+        },
+        {
+            "symbol": "CN:600002",
+            "status": "closed",
+            "closeDate": "2026-07-25",
+            "close_date": "2026-07-25",
+            "pnlPct": -5.5,
+            "pnl_pct": -5.5,
+        },
+        {
+            "symbol": "CN:600003",
+            "status": "closed",
+            "closeDate": "2026-08-01",
+            "close_date": "2026-08-01",
+            "pnlPct": -14.0,
+            "pnl_pct": -14.0,
+        },
     ]
     with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
         assert paper_s3._circuit_blocked(as_of="2026-08-07") is True
@@ -146,10 +162,22 @@ def test_circuit_blocked_losing_streak() -> None:
 def test_circuit_not_blocked_fresh_profit() -> None:
     """A healthy (profitable) recent window must NOT block entries."""
     closed = [
-        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
-         "close_date": "2026-07-20", "pnlPct": 8.0, "pnl_pct": 8.0},
-        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-07-25",
-         "close_date": "2026-07-25", "pnlPct": 12.0, "pnl_pct": 12.0},
+        {
+            "symbol": "CN:600001",
+            "status": "closed",
+            "closeDate": "2026-07-20",
+            "close_date": "2026-07-20",
+            "pnlPct": 8.0,
+            "pnl_pct": 8.0,
+        },
+        {
+            "symbol": "CN:600002",
+            "status": "closed",
+            "closeDate": "2026-07-25",
+            "close_date": "2026-07-25",
+            "pnlPct": 12.0,
+            "pnl_pct": 12.0,
+        },
     ]
     with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
         assert paper_s3._circuit_blocked(as_of="2026-08-07") is False
@@ -158,10 +186,22 @@ def test_circuit_not_blocked_fresh_profit() -> None:
 def test_circuit_ignores_stale_trades() -> None:
     """Trades older than the 30d window must not count."""
     closed = [
-        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-06-01",
-         "close_date": "2026-06-01", "pnlPct": -30.0, "pnl_pct": -30.0},
-        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-06-02",
-         "close_date": "2026-06-02", "pnlPct": -30.0, "pnl_pct": -30.0},
+        {
+            "symbol": "CN:600001",
+            "status": "closed",
+            "closeDate": "2026-06-01",
+            "close_date": "2026-06-01",
+            "pnlPct": -30.0,
+            "pnl_pct": -30.0,
+        },
+        {
+            "symbol": "CN:600002",
+            "status": "closed",
+            "closeDate": "2026-06-02",
+            "close_date": "2026-06-02",
+            "pnlPct": -30.0,
+            "pnl_pct": -30.0,
+        },
     ]
     with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
         assert paper_s3._circuit_blocked(as_of="2026-08-07") is False
@@ -209,7 +249,11 @@ def test_build_s3_candidates_blocks_low_rs() -> None:
     with patch.multiple(
         paper_s3,
         _load_regime_by_day=lambda cfg, cal: {"2026-08-07": "Strong"},
-        _load_flow_mainline_data=lambda cfg, cal: ({"2026-08-07": True}, {"2026-08-07": {"计算机"}}, {}),
+        _load_flow_mainline_data=lambda cfg, cal: (
+            {"2026-08-07": True},
+            {"2026-08-07": {"计算机"}},
+            {},
+        ),
         _load_rs_ranks=lambda cfg, cal, universe: {"2026-08-07": {ts: 0.3 for ts in universe}},
         _load_industries=lambda ts_codes: {ts: "计算机" for ts in ts_codes},
     ):
@@ -284,11 +328,18 @@ def test_run_intake_s3_inserts_with_s3_source() -> None:
             "pendingOpenFill": False,
         },
     }
-    with _patch_day_gates(), patch.object(
-        paper_s3, "_lookup_stock_basic", return_value=({"600001.SH": "测试A"}, {})
-    ), patch.object(paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}), patch(
-        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-        return_value=fill,
+    with (
+        _patch_day_gates(),
+        patch.object(paper_s3, "_lookup_stock_basic", return_value=({"600001.SH": "测试A"}, {})),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            return_value=fill,
+        ),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         inserted: list[dict] = []
@@ -319,11 +370,17 @@ def test_run_intake_s3_idempotent_duplicate() -> None:
         "pending_open_fill": False,
         "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
     }
-    with _patch_day_gates(), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
-    ), patch(
-        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-        return_value=fill,
+    with (
+        _patch_day_gates(),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            return_value=fill,
+        ),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         with patch.object(paper_s3, "insert_paper_trade", return_value=None):
@@ -333,9 +390,7 @@ def test_run_intake_s3_idempotent_duplicate() -> None:
 
 
 def test_run_intake_s3_missing_close_skipped() -> None:
-    with _patch_day_gates(), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={}
-    ):
+    with _patch_day_gates(), patch.object(paper_s3, "fetch_last_ohlcv_batch", return_value={}):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
     assert summary["inserted"] == 0
@@ -363,10 +418,26 @@ def _patch_swap_env(holds, candidates, rs_map, closes):
 def test_swap_holds_replaces_weak_with_strong() -> None:
     """A weak-RS held S-3 trade is closed (swapped) and the strong candidate
     is returned for insertion; the candidate is removed from the rest."""
-    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
-              "entryDate": "2026-07-01", "entryPrice": 10.0}]
-    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
-              "regime": "Strong", "industry": "计算机"}]
+    holds = [
+        {
+            "id": "h1",
+            "symbol": CN_A,
+            "source": "S3",
+            "tsCode": "600001.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        }
+    ]
+    cands = [
+        {
+            "symbol": CN_B,
+            "ts_code": "600002.SH",
+            "score": 90.0,
+            "rs": 0.9,
+            "regime": "Strong",
+            "industry": "计算机",
+        }
+    ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
@@ -392,16 +463,34 @@ def test_swap_holds_replaces_weak_with_strong() -> None:
 
 def test_swap_keeps_candidate_when_held_rs_not_weak() -> None:
     """Held RS >= SWAP_WEAK_RS_BELOW => no swap, candidate stays in rest."""
-    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
-              "entryDate": "2026-07-01", "entryPrice": 10.0}]
-    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
-              "regime": "Strong", "industry": "计算机"}]
+    holds = [
+        {
+            "id": "h1",
+            "symbol": CN_A,
+            "source": "S3",
+            "tsCode": "600001.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        }
+    ]
+    cands = [
+        {
+            "symbol": CN_B,
+            "ts_code": "600002.SH",
+            "score": 90.0,
+            "rs": 0.9,
+            "regime": "Strong",
+            "industry": "计算机",
+        }
+    ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
     ):
         swapped, rest = paper_s3._swap_holds_for_candidates(
-            day="2026-08-07", holds=holds, candidates=cands,
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
             rs_by_ts={"600001.SH": 0.5, "600002.SH": 0.9},
             closes={"600001.SH": 9.5, "600002.SH": 12.0},
         )
@@ -412,16 +501,34 @@ def test_swap_keeps_candidate_when_held_rs_not_weak() -> None:
 
 def test_swap_respects_min_hold_days() -> None:
     """Held below SWAP_MIN_HOLD_DAYS (mock returns 5) => no swap."""
-    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
-              "entryDate": "2026-08-01", "entryPrice": 10.0}]
-    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
-              "regime": "Strong", "industry": "计算机"}]
+    holds = [
+        {
+            "id": "h1",
+            "symbol": CN_A,
+            "source": "S3",
+            "tsCode": "600001.SH",
+            "entryDate": "2026-08-01",
+            "entryPrice": 10.0,
+        }
+    ]
+    cands = [
+        {
+            "symbol": CN_B,
+            "ts_code": "600002.SH",
+            "score": 90.0,
+            "rs": 0.9,
+            "regime": "Strong",
+            "industry": "计算机",
+        }
+    ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 5),
     ):
         swapped, rest = paper_s3._swap_holds_for_candidates(
-            day="2026-08-07", holds=holds, candidates=cands,
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
             rs_by_ts={"600001.SH": 0.1, "600002.SH": 0.9},
             closes={"600001.SH": 9.5, "600002.SH": 12.0},
         )
@@ -431,16 +538,34 @@ def test_swap_respects_min_hold_days() -> None:
 
 def test_swap_requires_strong_rs_candidate() -> None:
     """Candidate RS below SWAP_STRONG_RS_AT_LEAST cannot swap in."""
-    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
-              "entryDate": "2026-07-01", "entryPrice": 10.0}]
-    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.5,
-              "regime": "Strong", "industry": "计算机"}]
+    holds = [
+        {
+            "id": "h1",
+            "symbol": CN_A,
+            "source": "S3",
+            "tsCode": "600001.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        }
+    ]
+    cands = [
+        {
+            "symbol": CN_B,
+            "ts_code": "600002.SH",
+            "score": 90.0,
+            "rs": 0.5,
+            "regime": "Strong",
+            "industry": "计算机",
+        }
+    ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
     ):
         swapped, rest = paper_s3._swap_holds_for_candidates(
-            day="2026-08-07", holds=holds, candidates=cands,
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
             rs_by_ts={"600001.SH": 0.1, "600002.SH": 0.5},
             closes={"600001.SH": 9.5, "600002.SH": 12.0},
         )
@@ -451,30 +576,73 @@ def test_swap_requires_strong_rs_candidate() -> None:
 def test_swap_caps_per_day_and_skips_missing_close() -> None:
     """Max SWAP_MAX_PER_DAY pairs per day; a hold without a close is skipped."""
     holds = [
-        {"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
-         "entryDate": "2026-07-01", "entryPrice": 10.0},
-        {"id": "h2", "symbol": "CN:600003", "source": "S3", "tsCode": "600003.SH",
-         "entryDate": "2026-07-01", "entryPrice": 10.0},
-        {"id": "h3", "symbol": "CN:600004", "source": "S3", "tsCode": "600004.SH",
-         "entryDate": "2026-07-01", "entryPrice": 10.0},
+        {
+            "id": "h1",
+            "symbol": CN_A,
+            "source": "S3",
+            "tsCode": "600001.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        },
+        {
+            "id": "h2",
+            "symbol": "CN:600003",
+            "source": "S3",
+            "tsCode": "600003.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        },
+        {
+            "id": "h3",
+            "symbol": "CN:600004",
+            "source": "S3",
+            "tsCode": "600004.SH",
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        },
     ]
     cands = [
-        {"symbol": "CN:000001", "ts_code": "000001.SZ", "score": 90.0, "rs": 0.9,
-         "regime": "Strong", "industry": "计算机"},
-        {"symbol": "CN:000002", "ts_code": "000002.SZ", "score": 88.0, "rs": 0.85,
-         "regime": "Strong", "industry": "计算机"},
-        {"symbol": "CN:000003", "ts_code": "000003.SZ", "score": 86.0, "rs": 0.82,
-         "regime": "Strong", "industry": "计算机"},
+        {
+            "symbol": "CN:000001",
+            "ts_code": "000001.SZ",
+            "score": 90.0,
+            "rs": 0.9,
+            "regime": "Strong",
+            "industry": "计算机",
+        },
+        {
+            "symbol": "CN:000002",
+            "ts_code": "000002.SZ",
+            "score": 88.0,
+            "rs": 0.85,
+            "regime": "Strong",
+            "industry": "计算机",
+        },
+        {
+            "symbol": "CN:000003",
+            "ts_code": "000003.SZ",
+            "score": 86.0,
+            "rs": 0.82,
+            "regime": "Strong",
+            "industry": "计算机",
+        },
     ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
     ):
         swapped, rest = paper_s3._swap_holds_for_candidates(
-            day="2026-08-07", holds=holds, candidates=cands,
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
             rs_by_ts={"600001.SH": 0.1, "600003.SH": 0.2, "600004.SH": 0.25},
-            closes={"600003.SH": 9.5, "600004.SH": 12.0,  # h1 skipped: no close
-                    "000001.SZ": 12.0, "000002.SZ": 12.0, "000003.SZ": 12.0},
+            closes={
+                "600003.SH": 9.5,
+                "600004.SH": 12.0,  # h1 skipped: no close
+                "000001.SZ": 12.0,
+                "000002.SZ": 12.0,
+                "000003.SZ": 12.0,
+            },
         )
     assert len(swapped) == 2  # h1 skipped (no close), h2+h3 swapped, capped at 2
     assert len(rest) == 1
@@ -487,9 +655,16 @@ def test_swap_caps_per_day_and_skips_missing_close() -> None:
 
 
 def _s3_hold(symbol, ts, entry, why=""):
-    return {"id": f"h-{symbol}", "symbol": symbol, "source": "S3", "tsCode": ts,
-            "entryDate": "2026-07-01", "entryPrice": entry, "status": "open",
-            "whyAtEntry": why}
+    return {
+        "id": f"h-{symbol}",
+        "symbol": symbol,
+        "source": "S3",
+        "tsCode": ts,
+        "entryDate": "2026-07-01",
+        "entryPrice": entry,
+        "status": "open",
+        "whyAtEntry": why,
+    }
 
 
 def test_pyramid_adds_half_sleeve_on_plus_10() -> None:
@@ -500,7 +675,8 @@ def test_pyramid_adds_half_sleeve_on_plus_10() -> None:
         patch.object(paper_s3, "PYRAMID_ENABLED", True),
     ):
         n = paper_s3._pyramid_adds(
-            day="2026-08-07", holds=holds,
+            day="2026-08-07",
+            holds=holds,
             closes={"600001.SH": 11.0},  # +10%
         )
     assert n == 1
@@ -520,7 +696,9 @@ def test_pyramid_skips_below_trigger() -> None:
         patch.object(paper_s3, "PYRAMID_ENABLED", True),
     ):
         n = paper_s3._pyramid_adds(
-            day="2026-08-07", holds=holds, closes={"600001.SH": 10.2},  # +2%
+            day="2026-08-07",
+            holds=holds,
+            closes={"600001.SH": 10.2},  # +2%
         )
     assert n == 0
     insert.assert_not_called()
@@ -537,7 +715,9 @@ def test_pyramid_skips_when_already_added() -> None:
         patch.object(paper_s3, "PYRAMID_ENABLED", True),
     ):
         n = paper_s3._pyramid_adds(
-            day="2026-08-07", holds=holds, closes={"600001.SH": 12.0},  # +20%
+            day="2026-08-07",
+            holds=holds,
+            closes={"600001.SH": 12.0},  # +20%
         )
     assert n == 0
     insert.assert_not_called()
@@ -550,7 +730,9 @@ def test_pyramid_disabled_by_switch() -> None:
         patch.object(paper_s3, "PYRAMID_ENABLED", False),
     ):
         n = paper_s3._pyramid_adds(
-            day="2026-08-07", holds=holds, closes={"600001.SH": 12.0},
+            day="2026-08-07",
+            holds=holds,
+            closes={"600001.SH": 12.0},
         )
     assert n == 0
     insert.assert_not_called()
@@ -559,11 +741,17 @@ def test_pyramid_disabled_by_switch() -> None:
 def test_run_intake_s3_zero_allocation_skips_new_positions() -> None:
     """T4: a 0-weight market opens no NEW positions (existing holdings keep
     their exit management — handled by paper_trading_update, not intake)."""
-    with _patch_day_gates(), patch(
-        "data_sync_service.service.allocation.week_weights",
-        return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.0, "w_hk": 1.0}},
-    ), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    with (
+        _patch_day_gates(),
+        patch(
+            "data_sync_service.service.allocation.week_weights",
+            return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.0, "w_hk": 1.0}},
+        ),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
@@ -580,15 +768,23 @@ def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
         "pending_open_fill": False,
         "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
     }
-    with _patch_day_gates(), patch(
-        "data_sync_service.service.allocation.week_weights",
-        return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.4, "w_hk": 1.0}},
-    ), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
-    ), patch(
-        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-        return_value=fill,
-    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+    with (
+        _patch_day_gates(),
+        patch(
+            "data_sync_service.service.allocation.week_weights",
+            return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.4, "w_hk": 1.0}},
+        ),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            return_value=fill,
+        ),
+        patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins,
+    ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
     assert summary["inserted"] == 1
@@ -605,18 +801,38 @@ def test_run_intake_s3_sleeve_env_scaled_uptrend_day() -> None:
         "pending_open_fill": False,
         "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
     }
-    with _patch_day_gates(), patch.object(
-        paper_s3, "get_cn_sentiment",
-        return_value={"items": [{"riskMode": "hot", "upCount": 300, "downCount": 100,
-                                 "yesterdayLimitupPremium": 1.0}]},
-    ), patch.object(
-        paper_s3, "_ret5_for", return_value=10.0,
-    ), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
-    ), patch(
-        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-        return_value=fill,
-    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+    with (
+        _patch_day_gates(),
+        patch.object(
+            paper_s3,
+            "get_cn_sentiment",
+            return_value={
+                "items": [
+                    {
+                        "riskMode": "hot",
+                        "upCount": 300,
+                        "downCount": 100,
+                        "yesterdayLimitupPremium": 1.0,
+                    }
+                ]
+            },
+        ),
+        patch.object(
+            paper_s3,
+            "_ret5_for",
+            return_value=10.0,
+        ),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            return_value=fill,
+        ),
+        patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins,
+    ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
     assert summary["inserted"] == 1
@@ -632,18 +848,38 @@ def test_run_intake_s3_sleeve_env_scaled_fan_day() -> None:
         "pending_open_fill": False,
         "signal_snapshot": {"entryMode": "next_open", "pendingOpenFill": False},
     }
-    with _patch_day_gates(), patch.object(
-        paper_s3, "get_cn_sentiment",
-        return_value={"items": [{"riskMode": "normal", "upCount": 100, "downCount": 100,
-                                 "yesterdayLimitupPremium": 0.0}]},
-    ), patch.object(
-        paper_s3, "_ret5_for", return_value=-5.0,
-    ), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
-    ), patch(
-        "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-        return_value=fill,
-    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+    with (
+        _patch_day_gates(),
+        patch.object(
+            paper_s3,
+            "get_cn_sentiment",
+            return_value={
+                "items": [
+                    {
+                        "riskMode": "normal",
+                        "upCount": 100,
+                        "downCount": 100,
+                        "yesterdayLimitupPremium": 0.0,
+                    }
+                ]
+            },
+        ),
+        patch.object(
+            paper_s3,
+            "_ret5_for",
+            return_value=-5.0,
+        ),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
+            return_value=fill,
+        ),
+        patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins,
+    ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
     assert summary["inserted"] == 1
@@ -653,15 +889,38 @@ def test_run_intake_s3_sleeve_env_scaled_fan_day() -> None:
 
 def test_env_position_scale_for_mapping() -> None:
     """D3: env → sleeve scale mapping (uptrend 1.25 / fan 0.75 / others 1.0)."""
-    assert paper_s3._env_position_scale_for(
-        [{"riskMode": "hot", "upCount": 300, "downCount": 100, "yesterdayLimitupPremium": 1.0}]
-    ) == 1.25
-    assert paper_s3._env_position_scale_for(
-        [{"riskMode": "normal", "upCount": 100, "downCount": 100, "yesterdayLimitupPremium": 0.0}]
-    ) == 0.75
-    assert paper_s3._env_position_scale_for(
-        [{"riskMode": "extreme_caution", "upCount": 100, "downCount": 100, "yesterdayLimitupPremium": 0.0}]
-    ) == 1.0  # weak env not mapped
+    assert (
+        paper_s3._env_position_scale_for(
+            [{"riskMode": "hot", "upCount": 300, "downCount": 100, "yesterdayLimitupPremium": 1.0}]
+        )
+        == 1.25
+    )
+    assert (
+        paper_s3._env_position_scale_for(
+            [
+                {
+                    "riskMode": "normal",
+                    "upCount": 100,
+                    "downCount": 100,
+                    "yesterdayLimitupPremium": 0.0,
+                }
+            ]
+        )
+        == 0.75
+    )
+    assert (
+        paper_s3._env_position_scale_for(
+            [
+                {
+                    "riskMode": "extreme_caution",
+                    "upCount": 100,
+                    "downCount": 100,
+                    "yesterdayLimitupPremium": 0.0,
+                }
+            ]
+        )
+        == 1.0
+    )  # weak env not mapped
     assert paper_s3._env_position_scale_for([]) == 1.0
 
 
@@ -669,14 +928,24 @@ def test_signal_snapshot_for_captures_flow_and_alpha(monkeypatch) -> None:
     """C4 seed: entry snapshot carries industry flow rank + alpha count."""
     from data_sync_service.service import portfolio_health as ph
 
-    monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {
-        "通信": {"industry": "通信", "netInflow5d": -47.69, "rank5d": 26, "total": 31},
-    })
-    monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {
-        "CN:300628": [{"trend": "通信设备景气", "grade": "B"}],
-    })
+    monkeypatch.setattr(
+        ph,
+        "_industry_flow_map",
+        lambda day: {
+            "通信": {"industry": "通信", "netInflow5d": -47.69, "rank5d": 26, "total": 31},
+        },
+    )
+    monkeypatch.setattr(
+        ph,
+        "_alpha_events_for_symbols",
+        lambda syms: {
+            "CN:300628": [{"trend": "通信设备景气", "grade": "B"}],
+        },
+    )
     snap = paper_s3._signal_snapshot_for(
-        symbol="CN:300628", industry="通信", trade_date="2026-08-12",
+        symbol="CN:300628",
+        industry="通信",
+        trade_date="2026-08-12",
     )
     assert snap["industryRank5d"] == 26
     assert snap["industryTotal"] == 31
@@ -688,11 +957,17 @@ def test_signal_snapshot_hk_normalizes_symbol(monkeypatch) -> None:
     from data_sync_service.service import portfolio_health as ph
 
     monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {})
-    monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {
-        "HK:02099": [{"trend": "黄金牛市", "grade": "A"}],
-    })
+    monkeypatch.setattr(
+        ph,
+        "_alpha_events_for_symbols",
+        lambda syms: {
+            "HK:02099": [{"trend": "黄金牛市", "grade": "A"}],
+        },
+    )
     snap = paper_s3._signal_snapshot_for(
-        symbol="HK:2099", industry=None, trade_date="2026-08-12",
+        symbol="HK:2099",
+        industry=None,
+        trade_date="2026-08-12",
     )
     assert snap["alphaEvents"] == 1
 
@@ -702,9 +977,14 @@ def test_signal_snapshot_none_when_no_data(monkeypatch) -> None:
 
     monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {})
     monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {})
-    assert paper_s3._signal_snapshot_for(
-        symbol="CN:300628", industry="通信", trade_date="2026-08-12",
-    ) is None
+    assert (
+        paper_s3._signal_snapshot_for(
+            symbol="CN:300628",
+            industry="通信",
+            trade_date="2026-08-12",
+        )
+        is None
+    )
 
 
 def test_build_s3_candidates_blocks_implicit_weak_breadth() -> None:
@@ -726,16 +1006,22 @@ def test_build_s3_candidates_blocks_implicit_weak_breadth() -> None:
 def test_build_s3_candidates_allows_balanced_breadth() -> None:
     """up/down = 1.0 with normal risk_mode → fan day; a pullback strong
     stock (RS>=0.7, 5d <= -3%) passes the dip filter."""
-    with _patch_day_gates(), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch",
-        return_value={"600001.SH": [
-            ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
-            ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
-            ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
-            ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
-            ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
-            ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
-        ]},
+    with (
+        _patch_day_gates(),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={
+                "600001.SH": [
+                    ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
+                    ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
+                    ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
+                    ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
+                    ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
+                    ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
+                ]
+            },
+        ),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         paper_s3.get_cn_sentiment.return_value = {
@@ -755,16 +1041,22 @@ def test_build_s3_candidates_allows_balanced_breadth() -> None:
 
 def test_build_s3_candidates_fan_day_rejects_momentum_names() -> None:
     """Fan day: a strong stock WITHOUT a pullback (5d >= -3%) is rejected."""
-    with _patch_day_gates(), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch",
-        return_value={"600001.SH": [
-            ("2026-07-31", 10.0, 10.0, 10.0, 10.0, 1000),
-            ("2026-08-03", 10.0, 10.0, 10.0, 10.0, 1000),
-            ("2026-08-04", 10.0, 10.0, 10.0, 10.0, 1000),
-            ("2026-08-05", 10.0, 10.0, 10.0, 10.0, 1000),
-            ("2026-08-06", 10.0, 10.0, 10.0, 10.0, 1000),
-            ("2026-08-07", 10.6, 10.6, 10.6, 10.6, 1000),
-        ]},
+    with (
+        _patch_day_gates(),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={
+                "600001.SH": [
+                    ("2026-07-31", 10.0, 10.0, 10.0, 10.0, 1000),
+                    ("2026-08-03", 10.0, 10.0, 10.0, 10.0, 1000),
+                    ("2026-08-04", 10.0, 10.0, 10.0, 10.0, 1000),
+                    ("2026-08-05", 10.0, 10.0, 10.0, 10.0, 1000),
+                    ("2026-08-06", 10.0, 10.0, 10.0, 10.0, 1000),
+                    ("2026-08-07", 10.6, 10.6, 10.6, 10.6, 1000),
+                ]
+            },
+        ),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         paper_s3.get_cn_sentiment.return_value = {
@@ -785,16 +1077,19 @@ def test_build_s3_candidates_fan_day_rejects_momentum_names() -> None:
 def test_build_s3_candidates_uptrend_day_momentum_filter() -> None:
     """Uptrend day: a pullback strong stock (5d <= -3%) is rejected; a
     momentum stock (5d >= -3%) passes."""
-    bars_pullback = {"600001.SH": [
-        ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
-        ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
-        ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
-        ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
-        ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
-        ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
-    ]}
-    with _patch_day_gates(), patch.object(
-        paper_s3, "fetch_last_ohlcv_batch", return_value=bars_pullback
+    bars_pullback = {
+        "600001.SH": [
+            ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
+        ]
+    }
+    with (
+        _patch_day_gates(),
+        patch.object(paper_s3, "fetch_last_ohlcv_batch", return_value=bars_pullback),
     ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         paper_s3.get_cn_sentiment.return_value = {
@@ -821,16 +1116,34 @@ HK_TS = "00001.HK"
 
 def test_swap_close_prices_hk_costs() -> None:
     """HK swap-out legs are priced at the HK round trip (0.90), not CN."""
-    holds = [{"id": "h1", "symbol": HK_A, "source": "S3HK", "tsCode": HK_TS,
-              "entryDate": "2026-07-01", "entryPrice": 10.0}]
-    cands = [{"symbol": "HK:00002", "ts_code": "00002.HK", "score": 90.0, "rs": 0.9,
-              "regime": "Strong", "industry": "银行"}]
+    holds = [
+        {
+            "id": "h1",
+            "symbol": HK_A,
+            "source": "S3HK",
+            "tsCode": HK_TS,
+            "entryDate": "2026-07-01",
+            "entryPrice": 10.0,
+        }
+    ]
+    cands = [
+        {
+            "symbol": "HK:00002",
+            "ts_code": "00002.HK",
+            "score": 90.0,
+            "rs": 0.9,
+            "regime": "Strong",
+            "industry": "银行",
+        }
+    ]
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
     ):
         swapped, _ = paper_s3._swap_holds_for_candidates(
-            day="2026-08-07", holds=holds, candidates=cands,
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
             rs_by_ts={HK_TS: 0.1, "00002.HK": 0.9},
             closes={HK_TS: 9.5, "00002.HK": 12.0},
             market="HK",
@@ -853,22 +1166,41 @@ def test_hk_settled_cash_empty_book() -> None:
 def test_hk_settled_cash_freezes_recent_proceeds() -> None:
     opens = [{"symbol": HK_A, "source": "S3HK", "sleevePct": 0.10}]
     closes = [
-        {"symbol": "HK:00002", "source": "S3HK", "sleevePct": 0.10,
-         "entryPrice": 10.0, "closePrice": 10.0, "closeDate": "2026-08-06",
-         "closeReason": "trailing_stop"},
-        {"symbol": "HK:00003", "source": "S3HK", "sleevePct": 0.10,
-         "entryPrice": 10.0, "closePrice": 11.0, "closeDate": "2026-08-06",
-         "closeReason": "swapped"},
-        {"symbol": "HK:00004", "source": "S3HK", "sleevePct": 0.10,
-         "entryPrice": 10.0, "closePrice": 10.0, "closeDate": "2026-08-01",
-         "closeReason": "max_hold"},
+        {
+            "symbol": "HK:00002",
+            "source": "S3HK",
+            "sleevePct": 0.10,
+            "entryPrice": 10.0,
+            "closePrice": 10.0,
+            "closeDate": "2026-08-06",
+            "closeReason": "trailing_stop",
+        },
+        {
+            "symbol": "HK:00003",
+            "source": "S3HK",
+            "sleevePct": 0.10,
+            "entryPrice": 10.0,
+            "closePrice": 11.0,
+            "closeDate": "2026-08-06",
+            "closeReason": "swapped",
+        },
+        {
+            "symbol": "HK:00004",
+            "source": "S3HK",
+            "sleevePct": 0.10,
+            "entryPrice": 10.0,
+            "closePrice": 10.0,
+            "closeDate": "2026-08-01",
+            "closeReason": "max_hold",
+        },
     ]
     with (
         patch.object(paper_s3, "_s3_open_holds", return_value=opens),
         patch.object(paper_s3, "list_paper_trades", return_value=closes),
         # 08-06 close is 1 session old, 08-01 close is 5 sessions old.
-        patch.object(paper_s3, "_hk_session_count",
-                     side_effect=lambda a, b: 1 if a == "2026-08-06" else 5),
+        patch.object(
+            paper_s3, "_hk_session_count", side_effect=lambda a, b: 1 if a == "2026-08-06" else 5
+        ),
     ):
         out = paper_s3._hk_settled_cash(day="2026-08-07")
     assert out["ok"] is True
@@ -885,20 +1217,37 @@ def test_hk_settled_cash_fails_open() -> None:
 
 
 def _hk_intake(fill_px=10.5):
-    fill = {"entry_date": "2026-08-08", "entry_price": fill_px,
-            "pending_open_fill": False, "signal_snapshot": {"entryMode": "next_open"}}
+    fill = {
+        "entry_date": "2026-08-08",
+        "entry_price": fill_px,
+        "pending_open_fill": False,
+        "signal_snapshot": {"entryMode": "next_open"},
+    }
     return (
         patch.object(
-            paper_s3, "build_s3_candidates",
-            return_value=[{"symbol": HK_A, "ts_code": HK_TS, "score": 90.0,
-                           "regime": "Strong", "rs": 0.8, "industry": "银行"}],
+            paper_s3,
+            "build_s3_candidates",
+            return_value=[
+                {
+                    "symbol": HK_A,
+                    "ts_code": HK_TS,
+                    "score": 90.0,
+                    "regime": "Strong",
+                    "rs": 0.8,
+                    "industry": "银行",
+                }
+            ],
         ),
         patch.object(paper_s3, "_s3_open_holds", return_value=[]),
         patch.object(paper_s3, "_lookup_stock_basic", return_value=({HK_TS: "测试H"}, {})),
-        patch.object(paper_s3, "fetch_last_ohlcv_batch",
-                     return_value={HK_TS: [("2026-08-07", 10, 10, 10, 10.0, 1000)]}),
-        patch("data_sync_service.service.paper_entry_fill.resolve_next_open_fill",
-              return_value=fill),
+        patch.object(
+            paper_s3,
+            "fetch_last_ohlcv_batch",
+            return_value={HK_TS: [("2026-08-07", 10, 10, 10, 10.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.resolve_next_open_fill", return_value=fill
+        ),
         patch.object(paper_s3, "_signal_snapshot_for", return_value={}),
     )
 
@@ -941,12 +1290,24 @@ def test_hk_session_count_escapes_like_wildcard() -> None:
 
 def test_hk_intake_skips_on_settle_lock() -> None:
     patches = _hk_intake() + (
-        patch.object(paper_s3, "_hk_settled_cash",
-                     return_value={"ok": True, "settled": 0.0, "deployed": 1.0, "unsettled": 0.0}),
-        patch.object(paper_s3, "insert_paper_trade",
-                     side_effect=AssertionError("no insert")),
+        patch.object(
+            paper_s3,
+            "_hk_settled_cash",
+            return_value={"ok": True, "settled": 0.0, "deployed": 1.0, "unsettled": 0.0},
+        ),
+        patch.object(paper_s3, "insert_paper_trade", side_effect=AssertionError("no insert")),
     )
-    with _patch_day_gates(), patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+    with (
+        _patch_day_gates(),
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patches[6],
+        patches[7],
+    ):
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07", market="HK")
     assert summary["inserted"] == 0
     assert summary["skippedReasons"].get("settle-lock") == 1
@@ -960,11 +1321,24 @@ def test_hk_intake_inserts_when_settled() -> None:
         return {"symbol": kw["symbol"]}
 
     patches = _hk_intake() + (
-        patch.object(paper_s3, "_hk_settled_cash",
-                     return_value={"ok": True, "settled": 1.0, "deployed": 0.0, "unsettled": 0.0}),
+        patch.object(
+            paper_s3,
+            "_hk_settled_cash",
+            return_value={"ok": True, "settled": 1.0, "deployed": 0.0, "unsettled": 0.0},
+        ),
         patch.object(paper_s3, "insert_paper_trade", side_effect=fake_insert),
     )
-    with _patch_day_gates(), patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+    with (
+        _patch_day_gates(),
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patches[6],
+        patches[7],
+    ):
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07", market="HK")
     assert summary["inserted"] == 1
     assert inserted[0]["source"] == "S3HK"
@@ -974,12 +1348,30 @@ def test_hk_intake_inserts_when_settled() -> None:
 def test_circuit_blocked_hk_losing_streak() -> None:
     """TIP-016 B: HK book evaluated separately — HK losers block HK entries."""
     closed = [
-        {"symbol": "HK:00001", "status": "closed", "closeDate": "2026-07-20",
-         "close_date": "2026-07-20", "pnlPct": -6.0, "pnl_pct": -6.0},
-        {"symbol": "HK:00700", "status": "closed", "closeDate": "2026-07-25",
-         "close_date": "2026-07-25", "pnlPct": -5.5, "pnl_pct": -5.5},
-        {"symbol": "HK:01801", "status": "closed", "closeDate": "2026-08-01",
-         "close_date": "2026-08-01", "pnlPct": -14.0, "pnl_pct": -14.0},
+        {
+            "symbol": "HK:00001",
+            "status": "closed",
+            "closeDate": "2026-07-20",
+            "close_date": "2026-07-20",
+            "pnlPct": -6.0,
+            "pnl_pct": -6.0,
+        },
+        {
+            "symbol": "HK:00700",
+            "status": "closed",
+            "closeDate": "2026-07-25",
+            "close_date": "2026-07-25",
+            "pnlPct": -5.5,
+            "pnl_pct": -5.5,
+        },
+        {
+            "symbol": "HK:01801",
+            "status": "closed",
+            "closeDate": "2026-08-01",
+            "close_date": "2026-08-01",
+            "pnlPct": -14.0,
+            "pnl_pct": -14.0,
+        },
     ]
     with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed) as m:
         assert paper_s3._circuit_blocked(as_of="2026-08-07", market="HK") is True
@@ -989,8 +1381,14 @@ def test_circuit_blocked_hk_losing_streak() -> None:
 def test_circuit_hk_ignores_cn_book() -> None:
     """HK circuit reads only the HK book — CN losers must not block HK."""
     closed = [
-        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
-         "close_date": "2026-07-20", "pnlPct": -30.0, "pnl_pct": -30.0},
+        {
+            "symbol": "CN:600001",
+            "status": "closed",
+            "closeDate": "2026-07-20",
+            "close_date": "2026-07-20",
+            "pnlPct": -30.0,
+            "pnl_pct": -30.0,
+        },
     ]
     with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
         # only 1 trade (< 3 min) and wrong book for HK -> open

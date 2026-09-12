@@ -40,13 +40,31 @@ class TestPostSnapshot:
 
     def test_ok(self, monkeypatch) -> None:
         result = {"snapshotId": "s1", "changed": True, "snapshot": {"id": "s1"}, "changes": []}
-        monkeypatch.setattr(ej_svc, "ingest_snapshot", lambda trade_date, source, gate, cards, meta: result)
-        out = post_snapshot(SnapshotIngestRequest(source="poll", tradeDate="2026-08-07T12:00:00", gate={"g": 1}, cards=[{"c": 1}], meta={"m": 1}))
+        monkeypatch.setattr(
+            ej_svc, "ingest_snapshot", lambda trade_date, source, gate, cards, meta: result
+        )
+        out = post_snapshot(
+            SnapshotIngestRequest(
+                source="poll",
+                tradeDate="2026-08-07T12:00:00",
+                gate={"g": 1},
+                cards=[{"c": 1}],
+                meta={"m": 1},
+            )
+        )
         assert out.snapshotId == "s1" and out.changed is True
 
     def test_ok_without_meta(self, monkeypatch) -> None:
-        result = {"snapshotId": "s2", "changed": False, "heartbeat": True, "snapshot": {"id": "s2"}, "changes": []}
-        monkeypatch.setattr(ej_svc, "ingest_snapshot", lambda trade_date, source, gate, cards, meta: result)
+        result = {
+            "snapshotId": "s2",
+            "changed": False,
+            "heartbeat": True,
+            "snapshot": {"id": "s2"},
+            "changes": [],
+        }
+        monkeypatch.setattr(
+            ej_svc, "ingest_snapshot", lambda trade_date, source, gate, cards, meta: result
+        )
         out = post_snapshot(SnapshotIngestRequest(source="eod", tradeDate="2026-08-07"))
         assert out.heartbeat is True
 

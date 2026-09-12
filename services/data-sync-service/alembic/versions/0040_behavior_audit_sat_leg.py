@@ -18,10 +18,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_expected INTEGER NOT NULL DEFAULT 0;")
-    op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_actual INTEGER NOT NULL DEFAULT 0;")
-    op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_extra INTEGER NOT NULL DEFAULT 0;")
-    op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_missing INTEGER NOT NULL DEFAULT 0;")
+    op.execute(
+        "ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_expected INTEGER NOT NULL DEFAULT 0;"
+    )
+    op.execute(
+        "ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_actual INTEGER NOT NULL DEFAULT 0;"
+    )
+    op.execute(
+        "ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_extra INTEGER NOT NULL DEFAULT 0;"
+    )
+    op.execute(
+        "ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_missing INTEGER NOT NULL DEFAULT 0;"
+    )
     op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_extra_list TEXT;")
     op.execute("ALTER TABLE behavior_audit ADD COLUMN IF NOT EXISTS sat_missing_list TEXT;")
 

@@ -21,22 +21,52 @@ class _FakePro:
         ts = kw.get("ts_code", "510300.SH")
         return pd.DataFrame(
             [
-                {"ts_code": ts, "trade_date": SENTINEL_COMPACT, "fd_share": 100.0, "fund_type": "ETF", "market": "SH"},
-                {"ts_code": ts, "trade_date": "19990102", "fd_share": 101.0, "fund_type": "ETF", "market": "SH"},
+                {
+                    "ts_code": ts,
+                    "trade_date": SENTINEL_COMPACT,
+                    "fd_share": 100.0,
+                    "fund_type": "ETF",
+                    "market": "SH",
+                },
+                {
+                    "ts_code": ts,
+                    "trade_date": "19990102",
+                    "fd_share": 101.0,
+                    "fund_type": "ETF",
+                    "market": "SH",
+                },
             ]
         )
 
     def margin(self, trade_date: str):
         return pd.DataFrame(
             [
-                {"trade_date": trade_date, "exchange_id": "SSE", "rzye": 1.0, "rzmre": 2.0, "rzche": 3.0, "rqye": 4.0, "rqmcl": 5.0, "rzrqye": 6.0, "rqyl": 7.0},
+                {
+                    "trade_date": trade_date,
+                    "exchange_id": "SSE",
+                    "rzye": 1.0,
+                    "rzmre": 2.0,
+                    "rzche": 3.0,
+                    "rqye": 4.0,
+                    "rqmcl": 5.0,
+                    "rzrqye": 6.0,
+                    "rqyl": 7.0,
+                },
             ]
         )
 
     def moneyflow_hsgt(self, **kw):
         return pd.DataFrame(
             [
-                {"trade_date": SENTINEL_COMPACT, "ggt_ss": 1.0, "ggt_sz": 2.0, "hgt": 3.0, "sgt": 4.0, "north_money": 7.0, "south_money": 6.0},
+                {
+                    "trade_date": SENTINEL_COMPACT,
+                    "ggt_ss": 1.0,
+                    "ggt_sz": 2.0,
+                    "hgt": 3.0,
+                    "sgt": 4.0,
+                    "north_money": 7.0,
+                    "south_money": 6.0,
+                },
             ]
         )
 
@@ -44,7 +74,14 @@ class _FakePro:
         ts = kw.get("ts_code", "HSI")
         return pd.DataFrame(
             [
-                {"ts_code": ts, "trade_date": SENTINEL_COMPACT, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5},
+                {
+                    "ts_code": ts,
+                    "trade_date": SENTINEL_COMPACT,
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": 1.5,
+                },
             ]
         )
 
@@ -101,7 +138,9 @@ class TestRiskStateSync:
         assert out["ok"] is True
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT north_money FROM cn_moneyflow_hsgt WHERE trade_date = %s", (SENTINEL,))
+                cur.execute(
+                    "SELECT north_money FROM cn_moneyflow_hsgt WHERE trade_date = %s", (SENTINEL,)
+                )
                 assert float(cur.fetchone()[0]) == 7.0
 
     def test_global_index_alias(self, _clean_sentinels) -> None:

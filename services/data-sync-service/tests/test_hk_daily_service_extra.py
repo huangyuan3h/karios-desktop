@@ -24,17 +24,23 @@ class TestTushareSyncOne:
         assert hd._tushare_sync_one("") == {"ok": False, "error": "ts_code is required"}
 
     def test_no_key(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=()))
+        monkeypatch.setattr(
+            hd, "get_settings", lambda: Mock(tu_share_api_key="", tushare_tokens=())
+        )
         assert hd._tushare_sync_one("00700.HK")["error"] == "TU_SHARE_API_KEY is not set"
 
     def test_up_to_date(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",))
+        )
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: date.today())
         out = hd._tushare_sync_one("00700.HK")
         assert out["skipped"] is True and out["updated"] == 0
 
     def test_backfill(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",))
+        )
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: None)
         pro = Mock()
         pro.hk_daily.return_value = pd.DataFrame([{"trade_date": "20260807", "close": 1.0}])
@@ -46,7 +52,9 @@ class TestTushareSyncOne:
         assert pro.hk_daily.call_args.kwargs["ts_code"] == "00700.HK"
 
     def test_incremental(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",))
+        )
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: date(2026, 8, 6))
         pro = Mock()
         pro.hk_daily.return_value = pd.DataFrame()
@@ -56,7 +64,9 @@ class TestTushareSyncOne:
         assert pro.hk_daily.call_args.kwargs["start_date"] == "20260807"
 
     def test_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",)))
+        monkeypatch.setattr(
+            hd, "get_settings", lambda: Mock(tu_share_api_key="k", tushare_tokens=("k",))
+        )
         monkeypatch.setattr(hd, "get_last_trade_date", lambda code: None)
         pro = Mock()
         pro.hk_daily.side_effect = RuntimeError("boom")
@@ -67,13 +77,37 @@ class TestTushareSyncOne:
 
 class TestFallback:
     def _tx(self, monkeypatch, ok=True, updated=0):
-        monkeypatch.setattr("data_sync_service.service.hk_daily_tx.sync_hk_daily_for_ts_code_tx", lambda code: {"ok": ok, "updated": updated, "error": None if ok else "tx_err", "source": "tencent"})
+        monkeypatch.setattr(
+            "data_sync_service.service.hk_daily_tx.sync_hk_daily_for_ts_code_tx",
+            lambda code: {
+                "ok": ok,
+                "updated": updated,
+                "error": None if ok else "tx_err",
+                "source": "tencent",
+            },
+        )
 
     def _ak(self, monkeypatch, ok=True, updated=0):
-        monkeypatch.setattr("data_sync_service.service.hk_daily_ak.sync_hk_daily_for_ts_code_ak", lambda code: {"ok": ok, "updated": updated, "error": None if ok else "ak_err", "source": "akshare"})
+        monkeypatch.setattr(
+            "data_sync_service.service.hk_daily_ak.sync_hk_daily_for_ts_code_ak",
+            lambda code: {
+                "ok": ok,
+                "updated": updated,
+                "error": None if ok else "ak_err",
+                "source": "akshare",
+            },
+        )
 
     def _yf(self, monkeypatch, ok=True, updated=0):
-        monkeypatch.setattr("data_sync_service.service.hk_daily_yf.sync_hk_daily_for_ts_code_yf", lambda code: {"ok": ok, "updated": updated, "error": None if ok else "yf_err", "source": "yfinance"})
+        monkeypatch.setattr(
+            "data_sync_service.service.hk_daily_yf.sync_hk_daily_for_ts_code_yf",
+            lambda code: {
+                "ok": ok,
+                "updated": updated,
+                "error": None if ok else "yf_err",
+                "source": "yfinance",
+            },
+        )
 
     def test_tencent_first(self, monkeypatch) -> None:
         self._tx(monkeypatch, updated=5)
@@ -100,7 +134,11 @@ class TestFallback:
         self._ak(monkeypatch, ok=False)
         self._yf(monkeypatch, ok=False)
         monkeypatch.setattr(hd.sys, "platform", "linux")
-        monkeypatch.setattr(hd, "_tushare_sync_one", lambda code: {"ok": True, "updated": 2, "source": "tushare", "ts_code": code})
+        monkeypatch.setattr(
+            hd,
+            "_tushare_sync_one",
+            lambda code: {"ok": True, "updated": 2, "source": "tushare", "ts_code": code},
+        )
         out = hd._sync_one_with_fallback("00700.HK")
         assert out["source"] == "tushare" and out["updated"] == 2
 
@@ -109,7 +147,9 @@ class TestFallback:
         self._ak(monkeypatch, ok=False)
         self._yf(monkeypatch, ok=False)
         monkeypatch.setattr(hd.sys, "platform", "linux")
-        monkeypatch.setattr(hd, "_tushare_sync_one", lambda code: {"ok": False, "error": "tushare_err"})
+        monkeypatch.setattr(
+            hd, "_tushare_sync_one", lambda code: {"ok": False, "error": "tushare_err"}
+        )
         out = hd._sync_one_with_fallback("00700.HK")
         assert out["skipped"] is True and out["source"] == "tencent"
         assert "tencent failed: tx_err" in out["message"]
@@ -137,7 +177,11 @@ class TestFallback:
 class TestFull:
     def test_skipped(self, monkeypatch) -> None:
         monkeypatch.setattr(hd, "get_today_run", lambda job: {"success": True})
-        assert hd.sync_hk_daily_full() == {"ok": True, "skipped": True, "message": "already synced today"}
+        assert hd.sync_hk_daily_full() == {
+            "ok": True,
+            "skipped": True,
+            "message": "already synced today",
+        }
 
     def test_no_stocks(self, monkeypatch) -> None:
         monkeypatch.setattr(hd, "get_today_run", lambda job: None)
@@ -146,7 +190,9 @@ class TestFull:
 
     def test_full(self, monkeypatch) -> None:
         monkeypatch.setattr(hd, "get_today_run", lambda job: None)
-        monkeypatch.setattr(hd, "fetch_ts_codes_by_market", lambda market: ["00700.HK", "00941.HK", "09988.HK"])
+        monkeypatch.setattr(
+            hd, "fetch_ts_codes_by_market", lambda market: ["00700.HK", "00941.HK", "09988.HK"]
+        )
         results = [
             {"ok": True, "updated": 5, "source": "tencent"},
             {"ok": True, "updated": 0, "source": "tencent"},
@@ -162,10 +208,16 @@ class TestFull:
         assert seen["success"] is True
 
     def test_full_resume(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_today_run", lambda job: {"success": False, "last_ts_code": "00700.HK"})
+        monkeypatch.setattr(
+            hd, "get_today_run", lambda job: {"success": False, "last_ts_code": "00700.HK"}
+        )
         monkeypatch.setattr(hd, "fetch_ts_codes_by_market", lambda market: ["00700.HK", "00941.HK"])
         called = []
-        monkeypatch.setattr(hd, "_sync_one_with_fallback", lambda code: called.append(code) or {"ok": True, "updated": 0})
+        monkeypatch.setattr(
+            hd,
+            "_sync_one_with_fallback",
+            lambda code: called.append(code) or {"ok": True, "updated": 0},
+        )
         monkeypatch.setattr(hd.time, "sleep", lambda s: None)
         monkeypatch.setattr(hd, "insert_record", lambda **kw: None)
         hd.sync_hk_daily_full()
@@ -175,6 +227,7 @@ class TestFull:
         monkeypatch.setattr(hd, "get_today_run", lambda job: None)
         monkeypatch.setattr(hd, "fetch_ts_codes_by_market", lambda market: ["00700.HK", "00941.HK"])
         calls = {"n": 0}
+
         def fallback(code):
             calls["n"] += 1
             if calls["n"] == 1:
@@ -188,10 +241,16 @@ class TestFull:
         assert out["failed_count"] == 1
 
     def test_resume_unknown_code(self, monkeypatch) -> None:
-        monkeypatch.setattr(hd, "get_today_run", lambda job: {"success": False, "last_ts_code": "NOPE.HK"})
+        monkeypatch.setattr(
+            hd, "get_today_run", lambda job: {"success": False, "last_ts_code": "NOPE.HK"}
+        )
         monkeypatch.setattr(hd, "fetch_ts_codes_by_market", lambda market: ["00700.HK"])
         called = []
-        monkeypatch.setattr(hd, "_sync_one_with_fallback", lambda code: called.append(code) or {"ok": True, "updated": 0})
+        monkeypatch.setattr(
+            hd,
+            "_sync_one_with_fallback",
+            lambda code: called.append(code) or {"ok": True, "updated": 0},
+        )
         monkeypatch.setattr(hd.time, "sleep", lambda s: None)
         monkeypatch.setattr(hd, "insert_record", lambda **kw: None)
         hd.sync_hk_daily_full()

@@ -147,7 +147,9 @@ def last_trading_day(exchange: str, on_date: date) -> date:
         if row and row[0]:
             return row[0]
     except Exception:  # noqa: BLE001
-        logger.warning("trade_calendar lookup failed, falling back to weekday heuristic", exc_info=True)
+        logger.warning(
+            "trade_calendar lookup failed, falling back to weekday heuristic", exc_info=True
+        )
         pass
     d = on_date
     while d.weekday() >= 5:  # Sat/Sun — no calendar row for those days anyway
@@ -174,5 +176,10 @@ def summary(exchange: str, start_date: date, end_date: date) -> dict[str, Any]:
             row = cur.fetchone()
     total = int(row[0] or 0) if row else 0
     open_days = int(row[1] or 0) if row else 0
-    return {"exchange": exchange, "start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "rows": total, "open_days": open_days}
-
+    return {
+        "exchange": exchange,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "rows": total,
+        "open_days": open_days,
+    }

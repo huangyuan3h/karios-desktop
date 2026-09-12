@@ -169,10 +169,7 @@ def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
         f"(>{CAPITULATION_FLOW_THRESHOLD_YI}亿):{cond_flow}"
     )
 
-    rule = (
-        "恐慌筑底（下跌家数≥3500 且 期权IV>20% 且 沪深300ETF净流入>+20亿）"
-        f"[{'+'.join(reasons)}]"
-    )
+    rule = f"恐慌筑底（下跌家数≥3500 且 期权IV>20% 且 沪深300ETF净流入>+20亿）[{'+'.join(reasons)}]"
     return {
         "triggered": triggered,
         "rule": rule,
@@ -268,9 +265,7 @@ def check_follow_through_day(
     cond_chg = index_chg_max_pct is not None and float(index_chg_max_pct) > FTD_INDEX_CHG_THRESHOLD
     if not cond_chg:
         triggered = False
-    reasons.append(
-        f"index_chg={index_chg_max_pct}(>{FTD_INDEX_CHG_THRESHOLD}%):{cond_chg}"
-    )
+    reasons.append(f"index_chg={index_chg_max_pct}(>{FTD_INDEX_CHG_THRESHOLD}%):{cond_chg}")
 
     cond_vol = (
         prev_turnover_cny is not None
@@ -279,14 +274,9 @@ def check_follow_through_day(
     )
     if not cond_vol:
         triggered = False
-    reasons.append(
-        f"turnover={today_turnover_cny}>{prev_turnover_cny}:{cond_vol}"
-    )
+    reasons.append(f"turnover={today_turnover_cny}>{prev_turnover_cny}:{cond_vol}")
 
-    rule = (
-        "跟进日确认（10日内曾恐慌筑底 且 指数单日涨幅>1.5% 且 放量）"
-        f"[{'+'.join(reasons)}]"
-    )
+    rule = f"跟进日确认（10日内曾恐慌筑底 且 指数单日涨幅>1.5% 且 放量）[{'+'.join(reasons)}]"
     return {
         "triggered": triggered,
         "rule": rule,
@@ -503,7 +493,15 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
                 local_turnover += _finite_float(it.get("amount"), 0.0)
         except Exception as exc:
             local_errors.append(str(exc))
-        return local_up, local_down, local_flat, local_matched, local_turnover, local_volume, local_errors
+        return (
+            local_up,
+            local_down,
+            local_flat,
+            local_matched,
+            local_turnover,
+            local_volume,
+            local_errors,
+        )
 
     up = 0
     down = 0
@@ -561,7 +559,9 @@ def _tushare_daily_pct_chg_map(as_of: date) -> dict[str, float]:
     pro = _tushare_pro()
     d = _safe_trade_date(as_of)
     # Prefer a minimal fields set to reduce payload size.
-    df = _with_retry(lambda: pro.daily(trade_date=d, fields="ts_code,pct_chg"), tries=2, base_sleep_s=0.6)
+    df = _with_retry(
+        lambda: pro.daily(trade_date=d, fields="ts_code,pct_chg"), tries=2, base_sleep_s=0.6
+    )
     if df is None:
         return {}
     rows = _to_records(df)
@@ -660,6 +660,7 @@ def fetch_cn_yesterday_limitup_premium_tushare(as_of: date) -> dict[str, Any]:
         },
     }
 
+
 def _fetch_cn_a_spot_change_pct() -> dict[str, float]:
     ak = _akshare()
     if not hasattr(ak, "stock_zh_a_spot_em"):
@@ -712,7 +713,12 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
                 chosen_y = y
                 break
         if not codes:
-            return {"date": d, "premium": 0.0, "count": 0, "raw": {"y": None, "searchedBackDays": 7}}
+            return {
+                "date": d,
+                "premium": 0.0,
+                "count": 0,
+                "raw": {"y": None, "searchedBackDays": 7},
+            }
 
         chg_map = _fetch_cn_a_spot_change_pct()
         vals: list[float] = []
@@ -747,6 +753,7 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
                 "count": 0,
                 "raw": {"source": "fallback", "akshareError": str(e), "tushareError": str(e2)},
             }
+
 
 def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
     d = as_of.strftime("%Y-%m-%d")
@@ -797,7 +804,9 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
             ever_count = denom
         else:
             if not hasattr(ak, "stock_zt_pool_strong_em"):
-                raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+                raise RuntimeError(
+                    "AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare."
+                )
             df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
             ever_rows = _to_records(df_ever)
             ever = _codes(ever_rows)
@@ -904,7 +913,9 @@ def _prev_open_date(exchange: str, d0: date) -> date | None:
     return row[0] if row and row[0] else None
 
 
-def _daily_rows_for_date(d0: date) -> list[tuple[str, float | None, float | None, float | None, float | None, str | None]]:
+def _daily_rows_for_date(
+    d0: date,
+) -> list[tuple[str, float | None, float | None, float | None, float | None, str | None]]:
     """
     Return tuples: (ts_code, pre_close, high, close, pct_chg, name).
     """
@@ -1072,9 +1083,10 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     if should_try_intraday:
         try:
             breadth_rt = fetch_cn_market_breadth_intraday(dt)
-            if int(breadth_rt.get("total_count") or 0) > 0 or _finite_float(
-                breadth_rt.get("total_turnover_cny"), 0.0
-            ) > 0.0:
+            if (
+                int(breadth_rt.get("total_count") or 0) > 0
+                or _finite_float(breadth_rt.get("total_turnover_cny"), 0.0) > 0.0
+            ):
                 breadth = breadth_rt
         except Exception as e:
             errors.append(f"breadth_intraday_failed: {e}")
@@ -1187,7 +1199,11 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         elif premium < 0.0:
             risk_mode = "caution"
             rules.append("涨停溢价为负（昨日涨停股今日平均下跌）→ 谨慎")
-        if risk_mode in ("caution", "no_new_positions") and bullish_override and failed_rate <= 85.0:
+        if (
+            risk_mode in ("caution", "no_new_positions")
+            and bullish_override
+            and failed_rate <= 85.0
+        ):
             risk_mode = "normal"
             rules.append("多头覆盖（成交≥1.5万亿 且 涨跌比≥1.2 且 涨停溢价≥0）→ 恢复正常")
     if errors and risk_mode == "normal":
@@ -1258,7 +1274,9 @@ def _sentiment_row_from_compute(out: dict[str, Any], d: str) -> dict[str, Any]:
     }
 
 
-def _sentiment_item_from_compute(out: dict[str, Any], d: str, *, rules_list: list[str]) -> dict[str, Any]:
+def _sentiment_item_from_compute(
+    out: dict[str, Any], d: str, *, rules_list: list[str]
+) -> dict[str, Any]:
     return {
         "date": str(out.get("date") or d),
         "upCount": int(out.get("up") or 0),
@@ -1276,7 +1294,9 @@ def _sentiment_item_from_compute(out: dict[str, Any], d: str, *, rules_list: lis
     }
 
 
-def _resolve_sentiment_sync_dates(*, request_date: date, force: bool) -> tuple[list[date], dict[str, Any] | None]:
+def _resolve_sentiment_sync_dates(
+    *, request_date: date, force: bool
+) -> tuple[list[date], dict[str, Any] | None]:
     """Return open dates to sync through the latest trading day, or a skip response."""
     target_end = last_open_date_on_or_before(request_date)
     if target_end is None:

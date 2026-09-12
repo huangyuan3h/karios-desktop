@@ -50,9 +50,34 @@ class TestInsertChanges:
 
     def test_inserts_rows(self, monkeypatch) -> None:
         cur = Mock()
-        cur.fetchone.return_value = ("c1", "2026-08-07", None, "s1", "s2", "scope", "symbol", "field", "o", "n", "src")
+        cur.fetchone.return_value = (
+            "c1",
+            "2026-08-07",
+            None,
+            "s1",
+            "s2",
+            "scope",
+            "symbol",
+            "field",
+            "o",
+            "n",
+            "src",
+        )
         monkeypatch.setattr(ej, "get_connection", lambda: _fake_conn(cur))
-        rows = [{"id": "c1", "trade_date": "2026-08-07", "from_snapshot_id": "s1", "to_snapshot_id": "s2", "scope": "watchlist", "symbol": "CN:600519", "field": "positionPct", "old_value": "o", "new_value": "n", "source": "alpha"}]
+        rows = [
+            {
+                "id": "c1",
+                "trade_date": "2026-08-07",
+                "from_snapshot_id": "s1",
+                "to_snapshot_id": "s2",
+                "scope": "watchlist",
+                "symbol": "CN:600519",
+                "field": "positionPct",
+                "old_value": "o",
+                "new_value": "n",
+                "source": "alpha",
+            }
+        ]
         out = ej.insert_changes(rows)
         assert out[0]["id"] == "c1"
         sqls = [c.args[0] for c in cur.execute.call_args_list]
@@ -62,7 +87,9 @@ class TestInsertChanges:
 class TestListSnapshots:
     def test_with_trade_date(self, monkeypatch) -> None:
         cur = Mock()
-        cur.fetchall.return_value = [("sn1", "2026-08-07", None, "sync_all", '{"g":1}', '[{"c":1}]', "h", None)]
+        cur.fetchall.return_value = [
+            ("sn1", "2026-08-07", None, "sync_all", '{"g":1}', '[{"c":1}]', "h", None)
+        ]
         monkeypatch.setattr(ej, "get_connection", lambda: _fake_conn(cur))
         out = ej.list_snapshots(trade_date="2026-08-07")
         assert out[0]["id"] == "sn1"
@@ -110,7 +137,9 @@ class TestHasSourceOnDate:
 class TestListChanges:
     def test_with_since(self, monkeypatch) -> None:
         cur = Mock()
-        cur.fetchall.return_value = [("c1", "2026-08-07", None, "s1", "s2", "scope", "symbol", "field", "o", "n", "src")]
+        cur.fetchall.return_value = [
+            ("c1", "2026-08-07", None, "s1", "s2", "scope", "symbol", "field", "o", "n", "src")
+        ]
         monkeypatch.setattr(ej, "get_connection", lambda: _fake_conn(cur))
         out = ej.list_changes(since="2026-08-07T00:00:00+00:00")
         assert out[0]["id"] == "c1"

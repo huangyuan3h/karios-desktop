@@ -204,12 +204,12 @@ def test_sina_hk_quotes_fresh_uses_http_and_caches(monkeypatch):
     clear_sina_hk_quote_cache()
 
     body = (
-        "var hq_str_hk00700=\"TENCENT,腾讯控股,470.000,471.800,479.800,462.000,"
+        'var hq_str_hk00700="TENCENT,腾讯控股,470.000,471.800,479.800,462.000,'
         "475.200,3.400,0.721,475.00000,475.20001,14692435323,31100240,0.000,"
-        "0.000,675.134,411.000,2026/07/31,16:08\";\n"
-        "var hq_str_hk02318=\"PING AN,中国平安,58.450,58.700,58.700,57.800,"
+        '0.000,675.134,411.000,2026/07/31,16:08";\n'
+        'var hq_str_hk02318="PING AN,中国平安,58.450,58.700,58.700,57.800,'
         "58.650,-0.050,-0.085,58.60000,58.65000,1539095975,26319543,0.000,"
-        "0.000,72.204,49.728,2026/07/31,16:08\";\n"
+        '0.000,72.204,49.728,2026/07/31,16:08";\n'
     )
     calls: list[str] = []
 
@@ -270,9 +270,9 @@ def test_fetch_realtime_quotes_prefers_sina_for_hk(monkeypatch):
     clear_sina_hk_quote_cache()
 
     body = (
-        "var hq_str_hk00700=\"TENCENT,腾讯控股,470.000,471.800,479.800,462.000,"
+        'var hq_str_hk00700="TENCENT,腾讯控股,470.000,471.800,479.800,462.000,'
         "475.200,3.400,0.721,475.00000,475.20001,14692435323,31100240,0.000,"
-        "0.000,675.134,411.000,2026/07/31,16:08\";\n"
+        '0.000,675.134,411.000,2026/07/31,16:08";\n'
     )
 
     def _fake_sina(url, *, timeout=10.0):  # noqa: ARG001
@@ -336,6 +336,7 @@ def test_fetch_realtime_quotes_falls_back_to_em_when_sina_misses(monkeypatch):
     # EM fallback keeps trade_time=None (Sina-style stamp would not be available).
     assert items[0]["trade_time"] is None
 
+
 # ---------------------------------------------------------------------------
 # HK indices (HSI / HSTECH) — Sina `hq_str_hkHSI` path (2026-08-11)
 # ---------------------------------------------------------------------------
@@ -377,10 +378,10 @@ def test_sina_hk_index_quotes_fetches_and_caches(monkeypatch):
     clear_sina_hk_quote_cache()
     body = (
         'var hq_str_hkHSI="HSI,恒生指数,25998.590,25937.490,26060.320,25760.000,'
-        '25773.561,-163.930,-0.632,0.00000,0.00000,115838045,7225645932,0.000,'
+        "25773.561,-163.930,-0.632,0.00000,0.00000,115838045,7225645932,0.000,"
         '0.000,28056.100,22518.000,2026/08/11,12:05";\n'
         'var hq_str_hkHSTECH="HSTECH,恒生科技指数,4932.810,4919.460,4936.020,'
-        '4851.060,4857.120,-62.340,-1.267,0.00000,0.00000,27247377,490385071,'
+        "4851.060,4857.120,-62.340,-1.267,0.00000,0.00000,27247377,490385071,"
         '0.000,0.000,6715.460,4229.940,2026/08/11,12:05";\n'
     )
     from data_sync_service.service import realtime_quote as rq
@@ -427,7 +428,8 @@ def test_fetch_realtime_quotes_routes_hk_indices_to_sina_index(monkeypatch):
     monkeypatch.setattr(rq, "_sina_hk_quotes_fresh", _fake_stock_sina)
     monkeypatch.setattr(rq, "_tushare_quotes", _fake_tushare)
     monkeypatch.setattr(
-        rq, "_fetch_em_hk_quote",
+        rq,
+        "_fetch_em_hk_quote",
         lambda code: {"ts_code": code, "price": "50.0"},  # deterministic EM fallback
     )
     monkeypatch.setattr(rq, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
@@ -449,7 +451,11 @@ def test_tushare_quotes_skips_bare_codes(monkeypatch):
     calls: list[str] = []
     monkeypatch.setattr(ts, "set_token", lambda k: None)
     monkeypatch.setattr(
-        ts, "realtime_quote", lambda ts_code="": calls.append(ts_code) or type("D", (), {"empty": True, "to_dict": lambda self: []})()
+        ts,
+        "realtime_quote",
+        lambda ts_code="": (
+            calls.append(ts_code) or type("D", (), {"empty": True, "to_dict": lambda self: []})()
+        ),
     )
     from data_sync_service.service import realtime_quote as rq
 

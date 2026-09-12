@@ -9,6 +9,7 @@ from data_sync_service.db.stock_basic import (
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_scalar_none():
     assert _scalar(None) is None
 

@@ -85,6 +85,7 @@ GATE_REASON_MAINLINE = "mainline"
 GATE_REASON_SENTIMENT = "sentiment"
 GATE_REASON_INDEX_RED = "index_red"
 
+
 # OPT-103: A-share board price limits (main 10% / ChiNext+STAR 20% / BSE 30%).
 # Derived from the previous session's close — no extra data source needed.
 # ST 5% is not modeled (no ST flag in the daily table); HK has no limits.
@@ -197,7 +198,7 @@ class BacktestConfig:
     # close when exits are decided). Defaults off → zero behavior change.
     trend_guide_code: str = ""
     trend_guide_ma: int = 200
-    trend_guide_stop_pct: float = 0.0   # 0 = off
+    trend_guide_stop_pct: float = 0.0  # 0 = off
     trend_guide_trail_pct: float = 0.0  # 0 = off
     light_red_block: bool = False
     slippage_pct: float = 0.0
@@ -431,23 +432,37 @@ class BacktestConfig:
         if self.gates not in GATE_LEVELS:
             raise ValueError(f"gates must be one of {GATE_LEVELS} (got {self.gates!r})")
         if self.trailing_stop_pct > 0:
-            raise ValueError("trailing_stop_pct must be <= 0 (0 disables, e.g. -8 = 8%% peak pullback)")
+            raise ValueError(
+                "trailing_stop_pct must be <= 0 (0 disables, e.g. -8 = 8%% peak pullback)"
+            )
         if self.profit_trail_trigger_pct < 0:
-            raise ValueError("profit_trail_trigger_pct must be >= 0 (0 disables, 10 = protect once the leg is +10%)")
+            raise ValueError(
+                "profit_trail_trigger_pct must be >= 0 (0 disables, 10 = protect once the leg is +10%)"
+            )
         if self.profit_trail_pct > 0:
-            raise ValueError("profit_trail_pct must be <= 0 (0 disables, e.g. -6 = allow only a 6%% pullback from the post-trigger peak)")
+            raise ValueError(
+                "profit_trail_pct must be <= 0 (0 disables, e.g. -6 = allow only a 6%% pullback from the post-trigger peak)"
+            )
         if self.profit_trail_trigger_pct > 0 and self.profit_trail_pct == 0:
             raise ValueError("profit_trail_pct must be set when profit_trail_trigger_pct > 0")
         if self.industry_flow_exit_days < 0:
-            raise ValueError("industry_flow_exit_days must be >= 0 (0 disables, 3 = exit when the holding's SW L1 industry 5d net inflow stays negative for 3 straight sessions)")
+            raise ValueError(
+                "industry_flow_exit_days must be >= 0 (0 disables, 3 = exit when the holding's SW L1 industry 5d net inflow stays negative for 3 straight sessions)"
+            )
         if self.settle_lock_sessions < 0:
-            raise ValueError("settle_lock_sessions must be >= 0 (0 disables, 2 = HK T+2 settlement)")
+            raise ValueError(
+                "settle_lock_sessions must be >= 0 (0 disables, 2 = HK T+2 settlement)"
+            )
         if self.regime_streak_min < 0:
-            raise ValueError("regime_streak_min must be >= 0 (0 disables, 2 = entries need 2 straight Strong sessions)")
+            raise ValueError(
+                "regime_streak_min must be >= 0 (0 disables, 2 = entries need 2 straight Strong sessions)"
+            )
         if self.drought_ramp_sessions < 0 or self.drought_ramp_max < 0:
             raise ValueError("drought_ramp_sessions/drought_ramp_max must be >= 0 (0 disables)")
         if not 0 <= self.throttle_scale <= 1:
-            raise ValueError("throttle_scale must be in [0, 1] (0 = pause, 0.5 = half-size entries)")
+            raise ValueError(
+                "throttle_scale must be in [0, 1] (0 = pause, 0.5 = half-size entries)"
+            )
         for w_start, w_end in self.throttle_windows:
             if str(w_end) < str(w_start):
                 raise ValueError("throttle_windows entries must be (start, end) with start <= end")
@@ -458,53 +473,91 @@ class BacktestConfig:
         if not 0 <= self.rs_rank_min <= 1:
             raise ValueError("rs_rank_min must be in [0, 1] (0 disables, 0.8 = top 20% RS)")
         if not 0 <= self.diverging_scale <= 1:
-            raise ValueError("diverging_scale must be in [0, 1] (0 = no entries when Diverging, 0.5 = half size)")
+            raise ValueError(
+                "diverging_scale must be in [0, 1] (0 = no entries when Diverging, 0.5 = half size)"
+            )
         if self.drawdown_circuit_pct > 0:
-            raise ValueError("drawdown_circuit_pct must be <= 0 (0 disables, e.g. -5 = halt new entries when trailing 20d realized pnl < -5%)")
+            raise ValueError(
+                "drawdown_circuit_pct must be <= 0 (0 disables, e.g. -5 = halt new entries when trailing 20d realized pnl < -5%)"
+            )
         if not 0 <= self.trend_score_min <= 100:
             raise ValueError("trend_score_min must be in [0, 100] (0 disables)")
         if not 0 <= self.swap_weak_rs_below <= 1:
-            raise ValueError("swap_weak_rs_below must be in [0, 1] (0 disables, 0.3 = held stocks in the weakest 30% RS can be swapped out)")
+            raise ValueError(
+                "swap_weak_rs_below must be in [0, 1] (0 disables, 0.3 = held stocks in the weakest 30% RS can be swapped out)"
+            )
         if not 0 <= self.swap_strong_rs_at_least <= 1:
-            raise ValueError("swap_strong_rs_at_least must be in [0, 1] (0 disables, 0.8 = only top-20% RS candidates can replace)")
+            raise ValueError(
+                "swap_strong_rs_at_least must be in [0, 1] (0 disables, 0.8 = only top-20% RS candidates can replace)"
+            )
         if self.swap_min_hold_days < 0:
             raise ValueError("swap_min_hold_days must be >= 0")
         if self.swap_max_per_day < 0:
             raise ValueError("swap_max_per_day must be >= 0 (0 disables rotation)")
         if not 0 <= self.pyramid_trigger_pct <= 200:
-            raise ValueError("pyramid_trigger_pct must be in [0, 200] (0 disables, 10 = add when the main leg is +10%)")
+            raise ValueError(
+                "pyramid_trigger_pct must be in [0, 200] (0 disables, 10 = add when the main leg is +10%)"
+            )
         if not 0 <= self.pyramid_add_scale <= 2:
-            raise ValueError("pyramid_add_scale must be in [0, 2] (0.5 = add half the initial sleeve)")
+            raise ValueError(
+                "pyramid_add_scale must be in [0, 2] (0.5 = add half the initial sleeve)"
+            )
         if not 0 <= self.pyramid_max_adds <= 5:
             raise ValueError("pyramid_max_adds must be in [0, 5] (0 disables)")
         if not 0 <= self.atr_size_window <= 120:
-            raise ValueError("atr_size_window must be in [0, 120] (0 disables, 20 = size by 20-day ATR)")
+            raise ValueError(
+                "atr_size_window must be in [0, 120] (0 disables, 20 = size by 20-day ATR)"
+            )
         if not 1 <= self.atr_size_cap <= 5:
             raise ValueError("atr_size_cap must be in [1, 5] (2 = sleeves between 0.5x and 2x)")
         if not 0.5 <= self.atr_benchmark_pct <= 10:
-            raise ValueError("atr_benchmark_pct must be in [0.5, 10] (2 = 2% daily vol gets the base sleeve)")
+            raise ValueError(
+                "atr_benchmark_pct must be in [0.5, 10] (2 = 2% daily vol gets the base sleeve)"
+            )
         if not 0 <= self.max_per_industry <= 100:
-            raise ValueError("max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)")
+            raise ValueError(
+                "max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)"
+            )
         if self.entry_sort not in ("score", "score_rs", "rs"):
-            raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
+            raise ValueError(
+                f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})"
+            )
         if self.breakout_days < 0:
-            raise ValueError("breakout_days must be >= 0 (0 disables, 20 = close > 20-day high required)")
+            raise ValueError(
+                "breakout_days must be >= 0 (0 disables, 20 = close > 20-day high required)"
+            )
         if self.volume_breakout_mult < 0:
-            raise ValueError("volume_breakout_mult must be >= 0 (0 disables, 1.5 = 50%% above the 20d avg volume)")
+            raise ValueError(
+                "volume_breakout_mult must be >= 0 (0 disables, 1.5 = 50%% above the 20d avg volume)"
+            )
         if self.ma_slope_min_pct < 0:
-            raise ValueError("ma_slope_min_pct must be >= 0 (0 disables, 2 = MA20 rising >= 2%% over 20 sessions)")
+            raise ValueError(
+                "ma_slope_min_pct must be >= 0 (0 disables, 2 = MA20 rising >= 2%% over 20 sessions)"
+            )
         if self.ma200_min_pct < -1:
-            raise ValueError("ma200_min_pct must be >= -1 (-1 disables; 0 = close > MA200; 5 = >= 5%% above MA200)")
+            raise ValueError(
+                "ma200_min_pct must be >= -1 (-1 disables; 0 = close > MA200; 5 = >= 5%% above MA200)"
+            )
         if self.ma_cross_days < 0:
-            raise ValueError("ma_cross_days must be >= 0 (0 disables, 5 = entry within 5 sessions after the MA5/MA20 cross)")
+            raise ValueError(
+                "ma_cross_days must be >= 0 (0 disables, 5 = entry within 5 sessions after the MA5/MA20 cross)"
+            )
         if self.rsi_reversal_max < 0:
-            raise ValueError("rsi_reversal_max must be >= 0 (0 disables, 30 = RSI14 < 30 + green day required)")
+            raise ValueError(
+                "rsi_reversal_max must be >= 0 (0 disables, 30 = RSI14 < 30 + green day required)"
+            )
         if self.down_day_reversal_pct < 0:
-            raise ValueError("down_day_reversal_pct must be >= 0 (0 disables, 5 = prior session -5% then green day required)")
+            raise ValueError(
+                "down_day_reversal_pct must be >= 0 (0 disables, 5 = prior session -5% then green day required)"
+            )
         if self.risk_adj_mom_ret_days < 0:
-            raise ValueError("risk_adj_mom_ret_days must be >= 0 (0 disables; 120 = use 120-session return)")
+            raise ValueError(
+                "risk_adj_mom_ret_days must be >= 0 (0 disables; 120 = use 120-session return)"
+            )
         if self.pead_days < 0:
-            raise ValueError("pead_days must be >= 0 (0 disables; 30 = entry only within 30 sessions of a positive forecast)")
+            raise ValueError(
+                "pead_days must be >= 0 (0 disables; 30 = entry only within 30 sessions of a positive forecast)"
+            )
         if self.risk_adj_mom_vol_days < 5:
             raise ValueError("risk_adj_mom_vol_days must be >= 5 (volatility window)")
         if self.risk_adj_mom_min < 0:
@@ -516,21 +569,29 @@ class BacktestConfig:
         if self.ind_neutral_days not in (0, 20, 60, 120):
             raise ValueError("ind_neutral_days must be 0 (off) or one of 20/60/120")
         if not 0 < self.ind_neutral_rank_pct <= 1:
-            raise ValueError("ind_neutral_rank_pct must be in (0, 1] (0.7 = top 30% within industry)")
+            raise ValueError(
+                "ind_neutral_rank_pct must be in (0, 1] (0.7 = top 30% within industry)"
+            )
         if not 0 <= self.high_52w_min_pct <= 100:
-            raise ValueError("high_52w_min_pct must be in [0, 100] (0 disables; 80 = close >= 0.80 x 250d-high)")
+            raise ValueError(
+                "high_52w_min_pct must be in [0, 100] (0 disables; 80 = close >= 0.80 x 250d-high)"
+            )
         if self.mom_ret_days not in (0, 60, 120, 250):
             raise ValueError("mom_ret_days must be 0 (off) or one of 60/120/250")
         if self.mom_skip_days < 0:
             raise ValueError("mom_skip_days must be >= 0 (20 = skip the most recent 20 sessions)")
         if not 0 < self.mom_rank_min <= 1:
-            raise ValueError("mom_rank_min must be in (0, 1] (0.5 = top 50% whole-market momentum rank)")
+            raise ValueError(
+                "mom_rank_min must be in (0, 1] (0.5 = top 50% whole-market momentum rank)"
+            )
         if self.value_mom_gate not in ("off", "composite", "mom_only"):
             raise ValueError("value_mom_gate must be one of ('off', 'composite', 'mom_only')")
         if self.min_avg_amount < 0:
             raise ValueError("min_avg_amount must be >= 0 (亿元; 0 disables)")
         if self.max_hold_unprofitable_days < 0:
-            raise ValueError("max_hold_unprofitable_days must be >= 0 (0 disables; 20 = close underwater holdings after 20 days)")
+            raise ValueError(
+                "max_hold_unprofitable_days must be >= 0 (0 disables; 20 = close underwater holdings after 20 days)"
+            )
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -542,11 +603,15 @@ class BacktestConfig:
                 f"(got {self.entry_style!r})"
             )
         if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
-            raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
+            raise ValueError(
+                "min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)"
+            )
         if self.exclude_boards:
             prefixes = {p.strip() for p in self.exclude_boards.split(",") if p.strip()}
             if not all(len(p) == 3 and p.isdigit() for p in prefixes):
-                raise ValueError("exclude_boards must be comma-separated 3-digit board prefixes like '300,688'")
+                raise ValueError(
+                    "exclude_boards must be comma-separated 3-digit board prefixes like '300,688'"
+                )
             object.__setattr__(self, "board_exclude_set", frozenset(prefixes))
 
 
@@ -615,10 +680,13 @@ class BacktestData:
         self.calendar = _load_calendar(config.start_date, config.end_date)
         if config.trendok_params:
             from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS
+
             allowed = set(DEFAULT_TRENDOK_PARAMS.__dataclass_fields__.keys())
             unknown = set(config.trendok_params.keys()) - allowed
             if unknown:
-                raise ValueError(f"unknown trendok_params keys: {sorted(unknown)} (allowed={sorted(allowed)})")
+                raise ValueError(
+                    f"unknown trendok_params keys: {sorted(unknown)} (allowed={sorted(allowed)})"
+                )
         self.scores_by_day: dict[str, dict[str, float]] = _load_scores(
             config.start_date, config.end_date, config.market
         )
@@ -632,7 +700,6 @@ class BacktestData:
         self.delist_by_ts: dict[str, str] = _load_delist_dates(set(self.ts_codes))
         self.bars_by_ts: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
         if self.ts_codes:
-
             start_lookback = max(
                 date.fromisoformat(config.start_date) - timedelta(days=TREND_LOOKBACK_DAYS),
                 date(1998, 1, 1),
@@ -727,13 +794,20 @@ class BacktestData:
         self.value_comp_by_day: dict[str, dict[str, tuple[float, float]]] = {}
         if config.value_mom_gate != "off":
             self.value_comp_by_day = _load_value_comp_ranks(
-                config, self.calendar, set(self.ts_codes),
-                self.closes_by_ts, self.mv_by_day,
+                config,
+                self.calendar,
+                set(self.ts_codes),
+                self.closes_by_ts,
+                self.mv_by_day,
             )
         # B-T1: params are stored for heavy recompute; auto-recompute disabled to keep <10s
-    def recompute_scores_with_params(self, override: dict[str, float]) -> dict[str, dict[str, float]]:
+
+    def recompute_scores_with_params(
+        self, override: dict[str, float]
+    ) -> dict[str, dict[str, float]]:
         from data_sync_service.service.trendok import _trendok_one
         from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS, TrendOKParams
+
         params = TrendOKParams(**{**DEFAULT_TRENDOK_PARAMS.__dict__, **override})
         params.validate()
         out: dict[str, dict[str, float]] = {}
@@ -745,7 +819,11 @@ class BacktestData:
                 if sc >= 65:
                     candidate_syms.add(sym)
         # fallback to all if candidate pool too small (e.g., early windows)
-        pool = candidate_syms if len(candidate_syms) >= 300 else set(s for day in self.scores_by_day.values() for s in day)
+        pool = (
+            candidate_syms
+            if len(candidate_syms) >= 300
+            else set(s for day in self.scores_by_day.values() for s in day)
+        )
         for sym in sorted(pool):
             resolved = _resolve_ts_code(sym)
             if resolved and resolved[0] == self.config.market:
@@ -753,6 +831,7 @@ class BacktestData:
         flow_ctx_by_day: dict[str, dict] = {}
         try:
             from data_sync_service.service.trendok import _build_industry_flow_context
+
             for d in self.calendar:
                 try:
                     flow_ctx_by_day[d] = _build_industry_flow_context(d)
@@ -762,6 +841,7 @@ class BacktestData:
             flow_ctx_by_day = {d: {"ok": False} for d in self.calendar}
         # full universe for fidelity (parallelized)
         from concurrent.futures import ThreadPoolExecutor
+
         def _score_one(args):
             ts_code, sym, day, flow_ctx, regime = args
             bars = self.bars_by_ts.get(ts_code, [])
@@ -769,11 +849,20 @@ class BacktestData:
             if len(window) < 60:
                 return None
             industry = self.industry_by_ts.get(ts_code)
-            res = _trendok_one(symbol=sym, name=None, industry=industry, bars=window, flow_ctx=flow_ctx, market_regime=regime, params=params)
+            res = _trendok_one(
+                symbol=sym,
+                name=None,
+                industry=industry,
+                bars=window,
+                flow_ctx=flow_ctx,
+                market_regime=regime,
+                params=params,
+            )
             sc = res.get("score")
             if isinstance(sc, (int, float)):
                 return (sym, float(sc))
             return None
+
         for day in self.calendar:
             flow_ctx = flow_ctx_by_day.get(day, {"ok": False})
             regime = self.regime_by_day.get(day)
@@ -851,7 +940,10 @@ def load_benchmarks(start_date: str, end_date: str) -> list[dict[str, Any]]:
                 if start_px <= 0:
                     continue
                 total = (end_px / start_px - 1.0) * 100.0
-                years = max((date.fromisoformat(end_date) - date.fromisoformat(start_date)).days / 365.25, 1 / 365.25)
+                years = max(
+                    (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days / 365.25,
+                    1 / 365.25,
+                )
                 out.append(
                     {
                         "ts_code": code,
@@ -908,8 +1000,7 @@ def _load_delist_dates(ts_codes: set[str]) -> dict[str, str]:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT ts_code, delist_date FROM stock_basic "
-                    "WHERE delist_date IS NOT NULL",
+                    "SELECT ts_code, delist_date FROM stock_basic WHERE delist_date IS NOT NULL",
                 )
                 rows = cur.fetchall()
         out: dict[str, str] = {}
@@ -1181,9 +1272,7 @@ def _load_industry_data(
     within_rank_by_day: dict[str, dict[str, float]] = {}
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT ts_code, industry_name FROM stock_eastmoney_industry"
-            )
+            cur.execute("SELECT ts_code, industry_name FROM stock_eastmoney_industry")
             for ts, ind in cur.fetchall():
                 if ts and ind:
                     ind_map[str(ts)] = str(ind)
@@ -1220,9 +1309,7 @@ def _load_industry_data(
                     if len(ind_sum) < 5:  # too thin a market to rank industries
                         continue
                     if config.ind_mom_days > 0 and w == config.ind_mom_days:
-                        ind_avg = {
-                            ind: s / n for ind, (s, n) in ind_sum.items() if n >= 3
-                        }
+                        ind_avg = {ind: s / n for ind, (s, n) in ind_sum.items() if n >= 3}
                         ranked = sorted(ind_avg.items(), key=lambda kv: -kv[1])
                         total = len(ranked)
                         if total < 5:
@@ -1416,16 +1503,21 @@ def _load_value_comp_ranks(
         if ts not in universe_ts or bool(r.is_fin):
             continue
         ann = r.ann_date.strftime("%Y-%m-%d")
-        rows_by_ts.setdefault(ts, []).append((
-            ann,
-            (num(r.n_income_attr_p_sq_ttm), num(r.total_revenue_sq_ttm),
-             num(r.total_hldr_eqy_inc_min_int), num(r.free_cashflow_sq_ttm)),
-        ))
+        rows_by_ts.setdefault(ts, []).append(
+            (
+                ann,
+                (
+                    num(r.n_income_attr_p_sq_ttm),
+                    num(r.total_revenue_sq_ttm),
+                    num(r.total_hldr_eqy_inc_min_int),
+                    num(r.free_cashflow_sq_ttm),
+                ),
+            )
+        )
     for v in rows_by_ts.values():
         v.sort(key=lambda kv: kv[0])
     pos_by_ts: dict[str, dict[str, int]] = {
-        ts: {d: i for i, (d, _c) in enumerate(series)}
-        for ts, series in closes_by_ts.items()
+        ts: {d: i for i, (d, _c) in enumerate(series)} for ts, series in closes_by_ts.items()
     }
 
     def pct(items: list[tuple[str, float]]) -> dict[str, float]:
@@ -1615,6 +1707,7 @@ def _trend_score(
 
     return (rs if rs is not None else 0.0) * 40.0 + 30.0 * mult + nzd
 
+
 def _load_sentiment_risk(config: BacktestConfig) -> dict[str, str]:
     """Per-day sentiment risk_mode (live gate _RISK_DEFEND input).
 
@@ -1687,9 +1780,7 @@ def _load_st_names() -> set[str]:
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT ts_code FROM stock_basic WHERE name LIKE '%ST%'"
-                )
+                cur.execute("SELECT ts_code FROM stock_basic WHERE name LIKE '%ST%'")
                 for (ts,) in cur.fetchall():
                     if ts:
                         out.add(str(ts))
@@ -1811,7 +1902,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     _exit_cost_frac = config.slippage_pct / 100.0 + _cfrac
     gated_blocks: dict[str, int] = defaultdict(int)
     strength_cache: dict[str, float] = {}  # §19.2 D1: day -> strength score
-    last_panic_idx = -10 ** 9
+    last_panic_idx = -(10**9)
     day_index = 0
     settle_n = int(config.settle_lock_sessions or 0)
     settled_cash = 1.0  # usable-for-entries cash; diverges from nav_cash only when settle_n > 0
@@ -1894,7 +1985,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         bars = data.bars_by_ts.get(ts)
         if not bars:
             return 1.0
-        recent = [(b, float(b[2]), float(b[3])) for b in bars if str(b[0]) <= day][-config.atr_size_window:]
+        recent = [(b, float(b[2]), float(b[3])) for b in bars if str(b[0]) <= day][
+            -config.atr_size_window :
+        ]
         if len(recent) < max(5, config.atr_size_window // 2):
             return 1.0
         tr_sum = 0.0
@@ -1927,9 +2020,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         bars = data.bars_by_ts.get(ts)
         if not bars:
             return 0.0
-        recent = sorted(
-            [b for b in bars if str(b[0]) <= day], key=lambda b: str(b[0])
-        )[-15:]
+        recent = sorted([b for b in bars if str(b[0]) <= day], key=lambda b: str(b[0]))[-15:]
         if len(recent) < 8:
             return 0.0
         trs: list[float] = []
@@ -2003,17 +2094,17 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         # with zero fresh entries; caps fresh opens at M/session for the
         # next 5 sessions once entries resume (this session counts as day 1).
         ramp_on = config.drought_ramp_sessions > 0 and config.drought_ramp_max > 0
-        ramp_cap_today = config.drought_ramp_max if (ramp_on and (ramp_left > 0 or sessions_since_entry >= config.drought_ramp_sessions)) else 0
+        ramp_cap_today = (
+            config.drought_ramp_max
+            if (ramp_on and (ramp_left > 0 or sessions_since_entry >= config.drought_ramp_sessions))
+            else 0
+        )
         # TIP-016 A: product-level throttle membership for today (windows are
         # pre-derived from the joint NAV watermark by the outer loop).
-        throttle_on = any(
-            str(w0) <= day <= str(w1) for (w0, w1) in config.throttle_windows
-        )
+        throttle_on = any(str(w0) <= day <= str(w1) for (w0, w1) in config.throttle_windows)
         # TIP-017 B (frozen): national-team gate — CN line, blocks NEW exposure
         # (fresh entries and swaps) while the rescue-flow state is ON.
-        national_team_on = (
-            config.national_team_gate and bool(data.national_team_by_day.get(day))
-        )
+        national_team_on = config.national_team_gate and bool(data.national_team_by_day.get(day))
         opened_today = 0
         if settle_n > 0 and pending_settle:
             # T+N settlement: proceeds sold on day k become usable ON day k+N.
@@ -2029,7 +2120,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         if config.swap_max_per_day > 0:
             held = []
             for sym, pos in positions.items():
-                if _calendar_days_between(str(pos["entry_date"]), day, data.calendar) < config.swap_min_hold_days:
+                if (
+                    _calendar_days_between(str(pos["entry_date"]), day, data.calendar)
+                    < config.swap_min_hold_days
+                ):
                     continue
                 rsv = data.rs_rank_by_day.get(day, {}).get(pos["ts_code"])
                 if rsv is not None and rsv < config.swap_weak_rs_below:
@@ -2058,8 +2152,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if px is None or px <= 0:
                     continue
                 regime = data.regime_by_day.get(day)
-                pos_scale = 1.0 if regime == REGIME_STRONG else (
-                    config.diverging_scale if regime == REGIME_DIVERGING else 0.0
+                pos_scale = (
+                    1.0
+                    if regime == REGIME_STRONG
+                    else (config.diverging_scale if regime == REGIME_DIVERGING else 0.0)
                 )
                 cands.append((rsv, score, sym, ts, px, pos_scale))
             cands.sort(reverse=True)  # strongest RS first
@@ -2088,7 +2184,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         gross_pnl_pct=round(gross, 4),
                         costs_pct=round(_rt_cost, 4),
                         pnl_pct=round(net, 4),
-                        holding_days=_calendar_days_between(str(pos_w["entry_date"]), day, data.calendar),
+                        holding_days=_calendar_days_between(
+                            str(pos_w["entry_date"]), day, data.calendar
+                        ),
                         close_reason=CLOSE_REASON_SWAPPED,
                         score_at_entry=pos_w.get("score_at_entry"),
                         position_pct=float(pos_w.get("position_pct") or config.position_pct),
@@ -2100,14 +2198,16 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     "market": config.market,
                     "ts_code": ts_c,
                     "entry_date": day,
-                     "entry_price": px_c,
-                     "peak_price": px_c,
-                     "score_at_entry": day_scores[sym_c],
-                     "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day)
-                     * config._env_position_scale(data.env_by_day.get(day))
-                     * (config.throttle_scale if throttle_on else 1.0),
-                     "industry": data.industry_by_ts.get(ts_c),
-                 }
+                    "entry_price": px_c,
+                    "peak_price": px_c,
+                    "score_at_entry": day_scores[sym_c],
+                    "position_pct": config.position_pct
+                    * pos_scale_c
+                    * atr_scale_for(ts_c, day)
+                    * config._env_position_scale(data.env_by_day.get(day))
+                    * (config.throttle_scale if throttle_on else 1.0),
+                    "industry": data.industry_by_ts.get(ts_c),
+                }
                 swapped_syms.add(sym_c)
 
         # 1) Entries: score >= threshold, gates passed, not already held,
@@ -2236,7 +2336,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < need:
                     gated_blocks["risk_adj_mom"] += 1
                     continue
-                ret = closes_sorted[idx][1] / closes_sorted[idx - config.risk_adj_mom_ret_days][1] - 1.0
+                ret = (
+                    closes_sorted[idx][1] / closes_sorted[idx - config.risk_adj_mom_ret_days][1]
+                    - 1.0
+                )
                 rets = []
                 for j in range(idx - config.risk_adj_mom_vol_days, idx):
                     prev = closes_sorted[j - 1][1]
@@ -2247,7 +2350,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     continue
                 mean = sum(rets) / len(rets)
                 var = sum((r - mean) ** 2 for r in rets) / len(rets)
-                vol = var ** 0.5
+                vol = var**0.5
                 if vol <= 0:
                     gated_blocks["risk_adj_mom"] += 1
                     continue
@@ -2296,7 +2399,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < 250:
                     gated_blocks["high52w"] += 1
                     continue
-                hi = max(c for (_d, c) in closes[idx - 250: idx])
+                hi = max(c for (_d, c) in closes[idx - 250 : idx])
                 if hi <= 0 or (closes[idx][1] / hi) * 100.0 < config.high_52w_min_pct:
                     gated_blocks["high52w"] += 1
                     continue
@@ -2320,7 +2423,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     gated_blocks["value_mom_missing"] += 1
                     continue
                 v_pct, m_pct = vv
-                score = (0.5 * v_pct + 0.5 * m_pct) if config.value_mom_gate == "composite" else m_pct
+                score = (
+                    (0.5 * v_pct + 0.5 * m_pct) if config.value_mom_gate == "composite" else m_pct
+                )
                 if score < 0.5:
                     gated_blocks["value_mom_gate"] += 1
                     continue
@@ -2396,7 +2501,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < config.breakout_days:
                     gated_blocks["breakout"] += 1
                     continue
-                prior = [c for (_d, c) in closes[idx - config.breakout_days: idx] if c is not None]
+                prior = [c for (_d, c) in closes[idx - config.breakout_days : idx] if c is not None]
                 if not prior or closes[idx][1] <= max(prior):
                     gated_blocks["breakout"] += 1
                     continue
@@ -2410,9 +2515,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if not bars:
                     gated_blocks["volume"] += 1
                     continue
-                prior_bars = sorted(
-                    [b for b in bars if str(b[0]) < day], key=lambda b: str(b[0])
-                )[-20:]
+                prior_bars = sorted([b for b in bars if str(b[0]) < day], key=lambda b: str(b[0]))[
+                    -20:
+                ]
                 if len(prior_bars) < 20:
                     gated_blocks["volume"] += 1
                     continue
@@ -2451,8 +2556,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < 40:
                     gated_blocks["ma_slope"] += 1
                     continue
-                ma_now = sum(c for (_d, c) in closes_sorted[idx - 19: idx + 1]) / 20.0
-                ma_prev = sum(c for (_d, c) in closes_sorted[idx - 39: idx - 19]) / 20.0
+                ma_now = sum(c for (_d, c) in closes_sorted[idx - 19 : idx + 1]) / 20.0
+                ma_prev = sum(c for (_d, c) in closes_sorted[idx - 39 : idx - 19]) / 20.0
                 if ma_prev <= 0:
                     gated_blocks["ma_slope"] += 1
                     continue
@@ -2478,7 +2583,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < 199:
                     gated_blocks["ma200"] += 1
                     continue
-                ma200 = sum(c for (_d, c) in closes_sorted[idx - 199: idx + 1]) / 200.0
+                ma200 = sum(c for (_d, c) in closes_sorted[idx - 199 : idx + 1]) / 200.0
                 if ma200 <= 0:
                     gated_blocks["ma200"] += 1
                     continue
@@ -2501,9 +2606,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if idx is None or idx < 20:
                     gated_blocks["ma_cross"] += 1
                     continue
-                ma5 = sum(c for (_d, c) in closes_sorted[idx - 4: idx + 1]) / 5.0
-                ma10 = sum(c for (_d, c) in closes_sorted[idx - 9: idx + 1]) / 10.0
-                ma20 = sum(c for (_d, c) in closes_sorted[idx - 19: idx + 1]) / 20.0
+                ma5 = sum(c for (_d, c) in closes_sorted[idx - 4 : idx + 1]) / 5.0
+                ma10 = sum(c for (_d, c) in closes_sorted[idx - 9 : idx + 1]) / 10.0
+                ma20 = sum(c for (_d, c) in closes_sorted[idx - 19 : idx + 1]) / 20.0
                 if config.ma_aligned:
                     # P6: MA5 > MA10 > MA20 (three-line alignment state).
                     if not (ma5 > ma10 > ma20):
@@ -2516,10 +2621,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     # session had MA5 <= MA20 and this one has MA5 > MA20.
                     crossed = False
                     for j in range(idx, max(idx - config.ma_cross_days, 20) - 1, -1):
-                        ma5_j = sum(c for (_d, c) in closes_sorted[j - 4: j + 1]) / 5.0
-                        ma20_j = sum(c for (_d, c) in closes_sorted[j - 19: j + 1]) / 20.0
-                        ma5_jprev = sum(c for (_d, c) in closes_sorted[j - 5: j]) / 5.0
-                        ma20_jprev = sum(c for (_d, c) in closes_sorted[j - 20: j]) / 20.0
+                        ma5_j = sum(c for (_d, c) in closes_sorted[j - 4 : j + 1]) / 5.0
+                        ma20_j = sum(c for (_d, c) in closes_sorted[j - 19 : j + 1]) / 20.0
+                        ma5_jprev = sum(c for (_d, c) in closes_sorted[j - 5 : j]) / 5.0
+                        ma20_jprev = sum(c for (_d, c) in closes_sorted[j - 20 : j]) / 20.0
                         if ma5_jprev <= ma20_jprev and ma5_j > ma20_j:
                             crossed = True
                             break
@@ -2650,11 +2755,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 gated_blocks["limit_up"] += 1
                 continue
             regime = data.regime_by_day.get(day)
-            pos_scale = 1.0 if regime == REGIME_STRONG else (
-                config.diverging_scale if regime == REGIME_DIVERGING else 0.0
+            pos_scale = (
+                1.0
+                if regime == REGIME_STRONG
+                else (config.diverging_scale if regime == REGIME_DIVERGING else 0.0)
             )
             # E1: cash constraint — total nominal exposure capped at 100%
-            eff_pct = config.position_pct * pos_scale * atr_scale_for(ts, day) * config._env_position_scale(data.env_by_day.get(day))
+            eff_pct = (
+                config.position_pct
+                * pos_scale
+                * atr_scale_for(ts, day)
+                * config._env_position_scale(data.env_by_day.get(day))
+            )
             if throttle_on:
                 # TIP-016 A half mode: new entries at reduced size inside the
                 # joint-watermark throttle window (0 < scale <= 1 validated).
@@ -2770,8 +2882,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 target_pnl_pct=config.target_pnl_pct,
                 max_hold_days=(
                     config.max_hold_env_shorten
-                    if config.max_hold_env_shorten > 0
-                    and pos.get("entry_env") == ENV_UPTREND
+                    if config.max_hold_env_shorten > 0 and pos.get("entry_env") == ENV_UPTREND
                     else config.max_hold_days
                 ),
                 score_floor=config.score_floor,
@@ -2792,7 +2903,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 # flat losers. Deliberately AFTER trailing (a winner that
                 # pulled back below entry is still riding the trail).
                 reason = CLOSE_REASON_TIME_STOP
-            if reason is None and config.profit_trail_trigger_pct > 0 and config.profit_trail_pct < 0:
+            if (
+                reason is None
+                and config.profit_trail_trigger_pct > 0
+                and config.profit_trail_pct < 0
+            ):
                 # A6 (2026-08-12 · defensive): once the leg is past the profit
                 # trigger, tighten the allowed pullback from the peak — protect
                 # realized gains instead of giving 8% back on a winning leg.
@@ -2856,7 +2971,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     add_cost = add_entry * (1 + slip / 100.0)
                     add_gross = (close_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
                     # NAV: credit the realised add P&L (exit cost applied).
-                    add_proceeds = add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
+                    add_proceeds = (
+                        add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
+                    )
                     nav_cash += add_proceeds
                     if settle_n > 0:
                         pending_settle.append((day_index + settle_n, add_proceeds))
@@ -2871,14 +2988,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             gross_pnl_pct=round(add_gross, 4),
                             costs_pct=round(_rt_cost, 4),
                             pnl_pct=round(add_gross - _rt_cost, 4),
-                            holding_days=_calendar_days_between(str(add["entry_date"]), day, data.calendar),
+                            holding_days=_calendar_days_between(
+                                str(add["entry_date"]), day, data.calendar
+                            ),
                             close_reason=reason,
                             score_at_entry=pos.get("score_at_entry"),
                             position_pct=float(add.get("position_pct") or 0.0),
                         )
                     )
                 # NAV: credit the realised main-leg P&L (exit cost applied).
-                main_proceeds = pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
+                main_proceeds = (
+                    pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
+                )
                 nav_cash += main_proceeds
                 if settle_n > 0:
                     pending_settle.append((day_index + settle_n, main_proceeds))
@@ -2892,7 +3013,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 and pos.get("adds", 0) < config.pyramid_max_adds
                 and gross >= config.pyramid_trigger_pct
             ):
-                add_pct = float(pos.get("position_pct") or config.position_pct) * config.pyramid_add_scale
+                add_pct = (
+                    float(pos.get("position_pct") or config.position_pct) * config.pyramid_add_scale
+                )
                 # E1: pyramid also respects cash cap
                 total_now = sum(p["position_pct"] for p in positions.values()) + sum(
                     a["position_pct"] for pp in positions.values() for a in pp.get("adds_list", [])
@@ -2900,7 +3023,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if total_now + add_pct > 1.0 + 1e-9:
                     gated_blocks["cash_cap_pyramid"] = gated_blocks.get("cash_cap_pyramid", 0) + 1
                 elif settle_n > 0 and settled_cash + 1e-9 < add_pct * (1.0 + _entry_cost_frac):
-                    gated_blocks["settle_lock_pyramid"] = gated_blocks.get("settle_lock_pyramid", 0) + 1
+                    gated_blocks["settle_lock_pyramid"] = (
+                        gated_blocks.get("settle_lock_pyramid", 0) + 1
+                    )
                 else:
                     if settle_n > 0:
                         settled_cash -= add_pct * (1.0 + _entry_cost_frac)
@@ -2974,7 +3099,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 gross_pnl_pct=round(gross, 4),
                 costs_pct=round(_rt_cost, 4),
                 pnl_pct=round(net, 4),
-                holding_days=_calendar_days_between(str(pos["entry_date"]), last_day, data.calendar),
+                holding_days=_calendar_days_between(
+                    str(pos["entry_date"]), last_day, data.calendar
+                ),
                 close_reason=CLOSE_REASON_END_OF_WINDOW,
                 score_at_entry=pos.get("score_at_entry"),
                 position_pct=float(pos.get("position_pct") or config.position_pct),
@@ -2995,7 +3122,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     gross_pnl_pct=round(add_gross, 4),
                     costs_pct=round(_rt_cost, 4),
                     pnl_pct=round(add_gross - _rt_cost, 4),
-                    holding_days=_calendar_days_between(str(add["entry_date"]), last_day, data.calendar),
+                    holding_days=_calendar_days_between(
+                        str(add["entry_date"]), last_day, data.calendar
+                    ),
                     close_reason=CLOSE_REASON_END_OF_WINDOW,
                     score_at_entry=pos.get("score_at_entry"),
                     position_pct=float(add.get("position_pct") or 0.0),
@@ -3004,7 +3133,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         # NAV: credit the realised window-end P&L (main + add legs).
         nav_cash += pos["position_pct"] * (final_px / entry_px) * (1.0 - _exit_cost_frac)
         for add in pos.get("adds_list", []):
-            nav_cash += add["position_pct"] * (final_px / float(add["entry_price"])) * (1.0 - _exit_cost_frac)
+            nav_cash += (
+                add["position_pct"]
+                * (final_px / float(add["entry_price"]))
+                * (1.0 - _exit_cost_frac)
+            )
         # Must drop the closed position or open_at_end would count it too
         # (it counts only the positions we could not price at window end).
         del positions[sym]
@@ -3041,10 +3174,16 @@ def _summarize(
     buckets: dict[str, dict[str, Any]] = {}
     for t in closed:
         s = t.score_at_entry
-        bucket = ">=90" if s is not None and s >= 90 else (
-            "85-90" if s is not None and s >= 85 else (
-                "80-85" if s is not None and s >= 80 else (
-                    "70-80" if s is not None and s >= 70 else "<70"
+        bucket = (
+            ">=90"
+            if s is not None and s >= 90
+            else (
+                "85-90"
+                if s is not None and s >= 85
+                else (
+                    "80-85"
+                    if s is not None and s >= 80
+                    else ("70-80" if s is not None and s >= 70 else "<70")
                 )
             )
         )
@@ -3075,7 +3214,7 @@ def _summarize(
     if daily_rets:
         mean_r = statistics.mean(daily_rets)
         std_r = statistics.stdev(daily_rets) if len(daily_rets) > 1 else 0.0
-        sharpe_val = round(mean_r / std_r * (252 ** 0.5), 2) if std_r > 0 else None
+        sharpe_val = round(mean_r / std_r * (252**0.5), 2) if std_r > 0 else None
         n_days = len(nav_curve) - 1
         cagr = (nav_end ** (252.0 / n_days) - 1.0) if n_days > 0 and nav_end > 0 else 0.0
     else:
@@ -3118,7 +3257,8 @@ def _summarize(
 def _window_years(config: BacktestConfig) -> float:
     try:
         return max(
-            (date.fromisoformat(config.end_date) - date.fromisoformat(config.start_date)).days / 365.25,
+            (date.fromisoformat(config.end_date) - date.fromisoformat(config.start_date)).days
+            / 365.25,
             1 / 365.25,
         )
     except ValueError:
@@ -3151,7 +3291,7 @@ def _sharpe_from_closes(
     stdev = statistics.stdev(rets) if len(rets) > 1 else 0.0
     if stdev <= 0:
         return None
-    return round(mean / stdev * (252 ** 0.5), 2)
+    return round(mean / stdev * (252**0.5), 2)
 
 
 def with_benchmark_excess(

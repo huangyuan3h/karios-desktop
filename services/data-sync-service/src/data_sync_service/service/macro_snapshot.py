@@ -254,7 +254,9 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                 "signal": resolved.get("signal"),
                 "signalLabel": resolved.get("signalLabel"),
                 "warning": put_warning,
-                "diagnostics": resolved.get("diagnostics") if isinstance(resolved.get("diagnostics"), dict) else {},
+                "diagnostics": resolved.get("diagnostics")
+                if isinstance(resolved.get("diagnostics"), dict)
+                else {},
             }
             break
     if put_warning:

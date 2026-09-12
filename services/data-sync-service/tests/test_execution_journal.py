@@ -14,8 +14,20 @@ from data_sync_service.service.execution_journal import (
 def test_content_hash_stable_for_same_decisions():
     gate = {"mode": "ATTACK", "allowNewEntries": True}
     cards = [
-        {"symbol": "CN:600000", "action": "BUY", "why": "MAINLINE_5D_TOP3", "trigger": 9.5, "positionPct": None},
-        {"symbol": "CN:000001", "action": "WATCH", "why": "WATCH", "trigger": None, "positionPct": 5},
+        {
+            "symbol": "CN:600000",
+            "action": "BUY",
+            "why": "MAINLINE_5D_TOP3",
+            "trigger": 9.5,
+            "positionPct": None,
+        },
+        {
+            "symbol": "CN:000001",
+            "action": "WATCH",
+            "why": "WATCH",
+            "trigger": None,
+            "positionPct": 5,
+        },
     ]
     # Order of cards should not matter
     h1 = compute_content_hash(gate, cards)
@@ -32,8 +44,12 @@ def test_content_hash_changes_on_action():
 
 def test_content_hash_changes_on_hard_stop():
     gate = {"mode": "ATTACK", "allowNewEntries": True}
-    a = [{"symbol": "CN:600000", "action": "HOLD", "why": "HOLD", "hardStop": 9.0, "trailStop": None}]
-    b = [{"symbol": "CN:600000", "action": "HOLD", "why": "HOLD", "hardStop": 9.5, "trailStop": None}]
+    a = [
+        {"symbol": "CN:600000", "action": "HOLD", "why": "HOLD", "hardStop": 9.0, "trailStop": None}
+    ]
+    b = [
+        {"symbol": "CN:600000", "action": "HOLD", "why": "HOLD", "hardStop": 9.5, "trailStop": None}
+    ]
     assert compute_content_hash(gate, a) != compute_content_hash(gate, b)
 
 
@@ -42,7 +58,13 @@ def test_diff_gate_mode_and_symbol_action():
         "id": "s1",
         "gate": {"mode": "HOLD_ONLY", "allowNewEntries": False},
         "cards": [
-            {"symbol": "CN:600000", "action": "BUY", "why": "MAINLINE_OK", "trigger": 10, "positionPct": 5},
+            {
+                "symbol": "CN:600000",
+                "action": "BUY",
+                "why": "MAINLINE_OK",
+                "trigger": 10,
+                "positionPct": 5,
+            },
         ],
     }
     curr_gate = {"mode": "ATTACK", "allowNewEntries": True}
@@ -121,8 +143,20 @@ def test_diff_skips_symbol_flood_on_first_snapshot():
 
 def test_symbols_with_latest_action_deltas_ignores_silent_watch():
     day_changes = [
-        {"scope": "symbol", "symbol": "CN:A", "field": "why", "oldValue": "WATCH", "newValue": "WATCH"},
-        {"scope": "symbol", "symbol": "CN:B", "field": "action", "oldValue": "WATCH", "newValue": "BUY"},
+        {
+            "scope": "symbol",
+            "symbol": "CN:A",
+            "field": "why",
+            "oldValue": "WATCH",
+            "newValue": "WATCH",
+        },
+        {
+            "scope": "symbol",
+            "symbol": "CN:B",
+            "field": "action",
+            "oldValue": "WATCH",
+            "newValue": "BUY",
+        },
         {"scope": "gate", "symbol": None, "field": "mode"},
     ]
     assert symbols_with_latest_action_deltas(day_changes) == {"CN:B"}
@@ -270,6 +304,8 @@ def test_build_journal_markdown_collapses_bulk_init_changes(monkeypatch):
     # Only the collapsed row + the single real change remain (was 51 rows).
     assert changes_section.count("\n| 2026-07-18") == 2
     assert "| CN:600000 | action | WATCH | BUY |" in changes_section
+
+
 def test_build_journal_markdown_drops_recent_snapshots_block(monkeypatch):
     """2026-08-01 · Recent snapshots block removed (only signal changes matter)."""
     monkeypatch.setattr(
@@ -298,10 +334,34 @@ def test_build_journal_markdown_drops_recent_snapshots_block(monkeypatch):
 def test_filter_journal_changes_drops_small_hardstop_drifts():
     """hardStop drift < 1% is suppressed."""
     changes = [
-        {"scope": "symbol", "symbol": "CN:A", "field": "hardStop", "oldValue": 36.87, "newValue": 36.94},  # ~0.19% — noise
-        {"scope": "symbol", "symbol": "CN:A", "field": "hardStop", "oldValue": 10.0, "newValue": 9.85},  # 1.5% — kept
-        {"scope": "symbol", "symbol": "CN:B", "field": "hardStop", "oldValue": 10.0, "newValue": 8.5},  # 15% — kept
-        {"scope": "symbol", "symbol": "CN:C", "field": "action", "oldValue": "HOLD", "newValue": "TRIM"},
+        {
+            "scope": "symbol",
+            "symbol": "CN:A",
+            "field": "hardStop",
+            "oldValue": 36.87,
+            "newValue": 36.94,
+        },  # ~0.19% — noise
+        {
+            "scope": "symbol",
+            "symbol": "CN:A",
+            "field": "hardStop",
+            "oldValue": 10.0,
+            "newValue": 9.85,
+        },  # 1.5% — kept
+        {
+            "scope": "symbol",
+            "symbol": "CN:B",
+            "field": "hardStop",
+            "oldValue": 10.0,
+            "newValue": 8.5,
+        },  # 15% — kept
+        {
+            "scope": "symbol",
+            "symbol": "CN:C",
+            "field": "action",
+            "oldValue": "HOLD",
+            "newValue": "TRIM",
+        },
         {"scope": "gate", "field": "mode", "oldValue": "ATTACK", "newValue": "DEFEND"},
     ]
     out = filter_journal_changes(changes)

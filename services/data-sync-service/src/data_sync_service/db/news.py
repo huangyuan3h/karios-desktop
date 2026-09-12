@@ -27,6 +27,7 @@ def _strip_html(text: str) -> str:
         text = text.replace(entity, char)
     return _MULTI_SPACE_RE.sub(" ", text).strip()
 
+
 SOURCES_TABLE = "news_sources"
 ITEMS_TABLE = "news_items"
 
@@ -187,7 +188,7 @@ def update_source(
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                UPDATE {SOURCES_TABLE} SET {', '.join(updates)} WHERE id = %s
+                UPDATE {SOURCES_TABLE} SET {", ".join(updates)} WHERE id = %s
                 RETURNING id, name, url, enabled, last_fetch, created_at, tier, category
                 """,
                 params,
@@ -363,7 +364,9 @@ def mark_item_important(item_id: str, is_important: bool) -> bool:
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE {ITEMS_TABLE} SET is_important = %s WHERE id = %s", (is_important, item_id))
+            cur.execute(
+                f"UPDATE {ITEMS_TABLE} SET is_important = %s WHERE id = %s", (is_important, item_id)
+            )
             ok = (cur.rowcount or 0) > 0
         conn.commit()
     return ok
@@ -373,7 +376,9 @@ def update_source_last_fetch(source_id: str, fetched_at: str) -> None:
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE {SOURCES_TABLE} SET last_fetch = %s WHERE id = %s", (fetched_at, source_id))
+            cur.execute(
+                f"UPDATE {SOURCES_TABLE} SET last_fetch = %s WHERE id = %s", (fetched_at, source_id)
+            )
         conn.commit()
 
 
@@ -393,6 +398,7 @@ def delete_old_items(hours: int = 72) -> int:
 # ---------------------------------------------------------------------------
 # Track 2: LLM enrichment helpers
 # ---------------------------------------------------------------------------
+
 
 def fetch_pending_enrichment(limit: int = 50) -> list[dict[str, Any]]:
     """Return items needing enrichment: never tried OR failed and ready to retry.

@@ -21,9 +21,14 @@ def _no_real_job_records(monkeypatch: pytest.MonkeyPatch):
         lambda *a, **k: None,
     )
 
+
 MODULES = {
     "adj_factor_job": ("adj_factor_full_sync", "sync_adj_factor_full", "30 18 * * 5"),
-    "eastmoney_industry_job": ("eastmoney_industry_sync", "sync_eastmoney_industry_incremental", "0 18 * * 1-5"),
+    "eastmoney_industry_job": (
+        "eastmoney_industry_sync",
+        "sync_eastmoney_industry_incremental",
+        "0 18 * * 1-5",
+    ),
     "etf_daily_job": ("sleeve_etf_daily_sync", "sync_sleeve_etfs", "25 17 * * 1-5"),
     "fund_basic_job": ("etf_fund_basic_sync", "sync_etf_fund_basic", "0 4 1 * *"),
     "hk_basic_job": ("hk_basic_sync", "sync_hk_basic", "30 3 1 * *"),
@@ -67,7 +72,9 @@ def test_cron_job_run_logs_skipped(monkeypatch: pytest.MonkeyPatch, mod_name: st
     _, svc, _ = MODULES[mod_name]
     if mod_name == "hk_industry_job":
         monkeypatch.setattr(job, "get_hk_industry_status", lambda: {"missingHk": 0, "totalHk": 0})
-    monkeypatch.setattr(job, svc, lambda **kw: {"ok": True, "skipped": True, "message": "noop", "coveragePct": 100})
+    monkeypatch.setattr(
+        job, svc, lambda **kw: {"ok": True, "skipped": True, "message": "noop", "coveragePct": 100}
+    )
     msgs = _capture_logs(monkeypatch, job)
     job.run()
     assert any("skipped" in m for m in msgs)
@@ -92,9 +99,7 @@ def test_etf_daily_full_job_constants_and_skipped(monkeypatch: pytest.MonkeyPatc
 
     assert job.FULL_JOB_ID == "etf_daily_full_sync"
     assert job.FULL_CRON_EXPRESSION == "0 19 1 * *"
-    monkeypatch.setattr(
-        job, "sync_etf_daily_full", lambda **kw: {"ok": True, "skipped": True}
-    )
+    monkeypatch.setattr(job, "sync_etf_daily_full", lambda **kw: {"ok": True, "skipped": True})
     msgs = _capture_logs(monkeypatch, job)
     job.run_full()
     assert any("skipped" in m for m in msgs)
@@ -127,23 +132,51 @@ class TestCreateScheduler:
         sched = scheduler_pkg.create_scheduler()
         ids = {job[2] for job in sched.jobs}
         expected = {
-            "stock_basic_sync", "hk_basic_sync", "hk_daily_full_sync", "etf_fund_basic_sync",
-            "etf_daily_full_sync", "daily_full_sync", "adj_factor_full_sync", "close_sync",
-            "close_sync_catchup", "news_fetch_job", "alpha_radar_ingest_job",
-            "alpha_radar_process_job", "alpha_radar_pipeline_job", "index_daily_full_sync",
-            "macro_daily_full_sync", "watchlist_automation",             "intraday_score",
+            "stock_basic_sync",
+            "hk_basic_sync",
+            "hk_daily_full_sync",
+            "etf_fund_basic_sync",
+            "etf_daily_full_sync",
+            "daily_full_sync",
+            "adj_factor_full_sync",
+            "close_sync",
+            "close_sync_catchup",
+            "news_fetch_job",
+            "alpha_radar_ingest_job",
+            "alpha_radar_process_job",
+            "alpha_radar_pipeline_job",
+            "index_daily_full_sync",
+            "macro_daily_full_sync",
+            "watchlist_automation",
+            "intraday_score",
             "eastmoney_industry_sync",
             "em_probe",
-            "hk_industry_sync", "index_basic_sync", "cn_industry_post_close_sync",
-            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "paper_twin_star",
-            "allocation_decide", "backtest_paper_recon",
-            "twin_star_reminder", "twin_star_intraday", "timeline_warmup",
-            "stock_daily_basic_sync", "sleeve_etf_daily_sync",
-            "news_enrich_job", "research_report_sync",
-            "decision_snapshot", "decision_outcome", "decision_action_tracking",
-            "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
+            "hk_industry_sync",
+            "index_basic_sync",
+            "cn_industry_post_close_sync",
+            "paper_trading_intake",
+            "paper_trading_update",
+            "paper_s3_intake",
+            "paper_twin_star",
+            "allocation_decide",
+            "backtest_paper_recon",
+            "twin_star_reminder",
+            "twin_star_intraday",
+            "timeline_warmup",
+            "stock_daily_basic_sync",
+            "sleeve_etf_daily_sync",
+            "news_enrich_job",
+            "research_report_sync",
+            "decision_snapshot",
+            "decision_outcome",
+            "decision_action_tracking",
+            "morning_brief_am",
+            "morning_brief_pm",
+            "eod_chain_startup_catchup",
             "rolling_oos",
-            "trading_brief_open", "trading_brief_midday", "trading_brief_action",
+            "trading_brief_open",
+            "trading_brief_midday",
+            "trading_brief_action",
             "paper_chain_watchdog",
             "paper_backtest_mirror",
             "weekly_review",
@@ -198,7 +231,9 @@ class TestStockBasicJob:
     def test_run_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import stock_basic_job
 
-        monkeypatch.setattr(stock_basic_job, "sync_stock_basic", lambda: {"ok": False, "error": "boom"})
+        monkeypatch.setattr(
+            stock_basic_job, "sync_stock_basic", lambda: {"ok": False, "error": "boom"}
+        )
         msgs = _capture_logs(monkeypatch, stock_basic_job)
         stock_basic_job.run()
         assert any("stock_basic_sync failed" in m and "boom" in m for m in msgs)
@@ -208,8 +243,21 @@ class TestCloseSyncJob:
     def test_run_ok_runs_post(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import close_sync_job
 
-        monkeypatch.setattr(close_sync_job, "sync_close", lambda exchange, force: {"ok": True, "updated_daily_rows": 100, "updated_adj_factor_rows": 5, "trade_dates": ["2026-08-07"]})
-        monkeypatch.setattr(close_sync_job, "run_post_close_sync", lambda: {"indexDaily": {"ok": True}, "macroDaily": {"ok": True}})
+        monkeypatch.setattr(
+            close_sync_job,
+            "sync_close",
+            lambda exchange, force: {
+                "ok": True,
+                "updated_daily_rows": 100,
+                "updated_adj_factor_rows": 5,
+                "trade_dates": ["2026-08-07"],
+            },
+        )
+        monkeypatch.setattr(
+            close_sync_job,
+            "run_post_close_sync",
+            lambda: {"indexDaily": {"ok": True}, "macroDaily": {"ok": True}},
+        )
         msgs = _capture_logs(monkeypatch, close_sync_job)
         close_sync_job.run()
         assert any("close_sync ok" in m for m in msgs)
@@ -218,7 +266,11 @@ class TestCloseSyncJob:
     def test_run_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import close_sync_job
 
-        monkeypatch.setattr(close_sync_job, "sync_close", lambda exchange, force: {"ok": True, "skipped": True, "message": "not trading day"})
+        monkeypatch.setattr(
+            close_sync_job,
+            "sync_close",
+            lambda exchange, force: {"ok": True, "skipped": True, "message": "not trading day"},
+        )
         monkeypatch.setattr(close_sync_job, "run_post_close_sync", lambda: {})
         msgs = _capture_logs(monkeypatch, close_sync_job)
         close_sync_job.run()
@@ -227,7 +279,9 @@ class TestCloseSyncJob:
     def test_run_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import close_sync_job
 
-        monkeypatch.setattr(close_sync_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"})
+        monkeypatch.setattr(
+            close_sync_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"}
+        )
         msgs = _capture_logs(monkeypatch, close_sync_job)
         close_sync_job.run()
         assert any("close_sync failed" in m and "boom" in m for m in msgs)
@@ -237,7 +291,11 @@ class TestDailySyncJob:
     def test_run_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import daily_sync_job
 
-        monkeypatch.setattr(daily_sync_job, "sync_close", lambda exchange, force: {"ok": True, "updated_daily_rows": 10})
+        monkeypatch.setattr(
+            daily_sync_job,
+            "sync_close",
+            lambda exchange, force: {"ok": True, "updated_daily_rows": 10},
+        )
         msgs = _capture_logs(monkeypatch, daily_sync_job)
         daily_sync_job.run()
         assert any("ok" in m for m in msgs)
@@ -245,7 +303,9 @@ class TestDailySyncJob:
     def test_run_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import daily_sync_job
 
-        monkeypatch.setattr(daily_sync_job, "sync_close", lambda exchange, force: {"ok": True, "skipped": True})
+        monkeypatch.setattr(
+            daily_sync_job, "sync_close", lambda exchange, force: {"ok": True, "skipped": True}
+        )
         msgs = _capture_logs(monkeypatch, daily_sync_job)
         daily_sync_job.run()
         assert any("skipped" in m for m in msgs)
@@ -253,7 +313,9 @@ class TestDailySyncJob:
     def test_run_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import daily_sync_job
 
-        monkeypatch.setattr(daily_sync_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"})
+        monkeypatch.setattr(
+            daily_sync_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"}
+        )
         msgs = _capture_logs(monkeypatch, daily_sync_job)
         daily_sync_job.run()
         assert any("failed" in m for m in msgs)
@@ -272,17 +334,36 @@ class TestCloseCatchupJob:
         from data_sync_service.scheduler import close_catchup_job
 
         monkeypatch.setattr(close_catchup_job, "get_today_run", lambda job_type: {"success": True})
-        monkeypatch.setattr(close_catchup_job, "sync_close", lambda exchange, force: (_ for _ in ()).throw(AssertionError("should not run")))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "sync_close",
+            lambda exchange, force: (_ for _ in ()).throw(AssertionError("should not run")),
+        )
         close_catchup_job.run()
 
     def test_ok_records(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import close_catchup_job
 
         monkeypatch.setattr(close_catchup_job, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(close_catchup_job, "sync_close", lambda exchange, force: {"ok": True, "updated_daily_rows": 1, "updated_adj_factor_rows": 1, "trade_dates": ["2026-08-07"]})
+        monkeypatch.setattr(
+            close_catchup_job,
+            "sync_close",
+            lambda exchange, force: {
+                "ok": True,
+                "updated_daily_rows": 1,
+                "updated_adj_factor_rows": 1,
+                "trade_dates": ["2026-08-07"],
+            },
+        )
         monkeypatch.setattr(close_catchup_job, "run_post_close_sync", lambda: {"ok": True})
         records = []
-        monkeypatch.setattr(close_catchup_job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         close_catchup_job.run()
         assert records == [("close_sync_catchup", True, "2026-08-07", None)]
 
@@ -290,10 +371,20 @@ class TestCloseCatchupJob:
         from data_sync_service.scheduler import close_catchup_job
 
         monkeypatch.setattr(close_catchup_job, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(close_catchup_job, "sync_close", lambda exchange, force: {"ok": True, "skipped": True, "message": "not trading day"})
+        monkeypatch.setattr(
+            close_catchup_job,
+            "sync_close",
+            lambda exchange, force: {"ok": True, "skipped": True, "message": "not trading day"},
+        )
         monkeypatch.setattr(close_catchup_job, "run_post_close_sync", lambda: {})
         records = []
-        monkeypatch.setattr(close_catchup_job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         close_catchup_job.run()
         assert records == [("close_sync_catchup", True, "not trading day", "skipped")]
 
@@ -301,9 +392,17 @@ class TestCloseCatchupJob:
         from data_sync_service.scheduler import close_catchup_job
 
         monkeypatch.setattr(close_catchup_job, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(close_catchup_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"})
+        monkeypatch.setattr(
+            close_catchup_job, "sync_close", lambda exchange, force: {"ok": False, "error": "boom"}
+        )
         records = []
-        monkeypatch.setattr(close_catchup_job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         close_catchup_job.run()
         assert records == [("close_sync_catchup", False, None, "boom")]
 
@@ -311,9 +410,19 @@ class TestCloseCatchupJob:
         from data_sync_service.scheduler import close_catchup_job
 
         monkeypatch.setattr(close_catchup_job, "get_today_run", lambda job_type: None)
-        monkeypatch.setattr(close_catchup_job, "sync_close", lambda exchange, force: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "sync_close",
+            lambda exchange, force: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         records = []
-        monkeypatch.setattr(close_catchup_job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            close_catchup_job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         close_catchup_job.run()
         assert records == [("close_sync_catchup", False, None, "crash")]
 
@@ -322,18 +431,43 @@ class TestWatchlistAutomationJob:
     def test_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import watchlist_automation_job as job
 
-        monkeypatch.setattr(job, "run_watchlist_automation", lambda trigger, force: {"ok": True, "remove": [], "alphaAdd": [], "runId": "r1"})
+        monkeypatch.setattr(
+            job,
+            "run_watchlist_automation",
+            lambda trigger, force: {"ok": True, "remove": [], "alphaAdd": [], "runId": "r1"},
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("watchlist_automation", True, "r1", None)]
 
     def test_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import watchlist_automation_job as job
 
-        monkeypatch.setattr(job, "run_watchlist_automation", lambda trigger, force: {"ok": True, "skipped": True, "skipReason": "cold start", "runId": None})
+        monkeypatch.setattr(
+            job,
+            "run_watchlist_automation",
+            lambda trigger, force: {
+                "ok": True,
+                "skipped": True,
+                "skipReason": "cold start",
+                "runId": None,
+            },
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         msgs = _capture_logs(monkeypatch, job)
         job.run()
         assert records == [("watchlist_automation", False, None, "cold start")]
@@ -342,18 +476,36 @@ class TestWatchlistAutomationJob:
     def test_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import watchlist_automation_job as job
 
-        monkeypatch.setattr(job, "run_watchlist_automation", lambda trigger, force: {"ok": False, "error": "boom"})
+        monkeypatch.setattr(
+            job, "run_watchlist_automation", lambda trigger, force: {"ok": False, "error": "boom"}
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("watchlist_automation", False, None, "boom")]
 
     def test_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import watchlist_automation_job as job
 
-        monkeypatch.setattr(job, "run_watchlist_automation", lambda trigger, force: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            job,
+            "run_watchlist_automation",
+            lambda trigger, force: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("watchlist_automation", False, None, "crash")]
 
@@ -362,12 +514,24 @@ class TestDecisionJobs:
     @pytest.mark.parametrize(
         ("mod_name", "svc", "record_id", "log_word"),
         [
-            ("decision_action_job", "extract_pending_actions", "decision_action_tracking", "extracted"),
+            (
+                "decision_action_job",
+                "extract_pending_actions",
+                "decision_action_tracking",
+                "extracted",
+            ),
             ("decision_outcome_job", "apply_daily_outcomes", "decision_outcome", "updated"),
             ("decision_snapshot_job", "build_daily_snapshot", "decision_snapshot", None),
         ],
     )
-    def test_ok(self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str, log_word: str | None) -> None:
+    def test_ok(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mod_name: str,
+        svc: str,
+        record_id: str,
+        log_word: str | None,
+    ) -> None:
         job = import_module(f"data_sync_service.scheduler.{mod_name}")
         if log_word == "extracted":
             monkeypatch.setattr(job, "extract_pending_actions", lambda: {"extracted": 2})
@@ -378,7 +542,13 @@ class TestDecisionJobs:
         else:
             monkeypatch.setattr(job, "build_daily_snapshot", lambda: {"snapshot": "s"})
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [(record_id, True, None)]
 
@@ -389,10 +559,26 @@ class TestDecisionJobs:
     def test_exception(self, monkeypatch: pytest.MonkeyPatch, mod_name: str) -> None:
         job = import_module(f"data_sync_service.scheduler.{mod_name}")
         for name in dir(job):
-            if name.startswith(("extract_pending_actions", "match_executions", "track_action_outcomes", "apply_daily_outcomes", "build_daily_snapshot")):
-                monkeypatch.setattr(job, name, lambda **kw: (_ for _ in ()).throw(RuntimeError("crash")))
+            if name.startswith(
+                (
+                    "extract_pending_actions",
+                    "match_executions",
+                    "track_action_outcomes",
+                    "apply_daily_outcomes",
+                    "build_daily_snapshot",
+                )
+            ):
+                monkeypatch.setattr(
+                    job, name, lambda **kw: (_ for _ in ()).throw(RuntimeError("crash"))
+                )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records[0][1] is False and records[0][2] == "crash"
 
@@ -405,11 +591,21 @@ class TestPaperTradingJobs:
             ("paper_trading_update_job", "run_update", "paper_trading_update"),
         ],
     )
-    def test_ok(self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str) -> None:
+    def test_ok(
+        self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str
+    ) -> None:
         job = import_module(f"data_sync_service.scheduler.{mod_name}")
-        monkeypatch.setattr(job, svc, lambda **kw: {"inserted": 3, "skipped": 1, "skippedReasons": {}})
+        monkeypatch.setattr(
+            job, svc, lambda **kw: {"inserted": 3, "skipped": 1, "skippedReasons": {}}
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [(record_id, True, None)]
 
@@ -420,11 +616,19 @@ class TestPaperTradingJobs:
             ("paper_trading_update_job", "run_update", "paper_trading_update"),
         ],
     )
-    def test_partial_error(self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str) -> None:
+    def test_partial_error(
+        self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str
+    ) -> None:
         job = import_module(f"data_sync_service.scheduler.{mod_name}")
         monkeypatch.setattr(job, svc, lambda **kw: {"error": "partial"})
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [(record_id, False, "partial")]
 
@@ -435,11 +639,19 @@ class TestPaperTradingJobs:
             ("paper_trading_update_job", "run_update", "paper_trading_update"),
         ],
     )
-    def test_exception(self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str) -> None:
+    def test_exception(
+        self, monkeypatch: pytest.MonkeyPatch, mod_name: str, svc: str, record_id: str
+    ) -> None:
         job = import_module(f"data_sync_service.scheduler.{mod_name}")
         monkeypatch.setattr(job, svc, lambda **kw: (_ for _ in ()).throw(RuntimeError("crash")))
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [(record_id, False, "crash")]
 
@@ -460,9 +672,18 @@ class TestMorningBriefJob:
     def test_ok(self, monkeypatch: pytest.MonkeyPatch, brief_type: str, job_id: str) -> None:
         from data_sync_service.scheduler import morning_brief_job as job
 
-        monkeypatch.setattr("data_sync_service.service.morning_brief.generate_brief", lambda brief_type: {"items": [{"id": "i1"}]})
+        monkeypatch.setattr(
+            "data_sync_service.service.morning_brief.generate_brief",
+            lambda brief_type: {"items": [{"id": "i1"}]},
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run(brief_type=brief_type)
         assert records == [(job_id, True, "1", None)]
 
@@ -470,21 +691,41 @@ class TestMorningBriefJob:
         ("brief_type", "job_id"),
         [("morning", "morning_brief_am"), ("midday", "morning_brief_pm")],
     )
-    def test_empty_items_records_failure(self, monkeypatch: pytest.MonkeyPatch, brief_type: str, job_id: str) -> None:
+    def test_empty_items_records_failure(
+        self, monkeypatch: pytest.MonkeyPatch, brief_type: str, job_id: str
+    ) -> None:
         from data_sync_service.scheduler import morning_brief_job as job
 
-        monkeypatch.setattr("data_sync_service.service.morning_brief.generate_brief", lambda brief_type: {"items": []})
+        monkeypatch.setattr(
+            "data_sync_service.service.morning_brief.generate_brief",
+            lambda brief_type: {"items": []},
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run(brief_type=brief_type)
         assert records == [(job_id, False, "0", "No enriched items available for brief")]
 
     def test_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import morning_brief_job as job
 
-        monkeypatch.setattr("data_sync_service.service.morning_brief.generate_brief", lambda brief_type: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            "data_sync_service.service.morning_brief.generate_brief",
+            lambda brief_type: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run(brief_type="morning")
         assert records == [("morning_brief_am", False, "crash")]
 
@@ -495,7 +736,13 @@ class TestNewsJobs:
 
         monkeypatch.setattr(job, "fetch_all_sources", lambda: {"source_a": 5, "source_b": 3})
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_fetch_job", True, "8", None)]
 
@@ -504,45 +751,88 @@ class TestNewsJobs:
 
         monkeypatch.setattr(job, "fetch_all_sources", lambda: {"a": 5, "b": -1, "c": "n/a"})
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_fetch_job", False, "5", "1 source(s) failed; fetched=5")]
 
     def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import news_fetch_job as job
 
-        monkeypatch.setattr(job, "fetch_all_sources", lambda: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            job, "fetch_all_sources", lambda: (_ for _ in ()).throw(RuntimeError("crash"))
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_fetch_job", False, "crash")]
 
     def test_enrich_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import news_enrich_job as job
 
-        monkeypatch.setattr("data_sync_service.service.news_enrich.run_enrichment_cycle", lambda max_batches: {"totalFailed": 0, "totalEnriched": 10, "batchesProcessed": 2})
-        monkeypatch.setattr("data_sync_service.db.news.count_by_enrichment_status", lambda: {"pending": 0})
+        monkeypatch.setattr(
+            "data_sync_service.service.news_enrich.run_enrichment_cycle",
+            lambda max_batches: {"totalFailed": 0, "totalEnriched": 10, "batchesProcessed": 2},
+        )
+        monkeypatch.setattr(
+            "data_sync_service.db.news.count_by_enrichment_status", lambda: {"pending": 0}
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_enrich_job", True, "10", None)]
 
     def test_enrich_partial_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import news_enrich_job as job
 
-        monkeypatch.setattr("data_sync_service.service.news_enrich.run_enrichment_cycle", lambda max_batches: {"totalFailed": 2, "totalEnriched": 3, "batchesProcessed": 1})
+        monkeypatch.setattr(
+            "data_sync_service.service.news_enrich.run_enrichment_cycle",
+            lambda max_batches: {"totalFailed": 2, "totalEnriched": 3, "batchesProcessed": 1},
+        )
         monkeypatch.setattr("data_sync_service.db.news.count_by_enrichment_status", lambda: {})
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_enrich_job", False, "3", "failed=2; enriched=3")]
 
     def test_enrich_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import news_enrich_job as job
 
-        monkeypatch.setattr("data_sync_service.service.news_enrich.run_enrichment_cycle", lambda max_batches: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            "data_sync_service.service.news_enrich.run_enrichment_cycle",
+            lambda max_batches: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [("news_enrich_job", False, "crash")]
 
@@ -562,27 +852,59 @@ class TestResearchJob:
     def test_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import research_report_job as job
 
-        monkeypatch.setattr("data_sync_service.service.research.sync_research_reports", lambda days, max_pages: {"ok": True, "fetched": 4, "inserted": 3})
+        monkeypatch.setattr(
+            "data_sync_service.service.research.sync_research_reports",
+            lambda days, max_pages: {"ok": True, "fetched": 4, "inserted": 3},
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("research_report_sync", True, "3", None)]
 
     def test_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import research_report_job as job
 
-        monkeypatch.setattr("data_sync_service.service.research.sync_research_reports", lambda days, max_pages: {"ok": False, "error": "upstream down", "fetched": 0, "inserted": 0})
+        monkeypatch.setattr(
+            "data_sync_service.service.research.sync_research_reports",
+            lambda days, max_pages: {
+                "ok": False,
+                "error": "upstream down",
+                "fetched": 0,
+                "inserted": 0,
+            },
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, last_ts_code, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, last_ts_code, error_message)
+            ),
+        )
         job.run()
         assert records == [("research_report_sync", False, "0", "upstream down")]
 
     def test_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import research_report_job as job
 
-        monkeypatch.setattr("data_sync_service.service.research.sync_research_reports", lambda days, max_pages: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            "data_sync_service.service.research.sync_research_reports",
+            lambda days, max_pages: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         records = []
-        monkeypatch.setattr(job, "insert_record", lambda jt, success, last_ts_code=None, error_message=None: records.append((jt, success, error_message)))
+        monkeypatch.setattr(
+            job,
+            "insert_record",
+            lambda jt, success, last_ts_code=None, error_message=None: records.append(
+                (jt, success, error_message)
+            ),
+        )
         job.run()
         assert records == [("research_report_sync", False, "crash")]
 
@@ -593,27 +915,45 @@ class TestResearchJob:
 
 
 class TestAlphaRadarJobs:
-    def test_fetch_skipped(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_fetch_skipped(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"skipped": True, "lastRunAt": "2026-08-08T00:00:00Z"})
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_pipeline",
+            lambda force, trigger: {"skipped": True, "lastRunAt": "2026-08-08T00:00:00Z"},
+        )
         job.run()
         assert "skipped" in caplog.text
 
-    def test_fetch_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_fetch_ok(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": True, "ingestStats": {"stored": 3}, "trendCount": 2})
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_pipeline",
+            lambda force, trigger: {"ok": True, "ingestStats": {"stored": 3}, "trendCount": 2},
+        )
         job.run()
         assert "complete" in caplog.text
 
-    def test_fetch_failed_result(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_fetch_failed_result(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": False, "errors": ["boom"]})
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_pipeline",
+            lambda force, trigger: {"ok": False, "errors": ["boom"]},
+        )
         # NOTE (2026-09-08): job.run() records REAL failure rows (system_events
         # job_failed:alpha_radar_pipeline_job polluted dev on 09-04/09-06).
         # This test asserts on logs only — stub the record write.
@@ -621,28 +961,49 @@ class TestAlphaRadarJobs:
         job.run()
         assert "failed" in caplog.text
 
-    def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_fetch_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_pipeline",
+            lambda force, trigger: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         monkeypatch.setattr(job, "insert_record", lambda *a, **k: None)
         job.run()
         assert "failed" in caplog.text
 
-    def test_ingest_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_ingest_ok(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: {"ingestStats": {"stored": 1, "new": 1, "requeued": 0, "unchanged": 0}, "rawBacklogCount": 2})
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_ingest",
+            lambda trigger: {
+                "ingestStats": {"stored": 1, "new": 1, "requeued": 0, "unchanged": 0},
+                "rawBacklogCount": 2,
+            },
+        )
         job.run()
         assert "complete" in caplog.text
 
-    def test_ingest_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_ingest_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_ingest",
+            lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         job.run()
         assert "failed" in caplog.text
 
@@ -659,19 +1020,36 @@ class TestAlphaRadarJobs:
         assert job.ingest_interval_hours() == job.DEFAULT_INTERVAL_HOURS
         assert isinstance(job.build_trigger(), IntervalTrigger)
 
-    def test_process_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_process_ok(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: {"processedHeadlines": 5, "trendsProduced": 2, "processRounds": 1, "rawBacklogCount": 0})
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_process",
+            lambda trigger: {
+                "processedHeadlines": 5,
+                "trendsProduced": 2,
+                "processRounds": 1,
+                "rawBacklogCount": 0,
+            },
+        )
         job.run()
         assert "complete" in caplog.text
 
-    def test_process_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    def test_process_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
-        monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
+        monkeypatch.setattr(
+            job,
+            "run_alpha_radar_process",
+            lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")),
+        )
         job.run()
         assert "failed" in caplog.text
 
@@ -733,9 +1111,19 @@ def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
     _monkey_cst(monkeypatch, 17, 40)
     _patch_today_runs(monkeypatch)
     calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
-    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
-    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
-    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    monkeypatch.setattr(
+        scheduler_pkg.watchlist_automation_job,
+        "run",
+        lambda: calls.__setitem__("wa", calls["wa"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1)
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.cn_industry_post_close_job,
+        "run",
+        lambda: calls.__setitem__("cn", calls["cn"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
     assert calls == {"wa": 1, "s3": 0, "cn": 0}  # s3 guard (17:45) + cn guard (18:25) not reached
 
@@ -747,17 +1135,37 @@ def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
     _monkey_cst(monkeypatch, 18, 30)
     _patch_today_runs(monkeypatch, ran={"watchlist_automation"})
     calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
-    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
-    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
-    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    monkeypatch.setattr(
+        scheduler_pkg.watchlist_automation_job,
+        "run",
+        lambda: calls.__setitem__("wa", calls["wa"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1)
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.cn_industry_post_close_job,
+        "run",
+        lambda: calls.__setitem__("cn", calls["cn"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
     assert calls == {"wa": 0, "s3": 1, "cn": 1}
 
     _monkey_cst(monkeypatch, 17, 20)
     calls2: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
-    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls2.__setitem__("wa", calls2["wa"] + 1))
-    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls2.__setitem__("s3", calls2["s3"] + 1))
-    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls2.__setitem__("cn", calls2["cn"] + 1))
+    monkeypatch.setattr(
+        scheduler_pkg.watchlist_automation_job,
+        "run",
+        lambda: calls2.__setitem__("wa", calls2["wa"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_s3_intake_job, "run", lambda: calls2.__setitem__("s3", calls2["s3"] + 1)
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.cn_industry_post_close_job,
+        "run",
+        lambda: calls2.__setitem__("cn", calls2["cn"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
     assert calls2 == {"wa": 0, "s3": 0, "cn": 0}
 

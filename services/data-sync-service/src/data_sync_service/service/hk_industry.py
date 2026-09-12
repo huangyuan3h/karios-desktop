@@ -105,9 +105,7 @@ def _fetch_em_page(page_number: int, *, page_size: int = EM_PAGE_SIZE) -> list[d
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, dict) or not data.get("success"):
-        raise RuntimeError(
-            f"eastmoney_hk_industry: bad response page={page_number} body={data!r}"
-        )
+        raise RuntimeError(f"eastmoney_hk_industry: bad response page={page_number} body={data!r}")
     result = data.get("result") or {}
     return list(result.get("data") or [])
 

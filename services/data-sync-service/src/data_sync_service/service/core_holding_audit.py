@@ -116,8 +116,15 @@ def _judge_add(op: dict[str, Any], state: dict[str, Any], gate: dict[str, Any]) 
             )
         else:
             verdict, detail = "ok", "套筒管理（ETF 不适用金字塔）；CN 闸门对美股 ETF 无效"
-        return {"date": op["trade_date"], "side": op["side"], "price": price,
-                "positionPct": add_pct, "verdict": verdict, "rule": "sleeve", "detail": detail}
+        return {
+            "date": op["trade_date"],
+            "side": op["side"],
+            "price": price,
+            "positionPct": add_pct,
+            "verdict": verdict,
+            "rule": "sleeve",
+            "detail": detail,
+        }
 
     trigger = cost * (1 + PYRAMID_TRIGGER_PCT / 100.0)
     if cost > 0 and pct_before > 0:
@@ -125,25 +132,44 @@ def _judge_add(op: dict[str, Any], state: dict[str, Any], gate: dict[str, Any]) 
             half = pct_before * PYRAMID_ADD_SCALE
             ratio = add_pct / half if half > 0 else 0.0
             if ratio <= 1.5:
-                verdict, rule, detail = "ok", "pyramid", (
-                    f"收盘触发金字塔（{price:.2f} ≥ 触发线 {trigger:.3f} = 成本 {cost:.3f}×1.025），"
-                    f"加仓 {add_pct:.1f}% ≈ 半仓 {half:.1f}%"
+                verdict, rule, detail = (
+                    "ok",
+                    "pyramid",
+                    (
+                        f"收盘触发金字塔（{price:.2f} ≥ 触发线 {trigger:.3f} = 成本 {cost:.3f}×1.025），"
+                        f"加仓 {add_pct:.1f}% ≈ 半仓 {half:.1f}%"
+                    ),
                 )
             else:
-                verdict, rule, detail = "warn", "pyramid", (
-                    f"金字塔触发（{price:.2f} ≥ {trigger:.3f}），但幅度 {add_pct:.1f}% "
-                    f"为半仓 {half:.1f}% 的 {ratio:.1f} 倍，超量加仓"
+                verdict, rule, detail = (
+                    "warn",
+                    "pyramid",
+                    (
+                        f"金字塔触发（{price:.2f} ≥ {trigger:.3f}），但幅度 {add_pct:.1f}% "
+                        f"为半仓 {half:.1f}% 的 {ratio:.1f} 倍，超量加仓"
+                    ),
                 )
         else:
-            verdict, rule, detail = "warn", "pyramid", (
-                f"加仓价 {price:.2f} < 金字塔触发线 {trigger:.3f}（成本 {cost:.3f}×1.025）"
-                f"——触发线内提前加仓"
+            verdict, rule, detail = (
+                "warn",
+                "pyramid",
+                (
+                    f"加仓价 {price:.2f} < 金字塔触发线 {trigger:.3f}（成本 {cost:.3f}×1.025）"
+                    f"——触发线内提前加仓"
+                ),
             )
     else:
         verdict, rule, detail = "ok", "pyramid", "成本/仓位缺失，跳过金字塔核对"
 
-    return {"date": op["trade_date"], "side": op["side"], "price": price,
-            "positionPct": add_pct, "verdict": verdict, "rule": rule, "detail": detail}
+    return {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": price,
+        "positionPct": add_pct,
+        "verdict": verdict,
+        "rule": rule,
+        "detail": detail,
+    }
 
 
 def _judge_sell(op: dict[str, Any], state: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
@@ -155,41 +181,69 @@ def _judge_sell(op: dict[str, Any], state: dict[str, Any], gate: dict[str, Any])
     stop = cost * (1 + STOP_LOSS_PCT / 100.0) if cost > 0 else None
 
     if stop is not None and price <= stop:
-        verdict, rule, detail = "ok", "stop", (
-            f"卖价 {price:.3f} ≤ 止损线 {stop:.3f}（成本 {cost:.3f}×0.95）——止损执行"
+        verdict, rule, detail = (
+            "ok",
+            "stop",
+            (f"卖价 {price:.3f} ≤ 止损线 {stop:.3f}（成本 {cost:.3f}×0.95）——止损执行"),
         )
     elif stop is not None and price > stop:
-        verdict, rule, detail = "warn", "discretionary", (
-            f"卖价 {price:.3f} 高于止损线 {stop:.3f}（成本 {cost:.3f}×0.95）"
-            f"——策略外主动退出（引擎对核心仓无主动卖出规则）"
+        verdict, rule, detail = (
+            "warn",
+            "discretionary",
+            (
+                f"卖价 {price:.3f} 高于止损线 {stop:.3f}（成本 {cost:.3f}×0.95）"
+                f"——策略外主动退出（引擎对核心仓无主动卖出规则）"
+            ),
         )
     elif gate["panicActive"]:
-        verdict, rule, detail = "ok", "panic_de_risk", (
-            f"恐慌期（{gate['regime']}）卖出——符合弱市降仓策略精神"
+        verdict, rule, detail = (
+            "ok",
+            "panic_de_risk",
+            (f"恐慌期（{gate['regime']}）卖出——符合弱市降仓策略精神"),
         )
     else:
         verdict, rule, detail = "ok", "discretionary", "策略外操作（无对应规则可核）"
 
-    return {"date": op["trade_date"], "side": op["side"], "price": price,
-            "positionPct": float(op["position_pct"] or 0), "verdict": verdict,
-            "rule": rule, "detail": detail}
+    return {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": price,
+        "positionPct": float(op["position_pct"] or 0),
+        "verdict": verdict,
+        "rule": rule,
+        "detail": detail,
+    }
 
 
-def _judge_open(op: dict[str, Any], holding: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
+def _judge_open(
+    op: dict[str, Any], holding: dict[str, Any], gate: dict[str, Any]
+) -> dict[str, Any]:
     """BUY verdict: A-share entries must wait for an open CN gate."""
     sym = op["symbol"]
     is_etf = str(sym).startswith("ETF:")
     if is_etf:
-        verdict, rule, detail = "ok", "sleeve", "ETF 开仓——CN 闸门无效（2026-08-21 拍板），以 200dMA 为闸门"
+        verdict, rule, detail = (
+            "ok",
+            "sleeve",
+            "ETF 开仓——CN 闸门无效（2026-08-21 拍板），以 200dMA 为闸门",
+        )
     elif gate["gateOpen"]:
         verdict, rule, detail = "ok", "regime", f"CN 闸门开（{gate['regime']}）——符合"
     else:
-        verdict, rule, detail = "warn", "regime", (
-            f"CN 闸门关（{gate['regime']}·panic={gate['panicActive']}）——恐慌期开 A股新仓"
+        verdict, rule, detail = (
+            "warn",
+            "regime",
+            (f"CN 闸门关（{gate['regime']}·panic={gate['panicActive']}）——恐慌期开 A股新仓"),
         )
-    return {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
-            "positionPct": float(op["position_pct"] or 0), "verdict": verdict,
-            "rule": rule, "detail": detail}
+    return {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": float(op["price"] or 0),
+        "positionPct": float(op["position_pct"] or 0),
+        "verdict": verdict,
+        "rule": rule,
+        "detail": detail,
+    }
 
 
 def _load_sat_book() -> set[tuple[str, str]]:
@@ -223,7 +277,9 @@ def _sat_exit_due(entry_date: str) -> str | None:
         d0 = _date.fromisoformat(str(entry_date)[:10])
         sessions = get_open_dates("SSE", d0, d0 + _td(days=10))
         if len(sessions) >= 3:
-            return sessions[2].isoformat() if hasattr(sessions[2], "isoformat") else str(sessions[2])
+            return (
+                sessions[2].isoformat() if hasattr(sessions[2], "isoformat") else str(sessions[2])
+            )
         return None
     except Exception:  # noqa: BLE001
         return None
@@ -241,44 +297,84 @@ def _judge_sat_open(op: dict[str, Any], sat_book: set[tuple[str, str]]) -> dict[
     sym = str(op["symbol"])
     day = str(op["trade_date"])
     if (sym, day) in sat_book:
-        verdict, rule, detail = "ok", "sat_signal", (
-            "跟随卫星信号（paper 同票同日，R-wide 开闸日，body=3，第 3 日 14:30 卖）"
+        verdict, rule, detail = (
+            "ok",
+            "sat_signal",
+            ("跟随卫星信号（paper 同票同日，R-wide 开闸日，body=3，第 3 日 14:30 卖）"),
         )
     else:
-        verdict, rule, detail = "ok", "sat_manual", (
-            f"主动自选卫星单（paper {day} 无 {sym} 信号）——按自选处理，非偏离"
+        verdict, rule, detail = (
+            "ok",
+            "sat_manual",
+            (f"主动自选卫星单（paper {day} 无 {sym} 信号）——按自选处理，非偏离"),
         )
-    return {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
-            "positionPct": float(op["position_pct"] or 0), "verdict": verdict,
-            "rule": rule, "detail": detail}
+    return {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": float(op["price"] or 0),
+        "positionPct": float(op["position_pct"] or 0),
+        "verdict": verdict,
+        "rule": rule,
+        "detail": detail,
+    }
 
 
 def _judge_sat_sell(op: dict[str, Any], open_entry: str | None) -> dict[str, Any]:
     """Satellite SELL: must land on the body=3 exit-due session."""
     day = str(op["trade_date"])
-    base = {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
-            "positionPct": float(op["position_pct"] or 0)}
+    base = {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": float(op["price"] or 0),
+        "positionPct": float(op["position_pct"] or 0),
+    }
     if not open_entry:
-        return {**base, "verdict": "warn", "rule": "sat_exit",
-                "detail": "卫星卖出无对应开仓记录——先补开仓腿"}
+        return {
+            **base,
+            "verdict": "warn",
+            "rule": "sat_exit",
+            "detail": "卫星卖出无对应开仓记录——先补开仓腿",
+        }
     due = _sat_exit_due(open_entry)
     if due is None:
-        return {**base, "verdict": "ok", "rule": "sat_exit",
-                "detail": f"卫星卖出（{open_entry} 开仓，日历缺数未核到期日）"}
+        return {
+            **base,
+            "verdict": "ok",
+            "rule": "sat_exit",
+            "detail": f"卫星卖出（{open_entry} 开仓，日历缺数未核到期日）",
+        }
     if day == due:
-        return {**base, "verdict": "ok", "rule": "sat_exit",
-                "detail": f"第 3 日到期卖（{open_entry}→{due}，body=3）——符合"}
+        return {
+            **base,
+            "verdict": "ok",
+            "rule": "sat_exit",
+            "detail": f"第 3 日到期卖（{open_entry}→{due}，body=3）——符合",
+        }
     if day < due:
-        return {**base, "verdict": "warn", "rule": "sat_exit",
-                "detail": f"提前卖（到期 {due}，body 不足 3 日）——锁死减亏段且打乱周转"}
-    return {**base, "verdict": "warn", "rule": "sat_exit",
-            "detail": f"延迟卖（到期 {due}，多占槽位）——赢家多拿一天已三窗拒收"}
+        return {
+            **base,
+            "verdict": "warn",
+            "rule": "sat_exit",
+            "detail": f"提前卖（到期 {due}，body 不足 3 日）——锁死减亏段且打乱周转",
+        }
+    return {
+        **base,
+        "verdict": "warn",
+        "rule": "sat_exit",
+        "detail": f"延迟卖（到期 {due}，多占槽位）——赢家多拿一天已三窗拒收",
+    }
 
 
 def _judge_sat_add(op: dict[str, Any]) -> dict[str, Any]:
-    return {"date": op["trade_date"], "side": op["side"], "price": float(op["price"] or 0),
-            "positionPct": float(op["position_pct"] or 0), "verdict": "warn",
-            "rule": "sat_exit", "detail": "卫星无加仓规则（body=3 拿满即卖，加仓=占槽）"}
+    return {
+        "date": op["trade_date"],
+        "side": op["side"],
+        "price": float(op["price"] or 0),
+        "positionPct": float(op["position_pct"] or 0),
+        "verdict": "warn",
+        "rule": "sat_exit",
+        "detail": "卫星无加仓规则（body=3 拿满即卖，加仓=占槽）",
+    }
 
 
 def _etf_trend_state(symbol: str) -> dict[str, Any]:
@@ -458,6 +554,8 @@ def audit_core_holdings(*, day: str) -> dict[str, Any]:
         "counts": {
             "ok": sum(1 for h in holdings_out for o in h["ops"] if o["verdict"] == "ok"),
             "warn": sum(1 for h in holdings_out for o in h["ops"] if o["verdict"] == "warn"),
-            "violation": sum(1 for h in holdings_out for o in h["ops"] if o["verdict"] == "violation"),
+            "violation": sum(
+                1 for h in holdings_out for o in h["ops"] if o["verdict"] == "violation"
+            ),
         },
     }

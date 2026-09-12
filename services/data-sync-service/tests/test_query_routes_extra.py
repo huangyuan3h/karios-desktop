@@ -52,6 +52,7 @@ def _patch_resolve_db(monkeypatch, rows) -> None:
 
 # ---- resolve_symbols_endpoint (52 missed) ----------------------------------
 
+
 def test_resolve_symbols_empty(monkeypatch) -> None:
     assert client.get("/market/stocks/resolve").json() == []
     assert client.get("/market/stocks/resolve?symbols=").json() == []
@@ -117,16 +118,25 @@ def test_resolve_symbols_db_error_500(monkeypatch) -> None:
 
 # ---- get_market_stocks_quotes_endpoint (24 missed) -------------------------
 
+
 def test_quotes_empty_symbols() -> None:
     assert client.get("/market/stocks/quotes").json() == {"quotes": {}}
 
 
 def test_quotes_caps_and_maps(monkeypatch) -> None:
-    with patch("data_sync_service.api.query_routes.symbol_to_ts_code", side_effect=lambda s: f"{s}.SZ") as m_conv, patch(
-        "data_sync_service.api.query_routes.get_market_quotes_batch"
-    ) as m_batch:
+    with (
+        patch(
+            "data_sync_service.api.query_routes.symbol_to_ts_code", side_effect=lambda s: f"{s}.SZ"
+        ) as m_conv,
+        patch("data_sync_service.api.query_routes.get_market_quotes_batch") as m_batch,
+    ):
         m_batch.return_value = {
-            "CN:000001.SZ": {"price": "10.5", "changePct": "1.2", "volume": "100", "turnover": "1000"}
+            "CN:000001.SZ": {
+                "price": "10.5",
+                "changePct": "1.2",
+                "volume": "100",
+                "turnover": "1000",
+            }
         }
         syms = "&symbols=".join(["CN:000001"] * 501)
         out = client.get(f"/market/stocks/quotes?symbols={syms}").json()
@@ -135,13 +145,26 @@ def test_quotes_caps_and_maps(monkeypatch) -> None:
 
 
 def test_quotes_mixed_valid_invalid(monkeypatch) -> None:
-    with patch("data_sync_service.api.query_routes.symbol_to_ts_code", side_effect=lambda s: None if s.startswith("HK") else "X.SZ"), patch(
-        "data_sync_service.api.query_routes.get_market_quotes_batch"
-    ) as m_batch:
-        m_batch.return_value = {"X.SZ": {"price": "1.0", "changePct": "0.0", "volume": "2", "turnover": "3"}}
-        out = client.get("/market/stocks/quotes?symbols=CN:000001&symbols=HK:00700&symbols=HK:00001").json()
+    with (
+        patch(
+            "data_sync_service.api.query_routes.symbol_to_ts_code",
+            side_effect=lambda s: None if s.startswith("HK") else "X.SZ",
+        ),
+        patch("data_sync_service.api.query_routes.get_market_quotes_batch") as m_batch,
+    ):
+        m_batch.return_value = {
+            "X.SZ": {"price": "1.0", "changePct": "0.0", "volume": "2", "turnover": "3"}
+        }
+        out = client.get(
+            "/market/stocks/quotes?symbols=CN:000001&symbols=HK:00700&symbols=HK:00001"
+        ).json()
     assert out["quotes"]["CN:000001"]["price"] == "1.0"
-    assert out["quotes"]["HK:00700"] == {"price": None, "changePct": None, "volume": None, "turnover": None}
+    assert out["quotes"]["HK:00700"] == {
+        "price": None,
+        "changePct": None,
+        "volume": None,
+        "turnover": None,
+    }
     assert out["quotes"]["HK:00001"]["price"] is None
 
 
@@ -152,15 +175,22 @@ def test_quotes_all_invalid(monkeypatch) -> None:
 
 
 def test_quotes_whitespace_stripped(monkeypatch) -> None:
-    with patch("data_sync_service.api.query_routes.symbol_to_ts_code", side_effect=lambda s: None if s.strip() == "" else "X.SZ"), patch(
-        "data_sync_service.api.query_routes.get_market_quotes_batch"
-    ) as m_batch:
-        m_batch.return_value = {"X.SZ": {"price": "1.0", "changePct": "0.0", "volume": "2", "turnover": "3"}}
+    with (
+        patch(
+            "data_sync_service.api.query_routes.symbol_to_ts_code",
+            side_effect=lambda s: None if s.strip() == "" else "X.SZ",
+        ),
+        patch("data_sync_service.api.query_routes.get_market_quotes_batch") as m_batch,
+    ):
+        m_batch.return_value = {
+            "X.SZ": {"price": "1.0", "changePct": "0.0", "volume": "2", "turnover": "3"}
+        }
         out = client.get("/market/stocks/quotes?symbols=CN:1&symbols=%20%20").json()
     assert set(out["quotes"]) == {"CN:1"}
 
 
 # ---- small endpoints -------------------------------------------------------
+
 
 def test_quote_endpoint_single_and_list(monkeypatch) -> None:
     with patch("data_sync_service.api.query_routes.fetch_realtime_quotes") as m:
@@ -197,7 +227,9 @@ def test_market_bars_endpoint_ok_and_error(monkeypatch) -> None:
         m.return_value = {"symbol": "CN:000001"}
         assert client.get("/market/stocks/CN:000001/bars?days=60").json() == {"symbol": "CN:000001"}
 
-    with patch("data_sync_service.api.query_routes.get_market_bars", side_effect=RuntimeError("bar crash")):
+    with patch(
+        "data_sync_service.api.query_routes.get_market_bars", side_effect=RuntimeError("bar crash")
+    ):
         resp = client.get("/market/stocks/CN:000001/bars?days=60")
     assert resp.status_code == 500
     assert resp.json()["detail"] == "bar crash"
@@ -210,10 +242,16 @@ def test_market_chips_endpoint_ok_and_http_exception(monkeypatch) -> None:
 
     from fastapi import HTTPException
 
-    with patch("data_sync_service.api.query_routes.get_market_chips", side_effect=HTTPException(status_code=404, detail="no")):
+    with patch(
+        "data_sync_service.api.query_routes.get_market_chips",
+        side_effect=HTTPException(status_code=404, detail="no"),
+    ):
         assert client.get("/market/stocks/CN:000001/chips").status_code == 404
 
-    with patch("data_sync_service.api.query_routes.get_market_chips", side_effect=RuntimeError("chip crash")):
+    with patch(
+        "data_sync_service.api.query_routes.get_market_chips",
+        side_effect=RuntimeError("chip crash"),
+    ):
         resp = client.get("/market/stocks/CN:000001/chips")
     assert resp.status_code == 500
 
@@ -231,7 +269,10 @@ def test_market_fund_flow_endpoint(monkeypatch) -> None:
     ):
         assert client.get("/market/stocks/CN:000001/fund-flow").status_code == 422
 
-    with patch("data_sync_service.api.query_routes.get_market_fund_flow", side_effect=RuntimeError("ff crash")):
+    with patch(
+        "data_sync_service.api.query_routes.get_market_fund_flow",
+        side_effect=RuntimeError("ff crash"),
+    ):
         resp = client.get("/market/stocks/CN:000001/fund-flow")
     assert resp.status_code == 500
 
@@ -239,7 +280,9 @@ def test_market_fund_flow_endpoint(monkeypatch) -> None:
 def test_market_stocks_endpoint(monkeypatch) -> None:
     with patch("data_sync_service.api.query_routes.fetch_market_stocks") as m:
         m.return_value = (42, [{"symbol": "CN:000001"}])
-        out = client.get("/market/stocks?market=CN&q=000001&offset=10&limit=5&use_realtime=true").json()
+        out = client.get(
+            "/market/stocks?market=CN&q=000001&offset=10&limit=5&use_realtime=true"
+        ).json()
     assert out == {"items": [{"symbol": "CN:000001"}], "total": 42, "offset": 10, "limit": 5}
     m.assert_called_once_with(market="CN", q="000001", offset=10, limit=5, use_realtime=True)
 
@@ -256,7 +299,10 @@ def test_search_stocks_empty_and_ok(monkeypatch) -> None:
 def test_watchlist_v5_alerts_endpoint(monkeypatch) -> None:
     with patch("data_sync_service.api.query_routes.compute_watchlist_v5_alerts") as m:
         m.return_value = [{"symbol": "CN:000001"}]
-        out = client.post("/market/stocks/watchlist/v5-alerts", json={"items": [{"symbol": "CN:000001", "position_pct": 0.1}]}).json()
+        out = client.post(
+            "/market/stocks/watchlist/v5-alerts",
+            json={"items": [{"symbol": "CN:000001", "position_pct": 0.1}]},
+        ).json()
     assert out == [{"symbol": "CN:000001"}]
     m.assert_called_once_with([{"symbol": "CN:000001", "position_pct": 0.1}])
 
@@ -270,7 +316,10 @@ def test_watchlist_v5_plan_endpoint(monkeypatch) -> None:
 def test_watchlist_momentum_alerts_endpoint(monkeypatch) -> None:
     with patch("data_sync_service.api.query_routes.compute_watchlist_momentum_alerts") as m:
         m.return_value = [{"x": 1}]
-        out = client.post("/market/stocks/watchlist/momentum-alerts?realtime=true", json={"items": [{"symbol": "CN:1"}]}).json()
+        out = client.post(
+            "/market/stocks/watchlist/momentum-alerts?realtime=true",
+            json={"items": [{"symbol": "CN:1"}]},
+        ).json()
     assert out == [{"x": 1}]
 
 

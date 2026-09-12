@@ -51,7 +51,10 @@ def _open_dates(start: str, end: str, *, pro_factory=None) -> list[str]:
         return [f"{d[:4]}-{d[4:6]}-{d[6:8]}" for d in days]
     except Exception:
         try:
-            return [d.isoformat() for d in get_open_dates("SSE", date.fromisoformat(start), date.fromisoformat(end))]
+            return [
+                d.isoformat()
+                for d in get_open_dates("SSE", date.fromisoformat(start), date.fromisoformat(end))
+            ]
         except Exception:  # noqa: BLE001 — no calendar either → caller narrows
             return []
 

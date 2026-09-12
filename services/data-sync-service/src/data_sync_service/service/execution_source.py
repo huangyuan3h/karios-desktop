@@ -71,15 +71,11 @@ def aggregate_source_stats(
     since_iso = _lookback_iso(since_days)
     since_date = (datetime.now(UTC) - timedelta(days=since_days)).date().isoformat()
 
-    by_source: dict[str, dict[str, Any]] = {
-        name: _empty_source_bucket() for name in KNOWN_SOURCES
-    }
+    by_source: dict[str, dict[str, Any]] = {name: _empty_source_bucket() for name in KNOWN_SOURCES}
 
     # BUY signal volume (changes field=action, new_value=BUY)
     try:
-        buy_counts = ej_db.count_changes_by_source(
-            since=since_iso, field="action", new_value="BUY"
-        )
+        buy_counts = ej_db.count_changes_by_source(since=since_iso, field="action", new_value="BUY")
     except Exception:  # noqa: BLE001
         buy_counts = {}
     for k, v in buy_counts.items():

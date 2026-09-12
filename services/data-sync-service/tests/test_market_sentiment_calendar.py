@@ -153,7 +153,11 @@ def test_sync_cn_industry_catchup_on_non_trading_day_when_stale() -> None:
         patch.object(iff, "last_open_date_on_or_before", return_value=date(2026, 6, 18)),
         patch.object(iff, "get_latest_date", return_value="2026-06-10"),
         patch.object(iff, "fetch_cn_industry_fund_flow_eod", return_value=items),
-        patch.object(iff, "fetch_cn_industry_fund_flow_hist", return_value=[{"date": "2026-06-18", "net_inflow": 1.0, "raw": {}}]),
+        patch.object(
+            iff,
+            "fetch_cn_industry_fund_flow_hist",
+            return_value=[{"date": "2026-06-18", "net_inflow": 1.0, "raw": {}}],
+        ),
         patch.object(iff, "upsert_daily_rows") as mock_upsert,
     ):
         out = iff.sync_cn_industry_fund_flow(force=True)

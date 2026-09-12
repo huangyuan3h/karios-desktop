@@ -61,9 +61,7 @@ def _ensure_tables() -> None:
                     """,
                     (sorted(_CREATED_SYMBOLS), list(_FAKE_SNAPSHOT_IDS), list(_FAKE_SNAPSHOT_IDS)),
                 )
-                cur.execute(
-                    "DELETE FROM execution_snapshots WHERE source = 'manual-test'"
-                )
+                cur.execute("DELETE FROM execution_snapshots WHERE source = 'manual-test'")
             conn.commit()
         _CREATED_SYMBOLS.clear()
 

@@ -46,9 +46,12 @@ def list_sessions_endpoint(limit: int = Query(50, ge=1, le=200)) -> dict[str, An
 def create_session_endpoint(body: SessionCreate) -> dict[str, Any]:
     from data_sync_service.db.decision import create_session
 
-    return {"ok": True, "session": create_session(
-        title=body.title, model_profile=body.model_profile, system_prompt=body.system_prompt
-    )}
+    return {
+        "ok": True,
+        "session": create_session(
+            title=body.title, model_profile=body.model_profile, system_prompt=body.system_prompt
+        ),
+    }
 
 
 @router.patch("/sessions/{session_id}")
@@ -58,16 +61,16 @@ def update_session_endpoint(
 ) -> dict[str, Any]:
     from data_sync_service.db.decision import update_session_settings
 
-    rec = update_session_settings(
-        session_id, title=body.title, system_prompt=body.system_prompt
-    )
+    rec = update_session_settings(session_id, title=body.title, system_prompt=body.system_prompt)
     if not rec:
         return {"ok": False, "error": "session not found"}
     return {"ok": True, "session": rec}
 
 
 @router.get("/sessions/{session_id}/messages")
-def list_messages_endpoint(session_id: int, limit: int = Query(200, ge=1, le=500)) -> dict[str, Any]:
+def list_messages_endpoint(
+    session_id: int, limit: int = Query(200, ge=1, le=500)
+) -> dict[str, Any]:
     from data_sync_service.db.decision import list_messages
 
     return {"ok": True, "messages": list_messages(session_id, limit=limit)}
@@ -80,9 +83,12 @@ def append_message_endpoint(
 ) -> dict[str, Any]:
     from data_sync_service.db.decision import append_message
 
-    return {"ok": True, "message": append_message(
-        session_id, role=body.role, content=body.content, context_snapshot=body.context_snapshot
-    )}
+    return {
+        "ok": True,
+        "message": append_message(
+            session_id, role=body.role, content=body.content, context_snapshot=body.context_snapshot
+        ),
+    }
 
 
 @router.delete("/sessions/{session_id}/messages/{message_id}")
@@ -136,7 +142,9 @@ def snapshot_detail_endpoint(snapshot_date: str) -> dict[str, Any]:
 
 
 @router.get("/archive/search")
-def archive_search_endpoint(symbol: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=20)) -> dict[str, Any]:
+def archive_search_endpoint(
+    symbol: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=20)
+) -> dict[str, Any]:
     """Search archive snapshots whose exchanges mention a symbol (TIP-015 M3)."""
     from data_sync_service.service.decision import search_archive_by_symbol
 

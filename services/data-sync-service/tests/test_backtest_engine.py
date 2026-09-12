@@ -102,7 +102,6 @@ def test_simulate_positions_by_day_snapshot() -> None:
     assert snap["position_pct"] == 0.05
 
 
-
 def test_simulate_stop_hits_on_net_pnl() -> None:
     """Gross -4.8% does NOT stop; net -5.1% (costs) DOES — same as live paper."""
     calendar = ["2026-06-18", "2026-06-19"]
@@ -313,7 +312,9 @@ def test_light_red_block_blocks_red_days_only() -> None:
 
     # On: every red day blocks (one attempt per score day).
     run = simulate(
-        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True),
+        BacktestConfig(
+            start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True
+        ),
         data=_data(calendar, scores, prices, light_red_days="red"),
     )
     assert run.summary.closed == 0
@@ -321,7 +322,9 @@ def test_light_red_block_blocks_red_days_only() -> None:
 
     # On but non-red days: no interception.
     run = simulate(
-        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True),
+        BacktestConfig(
+            start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True
+        ),
         data=_data(calendar, scores, prices),
     )
     assert run.summary.closed == 1
@@ -441,13 +444,13 @@ def _fake_summary_dict() -> dict:
         avg_gross_pnl_pct=-0.579,
         avg_costs_pct=0.3,
         max_drawdown_pct=29.7,
-            total_net_pnl_pct=-18.5,
-            annual_net_pnl_pct=-37.0,
-            avg_win_pct=None,
-            avg_loss_pct=None,
-            sharpe=None,
-            excess_vs_best_benchmark_pct=0.0,
-            best_benchmark="",
+        total_net_pnl_pct=-18.5,
+        annual_net_pnl_pct=-37.0,
+        avg_win_pct=None,
+        avg_loss_pct=None,
+        sharpe=None,
+        excess_vs_best_benchmark_pct=0.0,
+        best_benchmark="",
         by_score_bucket={">=90": {"trades": 5, "wins": 2, "winRate": 0.4, "avgNet": -1.0}},
     )
     return BacktestRun(summary=s, trades=[])
@@ -465,9 +468,7 @@ def test_backtest_run_endpoint(monkeypatch) -> None:
         "data_sync_service.api.backtest_routes.simulate",
         return_value=_fake_summary_dict(),
     ):
-        resp = client.get(
-            "/api/backtest/run?start=2026-06-18&end=2026-08-07&score_threshold=85"
-        )
+        resp = client.get("/api/backtest/run?start=2026-06-18&end=2026-08-07&score_threshold=85")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
@@ -582,8 +583,6 @@ def test_calendar_days_between_helpers() -> None:
     assert _calendar_days_between("2026-06-18", "bad") == 0
 
 
-
-
 @pytest.mark.requires_postgres
 def test_backtest_data_loads_from_db() -> None:
     """BacktestData real-DB path: calendar + scores + bars (self-seeded, CN).
@@ -634,10 +633,17 @@ def test_backtest_data_loads_from_db() -> None:
                 cur.execute("DELETE FROM daily WHERE ts_code = %s", (ts_code,))
                 cur.execute("DELETE FROM watchlist_score_daily WHERE symbol = %s", (symbol,))
 
+
 def test_trailing_stop_closes_on_peak_pullback() -> None:
     """trailing_stop_pct closes when close falls X% below the entry-high peak."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+        "2026-06-24": {},
+    }
     prices = {
         TS1: {
             "2026-06-18": 10.0,  # entry
@@ -713,8 +719,8 @@ def test_limit_down_rolls_exit_to_next_session_opt103() -> None:
         TS1: {
             "2026-06-17": 10.0,
             "2026-06-18": 10.0,  # entry
-            "2026-06-19": 9.0,   # 10 x 0.9 = limit-down pinned → cannot sell
-            "2026-06-22": 9.1,   # 9 x 0.9 = 8.1, not pinned; still below stop → fill
+            "2026-06-19": 9.0,  # 10 x 0.9 = limit-down pinned → cannot sell
+            "2026-06-22": 9.1,  # 9 x 0.9 = 8.1, not pinned; still below stop → fill
             "2026-06-23": 9.5,
         }
     }
@@ -803,9 +809,7 @@ def test_atr_stop_weak_regime_uses_fixed_line_opt105() -> None:
     data = _data(calendar, scores, prices)  # Strong → entry allowed
     # then the market turns Weak from the day after entry: exits must use
     # the FIXED line (ATR line disabled in Weak).
-    data.regime_by_day = {
-        d: ("Strong" if d == "2026-06-18" else REGIME_WEAK) for d in calendar
-    }
+    data.regime_by_day = {d: ("Strong" if d == "2026-06-18" else REGIME_WEAK) for d in calendar}
     data.bars_by_ts = {
         TS1: [
             ("2026-06-08", "9.8", "10.0", "9.7", "9.9", "1000"),
@@ -873,9 +877,7 @@ def test_hk_has_no_price_limits_opt103() -> None:
 def test_trailing_stop_disabled_by_default() -> None:
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {d: {CN1: 90.0} for d in calendar}
-    prices = {
-        TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0, "2026-06-22": 10.2}
-    }
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0, "2026-06-22": 10.2}}
     run = simulate(
         BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", stop_loss_pct=-5.0),
         data=_data(calendar, scores, prices),
@@ -906,6 +908,7 @@ def test_summary_total_net_pnl() -> None:
     # equals the position-weighted sum of per-trade nets.
     expected = sum(t.pnl_pct * float(getattr(t, "position_pct", 0.05)) for t in run.trades)
     assert run.summary.total_net_pnl_pct == pytest.approx(expected, abs=1e-3)
+
 
 def test_rs_rank_filter_blocks_weak_strength() -> None:
     """rs_rank_min keeps only whole-market top-X percentile symbols."""
@@ -974,6 +977,7 @@ def test_rs_rank_validation() -> None:
     with pytest.raises(ValueError):
         BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", rs_rank_min=1.5)
 
+
 def test_sentiment_risk_mode_blocks_entries() -> None:
     """extreme_caution / no_new_positions days block new entries (live gate)."""
     calendar = ["2026-06-18", "2026-06-19"]
@@ -1003,16 +1007,23 @@ def test_sentiment_missing_data_degrades_open() -> None:
     assert run.summary.closed == 1
     assert run.summary.gated_blocks.get("sentiment") is None
 
+
 def test_panic_cooldown_blocks_entries_after_panic() -> None:
     """panic_cooldown_days halts new entries for N days after a panic day."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}, "2026-06-22": {CN1: 90.0}, "2026-06-23": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {CN1: 90.0},
+        "2026-06-22": {CN1: 90.0},
+        "2026-06-23": {},
+    }
     prices = {TS1: {d: 10.0 for d in calendar}}
     data = _data(calendar, scores, prices)
     data.sentiment_risk_by_day = {"2026-06-19": "extreme_caution"}
     run = simulate(
-        BacktestConfig(start_date="2026-06-18", end_date="2026-06-23",
-                       gates="full", panic_cooldown_days=2),
+        BacktestConfig(
+            start_date="2026-06-18", end_date="2026-06-23", gates="full", panic_cooldown_days=2
+        ),
         data=data,
     )
     # 06-18 entry ok; 06-19 panic (blocked); 06-22 cooldown day 1 (blocked); 06-23 cooldown day 2 (blocked)
@@ -1153,8 +1164,11 @@ def test_entries_ordered_by_score_when_sleeve_limited() -> None:
     data = _data(calendar, scores, prices)
     run = simulate(
         BacktestConfig(
-            start_date="2026-06-18", end_date="2026-06-19",
-            score_threshold=50.0, max_positions=1, gates="full",
+            start_date="2026-06-18",
+            end_date="2026-06-19",
+            score_threshold=50.0,
+            max_positions=1,
+            gates="full",
         ),
         data=data,
     )
@@ -1181,15 +1195,17 @@ def test_swap_replaces_weak_held_with_strong_candidate() -> None:
         TS1: {d: 10.0 for d in calendar},
         "000001.SZ": {d: 10.0 for d in calendar},
     }
-    rs = {
-        d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar
-    }
+    rs = {d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar}
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-23",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=1, swap_max_per_day=2,
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.3,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1,
+        swap_max_per_day=2,
     )
     run = simulate(config, data=data)
     swapped = [t for t in run.trades if t.close_reason == "swapped"]
@@ -1211,10 +1227,14 @@ def test_swap_requires_strong_rs_candidate() -> None:
     rs = {d: {TS1: 0.1, "000001.SZ": 0.5} for d in calendar}  # 0.5 < 0.8
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-22",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=1, swap_max_per_day=2,
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.3,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1,
+        swap_max_per_day=2,
     )
     run = simulate(config, data=data)
     assert not [t for t in run.trades if t.close_reason == "swapped"]
@@ -1233,10 +1253,14 @@ def test_swap_requires_weak_held_rs() -> None:
     rs = {d: {TS1: 0.5, "000001.SZ": 0.9} for d in calendar}  # held RS 0.5 > 0.3
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-22",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=1, swap_max_per_day=2,
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.3,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1,
+        swap_max_per_day=2,
     )
     run = simulate(config, data=data)
     assert not [t for t in run.trades if t.close_reason == "swapped"]
@@ -1253,10 +1277,14 @@ def test_swap_respects_min_hold_days() -> None:
     rs = {d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar}
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=10, swap_max_per_day=2,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.3,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=10,
+        swap_max_per_day=2,
     )
     run = simulate(config, data=data)
     assert not [t for t in run.trades if t.close_reason == "swapped"]
@@ -1277,16 +1305,27 @@ def test_swap_caps_per_day() -> None:
         "000002.SZ": {d: 10.0 for d in calendar},
         "000003.SZ": {d: 10.0 for d in calendar},
     }
-    rs = {d: {
-        "600001.SH": 0.1, "600002.SH": 0.2, "600003.SH": 0.3,
-        "000001.SZ": 0.9, "000002.SZ": 0.88, "000003.SZ": 0.86,
-    } for d in calendar}
+    rs = {
+        d: {
+            "600001.SH": 0.1,
+            "600002.SH": 0.2,
+            "600003.SH": 0.3,
+            "000001.SZ": 0.9,
+            "000002.SZ": 0.88,
+            "000003.SZ": 0.86,
+        }
+        for d in calendar
+    }
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-22",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.35, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=1, swap_max_per_day=2,
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.35,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1,
+        swap_max_per_day=2,
     )
     run = simulate(config, data=data)
     swapped = [t for t in run.trades if t.close_reason == "swapped"]
@@ -1303,12 +1342,20 @@ def test_pyramid_adds_on_profit_and_exits_with_main_leg() -> None:
         "2026-06-22": {CN1: 88.0},
         "2026-06-23": {CN1: 88.0},
     }
-    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.5, "2026-06-22": 12.0, "2026-06-23": 10.94}}
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 11.5, "2026-06-22": 12.0, "2026-06-23": 10.94}
+    }
     data = _data(calendar, scores, prices)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-23",
-        gates="full", target_pnl_pct=100.0, max_hold_days=60, trailing_stop_pct=-8.0,
-        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=1,
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        gates="full",
+        target_pnl_pct=100.0,
+        max_hold_days=60,
+        trailing_stop_pct=-8.0,
+        pyramid_trigger_pct=10.0,
+        pyramid_add_scale=0.5,
+        pyramid_max_adds=1,
     )
     run = simulate(config, data=data)
     trades = run.trades
@@ -1330,12 +1377,16 @@ def test_pyramid_respects_max_adds() -> None:
     """Only pyramid_max_adds add legs per position."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
     scores = {d: {CN1: 88.0} for d in calendar}
-    prices = {TS1: {d: 10.0 * (1.15 ** i) for i, d in enumerate(calendar)}}
+    prices = {TS1: {d: 10.0 * (1.15**i) for i, d in enumerate(calendar)}}
     data = _data(calendar, scores, prices)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-24",
-        gates="full", max_hold_days=5,
-        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=2,
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        gates="full",
+        max_hold_days=5,
+        pyramid_trigger_pct=10.0,
+        pyramid_add_scale=0.5,
+        pyramid_max_adds=2,
     )
     run = simulate(config, data=data)
     add_legs = [t for t in run.trades if t.entry_date != "2026-06-18"]
@@ -1349,8 +1400,12 @@ def test_pyramid_disabled_by_default() -> None:
     prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 13.0}}
     data = _data(calendar, scores, prices)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", gates="full",
-        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=0,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        pyramid_trigger_pct=10.0,
+        pyramid_add_scale=0.5,
+        pyramid_max_adds=0,
     )
     run = simulate(config, data=data)
     assert len(run.trades) == 1
@@ -1363,8 +1418,17 @@ def test_atr_size_scales_sleeve_down_for_high_vol() -> None:
     # ~4% daily ranges: high/low alternating 102/98 around 100
     bars = [("2026-06-01", "100", "102", "98", "100", "100")]
     for i in range(1, 22):
-        base = 100 * (1.004 ** i)
-        bars.append((f"2026-06-{i+1:02d}", f"{base:.2f}", f"{base*1.02:.2f}", f"{base*0.98:.2f}", f"{base:.2f}", "100"))
+        base = 100 * (1.004**i)
+        bars.append(
+            (
+                f"2026-06-{i + 1:02d}",
+                f"{base:.2f}",
+                f"{base * 1.02:.2f}",
+                f"{base * 0.98:.2f}",
+                f"{base:.2f}",
+                "100",
+            )
+        )
     bars.append(("2026-06-18", "105", "106", "104", "105", "100"))
     bars.append(("2026-06-19", "106", "107", "105", "106", "100"))
     data = _data(calendar, scores, {TS1: {"2026-06-18": 105.0, "2026-06-19": 106.0}})
@@ -1372,8 +1436,12 @@ def test_atr_size_scales_sleeve_down_for_high_vol() -> None:
     data.closes_by_ts = {TS1: [(b[0], float(b[5])) for b in bars]}
     data.close_by_ts_day = {TS1: {"2026-06-18": 105.0, "2026-06-19": 106.0}}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", gates="full",
-        atr_size_window=20, atr_size_cap=2.0, atr_benchmark_pct=2.0,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        atr_size_window=20,
+        atr_size_cap=2.0,
+        atr_benchmark_pct=2.0,
     )
     run = simulate(config, data=data)
     t = run.trades[0]
@@ -1399,7 +1467,10 @@ def test_industry_cap_blocks_fourth_same_industry_holding() -> None:
     calendar = ["2026-06-18", "2026-06-19"]
     scores = {
         "2026-06-18": {
-            "CN:600001": 90.0, "CN:600002": 90.0, "CN:600003": 90.0, "CN:600004": 90.0,
+            "CN:600001": 90.0,
+            "CN:600002": 90.0,
+            "CN:600003": 90.0,
+            "CN:600004": 90.0,
             "CN:000001": 90.0,
         },
         "2026-06-19": {},
@@ -1413,13 +1484,18 @@ def test_industry_cap_blocks_fourth_same_industry_holding() -> None:
     }
     data = _data(calendar, scores, prices)
     data.industry_by_ts = {
-        "600001.SH": "计算机", "600002.SH": "计算机", "600003.SH": "计算机",
-        "600004.SH": "计算机", "000001.SZ": "医药",
+        "600001.SH": "计算机",
+        "600002.SH": "计算机",
+        "600003.SH": "计算机",
+        "600004.SH": "计算机",
+        "000001.SZ": "医药",
     }
     data.mainline_allow_by_day = {d: {"计算机", "医药"} for d in calendar}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        gates="full", max_per_industry=3,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        max_per_industry=3,
     )
     run = simulate(config, data=data)
     syms = {t.symbol for t in run.trades}
@@ -1464,8 +1540,12 @@ def test_entry_sort_rs_prefers_strong_rs_within_threshold() -> None:
     data = _data(calendar, scores, prices)
     data.rs_rank_by_day = {d: {"600001.SH": 0.1, "600002.SH": 0.9} for d in calendar}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        score_threshold=65.0, gates="full", max_positions=1, entry_sort="rs",
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        score_threshold=65.0,
+        gates="full",
+        max_positions=1,
+        entry_sort="rs",
     )
     run = simulate(config, data=data)
     assert run.trades[0].symbol == "CN:600002"
@@ -1485,8 +1565,11 @@ def test_entry_sort_score_default_keeps_base_order() -> None:
     data = _data(calendar, scores, prices)
     data.rs_rank_by_day = {d: {"600001.SH": 0.1, "600002.SH": 0.9} for d in calendar}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        gates="full", max_positions=1, entry_sort="score",
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        max_positions=1,
+        entry_sort="score",
     )
     run = simulate(config, data=data)
     assert run.trades[0].symbol == "CN:600001"
@@ -1505,12 +1588,13 @@ def test_mv_filter_blocks_outside_band() -> None:
         "600003.SH": {d: 10.0 for d in calendar},
     }
     data = _data(calendar, scores, prices)
-    data.mv_by_day = {
-        "2026-06-18": {"600001.SH": 50.0, "600002.SH": 500.0, "600003.SH": 250.0}
-    }
+    data.mv_by_day = {"2026-06-18": {"600001.SH": 50.0, "600002.SH": 500.0, "600003.SH": 250.0}}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        gates="full", min_mv=100.0, max_mv=400.0,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        min_mv=100.0,
+        max_mv=400.0,
     )
     run = simulate(config, data=data)
     assert [t.symbol for t in run.trades] == ["CN:600003"]
@@ -1532,8 +1616,10 @@ def test_exclude_boards_filters_symbol_prefix() -> None:
     }
     data = _data(calendar, scores, prices)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        gates="full", exclude_boards="300",
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        exclude_boards="300",
     )
     run = simulate(config, data=data)
     assert sorted(t.symbol for t in run.trades) == ["CN:600001", "CN:600002"]
@@ -1543,7 +1629,8 @@ def test_exclude_boards_filters_symbol_prefix() -> None:
 def test_exclude_boards_invalid_prefix_raises() -> None:
     with pytest.raises(ValueError):
         BacktestConfig(
-            start_date="2026-06-18", end_date="2026-06-19",
+            start_date="2026-06-18",
+            end_date="2026-06-19",
             exclude_boards="60",
         )
 
@@ -1562,8 +1649,11 @@ def test_mv_diverging_excludes_mega_cap_only_in_diverging() -> None:
     data = _data(calendar, scores, prices, regime="Diverging")
     data.mv_by_day = {"2026-06-18": {"600001.SH": 100.0, "600002.SH": 600.0}}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        gates="full", diverging_scale=1.0, mv_max_diverging=500.0,
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        gates="full",
+        diverging_scale=1.0,
+        mv_max_diverging=500.0,
     )
     run = simulate(config, data=data)
     assert [t.symbol for t in run.trades] == ["CN:600001"]
@@ -1574,7 +1664,13 @@ def test_profit_trail_closes_winning_leg_on_tight_pullback() -> None:
     """A6: once the leg is +10%, a 6% pullback from the peak closes it even
     though the plain trailing stop (-8) would not have fired."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+        "2026-06-24": {},
+    }
     prices = {
         TS1: {
             "2026-06-18": 10.0,  # entry
@@ -1604,7 +1700,13 @@ def test_profit_trail_closes_winning_leg_on_tight_pullback() -> None:
 def test_profit_trail_disabled_by_default() -> None:
     """A6 defaults: no profit-trail behaviour without explicit parameters."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+        "2026-06-24": {},
+    }
     prices = {
         TS1: {
             "2026-06-18": 10.0,
@@ -1632,7 +1734,13 @@ def test_profit_trail_disabled_by_default() -> None:
 def test_flow_exit_closes_after_negative_streak() -> None:
     """B1: 3 straight sessions of negative industry 5d flow close the leg."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+        "2026-06-24": {},
+    }
     prices = {
         TS1: {
             "2026-06-18": 10.0,
@@ -1663,7 +1771,13 @@ def test_flow_exit_closes_after_negative_streak() -> None:
 def test_flow_exit_disabled_by_default() -> None:
     """B1 default 0 keeps legacy behaviour (no flow exit)."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
-    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+        "2026-06-24": {},
+    }
     prices = {
         TS1: {
             "2026-06-18": 10.0,
@@ -1694,7 +1808,7 @@ def test_score_confirm_blocks_single_day_spike() -> None:
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
     scores = {
         "2026-06-18": {},
-        "2026-06-19": {CN1: 95.0},   # spike day — no prior score
+        "2026-06-19": {CN1: 95.0},  # spike day — no prior score
         "2026-06-22": {CN1: 90.0},
         "2026-06-23": {CN1: 92.0},
     }
@@ -1818,10 +1932,7 @@ def _data_with_bars(
     """Same shape as _data but fills bars_by_ts with (date, o, h, l, c, vol)."""
     data = _data(calendar, scores, {ts: {d: v[3] for d, v in m.items()} for ts, m in ohlc.items()})
     data.bars_by_ts = {
-        ts: [
-            (d, str(o), str(h), str(low), str(c), "0")
-            for d, (o, h, low, c) in sorted(m.items())
-        ]
+        ts: [(d, str(o), str(h), str(low), str(c), "0") for d, (o, h, low, c) in sorted(m.items())]
         for ts, m in ohlc.items()
     }
     return data
@@ -1831,7 +1942,13 @@ def test_entry_mode_close_uses_signal_day_close() -> None:
     """entry_mode=close (default) fills at the signal-day close."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}}
-    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.0, 10.0, 10.0, 10.0), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    ohlc = {
+        TS1: {
+            "2026-06-18": (9.0, 11.0, 8.0, 10.0),
+            "2026-06-19": (10.0, 10.0, 10.0, 10.0),
+            "2026-06-22": (10.0, 10.0, 10.0, 10.0),
+        }
+    }
     data = _data_with_bars(calendar, scores, ohlc)
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="close")
 
@@ -1844,9 +1961,17 @@ def test_entry_mode_last_hour_low_buys_dip_below_close() -> None:
     """last_hour_low = low*0.5 + close*0.5, clamped at close (dip proxy)."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}}
-    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.0, 10.0, 10.0, 10.0), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    ohlc = {
+        TS1: {
+            "2026-06-18": (9.0, 11.0, 8.0, 10.0),
+            "2026-06-19": (10.0, 10.0, 10.0, 10.0),
+            "2026-06-22": (10.0, 10.0, 10.0, 10.0),
+        }
+    }
     data = _data_with_bars(calendar, scores, ohlc)
-    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="last_hour_low")
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22", entry_mode="last_hour_low"
+    )
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
@@ -1858,7 +1983,13 @@ def test_entry_mode_next_open_uses_next_session_open() -> None:
     """next_open fills at the NEXT session's open (T+1 买入)."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}}
-    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.5, 11.0, 10.0, 10.8), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    ohlc = {
+        TS1: {
+            "2026-06-18": (9.0, 11.0, 8.0, 10.0),
+            "2026-06-19": (10.5, 11.0, 10.0, 10.8),
+            "2026-06-22": (10.0, 10.0, 10.0, 10.0),
+        }
+    }
     data = _data_with_bars(calendar, scores, ohlc)
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="next_open")
 
@@ -1894,7 +2025,16 @@ def test_entry_style_momentum_requires_rs_and_no_pullback() -> None:
         "2026-06-22": {CN1: 90.0},
     }
     # close series: 10,10,10,10 → 11 (ret5 over 5 prior closes = +10% momentum)
-    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0, "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0}}
+    closes = {
+        TS1: {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 11.0,
+            "2026-06-19": 11.0,
+            "2026-06-22": 11.0,
+        }
+    }
     # 5-day return at 06-18 = 11/10 - 1 = +10% → momentum OK
     rs = {"2026-06-18": {TS1: 0.9}, "2026-06-19": {TS1: 0.9}, "2026-06-22": {TS1: 0.9}}
     data = _data_with_bars5(calendar, scores, closes, rs)
@@ -1912,7 +2052,16 @@ def test_entry_style_dip_requires_pullback() -> None:
         "2026-06-22": {CN1: 90.0},
     }
     # 5-day return = 10.0/11 - 1 = -9.1% → dip (>= 5% pullback)
-    closes = {TS1: {"2026-06-15": 11.0, "2026-06-16": 11.0, "2026-06-17": 11.0, "2026-06-18": 10.0, "2026-06-19": 10.0, "2026-06-22": 10.0}}
+    closes = {
+        TS1: {
+            "2026-06-15": 11.0,
+            "2026-06-16": 11.0,
+            "2026-06-17": 11.0,
+            "2026-06-18": 10.0,
+            "2026-06-19": 10.0,
+            "2026-06-22": 10.0,
+        }
+    }
     rs = {"2026-06-18": {TS1: 0.9}, "2026-06-19": {TS1: 0.9}, "2026-06-22": {TS1: 0.9}}
     data = _data_with_bars5(calendar, scores, closes, rs)
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_style="dip")
@@ -1929,7 +2078,16 @@ def test_entry_style_momentum_rejects_pullback_names() -> None:
         "2026-06-22": {CN1: 90.0},
     }
     # 5-day return = 10.5/11 - 1 = -4.5% → pullback → momentum must REJECT
-    closes = {TS1: {"2026-06-15": 11.0, "2026-06-16": 11.0, "2026-06-17": 11.0, "2026-06-18": 10.5, "2026-06-19": 10.5, "2026-06-22": 10.5}}
+    closes = {
+        TS1: {
+            "2026-06-15": 11.0,
+            "2026-06-16": 11.0,
+            "2026-06-17": 11.0,
+            "2026-06-18": 10.5,
+            "2026-06-19": 10.5,
+            "2026-06-22": 10.5,
+        }
+    }
     rs = {"2026-06-18": {TS1: 0.9}, "2026-06-19": {TS1: 0.9}, "2026-06-22": {TS1: 0.9}}
     data = _data_with_bars5(calendar, scores, closes, rs)
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_style="momentum")
@@ -1941,7 +2099,16 @@ def test_entry_style_momentum_rejects_pullback_names() -> None:
 def test_entry_style_rejects_low_rs() -> None:
     calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}, "2026-06-22": {CN1: 90.0}}
-    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0, "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0}}
+    closes = {
+        TS1: {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 11.0,
+            "2026-06-19": 11.0,
+            "2026-06-22": 11.0,
+        }
+    }
     # RS 0.5 < entry_style_rs_min 0.8 → both styles reject
     rs = {"2026-06-18": {TS1: 0.5}, "2026-06-19": {TS1: 0.5}, "2026-06-22": {TS1: 0.5}}
     data = _data_with_bars5(calendar, scores, closes, rs)
@@ -1971,9 +2138,7 @@ def test_neutral_block_rejects_true_neutral_days() -> None:
     closes = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.0}}
     env = {"2026-06-18": "neutral", "2026-06-19": "uptrend"}
     data = _data_with_env(calendar, scores, closes, env)
-    config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", neutral_block=True
-    )
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", neutral_block=True)
 
     run = simulate(config, data=data)
     # 06-18 (neutral) blocked; 06-19 (uptrend) entry allowed → 1 closed.
@@ -1988,9 +2153,7 @@ def test_neutral_block_keeps_unknown_days_open() -> None:
     scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
     closes = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.6}}
     data = _data_with_env(calendar, scores, closes, {})
-    config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", neutral_block=True
-    )
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", neutral_block=True)
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
@@ -2003,9 +2166,7 @@ def test_neutral_block_rejects_implicit_weak_days() -> None:
     closes = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.0}}
     env = {"2026-06-18": "weak", "2026-06-19": "uptrend"}
     data = _data_with_env(calendar, scores, closes, env)
-    config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19", neutral_block=True
-    )
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", neutral_block=True)
 
     run = simulate(config, data=data)
     assert run.summary.gated_blocks.get("neutral", 0) >= 1
@@ -2018,8 +2179,10 @@ def test_neutral_block_rejects_implicit_weak_days() -> None:
 def test_hk_style_map_parse() -> None:
     """hk_style_map string parsing produces the expected per-regime styles."""
     cfg = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-19",
-        market="HK", hk_style_map="Strong:dip,Diverging:momentum,Weak:blocked",
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        market="HK",
+        hk_style_map="Strong:dip,Diverging:momentum,Weak:blocked",
     )
     assert cfg.hk_style_map == "Strong:dip,Diverging:momentum,Weak:blocked"
 
@@ -2034,23 +2197,34 @@ def test_hk_auto_default_maps_strong_to_momentum() -> None:
         "2026-06-22": {"HK:00700": 90.0},
     }
     # 5d return at 06-18 = 11/10 - 1 = +10% → momentum passes
-    closes = {"00700.HK": {
-        "2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
-        "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0,
-    }}
+    closes = {
+        "00700.HK": {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 11.0,
+            "2026-06-19": 11.0,
+            "2026-06-22": 11.0,
+        }
+    }
     data = _data(calendar, scores, closes)
     data.regime_by_day = {d: "Strong" for d in calendar}
     data.rs_rank_by_day = {d: {"00700.HK": 0.9} for d in calendar}
     data.bars_by_ts = {
-        "00700.HK": [(d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()]
+        "00700.HK": [
+            (d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()
+        ]
     }
     data.ts_codes = ["00700.HK"]
     data.industry_by_ts = {}
     data.sentiment_risk_by_day = {}
     data.env_by_day = {}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-22",
-        market="HK", gates="regime", entry_style="auto",
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        market="HK",
+        gates="regime",
+        entry_style="auto",
     )
 
     run = simulate(config, data=data)
@@ -2067,23 +2241,34 @@ def test_hk_auto_override_diverging_to_momentum() -> None:
         "2026-06-19": {"HK:00700": 90.0},
         "2026-06-22": {"HK:00700": 90.0},
     }
-    closes = {"00700.HK": {
-        "2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
-        "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0,
-    }}
+    closes = {
+        "00700.HK": {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 11.0,
+            "2026-06-19": 11.0,
+            "2026-06-22": 11.0,
+        }
+    }
     data = _data(calendar, scores, closes)
     data.regime_by_day = {d: "Diverging" for d in calendar}
     data.rs_rank_by_day = {d: {"00700.HK": 0.9} for d in calendar}
     data.bars_by_ts = {
-        "00700.HK": [(d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()]
+        "00700.HK": [
+            (d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()
+        ]
     }
     data.ts_codes = ["00700.HK"]
     data.industry_by_ts = {}
     data.sentiment_risk_by_day = {}
     data.env_by_day = {}
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-22",
-        market="HK", gates="regime", entry_style="auto",
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        market="HK",
+        gates="regime",
+        entry_style="auto",
         diverging_scale=1.0,
         hk_style_map="Strong:blocked,Diverging:momentum,Weak:blocked",
     )
@@ -2106,12 +2291,12 @@ def test_max_hold_env_shorten_closes_uptrend_entries_early() -> None:
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "uptrend" for d in calendar}
     # give enough bars so entry price resolves
-    data.bars_by_ts = {
-        TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]
-    }
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
     config = BacktestConfig(
-        start_date="2026-06-01", end_date="2026-08-31",
-        max_hold_days=60, max_hold_env_shorten=3,
+        start_date="2026-06-01",
+        end_date="2026-08-31",
+        max_hold_days=60,
+        max_hold_env_shorten=3,
     )
 
     run = simulate(config, data=data)
@@ -2124,15 +2309,25 @@ def test_max_hold_env_shorten_closes_uptrend_entries_early() -> None:
 
 def test_max_hold_env_shorten_ignores_unknown_entries() -> None:
     """Entries on UNKNOWN days keep the normal max_hold_days."""
-    calendar = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", "2026-06-08", "2026-06-09"]
+    calendar = [
+        "2026-06-01",
+        "2026-06-02",
+        "2026-06-03",
+        "2026-06-04",
+        "2026-06-05",
+        "2026-06-08",
+        "2026-06-09",
+    ]
     scores = {"2026-06-01": {CN1: 90.0}}
     closes = {TS1: {d: 10.0 for d in calendar}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {}  # no env data at all → UNKNOWN
     data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
     config = BacktestConfig(
-        start_date="2026-06-01", end_date="2026-06-09",
-        max_hold_days=60, max_hold_env_shorten=3,
+        start_date="2026-06-01",
+        end_date="2026-06-09",
+        max_hold_days=60,
+        max_hold_env_shorten=3,
     )
 
     run = simulate(config, data=data)
@@ -2147,8 +2342,16 @@ def test_breakout_gate_blocks_non_breakout() -> None:
     calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
     # flat/declining closes: never exceeds the prior 3-day high
-    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
-                    "2026-06-18": 10.0, "2026-06-19": 9.0, "2026-06-22": 9.0}}
+    closes = {
+        TS1: {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.0,
+            "2026-06-19": 9.0,
+            "2026-06-22": 9.0,
+        }
+    }
     data = _data_with_bars5(calendar, scores, closes, {d: {TS1: 0.9} for d in calendar})
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", breakout_days=3)
 
@@ -2161,8 +2364,16 @@ def test_breakout_gate_allows_breakout() -> None:
     calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
     # 06-18 close 10.5 > prior 3-day highs (10.0) → breakout OK (+5%, not limit-up)
-    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
-                    "2026-06-18": 10.5, "2026-06-19": 10.5, "2026-06-22": 10.5}}
+    closes = {
+        TS1: {
+            "2026-06-15": 10.0,
+            "2026-06-16": 10.0,
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.5,
+            "2026-06-19": 10.5,
+            "2026-06-22": 10.5,
+        }
+    }
     data = _data_with_bars5(calendar, scores, closes, {d: {TS1: 0.9} for d in calendar})
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", breakout_days=3)
 
@@ -2179,7 +2390,9 @@ def test_volume_breakout_gate_blocks_thin_volume() -> None:
     data.env_by_day = {d: "unknown" for d in calendar}
     # flat volume: today 100 vs 20d avg... only 5 bars — prior-20 fail-closed
     data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "100") for d in calendar]}
-    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", volume_breakout_mult=2.0)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22", volume_breakout_mult=2.0
+    )
 
     run = simulate(config, data=data)
     # insufficient prior-20 history → fail-closed (no entry)
@@ -2190,10 +2403,32 @@ def test_volume_breakout_gate_allows_volume_spike() -> None:
     """P2: entry-day volume above K x the 20d average passes the gate."""
     calendar = [f"2026-0{6 - i // 7}-{15 + i % 7:02d}" for i in range(24)]
     # fix overlapping dates via explicit list
-    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22",
-                "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-29", "2026-06-30",
-                "2026-07-01", "2026-07-02", "2026-07-03", "2026-07-06", "2026-07-07", "2026-07-08",
-                "2026-07-09", "2026-07-10", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16"]
+    calendar = [
+        "2026-06-15",
+        "2026-06-16",
+        "2026-06-17",
+        "2026-06-18",
+        "2026-06-19",
+        "2026-06-22",
+        "2026-06-23",
+        "2026-06-24",
+        "2026-06-25",
+        "2026-06-26",
+        "2026-06-29",
+        "2026-06-30",
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+    ]
     scores = {calendar[21]: {CN1: 90.0}}
     closes = {TS1: {d: 10.0 for d in calendar}}
     data = _data(calendar, scores, closes)
@@ -2206,7 +2441,9 @@ def test_volume_breakout_gate_allows_volume_spike() -> None:
         else:
             bars.append((d, "10", "10", "10", "10", "100"))
     data.bars_by_ts = {TS1: bars}
-    config = BacktestConfig(start_date=calendar[21], end_date=calendar[23], volume_breakout_mult=2.0)
+    config = BacktestConfig(
+        start_date=calendar[21], end_date=calendar[23], volume_breakout_mult=2.0
+    )
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
@@ -2246,7 +2483,9 @@ def test_ma_slope_gate_allows_rising_ma() -> None:
     closes = {TS1: {d: 10.0 + 0.05 * i for i, d in enumerate(calendar)}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.05 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 + 0.05 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[45], end_date=calendar[-1], ma_slope_min_pct=2.0)
 
     run = simulate(config, data=data)
@@ -2270,7 +2509,9 @@ def test_ma200_gate_blocks_below_ma() -> None:
     scores = {calendar[200]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 - 0.01 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 - 0.01 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[200], end_date=calendar[-1], ma200_min_pct=0.0)
 
     run = simulate(config, data=data)
@@ -2292,7 +2533,9 @@ def test_ma200_gate_allows_above_ma() -> None:
     scores = {calendar[200]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.01 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 + 0.01 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[200], end_date=calendar[-1], ma200_min_pct=0.0)
 
     run = simulate(config, data=data)
@@ -2314,7 +2557,9 @@ def test_ma_cross_gate_requires_recent_golden_cross() -> None:
     scores = {calendar[30]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.1 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 + 0.1 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_cross_days=5)
 
     run = simulate(config, data=data)
@@ -2337,7 +2582,12 @@ def test_ma_cross_gate_allows_recent_golden_cross() -> None:
     scores = {calendar[30]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 if i < 30 else 10.6), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [
+            (d, "10", "10", "10", str(10.0 if i < 30 else 10.6), "0")
+            for i, d in enumerate(calendar)
+        ]
+    }
     config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_cross_days=5)
 
     run = simulate(config, data=data)
@@ -2382,7 +2632,9 @@ def test_ma_aligned_gate_allows_alignment() -> None:
     scores = {calendar[30]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_aligned=True)
 
     run = simulate(config, data=data)
@@ -2404,7 +2656,9 @@ def test_rsi_reversal_gate_blocks_high_rsi() -> None:
     scores = {calendar[20]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[20], end_date=calendar[-1], rsi_reversal_max=30.0)
 
     run = simulate(config, data=data)
@@ -2427,7 +2681,9 @@ def test_rsi_reversal_gate_allows_oversold_green() -> None:
     scores = {calendar[20]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]
+    }
     config = BacktestConfig(start_date=calendar[20], end_date=calendar[-1], rsi_reversal_max=30.0)
 
     run = simulate(config, data=data)
@@ -2449,7 +2705,9 @@ def test_down_day_reversal_gate_blocks_without_drop() -> None:
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
     data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
-    config = BacktestConfig(start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0)
+    config = BacktestConfig(
+        start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0
+    )
 
     run = simulate(config, data=data)
     assert run.summary.closed == 0
@@ -2472,7 +2730,9 @@ def test_down_day_reversal_gate_allows_drop_then_green() -> None:
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
     data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(closes[TS1][d]), "0") for d in calendar]}
-    config = BacktestConfig(start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0)
+    config = BacktestConfig(
+        start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0
+    )
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
@@ -2523,14 +2783,22 @@ def test_risk_adj_mom_gate_blocks_low_ratio() -> None:
         d += _dt.timedelta(days=1)
     # oscillating series: ret_120 ~ 0 but vol high -> ratio ~0 -> blocked
     import math as _math
+
     px = [10.0 + 0.8 * _math.sin(i / 3.0) for i in range(len(calendar))]
     closes = {TS1: {d: px[i] for i, d in enumerate(calendar)}}
     scores = {calendar[120]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
-    config = BacktestConfig(start_date=calendar[120], end_date=calendar[-1],
-                            risk_adj_mom_ret_days=60, risk_adj_mom_vol_days=30, risk_adj_mom_min=1.0)
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]
+    }
+    config = BacktestConfig(
+        start_date=calendar[120],
+        end_date=calendar[-1],
+        risk_adj_mom_ret_days=60,
+        risk_adj_mom_vol_days=30,
+        risk_adj_mom_min=1.0,
+    )
 
     run = simulate(config, data=data)
     # oscillating -> ret/vol < 1 -> blocked
@@ -2553,9 +2821,16 @@ def test_risk_adj_mom_gate_allows_high_ratio() -> None:
     scores = {calendar[120]: {CN1: 90.0}}
     data = _data(calendar, scores, closes)
     data.env_by_day = {d: "unknown" for d in calendar}
-    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
-    config = BacktestConfig(start_date=calendar[120], end_date=calendar[-1],
-                            risk_adj_mom_ret_days=60, risk_adj_mom_vol_days=30, risk_adj_mom_min=1.0)
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]
+    }
+    config = BacktestConfig(
+        start_date=calendar[120],
+        end_date=calendar[-1],
+        risk_adj_mom_ret_days=60,
+        risk_adj_mom_vol_days=30,
+        risk_adj_mom_min=1.0,
+    )
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
@@ -2636,8 +2911,11 @@ def test_settle_lock_off_reenters_next_day() -> None:
     """Frozen behavior: A stops day2, B (same 0.5 sleeve) enters day2."""
     calendar, scores, prices = _settle_data()
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-23",
-        position_pct=0.5, max_positions=2, settle_lock_sessions=0,
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        position_pct=0.5,
+        max_positions=2,
+        settle_lock_sessions=0,
     )
     run = simulate(config, data=_data(calendar, scores, prices))
     b_entries = [t.entry_date for t in run.trades if t.symbol == CN2]
@@ -2649,8 +2927,11 @@ def test_settle_lock_2_delays_reentry_to_t2() -> None:
     """A exits day2 -> proceeds usable day4 (T+2); B blocked day2+day3."""
     calendar, scores, prices = _settle_data()
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-23",
-        position_pct=0.5, max_positions=2, settle_lock_sessions=2,
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        position_pct=0.5,
+        max_positions=2,
+        settle_lock_sessions=2,
     )
     run = simulate(config, data=_data(calendar, scores, prices))
     b_entries = [t.entry_date for t in run.trades if t.symbol == CN2]
@@ -2669,7 +2950,11 @@ def test_settle_lock_config_validation() -> None:
 # ---------------------------------------------------------------------------
 
 W_CAL = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
-W_PX = {TS1: {d: 10.0 for d in W_CAL}, TS2: {d: 5.0 for d in W_CAL}, "600003.SH": {d: 5.0 for d in W_CAL}}
+W_PX = {
+    TS1: {d: 10.0 for d in W_CAL},
+    TS2: {d: 5.0 for d in W_CAL},
+    "600003.SH": {d: 5.0 for d in W_CAL},
+}
 W_CN3 = "CN:600003"
 
 
@@ -2684,7 +2969,9 @@ def test_regime_streak_blocks_after_weak() -> None:
     scores = {"2026-06-18": {CN1: 88.0}}
     data = _w_data(scores, ["Strong", "Strong", "Weak", "Strong", "Strong", "Strong"])
     config = BacktestConfig(
-        start_date="2026-06-15", end_date="2026-06-22", regime_streak_min=2,
+        start_date="2026-06-15",
+        end_date="2026-06-22",
+        regime_streak_min=2,
     )
     run = simulate(config, data=data)
     assert run.summary.closed == 0
@@ -2696,7 +2983,9 @@ def test_regime_streak_allows_two_strong() -> None:
     scores = {"2026-06-19": {CN1: 88.0}}
     data = _w_data(scores, ["Strong", "Strong", "Weak", "Strong", "Strong", "Strong"])
     config = BacktestConfig(
-        start_date="2026-06-15", end_date="2026-06-22", regime_streak_min=2,
+        start_date="2026-06-15",
+        end_date="2026-06-22",
+        regime_streak_min=2,
     )
     run = simulate(config, data=data)
     assert [t.entry_date for t in run.trades] == ["2026-06-19"]
@@ -2726,8 +3015,10 @@ def test_drought_ramp_caps_after_drought() -> None:
     }
     data = _w_data(scores, ["Strong"] * 6)
     config = BacktestConfig(
-        start_date="2026-06-15", end_date="2026-06-22",
-        drought_ramp_sessions=3, drought_ramp_max=1,
+        start_date="2026-06-15",
+        end_date="2026-06-22",
+        drought_ramp_sessions=3,
+        drought_ramp_max=1,
     )
     run = simulate(config, data=data)
     d19 = sorted(t.entry_date for t in run.trades if t.entry_date == "2026-06-19")
@@ -2765,8 +3056,10 @@ def test_throttle_pause_blocks_entries_in_window() -> None:
     scores = {"2026-06-18": {CN1: 88.0}, "2026-06-19": {CN2: 88.0}}
     data = _w_data(scores, ["Strong"] * 6)
     config = BacktestConfig(
-        start_date="2026-06-15", end_date="2026-06-22",
-        throttle_windows=(("2026-06-19", "2026-06-19"),), throttle_scale=0.0,
+        start_date="2026-06-15",
+        end_date="2026-06-22",
+        throttle_windows=(("2026-06-19", "2026-06-19"),),
+        throttle_scale=0.0,
     )
     run = simulate(config, data=data)
     assert [t.entry_date for t in run.trades] == ["2026-06-18"]
@@ -2778,8 +3071,10 @@ def test_throttle_half_scales_new_entries() -> None:
     scores = {"2026-06-19": {CN1: 88.0, CN2: 88.0}}
     data = _w_data(scores, ["Strong"] * 6)
     config = BacktestConfig(
-        start_date="2026-06-15", end_date="2026-06-22",
-        throttle_windows=(("2026-06-19", "2026-06-22"),), throttle_scale=0.5,
+        start_date="2026-06-15",
+        end_date="2026-06-22",
+        throttle_windows=(("2026-06-19", "2026-06-22"),),
+        throttle_scale=0.5,
     )
     run = simulate(config, data=data)
     day = next(s for s in run.positions_by_day if s["date"] == "2026-06-19")
@@ -2802,11 +3097,16 @@ def test_throttle_pause_blocks_swap_too() -> None:
     rs = {d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar}
     data = _rotation_data(calendar, scores, prices, rs)
     config = BacktestConfig(
-        start_date="2026-06-18", end_date="2026-06-23",
-        score_threshold=65.0, gates="full",
-        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
-        swap_min_hold_days=1, swap_max_per_day=2,
-        throttle_windows=(("2026-06-22", "2026-06-23"),), throttle_scale=0.0,
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        score_threshold=65.0,
+        gates="full",
+        swap_weak_rs_below=0.3,
+        swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1,
+        swap_max_per_day=2,
+        throttle_windows=(("2026-06-22", "2026-06-23"),),
+        throttle_scale=0.0,
     )
     run = simulate(config, data=data)
     assert not [t for t in run.trades if t.close_reason == "swapped"]
@@ -2829,7 +3129,8 @@ def test_throttle_config_validation() -> None:
         BacktestConfig(start_date="2026-06-15", end_date="2026-06-22", throttle_scale=-0.1)
     with pytest.raises(ValueError):
         BacktestConfig(
-            start_date="2026-06-15", end_date="2026-06-22",
+            start_date="2026-06-15",
+            end_date="2026-06-22",
             throttle_windows=(("2026-06-22", "2026-06-19"),),
         )
     cfg = BacktestConfig(start_date="2026-06-15", end_date="2026-06-22")

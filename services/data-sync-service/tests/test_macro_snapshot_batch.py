@@ -115,7 +115,18 @@ def test_build_macro_snapshot_soft_put_iv_fallback_not_page_warning() -> None:
         warning=PUT_IV_LIVE_FETCH_FAILED_USING_DB,
         diagnostics={"error": "no_510300_put_iv_candidate"},
     )
-    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9]:
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patches[6],
+        patches[7],
+        patches[8],
+        patches[9],
+    ):
         out = build_macro_snapshot()
 
     assert "warning" not in out

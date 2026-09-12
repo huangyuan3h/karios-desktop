@@ -508,7 +508,9 @@ def catchup_missed_eod_chain() -> None:
                 try:
                     close_sync_job.run()
                 except Exception:  # noqa: BLE001
-                    logger.warning("startup self-heal: stock_close_sync catchup failed", exc_info=True)
+                    logger.warning(
+                        "startup self-heal: stock_close_sync catchup failed", exc_info=True
+                    )
     except Exception:  # noqa: BLE001
         logger.warning("startup self-heal: close check failed", exc_info=True)
 
@@ -588,7 +590,13 @@ def catchup_missed_eod_chain() -> None:
             try:
                 from datetime import datetime as _dt2
 
-                cn_date = _dt2.fromisoformat(str(cn_ok.get("sync_at"))).astimezone(ZoneInfo("Asia/Shanghai")).date() if cn_ok and cn_ok.get("sync_at") else None
+                cn_date = (
+                    _dt2.fromisoformat(str(cn_ok.get("sync_at")))
+                    .astimezone(ZoneInfo("Asia/Shanghai"))
+                    .date()
+                    if cn_ok and cn_ok.get("sync_at")
+                    else None
+                )
                 if not cn_ok or not cn_ok.get("success") or not cn_date or cn_date < latest_open3:
                     logger.info("startup self-heal: cn_industry_post_close_sync stale — running")
                     try:
@@ -629,7 +637,9 @@ def catchup_missed_eod_chain() -> None:
         try:
             cn_industry_post_close_job.run()
         except Exception:  # noqa: BLE001
-            logger.warning("eod chain catchup: cn_industry_post_close_sync run failed", exc_info=True)
+            logger.warning(
+                "eod chain catchup: cn_industry_post_close_sync run failed", exc_info=True
+            )
     # paper_backtest_mirror cron: 18:05 — 18:10 avoids the race; needs the
     # daily HK bars (hk_daily_full_sync 17:30) which close_sync guards imply.
     if (now.hour, now.minute) >= (18, 10) and not already("paper_backtest_mirror"):

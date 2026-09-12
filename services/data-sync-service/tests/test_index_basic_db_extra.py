@@ -8,8 +8,20 @@ import pandas as pd
 
 from data_sync_service.db import index_basic as ib
 
-COLS = ["ts_code", "trade_date", "total_mv", "float_mv", "total_share", "float_share",
-        "free_share", "turnover_rate", "turnover_rate_f", "pe", "pe_ttm", "pb"]
+COLS = [
+    "ts_code",
+    "trade_date",
+    "total_mv",
+    "float_mv",
+    "total_share",
+    "float_share",
+    "free_share",
+    "turnover_rate",
+    "turnover_rate_f",
+    "pe",
+    "pe_ttm",
+    "pb",
+]
 
 
 class _Cur:
@@ -83,15 +95,48 @@ def test_date_str_variants() -> None:
 def test_upsert_from_dataframe(monkeypatch) -> None:
     df = pd.DataFrame(
         [
-            {"ts_code": "000001.SH", "trade_date": "2026-08-07", "total_mv": 1.0, "float_mv": 2.0,
-             "total_share": 3.0, "float_share": 4.0, "free_share": 5.0, "turnover_rate": 6.0,
-             "turnover_rate_f": 7.0, "pe": 8.0, "pe_ttm": 9.0, "pb": 10.0},
-            {"ts_code": "000001.SH", "trade_date": "", "total_mv": None, "float_mv": None,
-             "total_share": None, "float_share": None, "free_share": None, "turnover_rate": None,
-             "turnover_rate_f": None, "pe": None, "pe_ttm": None, "pb": None},
-            {"ts_code": "399001.SZ", "trade_date": "bad!", "total_mv": 1.0, "float_mv": None,
-             "total_share": None, "float_share": None, "free_share": None, "turnover_rate": None,
-             "turnover_rate_f": None, "pe": None, "pe_ttm": None, "pb": None},
+            {
+                "ts_code": "000001.SH",
+                "trade_date": "2026-08-07",
+                "total_mv": 1.0,
+                "float_mv": 2.0,
+                "total_share": 3.0,
+                "float_share": 4.0,
+                "free_share": 5.0,
+                "turnover_rate": 6.0,
+                "turnover_rate_f": 7.0,
+                "pe": 8.0,
+                "pe_ttm": 9.0,
+                "pb": 10.0,
+            },
+            {
+                "ts_code": "000001.SH",
+                "trade_date": "",
+                "total_mv": None,
+                "float_mv": None,
+                "total_share": None,
+                "float_share": None,
+                "free_share": None,
+                "turnover_rate": None,
+                "turnover_rate_f": None,
+                "pe": None,
+                "pe_ttm": None,
+                "pb": None,
+            },
+            {
+                "ts_code": "399001.SZ",
+                "trade_date": "bad!",
+                "total_mv": 1.0,
+                "float_mv": None,
+                "total_share": None,
+                "float_share": None,
+                "free_share": None,
+                "turnover_rate": None,
+                "turnover_rate_f": None,
+                "pe": None,
+                "pe_ttm": None,
+                "pb": None,
+            },
         ]
     )
     cur = _patch(monkeypatch)
@@ -124,10 +169,25 @@ def test_fetch_index_basic_all_filters(monkeypatch) -> None:
 
     rows = [
         ("000001.SH", datetime(2026, 8, 7), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
-        ("000001.SH", datetime(2026, 8, 6), None, None, None, None, None, None, None, None, None, None),
+        (
+            "000001.SH",
+            datetime(2026, 8, 6),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
     ]
     cur = _patch(monkeypatch, rows)
-    out = ib.fetch_index_basic(ts_code="000001.SH", start_date="2026-08-01", end_date="2026-08-07", limit=10)
+    out = ib.fetch_index_basic(
+        ts_code="000001.SH", start_date="2026-08-01", end_date="2026-08-07", limit=10
+    )
     assert len(out) == 2
     assert out[0]["trade_date"] == "2026-08-06"
     assert out[0]["total_mv"] is None

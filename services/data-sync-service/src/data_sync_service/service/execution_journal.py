@@ -22,6 +22,7 @@ def is_valid_watchlist_symbol(symbol: str) -> bool:
     """True when ``symbol`` is a parseable watchlist symbol (CN/HK/ETF)."""
     return bool(_SYMBOL_RE.match(str(symbol or "").strip().upper()))
 
+
 DECISION_CARD_FIELDS = (
     "symbol",
     "action",
@@ -43,7 +44,9 @@ LATEST_ACTIONS_DELTA_FIELDS = frozenset(
 HARDSTOP_NOISE_THRESHOLD_PCT = 0.01
 
 
-def _is_hardstop_noise(old_value: Any, new_value: Any, threshold: float = HARDSTOP_NOISE_THRESHOLD_PCT) -> bool:
+def _is_hardstop_noise(
+    old_value: Any, new_value: Any, threshold: float = HARDSTOP_NOISE_THRESHOLD_PCT
+) -> bool:
     """True when hardStop drift is smaller than `threshold` (relative)."""
     try:
         o = float(old_value)
@@ -86,7 +89,9 @@ def _norm_source(v: Any) -> str:
     return s if s in {"TV", "ALPHA", "MANUAL"} else ""
 
 
-def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None) -> dict[str, Any]:
+def decision_payload_for_hash(
+    gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None
+) -> dict[str, Any]:
     g = gate if isinstance(gate, dict) else {}
     mode = _norm_str(g.get("mode"))
     allow = bool(g.get("allowNewEntries"))
@@ -417,13 +422,9 @@ def build_journal_markdown(
     lines: list[str] = []
     lines.append("## Decision Journal")
     lines.append(f"- tradeDate: {trade_date}")
-    lines.append(
-        f"- latestSnapshotAt: {_md_cell((latest or {}).get('capturedAt'))}"
-    )
+    lines.append(f"- latestSnapshotAt: {_md_cell((latest or {}).get('capturedAt'))}")
     lines.append(f"- latestSource: {_md_cell((latest or {}).get('source'))}")
-    lines.append(
-        "- note: Prefer Action/Why transitions below over re-deriving rules."
-    )
+    lines.append("- note: Prefer Action/Why transitions below over re-deriving rules.")
     lines.append(
         f"- note: hardStop drifts < {int(HARDSTOP_NOISE_THRESHOLD_PCT * 100)}% suppressed (noise filter)"
     )
@@ -444,12 +445,8 @@ def build_journal_markdown(
         for ts, rows in by_ts.items():
             if len(rows) > 5:
                 fields = sorted({str(r.get("field") or "") for r in rows if r.get("field")})
-                old_vals = sorted(
-                    {str(r.get("oldValue") or "") for r in rows if r.get("oldValue")}
-                )
-                new_vals = sorted(
-                    {str(r.get("newValue") or "") for r in rows if r.get("newValue")}
-                )
+                old_vals = sorted({str(r.get("oldValue") or "") for r in rows if r.get("oldValue")})
+                new_vals = sorted({str(r.get("newValue") or "") for r in rows if r.get("newValue")})
                 preview = "、".join(new_vals[:6]) + ("…" if len(new_vals) > 6 else "")
                 lines.append(
                     f"| {_md_cell(ts)} | — | 批量初始化 {len(rows)} 项 | "
@@ -504,9 +501,7 @@ def build_journal_markdown(
                 continue
             meaningful.append(c)
         if watch_only:
-            lines.append(
-                f"- note: {watch_only} 项 WATCH 无变化（硬止损见操作表，不再逐行罗列）"
-            )
+            lines.append(f"- note: {watch_only} 项 WATCH 无变化（硬止损见操作表，不再逐行罗列）")
         lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
         lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
         for c in meaningful:

@@ -70,7 +70,10 @@ def run() -> None:
         )
         logger.info(
             "[minute_capture] ok=%d stored=%d failed=%d skipped=%d",
-            res["ok"], res["stored"], res["failed"], res["skipped"],
+            res["ok"],
+            res["stored"],
+            res["failed"],
+            res["skipped"],
         )
     except Exception as exc:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])

@@ -60,8 +60,13 @@ def test_sync_daily_for_ts_code_incremental_fetch() -> None:
         patch("data_sync_service.service.daily.get_settings") as mock_settings,
         patch("data_sync_service.service.daily.get_last_trade_date") as mock_last,
         patch("data_sync_service.service.daily._sync_end_date", return_value="20260618"),
-        patch("data_sync_service.service.daily.get_pool", return_value=SimpleNamespace(pro=lambda: pro)),
-        patch("data_sync_service.service.daily.upsert_from_dataframe", return_value=1) as mock_upsert,
+        patch(
+            "data_sync_service.service.daily.get_pool",
+            return_value=SimpleNamespace(pro=lambda: pro),
+        ),
+        patch(
+            "data_sync_service.service.daily.upsert_from_dataframe", return_value=1
+        ) as mock_upsert,
     ):
         mock_settings.return_value.tu_share_api_key = "test-key"
         mock_settings.return_value.tushare_tokens = ("test-key",)

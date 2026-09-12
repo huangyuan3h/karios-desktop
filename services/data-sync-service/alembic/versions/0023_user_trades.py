@@ -55,10 +55,7 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS idx_user_trades_symbol_date "
         "ON user_trades(symbol, trade_date DESC);"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_user_trades_date "
-        "ON user_trades(trade_date DESC);"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_user_trades_date ON user_trades(trade_date DESC);")
 
 
 def downgrade() -> None:

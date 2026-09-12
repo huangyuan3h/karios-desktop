@@ -34,7 +34,9 @@ def upgrade() -> None:
         sa.Column("missing", sa.Integer, nullable=False),
         sa.Column("extra", sa.Integer, nullable=False),
         sa.Column("detail", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.UniqueConstraint("recon_date", "market", name="uq_recon_date_market"),
     )
 

@@ -233,8 +233,10 @@ class QuotaTracker:
             if not allowed:
                 limit = window.max_count
                 window_name = (
-                    "rpm" if window is st.rpm_window
-                    else "rph" if window is st.rph_window
+                    "rpm"
+                    if window is st.rpm_window
+                    else "rph"
+                    if window is st.rph_window
                     else "rpd"
                 )
                 raise HTTPException(

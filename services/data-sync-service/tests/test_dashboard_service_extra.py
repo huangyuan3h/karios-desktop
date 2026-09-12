@@ -11,10 +11,54 @@ class TestNews:
     def test_news_items(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "ensure_news_tables", lambda: None)
         items = [
-            {"id": "1", "sourceId": "s", "title": "t1", "link": "l", "publishedAt": "p", "importance": 2, "relevanceScore": 30, "actionability": "a", "tickers": ["X"], "aiSummary": "sum"},
-            {"id": "2", "sourceId": "s", "title": "t2", "link": "l", "publishedAt": "p", "importance": None, "relevanceScore": None, "actionability": None, "tickers": None, "aiSummary": None},
-            {"id": "3", "sourceId": "s", "title": "t3", "link": "l", "publishedAt": "p", "importance": 0, "relevanceScore": 0, "actionability": None, "tickers": [], "aiSummary": None},
-            {"id": "4", "sourceId": "s", "title": "t4", "link": "l", "publishedAt": "p", "importance": 1, "relevanceScore": 10, "actionability": None, "tickers": [], "aiSummary": None},
+            {
+                "id": "1",
+                "sourceId": "s",
+                "title": "t1",
+                "link": "l",
+                "publishedAt": "p",
+                "importance": 2,
+                "relevanceScore": 30,
+                "actionability": "a",
+                "tickers": ["X"],
+                "aiSummary": "sum",
+            },
+            {
+                "id": "2",
+                "sourceId": "s",
+                "title": "t2",
+                "link": "l",
+                "publishedAt": "p",
+                "importance": None,
+                "relevanceScore": None,
+                "actionability": None,
+                "tickers": None,
+                "aiSummary": None,
+            },
+            {
+                "id": "3",
+                "sourceId": "s",
+                "title": "t3",
+                "link": "l",
+                "publishedAt": "p",
+                "importance": 0,
+                "relevanceScore": 0,
+                "actionability": None,
+                "tickers": [],
+                "aiSummary": None,
+            },
+            {
+                "id": "4",
+                "sourceId": "s",
+                "title": "t4",
+                "link": "l",
+                "publishedAt": "p",
+                "importance": 1,
+                "relevanceScore": 10,
+                "actionability": None,
+                "tickers": [],
+                "aiSummary": None,
+            },
         ]
         monkeypatch.setattr(dash, "fetch_items", lambda limit, hours: (4, items))
         out = dash._news_items(hours=24, limit=50)
@@ -55,7 +99,11 @@ class TestBundles:
 
     def test_sentiment_bundle(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "trade_dates_upto", lambda *a, **k: ["d1", "d2"])
-        monkeypatch.setattr(dash, "list_sentiment_days_for_dates", lambda dates: [{"downCount": 3, "upCount": 10, "riskMode": "risk-on"}])
+        monkeypatch.setattr(
+            dash,
+            "list_sentiment_days_for_dates",
+            lambda dates: [{"downCount": 3, "upCount": 10, "riskMode": "risk-on"}],
+        )
         monkeypatch.setattr(dash, "apply_breadth_panic_sentiment_items", lambda items, dc: items)
         monkeypatch.setattr(dash, "get_index_signals", lambda **kw: [{"k": "v"}])
         monkeypatch.setattr(dash, "build_etf_fund_flow_bundle", lambda **kw: {"items": []})
@@ -83,7 +131,9 @@ class TestBundles:
         monkeypatch.setattr(dash, "get_rows_for_dates", lambda dates: [])
         monkeypatch.setattr(dash, "max_net_inflow_for_date", lambda rows, d: (None, None))
         monkeypatch.setattr(dash, "compute_execution_gate", lambda **kw: {"ok": True})
-        out = dash._build_market_sentiment_bundle(as_of_date="2026-08-07", use_realtime_index=True, index_signals=[])
+        out = dash._build_market_sentiment_bundle(
+            as_of_date="2026-08-07", use_realtime_index=True, index_signals=[]
+        )
         assert out["indexSignals"] == []
 
 
@@ -117,7 +167,20 @@ class TestSyncSteps:
 
     def test_sentiment_step(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
-        monkeypatch.setattr(dash, "sync_cn_sentiment", lambda **kw: {"items": [{"riskMode": "risk-off", "yesterdayLimitUpPremium": 0.5, "failedLimitUpRate": 10.0}], "asOfDate": "2026-08-07"})
+        monkeypatch.setattr(
+            dash,
+            "sync_cn_sentiment",
+            lambda **kw: {
+                "items": [
+                    {
+                        "riskMode": "risk-off",
+                        "yesterdayLimitUpPremium": 0.5,
+                        "failedLimitUpRate": 10.0,
+                    }
+                ],
+                "asOfDate": "2026-08-07",
+            },
+        )
         monkeypatch.setattr(dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "sync_option_iv_daily", lambda **kw: {"ok": True})
@@ -141,7 +204,11 @@ class TestDashboardSummary:
         monkeypatch.setattr(dash, "get_latest_industry_date", lambda: "2026-08-07")
         monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
         monkeypatch.setattr(dash, "resolve_effective_as_of", lambda d: d)
-        monkeypatch.setattr(dash, "compute_market_status", lambda: market_status or {"isPreMarket": False, "isMarketOpen": True})
+        monkeypatch.setattr(
+            dash,
+            "compute_market_status",
+            lambda: market_status or {"isPreMarket": False, "isMarketOpen": True},
+        )
         monkeypatch.setattr(dash, "get_index_signals", lambda **kw: [{"k": "v"}])
         monkeypatch.setattr(dash, "_build_industry_bundle", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "_build_market_sentiment_bundle", lambda **kw: {"ok": True})
@@ -166,7 +233,9 @@ class TestDashboardSummary:
 
     def test_summary_no_blocks(self, monkeypatch) -> None:
         self._patch(monkeypatch, market_status={"isPreMarket": True, "isMarketOpen": False})
-        monkeypatch.setattr(dash, "previous_open_date", lambda d: (_ for _ in ()).throw(ValueError("bad")))
+        monkeypatch.setattr(
+            dash, "previous_open_date", lambda d: (_ for _ in ()).throw(ValueError("bad"))
+        )
         out = dash.dashboard_summary(
             include_macro=False,
             include_sentiment=False,
@@ -179,8 +248,14 @@ class TestDashboardSummary:
 
     def test_summary_macro_exception(self, monkeypatch) -> None:
         self._patch(monkeypatch)
-        monkeypatch.setattr(dash, "build_macro_snapshot", lambda **kw: (_ for _ in ()).throw(RuntimeError("x")))
-        out = dash.dashboard_summary(include_sentiment=False, include_news=False, include_industry=False, )
+        monkeypatch.setattr(
+            dash, "build_macro_snapshot", lambda **kw: (_ for _ in ()).throw(RuntimeError("x"))
+        )
+        out = dash.dashboard_summary(
+            include_sentiment=False,
+            include_news=False,
+            include_industry=False,
+        )
         assert out["marketEnvironmentZh"] == ""
 
 
@@ -196,7 +271,9 @@ class TestSyncFlows:
 
     def test_dashboard_sync_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "_now_iso", lambda: "now")
-        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            dash, "_sync_industry_step", lambda **kw: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         monkeypatch.setattr(dash, "_sync_sentiment_step", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
         monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
@@ -217,7 +294,9 @@ class TestSyncFlows:
 
     def test_dashboard_sync_parallel_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "_now_iso", lambda: "now")
-        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            dash, "_sync_industry_step", lambda **kw: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         monkeypatch.setattr(dash, "_sync_sentiment_step", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
         monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
@@ -243,6 +322,8 @@ class TestSyncFlows:
         monkeypatch.setattr(dash, "_sync_sentiment_step", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
         monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
-        monkeypatch.setattr(dash, "dashboard_summary", lambda **kw: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            dash, "dashboard_summary", lambda **kw: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         chunks = list(dash.dashboard_sync_stream(force=True))
         assert chunks[-1].startswith('{"type": "done"')

@@ -7,6 +7,7 @@ sat   = S-gap 卫星: 最新收盘 (t-1) 的 R-wide 闸 + 低波33% S-gap 候选
 
 Truth: docs/backtests/state-bucket-algo-2026-08-31.md §7
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -86,7 +87,13 @@ def sat_body_progress(
     entry_date: str | None, as_of: str | None, *, body: int = BODY
 ) -> dict[str, Any]:
     if not entry_date or not as_of:
-        return {"heldDays": None, "daysLeft": None, "exitDue": None, "due": False, "missingEntry": True}
+        return {
+            "heldDays": None,
+            "daysLeft": None,
+            "exitDue": None,
+            "due": False,
+            "missingEntry": True,
+        }
     held = count_sessions_inclusive(str(entry_date), str(as_of))
     try:
         from data_sync_service.service.trade_calendar_utils import nth_open_session
@@ -371,9 +378,7 @@ def _sat_signal(today: date) -> dict[str, Any] | None:
         return float(r["close"]) >= pc * (1 + lim - 0.004)
 
     locked = {ts for ts, _amp, _gap in gap_stocks if _limit_locked(ts)}
-    picks = select_live_gap_picks(
-        gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N
-    )
+    picks = select_live_gap_picks(gap_stocks, locked, bucket_q=BUCKET_Q, top_n=TOP_N)
 
     def _pack(rows: list, *, blocked: bool = False) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -420,9 +425,14 @@ def _sat_book(today: date) -> dict[str, Any]:
     start = (today - timedelta(days=BOOK_LOOKBACK_CAL_DAYS)).isoformat()
     try:
         built = build_sgap_timeline(
-            start=start, end=end, skip_t1_limit=True, pool_mode="strict",
-            fill_mode=HABIT_FILL_MODE, fill_hhmm=HABIT_FILL_HHMM,
-            exit_hhmm=HABIT_EXIT_HHMM, max_open_to_1430_pct=HABIT_C1_PCT,
+            start=start,
+            end=end,
+            skip_t1_limit=True,
+            pool_mode="strict",
+            fill_mode=HABIT_FILL_MODE,
+            fill_hhmm=HABIT_FILL_HHMM,
+            exit_hhmm=HABIT_EXIT_HHMM,
+            max_open_to_1430_pct=HABIT_C1_PCT,
             rank_key="amp_1430",
         )
     except Exception:
@@ -579,9 +589,7 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
     if sat.get("asOf") is None:
         sat_line = "卫星: 数据不可用"
     elif snap_failed:
-        sat_line = (
-            "卫星: 今日盘中快照失败（东财），名单不可用 — 不要用 T-1 名单下单"
-        )
+        sat_line = "卫星: 今日盘中快照失败（东财），名单不可用 — 不要用 T-1 名单下单"
     elif not sat["gateOpen"]:
         sat_line = f"卫星: R-wide 关闸 (breadth {sat['breadth']}) — 今日不开仓"
     else:
@@ -609,9 +617,7 @@ def build_twin_star_reminder_payload(today: date | None = None) -> dict[str, Any
     if exits:
         sell_line = f"今日14:30卖 {', '.join(e['ts'] for e in exits[:5])} · "
     if live:
-        hold_bits = ", ".join(
-            f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in live[:3]
-        )
+        hold_bits = ", ".join(f"{h['ts']}(剩{h.get('daysLeft')}d)" for h in live[:3])
         sat_line += f" · 你卫星仓 {len(live)}/{MAX_POS}: {hold_bits}"
     engine_n = int(book.get("engineHeld") or len(book.get("holdings") or []) or 0)
     if engine_n:

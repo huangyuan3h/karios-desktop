@@ -217,9 +217,7 @@ def test_classify_and_user_trades():
 def test_nav_chain_without_explicit_day_ret():
     nav = 1.0
     rows = [{"date": "2026-01-01", "pick": "REPO", "navSingle": 1.0}]
-    for i, (pick, r) in enumerate(
-        [("NASDAQ", 0.05), ("NASDAQ", -0.02), ("GOLD", 0.01)], start=2
-    ):
+    for i, (pick, r) in enumerate([("NASDAQ", 0.05), ("NASDAQ", -0.02), ("GOLD", 0.01)], start=2):
         nav *= 1.0 + r
         rows.append({"date": f"2026-01-0{i}", "pick": pick, "navSingle": nav})
     days = ra.day_returns_from_nav(rows)

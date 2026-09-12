@@ -107,12 +107,19 @@ def _ensure_5min_today(ts_codes: list[str], day: str) -> None:
         from data_sync_service.service.bar_5min import SOURCE_BAOSTOCK, backfill_symbols
 
         res = backfill_symbols(
-            ts_codes=codes, start_date=day, end_date=day,
-            source=SOURCE_BAOSTOCK, skip_covered=True,
+            ts_codes=codes,
+            start_date=day,
+            end_date=day,
+            source=SOURCE_BAOSTOCK,
+            skip_covered=True,
         )
         logger.info(
             "paper_twin_star 5min ensure %s: ok=%s stored=%s failed=%s skipped=%s",
-            day, res.get("ok"), res.get("stored"), res.get("failed"), res.get("skipped"),
+            day,
+            res.get("ok"),
+            res.get("stored"),
+            res.get("failed"),
+            res.get("skipped"),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_twin_star 5min ensure failed %s: %s", day, exc)
@@ -347,8 +354,10 @@ def paper_twin_star_recon(*, day: str | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         return {"day": day, "ok": False, "error": f"list paper failed: {exc}"}
     closed_today = [
-        r for r in closed_rows
-        if str(r.get("source") or "") == SOURCE_TWIN_STAR and str(r.get("closeDate") or "")[:10] == day
+        r
+        for r in closed_rows
+        if str(r.get("source") or "") == SOURCE_TWIN_STAR
+        and str(r.get("closeDate") or "")[:10] == day
     ]
 
     def _ts_of(row: dict[str, Any]) -> str:
@@ -363,7 +372,11 @@ def paper_twin_star_recon(*, day: str | None = None) -> dict[str, Any]:
     missed = [ts for ts in expected if ts not in inserted_ts and ts not in held_before_ts]
     extra = sorted(ts for ts in inserted_ts if ts not in expected)
     exits_due = sorted(
-        {str(r.get("symbol") or "") for r in opens if _held_days(str(r.get("entryDate") or ""), day) >= BODY}
+        {
+            str(r.get("symbol") or "")
+            for r in opens
+            if _held_days(str(r.get("entryDate") or ""), day) >= BODY
+        }
     )
     closed_ts = {_ts_of(r) for r in closed_today}
     missed_exits = sorted(s for s in exits_due if (ts_from_cn_symbol(s) or "") not in closed_ts)

@@ -74,9 +74,7 @@ def test_sync_empty_lhb_suspicious(monkeypatch) -> None:
     monkeypatch.setattr(tif, "is_trading_day", lambda exchange, cal_date: True)
     monkeypatch.setattr(tif, "_watchlist_ts_codes", lambda: ["600000.SH"])
     monkeypatch.setattr(tif, "get_today_run", lambda job: None)
-    monkeypatch.setattr(
-        tif, "fetch_top_inst_provider_result", lambda td: (_result(), [])
-    )
+    monkeypatch.setattr(tif, "fetch_top_inst_provider_result", lambda td: (_result(), []))
     monkeypatch.setattr(tif, "insert_record", lambda **kw: None)
     out = tif.sync_top_inst_watchlist()
     assert out["ok"] is False
@@ -98,7 +96,9 @@ def test_sync_full_flow_with_upserts(monkeypatch) -> None:
             "000001": {},
         },
         inst_seats_by_ts_code={
-            "600000.SH": [{"exalter": "机构专用", "buy": 100.0, "sell": 20.0, "net_buy": 80.0, "side": "买"}],
+            "600000.SH": [
+                {"exalter": "机构专用", "buy": 100.0, "sell": 20.0, "net_buy": 80.0, "side": "买"}
+            ],
         },
     )
     monkeypatch.setattr(tif, "fetch_top_inst_provider_result", lambda td: (provider, []))

@@ -231,7 +231,9 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     }
 
 
-def extract_pending_actions(*, hours: int = 48, brief_marker: str = "## 操作建议") -> dict[str, Any]:
+def extract_pending_actions(
+    *, hours: int = 48, brief_marker: str = "## 操作建议"
+) -> dict[str, Any]:
     """Extract structured actions from recent assistant brief messages.
 
     Calls ai-service /decision/extract-actions per brief; stores into
@@ -345,11 +347,7 @@ def track_action_outcomes(*, horizon_days: int = 5) -> dict[str, Any]:
     from data_sync_service.db.daily import fetch_daily_for_codes
     from data_sync_service.db.decision import list_actions, update_action_status
 
-    actions = [
-        a
-        for a in list_actions(days=14, limit=300)
-        if a["outcome"] is None
-    ]
+    actions = [a for a in list_actions(days=14, limit=300) if a["outcome"] is None]
     ts_codes = [f"{a['symbol'][3:9]}.{a['symbol'][10:]}" for a in actions if len(a["symbol"]) >= 11]
     if not actions:
         return {"ok": True, "tracked": 0}
@@ -376,11 +374,15 @@ def track_action_outcomes(*, horizon_days: int = 5) -> dict[str, Any]:
         base = float(rows[base_idx]["close"] or 0)
         if base <= 0:
             continue
-        def pct(i: int, base_idx: int = base_idx, base: float = base, rows: list[dict[str, Any]] = rows) -> float | None:
+
+        def pct(
+            i: int, base_idx: int = base_idx, base: float = base, rows: list[dict[str, Any]] = rows
+        ) -> float | None:
             if base_idx + i >= len(rows):
                 return None
             c = float(rows[base_idx + i]["close"] or 0)
             return round((c / base - 1) * 100, 2) if c > 0 else None
+
         outcome = {"pct1": pct(1), "pct3": pct(3), "pct5": pct(5)}
         if any(v is not None for v in outcome.values()):
             update_action_status(a["id"], status=a["status"], outcome=outcome)

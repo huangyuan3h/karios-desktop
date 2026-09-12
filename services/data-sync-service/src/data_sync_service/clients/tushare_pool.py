@@ -218,7 +218,10 @@ class TusharePool:
             with self._lock:
                 now = self._clock()
                 # Prefer keys with immediate capacity, round-robin order.
-                ordered = [self._tokens[(self._cursor + i) % len(self._tokens)] for i in range(len(self._tokens))]
+                ordered = [
+                    self._tokens[(self._cursor + i) % len(self._tokens)]
+                    for i in range(len(self._tokens))
+                ]
                 candidate: str | None = None
                 wait_min = float("inf")
                 for key in ordered:
@@ -304,7 +307,14 @@ class TusharePool:
                         }
                     )
                 daily = {
-                    ep: {"limit": lim, "usedTotal": sum(int(r[1]) for (k, e), r in self._daily_used.items() if e == ep and r[0] == self._today())}
+                    ep: {
+                        "limit": lim,
+                        "usedTotal": sum(
+                            int(r[1])
+                            for (k, e), r in self._daily_used.items()
+                            if e == ep and r[0] == self._today()
+                        ),
+                    }
                     for ep, lim in DAILY_LIMITED_ENDPOINTS.items()
                 }
                 return {

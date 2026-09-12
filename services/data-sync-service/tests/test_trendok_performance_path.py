@@ -183,7 +183,10 @@ def test_compute_trendok_batches_stoploss_and_daily_seats() -> None:
 
     with (
         patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
-        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok._build_industry_flow_context",
+            return_value={"ok": False},
+        ),
         patch(
             "data_sync_service.service.trendok.get_market_regime",
             return_value={"regime": "Strong", "bias": None, "indexSignals": []},
@@ -196,8 +199,12 @@ def test_compute_trendok_batches_stoploss_and_daily_seats() -> None:
             ),
         ),
         patch("data_sync_service.service.trendok._lookup_em_industry_boards", return_value={}),
-        patch("data_sync_service.service.trendok.fetch_summaries_for_codes", return_value=summaries),
-        patch("data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}) as seats_batch,
+        patch(
+            "data_sync_service.service.trendok.fetch_summaries_for_codes", return_value=summaries
+        ),
+        patch(
+            "data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}
+        ) as seats_batch,
         patch(
             "data_sync_service.service.trendok.get_stoploss_batch",
             return_value={"600519.SH": {"stop_loss_price": 999.0}},
@@ -231,7 +238,10 @@ def test_compute_trendok_not_held_resets_stored_stoploss() -> None:
     bars = {"600519.SH": _trend_bars(start=10.0)}
     with (
         patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
-        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok._build_industry_flow_context",
+            return_value={"ok": False},
+        ),
         patch(
             "data_sync_service.service.trendok.get_market_regime",
             return_value={"regime": "Strong", "bias": None, "indexSignals": []},
@@ -360,7 +370,9 @@ def test_resolve_effective_stoploss_upserts_when_computed_is_higher() -> None:
     )
 
 
-def _rise_then_fall_bars(rise: int = 80, fall: int = 20, start: float = 10.0) -> list[tuple[str, str, str, str, str, str]]:
+def _rise_then_fall_bars(
+    rise: int = 80, fall: int = 20, start: float = 10.0
+) -> list[tuple[str, str, str, str, str, str]]:
     """Steady rise then a sustained decline -> EMA5 < EMA20, close < EMA20."""
     base = date(2026, 1, 1)
     rows = []
@@ -392,7 +404,9 @@ def _rise_then_fall_bars(rise: int = 80, fall: int = 20, start: float = 10.0) ->
     return rows
 
 
-def _accelerating_then_small_dip_bars(bars: int = 26, start: float = 10.0) -> list[tuple[str, str, str, str, str, str]]:
+def _accelerating_then_small_dip_bars(
+    bars: int = 26, start: float = 10.0
+) -> list[tuple[str, str, str, str, str, str]]:
     """Accelerating rise then a 4-bar dip: close stays above EMA20,
     but the position is slightly underwater vs a cost near the peak."""
     base = date(2026, 1, 1)
@@ -432,7 +446,10 @@ def test_compute_trendok_exit_now_displays_current_not_stored() -> None:
     bars = {"600519.SH": _rise_then_fall_bars()}
     with (
         patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
-        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok._build_industry_flow_context",
+            return_value={"ok": False},
+        ),
         patch(
             "data_sync_service.service.trendok.get_market_regime",
             return_value={"regime": "Strong", "bias": None, "indexSignals": []},
@@ -476,7 +493,10 @@ def test_compute_trendok_entry_hard_stop_floor_when_held_in_loss() -> None:
     cost_price = 43.0
     with (
         patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
-        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok._build_industry_flow_context",
+            return_value={"ok": False},
+        ),
         patch(
             "data_sync_service.service.trendok.get_market_regime",
             return_value={"regime": "Strong", "bias": None, "indexSignals": []},
@@ -525,7 +545,10 @@ def test_compute_trendok_keeps_stored_stoploss_when_registry_read_fails() -> Non
 
     with (
         patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
-        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok._build_industry_flow_context",
+            return_value={"ok": False},
+        ),
         patch(
             "data_sync_service.service.trendok.get_market_regime",
             return_value={"regime": "Strong", "bias": None, "indexSignals": []},

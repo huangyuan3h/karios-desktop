@@ -221,7 +221,9 @@ class WatchlistItem(BaseModel):
     """
 
     symbol: str = Field(..., description="MARKET:TICKER form.")
-    name: str | None = Field(default=None, description="Company or fund name; null if not resolved.")
+    name: str | None = Field(
+        default=None, description="Company or fund name; null if not resolved."
+    )
     source: str | None = Field(
         default=None,
         description=(
@@ -271,7 +273,9 @@ class WatchlistResponse(BaseModel):
         ),
     )
     count: int = Field(..., description="Number of items returned (== len(items)).")
-    items: list[WatchlistItem] = Field(..., description="All current watchlist items, no filter applied.")
+    items: list[WatchlistItem] = Field(
+        ..., description="All current watchlist items, no filter applied."
+    )
 
 
 @router.get(
@@ -318,8 +322,12 @@ class DecisionChange(BaseModel):
     group changes by reason.
     """
 
-    changeId: str | None = Field(default=None, description="Internal change-row id; null if not yet persisted.")
-    symbol: str | None = Field(default=None, description="Symbol this change is about; null for portfolio-level changes.")
+    changeId: str | None = Field(
+        default=None, description="Internal change-row id; null if not yet persisted."
+    )
+    symbol: str | None = Field(
+        default=None, description="Symbol this change is about; null for portfolio-level changes."
+    )
     action: str | None = Field(
         default=None,
         description=(
@@ -738,7 +746,9 @@ def agent_portfolio_health(
     2026-08-10 (HK parallel line): ``markets=CN,HK`` returns both strategy
     lines (HK block under ``hkHealth``, HK trailing -12% per its own rules)."""
     try:
-        parsed_markets = tuple(m.strip() for m in markets.split(",") if m.strip() in ("CN", "HK")) or ("CN",)
+        parsed_markets = tuple(
+            m.strip() for m in markets.split(",") if m.strip() in ("CN", "HK")
+        ) or ("CN",)
         return build_portfolio_health(trade_date=tradeDate, markets=parsed_markets)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"portfolio health failed: {exc}") from exc

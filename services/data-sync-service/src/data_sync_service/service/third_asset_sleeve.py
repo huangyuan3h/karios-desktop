@@ -45,9 +45,16 @@ THIRD_ASSET_SYMBOL = "ETF:513100"
 # NASDAQ-100 QDII ETFs the user may actually hold (same index, near-identical
 # backtest behavior). Keep the reference symbol first.
 THIRD_ASSET_SYMBOLS = {
-    "ETF:513100", "ETF:513110", "ETF:159941", "ETF:159501", "ETF:513310", "ETF:159697",
+    "ETF:513100",
+    "ETF:513110",
+    "ETF:159941",
+    "ETF:159501",
+    "ETF:513310",
+    "ETF:159697",
 }
-THIRD_ASSET_TS_CODES = {s.replace("ETF:", "") + (".SH" if s.startswith("ETF:5") else ".SZ") for s in THIRD_ASSET_SYMBOLS}
+THIRD_ASSET_TS_CODES = {
+    s.replace("ETF:", "") + (".SH" if s.startswith("ETF:5") else ".SZ") for s in THIRD_ASSET_SYMBOLS
+}
 MA_WINDOW = 200
 # Require >= this many % of capital idle before suggesting a new ETF buy.
 MIN_IDLE_PCT = 20.0
@@ -213,7 +220,9 @@ def build_third_asset_sleeve(
     Uses the held NASDAQ-100 ETF when the user already holds one, otherwise the
     backtest reference 513100.
     """
-    holdings = holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    holdings = (
+        holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    )
     held = resolve_held_third_asset(holdings)
     ts = str(held.get("ts_code") or "") if held else THIRD_ASSET_TS
     sym = str(held.get("symbol") or THIRD_ASSET_SYMBOL).upper() if held else THIRD_ASSET_SYMBOL
@@ -328,7 +337,9 @@ def build_third_asset_holding(
       SELL_TO_A_SHARE  A-share buy setup (switch back)
       SELL_TO_REPO     broke MA200
     """
-    holdings = holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    holdings = (
+        holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
+    )
     held = resolve_held_third_asset(holdings)
     if held is None:
         return None
@@ -338,7 +349,9 @@ def build_third_asset_holding(
     md = _etf_market_data(ts)
     if not md.get("ok"):
         return {
-            "symbol": sym, "tsCode": ts, "active": False,
+            "symbol": sym,
+            "tsCode": ts,
+            "active": False,
             "note": f"{sym} 本地数据不足 {MA_WINDOW} 根日线（{md.get('n', 0)}），暂不跟踪",
         }
 

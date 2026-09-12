@@ -6,8 +6,19 @@ from datetime import datetime
 
 from data_sync_service.db import watchlist_automation as wa
 
-RUN_COLS = ["id", "trade_date", "trigger_type", "skipped", "skip_reason",
-            "remove_items", "alpha_add", "meta", "created_at", "applied_at", "screener_added"]
+RUN_COLS = [
+    "id",
+    "trade_date",
+    "trigger_type",
+    "skipped",
+    "skip_reason",
+    "remove_items",
+    "alpha_add",
+    "meta",
+    "created_at",
+    "applied_at",
+    "screener_added",
+]
 
 
 class _Cur:
@@ -65,13 +76,22 @@ def _patch(monkeypatch, rows=None):
 
 def _run_row(meta: dict | None = None, applied: datetime | None = None, screener_added=3) -> tuple:
     return (
-        "run-1", "2026-08-07", "scheduled", False, None,
-        [{"symbol": "CN:600000"}], [{"symbol": "CN:600519"}], meta,
-        datetime(2026, 8, 7, 9, 0, 0), applied, screener_added,
+        "run-1",
+        "2026-08-07",
+        "scheduled",
+        False,
+        None,
+        [{"symbol": "CN:600000"}],
+        [{"symbol": "CN:600519"}],
+        meta,
+        datetime(2026, 8, 7, 9, 0, 0),
+        applied,
+        screener_added,
     )
 
 
 # ---- registry --------------------------------------------------------------
+
 
 def test_upsert_registry_empty_clears(monkeypatch) -> None:
     cur = _patch(monkeypatch)
@@ -123,6 +143,7 @@ def test_list_registry(monkeypatch) -> None:
 
 # ---- scores ----------------------------------------------------------------
 
+
 def test_upsert_score_daily(monkeypatch) -> None:
     cur = _patch(monkeypatch)
     n = wa.upsert_score_daily(
@@ -165,6 +186,7 @@ def test_fetch_latest_score_since(monkeypatch) -> None:
 
 # ---- automation runs -------------------------------------------------------
 
+
 def test_insert_automation_run(monkeypatch) -> None:
     cur = _patch(monkeypatch)
     run_id = wa.insert_automation_run(
@@ -183,7 +205,9 @@ def test_insert_automation_run(monkeypatch) -> None:
 
 
 def test_get_run_by_id(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [_run_row(meta={"funnel": {"a": 1}}, applied=datetime(2026, 8, 7, 12, 0))])
+    cur = _patch(
+        monkeypatch, [_run_row(meta={"funnel": {"a": 1}}, applied=datetime(2026, 8, 7, 12, 0))]
+    )
     out = wa.get_run_by_id("run-1")
     assert out["runId"] == "run-1"
     assert out["tradeDate"] == "2026-08-07"

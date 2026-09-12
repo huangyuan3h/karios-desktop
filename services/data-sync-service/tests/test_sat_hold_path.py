@@ -48,9 +48,9 @@ def test_path_d2_red_d3_recovers() -> None:
 
 def test_summarize_d2_red_recovery() -> None:
     paths = [
-        {"pnl1": 1.0, "pnl2": -2.0, "pnl3": 3.0},   # red d2 → green d3
+        {"pnl1": 1.0, "pnl2": -2.0, "pnl3": 3.0},  # red d2 → green d3
         {"pnl1": -1.0, "pnl2": -6.0, "pnl3": -1.0},  # red d2, improved, still red; hit -5%
-        {"pnl1": 2.0, "pnl2": 4.0, "pnl3": 5.0},     # never red
+        {"pnl1": 2.0, "pnl2": 4.0, "pnl3": 5.0},  # never red
     ]
     s = summarize_paths(paths)
     assert s["n"] == 3

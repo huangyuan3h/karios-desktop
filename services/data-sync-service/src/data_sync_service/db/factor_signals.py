@@ -43,6 +43,7 @@ def ensure_table() -> None:
             with conn.cursor() as cur:
                 cur.execute(CREATE_SQL)
             conn.commit()
+
     ensure_once(TABLE_NAME, _impl)
 
 
@@ -57,21 +58,25 @@ def upsert_rows(rows: list[dict]) -> int:
         fn = str(r.get("factor_name") or "").strip()
         if not td or not sym or not fn:
             continue
-        vals.append((
-            td, sym, fn,
-            str(r.get("direction") or "short"),
-            float(r.get("entry_price") or 0),
-            float(r.get("target_price") or 0),
-            float(r.get("stop_price") or 0),
-            float(r.get("probability") or 0),
-            int(r.get("hold_days") or 20),
-            str(r.get("status") or "pending"),
-            r.get("ret60"),
-            r.get("vol_ratio"),
-            r.get("industry"),
-            r.get("board"),
-            r.get("symbol_name"),
-        ))
+        vals.append(
+            (
+                td,
+                sym,
+                fn,
+                str(r.get("direction") or "short"),
+                float(r.get("entry_price") or 0),
+                float(r.get("target_price") or 0),
+                float(r.get("stop_price") or 0),
+                float(r.get("probability") or 0),
+                int(r.get("hold_days") or 20),
+                str(r.get("status") or "pending"),
+                r.get("ret60"),
+                r.get("vol_ratio"),
+                r.get("industry"),
+                r.get("board"),
+                r.get("symbol_name"),
+            )
+        )
     if not vals:
         return 0
     with get_connection() as conn:

@@ -7,10 +7,20 @@ from data_sync_service.service import core_holding_audit as audit
 
 def _op(symbol="CN:688525", side="BUY", date="2026-09-07", price=221.28, pct=12.5, leg="sat"):
     return {
-        "id": "x", "symbol": symbol, "side": side, "trade_date": date,
-        "price": price, "position_pct": pct, "cost_basis": None,
-        "entry_date": None, "pnl_pct": None, "holding_days": None,
-        "source": "RESEARCH", "market": "CN", "note": None, "leg": leg,
+        "id": "x",
+        "symbol": symbol,
+        "side": side,
+        "trade_date": date,
+        "price": price,
+        "position_pct": pct,
+        "cost_basis": None,
+        "entry_date": None,
+        "pnl_pct": None,
+        "holding_days": None,
+        "source": "RESEARCH",
+        "market": "CN",
+        "note": None,
+        "leg": leg,
         "created_at": None,
     }
 
@@ -38,8 +48,14 @@ def test_sat_sell_on_due_day_ok(monkeypatch) -> None:
 
 def test_sat_sell_early_or_late_warns(monkeypatch) -> None:
     monkeypatch.setattr(audit, "_sat_exit_due", lambda entry: "2026-09-09")
-    assert audit._judge_sat_sell(_op(side="SELL", date="2026-09-08"), "2026-09-07")["verdict"] == "warn"
-    assert audit._judge_sat_sell(_op(side="SELL", date="2026-09-10"), "2026-09-07")["verdict"] == "warn"
+    assert (
+        audit._judge_sat_sell(_op(side="SELL", date="2026-09-08"), "2026-09-07")["verdict"]
+        == "warn"
+    )
+    assert (
+        audit._judge_sat_sell(_op(side="SELL", date="2026-09-10"), "2026-09-07")["verdict"]
+        == "warn"
+    )
     assert audit._judge_sat_sell(_op(side="SELL", date="2026-09-09"), None)["verdict"] == "warn"
 
 

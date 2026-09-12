@@ -32,7 +32,12 @@ def upgrade() -> None:
         sa.Column("missing", sa.Integer(), nullable=False),
         sa.Column("extra_list", sa.Text()),
         sa.Column("missing_list", sa.Text()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.UniqueConstraint("audit_date", "market", name="uq_behavior_audit_date_market"),
     )
 

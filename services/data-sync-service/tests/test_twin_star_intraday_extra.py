@@ -45,22 +45,36 @@ def test_em_snapshot_request_fails_over_and_raises(monkeypatch) -> None:
 
 
 def _row(code, market="1", close=10.5, pre=10.0, name="平安"):
-    return {"f12": code, "f13": market, "f14": name, "f2": close, "f18": pre,
-            "f17": 10.4, "f15": 10.6, "f16": 10.3, "f6": 1e6}
+    return {
+        "f12": code,
+        "f13": market,
+        "f14": name,
+        "f2": close,
+        "f18": pre,
+        "f17": 10.4,
+        "f15": 10.6,
+        "f16": 10.3,
+        "f6": 1e6,
+    }
 
 
 def test_fetch_market_snapshot_paging_and_filters(monkeypatch) -> None:
     pages = [
-        {"data": {"total": 2, "diff": [
-            _row("600001"),                       # SH valid
-            _row("000001", market="0"),            # SZ valid
-            _row("BJ123456"),                      # Beijing → skip
-            _row(""),                              # empty code → skip
-            _row("600002", close=0),               # zero close → skip
-            _row("600003", pre=0),                 # zero pre_close → skip
-            _row("600004", name="-"),              # dash name → no name key
-        ]}},
-        {"data": {"total": 2, "diff": []}},       # empty page → stop
+        {
+            "data": {
+                "total": 2,
+                "diff": [
+                    _row("600001"),  # SH valid
+                    _row("000001", market="0"),  # SZ valid
+                    _row("BJ123456"),  # Beijing → skip
+                    _row(""),  # empty code → skip
+                    _row("600002", close=0),  # zero close → skip
+                    _row("600003", pre=0),  # zero pre_close → skip
+                    _row("600004", name="-"),  # dash name → no name key
+                ],
+            }
+        },
+        {"data": {"total": 2, "diff": []}},  # empty page → stop
     ]
     monkeypatch.setattr(m, "em_get_json", lambda *a, **k: pages.pop(0))
     out = m.fetch_market_snapshot()
@@ -70,7 +84,9 @@ def test_fetch_market_snapshot_paging_and_filters(monkeypatch) -> None:
 
 
 def test_fetch_market_snapshot_total_break_and_none(monkeypatch) -> None:
-    monkeypatch.setattr(m, "em_get_json", lambda *a, **k: {"data": {"total": 1, "diff": [_row("600001")]}})
+    monkeypatch.setattr(
+        m, "em_get_json", lambda *a, **k: {"data": {"total": 1, "diff": [_row("600001")]}}
+    )
     out = m.fetch_market_snapshot()
     assert list(out) == ["600001.SH"]  # total reached → single page
 
@@ -140,7 +156,7 @@ def test_naive_datetimes_assumed_shanghai(monkeypatch) -> None:
 
 def test_is_cn_session_day_failover(monkeypatch) -> None:
     monkeypatch.setattr(m, "_load_calendar", lambda s, e: (_ for _ in ()).throw(RuntimeError("db")))
-    assert m._is_cn_session_day(date(2026, 9, 2)) is True   # Wednesday
+    assert m._is_cn_session_day(date(2026, 9, 2)) is True  # Wednesday
     assert m._is_cn_session_day(date(2026, 9, 5)) is False  # Saturday
 
 
@@ -150,8 +166,12 @@ def test_snapshot_age_seconds_edges() -> None:
     assert m.snapshot_age_seconds({"snapshotAt": 123}) is None
     assert m.snapshot_age_seconds({"snapshotAt": "not-a-date"}) is None
     now = _dt(13, 0)
-    assert m.snapshot_age_seconds({"snapshotAt": "2026-09-02T12:00:00"}, now=now) == pytest.approx(3600.0)
-    assert m.snapshot_age_seconds({"snapshotAt": "2026-09-02T12:00:00+08:00"}, now=now) == pytest.approx(3600.0)
+    assert m.snapshot_age_seconds({"snapshotAt": "2026-09-02T12:00:00"}, now=now) == pytest.approx(
+        3600.0
+    )
+    assert m.snapshot_age_seconds(
+        {"snapshotAt": "2026-09-02T12:00:00+08:00"}, now=now
+    ) == pytest.approx(3600.0)
 
 
 # -- build guards -------------------------------------------------------------------------------
@@ -197,7 +217,9 @@ def test_refresh_fresh_cache_skips_build(tmp_path, monkeypatch) -> None:
     now = _dt(10, 0)
     cached = {"asOf": "2026-09-02", "snapshotAt": now.isoformat(), "candidates": []}
     m.cache_intraday_sat(cached, date(2026, 9, 2))
-    monkeypatch.setattr(m, "build_intraday_sat", lambda day: (_ for _ in ()).throw(AssertionError("no build")))
+    monkeypatch.setattr(
+        m, "build_intraday_sat", lambda day: (_ for _ in ()).throw(AssertionError("no build"))
+    )
     out = m.maybe_refresh_intraday_sat(now=now)
     assert out is not None and out["asOf"] == "2026-09-02"
 
@@ -225,7 +247,9 @@ def test_refresh_lock_sees_fresh_cache(tmp_path, monkeypatch) -> None:
         return stale if calls["n"] == 1 else fresh
 
     monkeypatch.setattr(m, "_read_cache", _reads)
-    monkeypatch.setattr(m, "build_intraday_sat", lambda day: (_ for _ in ()).throw(AssertionError("no build")))
+    monkeypatch.setattr(
+        m, "build_intraday_sat", lambda day: (_ for _ in ()).throw(AssertionError("no build"))
+    )
     out = m.maybe_refresh_intraday_sat(now=now)
     assert out == fresh
 

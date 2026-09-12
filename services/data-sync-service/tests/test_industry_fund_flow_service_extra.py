@@ -83,7 +83,11 @@ class TestDataApi:
         monkeypatch.setattr(iff.urllib.request, "urlopen", lambda req, timeout: Resp())
         with pytest.raises(json.JSONDecodeError):
             iff._dataapi_getbkzj("k", "c")
-        monkeypatch.setattr(iff.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(OSError("conn")))
+        monkeypatch.setattr(
+            iff.urllib.request,
+            "urlopen",
+            lambda req, timeout: (_ for _ in ()).throw(OSError("conn")),
+        )
         with pytest.raises(OSError):
             iff._dataapi_getbkzj("k", "c")
 
@@ -122,7 +126,9 @@ class TestDayKline:
         assert len(out) == 1 and out[0]["net_inflow"] == 5.0
 
     def test_no_data(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff.subprocess, "run", lambda cmd, **kw: self._run_result({"data": None}))
+        monkeypatch.setattr(
+            iff.subprocess, "run", lambda cmd, **kw: self._run_result({"data": None})
+        )
         assert iff._eastmoney_board_fund_flow_daykline(secid="x") == []
 
 
@@ -166,43 +172,88 @@ class TestAkHist:
 
 class TestEod:
     def test_ok(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "_with_retry", lambda fn, tries: [{"行业名称": "半导体", "行业代码": "BK0475", "今日主力净流入-净额": "5亿"}])
-        monkeypatch.setattr(iff, "classify_sw_l1_industry", lambda name, row: {"is_allowed": True, "industry_name": "电子", "taxonomy": "SW", "industry_level": 1})
+        monkeypatch.setattr(
+            iff,
+            "_with_retry",
+            lambda fn, tries: [
+                {"行业名称": "半导体", "行业代码": "BK0475", "今日主力净流入-净额": "5亿"}
+            ],
+        )
+        monkeypatch.setattr(
+            iff,
+            "classify_sw_l1_industry",
+            lambda name, row: {
+                "is_allowed": True,
+                "industry_name": "电子",
+                "taxonomy": "SW",
+                "industry_level": 1,
+            },
+        )
         out = iff.fetch_cn_industry_fund_flow_eod(date(2026, 8, 7))
         assert out[0]["industry_name"] == "电子"
         assert out[0]["industry_code"] == "BK0475"
         assert out[0]["net_inflow"] == pytest.approx(5e8)
 
     def test_fallback_code_and_fields(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "_with_retry", lambda fn, tries: [
-            {"板块": "通信设备", "f12": "BK123", "f62": "1.5亿"},
-            {"名称": "银行", "今日主力净流入": "-2亿"},
-            {"行业名称": "非允许", "代码": ""},
-        ])
-        monkeypatch.setattr(iff, "classify_sw_l1_industry", lambda name, row: {"is_allowed": name != "非允许", "industry_name": "" if name == "银行" else name, "taxonomy": "SW", "industry_level": 1})
+        monkeypatch.setattr(
+            iff,
+            "_with_retry",
+            lambda fn, tries: [
+                {"板块": "通信设备", "f12": "BK123", "f62": "1.5亿"},
+                {"名称": "银行", "今日主力净流入": "-2亿"},
+                {"行业名称": "非允许", "代码": ""},
+            ],
+        )
+        monkeypatch.setattr(
+            iff,
+            "classify_sw_l1_industry",
+            lambda name, row: {
+                "is_allowed": name != "非允许",
+                "industry_name": "" if name == "银行" else name,
+                "taxonomy": "SW",
+                "industry_level": 1,
+            },
+        )
         out = iff.fetch_cn_industry_fund_flow_eod(date(2026, 8, 7))
         assert out[0]["industry_code"] == "BK123" and out[0]["net_inflow"] == 1.5e8
         assert len(out) == 1
 
     def test_fetch_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "_with_retry", lambda fn, tries: (_ for _ in ()).throw(RuntimeError("x")))
+        monkeypatch.setattr(
+            iff, "_with_retry", lambda fn, tries: (_ for _ in ()).throw(RuntimeError("x"))
+        )
         assert iff.fetch_cn_industry_fund_flow_eod(date(2026, 8, 7)) == []
 
 
 class TestHist:
     def test_with_code(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "_with_retry", lambda fn, tries: [{"date": "2026-08-07", "net_inflow": 1.0}, {"date": "2026-08-06", "net_inflow": 2.0}])
+        monkeypatch.setattr(
+            iff,
+            "_with_retry",
+            lambda fn, tries: [
+                {"date": "2026-08-07", "net_inflow": 1.0},
+                {"date": "2026-08-06", "net_inflow": 2.0},
+            ],
+        )
         out = iff.fetch_cn_industry_fund_flow_hist("半导体", industry_code="BK0475", days=10)
         assert len(out) == 2
         out2 = iff.fetch_cn_industry_fund_flow_hist("半导体", industry_code="90.90.xxx", days=10)
         assert len(out2) == 2
 
     def test_code_fallback_error(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "_with_retry", lambda fn, tries: (_ for _ in ()).throw(RuntimeError("x")))
-        monkeypatch.setattr(iff, "_try_akshare_hist", lambda name, days: [{"date": "d", "net_inflow": 3.0}])
+        monkeypatch.setattr(
+            iff, "_with_retry", lambda fn, tries: (_ for _ in ()).throw(RuntimeError("x"))
+        )
+        monkeypatch.setattr(
+            iff, "_try_akshare_hist", lambda name, days: [{"date": "d", "net_inflow": 3.0}]
+        )
         out = iff.fetch_cn_industry_fund_flow_hist("半导体", industry_code="BK0475", days=10)
         assert out[0]["net_inflow"] == 3.0
-        monkeypatch.setattr(iff, "_try_akshare_hist", lambda name, days: (_ for _ in ()).throw(RuntimeError("akfail")))
+        monkeypatch.setattr(
+            iff,
+            "_try_akshare_hist",
+            lambda name, days: (_ for _ in ()).throw(RuntimeError("akfail")),
+        )
         with pytest.raises(RuntimeError):
             iff.fetch_cn_industry_fund_flow_hist("半导体", industry_code="BK0475", days=10)
 
@@ -210,18 +261,37 @@ class TestHist:
         assert iff.fetch_cn_industry_fund_flow_hist("", days=10) == []
 
     def test_hist_rows_for_top_row(self, monkeypatch) -> None:
-        monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_hist", lambda name, industry_code, days: [{"date": "d", "net_inflow": 7.0, "raw": {"k": 1}}])
-        out = iff._hist_rows_for_top_row({"industry_name": "半导体", "industry_code": "BK1", "taxonomy": "SW", "industry_level": 2, "source": "src"}, days=5, updated_at="now")
+        monkeypatch.setattr(
+            iff,
+            "fetch_cn_industry_fund_flow_hist",
+            lambda name, industry_code, days: [{"date": "d", "net_inflow": 7.0, "raw": {"k": 1}}],
+        )
+        out = iff._hist_rows_for_top_row(
+            {
+                "industry_name": "半导体",
+                "industry_code": "BK1",
+                "taxonomy": "SW",
+                "industry_level": 2,
+                "source": "src",
+            },
+            days=5,
+            updated_at="now",
+        )
         assert out[0]["industry_code"] == "BK1"
         assert out[0]["net_inflow"] == 7.0
-        monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_hist", lambda name, industry_code, days: [])
+        monkeypatch.setattr(
+            iff, "fetch_cn_industry_fund_flow_hist", lambda name, industry_code, days: []
+        )
         assert iff._hist_rows_for_top_row({}, days=5, updated_at="now") == []
 
 
 class TestResolveAsOf:
     def test_trading_day(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "is_cn_trading_day", lambda d: True)
-        assert iff._resolve_sync_as_of(today=date(2026, 8, 7), force=False) == (date(2026, 8, 7), None)
+        assert iff._resolve_sync_as_of(today=date(2026, 8, 7), force=False) == (
+            date(2026, 8, 7),
+            None,
+        )
 
     def test_no_calendar(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "is_cn_trading_day", lambda d: False)
@@ -246,15 +316,55 @@ class TestSync:
     def test_sync(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "shanghai_today", lambda: date(2026, 8, 7))
         monkeypatch.setattr(iff, "_resolve_sync_as_of", lambda **kw: (date(2026, 8, 7), None))
-        monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_eod", lambda as_of: [
-            {"date": "2026-08-07", "industry_code": "BK1", "industry_name": "电子", "net_inflow": 1.0, "taxonomy": "SW", "industry_level": 1, "source": "s"},
-            {"date": "2026-08-07", "industry_code": "BK2", "industry_name": "银行", "net_inflow": -1.0, "taxonomy": "SW", "industry_level": 1, "source": "s"},
-            {"date": "2026-08-07", "industry_code": "BK3", "industry_name": "非SW", "net_inflow": 5.0, "taxonomy": "SW", "industry_level": 1, "source": "s"},
-        ])
+        monkeypatch.setattr(
+            iff,
+            "fetch_cn_industry_fund_flow_eod",
+            lambda as_of: [
+                {
+                    "date": "2026-08-07",
+                    "industry_code": "BK1",
+                    "industry_name": "电子",
+                    "net_inflow": 1.0,
+                    "taxonomy": "SW",
+                    "industry_level": 1,
+                    "source": "s",
+                },
+                {
+                    "date": "2026-08-07",
+                    "industry_code": "BK2",
+                    "industry_name": "银行",
+                    "net_inflow": -1.0,
+                    "taxonomy": "SW",
+                    "industry_level": 1,
+                    "source": "s",
+                },
+                {
+                    "date": "2026-08-07",
+                    "industry_code": "BK3",
+                    "industry_name": "非SW",
+                    "net_inflow": 5.0,
+                    "taxonomy": "SW",
+                    "industry_level": 1,
+                    "source": "s",
+                },
+            ],
+        )
         monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: it["industry_name"] != "非SW")
         monkeypatch.setattr(iff, "_now_iso", lambda: "now")
         monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: None)
-        monkeypatch.setattr(iff, "_hist_rows_for_top_row", lambda r, **kw: [{"date": "d", "industry_code": r["industry_code"], "industry_name": r["industry_name"], "net_inflow": 2.0, "updated_at": "now"}])
+        monkeypatch.setattr(
+            iff,
+            "_hist_rows_for_top_row",
+            lambda r, **kw: [
+                {
+                    "date": "d",
+                    "industry_code": r["industry_code"],
+                    "industry_name": r["industry_name"],
+                    "net_inflow": 2.0,
+                    "updated_at": "now",
+                }
+            ],
+        )
         out = iff.sync_cn_industry_fund_flow(days=10, top_n=10, force=True)
         assert out["ok"] is True
         assert out["rows"] == 2
@@ -275,17 +385,37 @@ class TestSync:
     def test_sync_hist_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "shanghai_today", lambda: date(2026, 8, 7))
         monkeypatch.setattr(iff, "_resolve_sync_as_of", lambda **kw: (date(2026, 8, 7), None))
-        monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_eod", lambda as_of: [{"date": "d", "industry_code": "BK1", "industry_name": "电子", "net_inflow": 1.0, "taxonomy": "SW", "industry_level": 1, "source": "s"}])
+        monkeypatch.setattr(
+            iff,
+            "fetch_cn_industry_fund_flow_eod",
+            lambda as_of: [
+                {
+                    "date": "d",
+                    "industry_code": "BK1",
+                    "industry_name": "电子",
+                    "net_inflow": 1.0,
+                    "taxonomy": "SW",
+                    "industry_level": 1,
+                    "source": "s",
+                }
+            ],
+        )
         monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: True)
         monkeypatch.setattr(iff, "_now_iso", lambda: "now")
         monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: None)
-        monkeypatch.setattr(iff, "_hist_rows_for_top_row", lambda r, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            iff,
+            "_hist_rows_for_top_row",
+            lambda r, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
         out = iff.sync_cn_industry_fund_flow(force=True)
         assert out["histFailures"] == 1
 
     def test_sync_skip(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "shanghai_today", lambda: date(2026, 8, 8))
-        monkeypatch.setattr(iff, "_resolve_sync_as_of", lambda **kw: (None, {"ok": True, "skipped": True}))
+        monkeypatch.setattr(
+            iff, "_resolve_sync_as_of", lambda **kw: (None, {"ok": True, "skipped": True})
+        )
         out = iff.sync_cn_industry_fund_flow(force=False)
         assert out["skipped"] is True
 
@@ -295,9 +425,30 @@ class TestGet:
         monkeypatch.setattr(iff, "get_latest_date", lambda: "2026-08-07")
         monkeypatch.setattr(iff, "resolve_effective_as_of", lambda d: d)
         monkeypatch.setattr(iff, "trade_dates_upto", lambda *a, **k: ["2026-08-07"])
-        monkeypatch.setattr(iff, "get_top_rows", lambda d, n: [{"industry_code": "BK1", "industry_name": "电子", "net_inflow": 1.0, "taxonomy": "SW", "industry_level": 1, "source": "s"}])
-        monkeypatch.setattr(iff, "get_rows_for_dates", lambda dates: [{"date": "2026-08-07", "industry_name": "电子", "net_inflow": 2.0}])
-        monkeypatch.setattr(iff, "series_map_from_rows", lambda rows, dates: {"电子": [{"date": "2026-08-07", "net_inflow": 2.0}]})
+        monkeypatch.setattr(
+            iff,
+            "get_top_rows",
+            lambda d, n: [
+                {
+                    "industry_code": "BK1",
+                    "industry_name": "电子",
+                    "net_inflow": 1.0,
+                    "taxonomy": "SW",
+                    "industry_level": 1,
+                    "source": "s",
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            iff,
+            "get_rows_for_dates",
+            lambda dates: [{"date": "2026-08-07", "industry_name": "电子", "net_inflow": 2.0}],
+        )
+        monkeypatch.setattr(
+            iff,
+            "series_map_from_rows",
+            lambda rows, dates: {"电子": [{"date": "2026-08-07", "net_inflow": 2.0}]},
+        )
         out = iff.get_cn_industry_fund_flow(days=10, top_n=30)
         assert out["top"][0]["industryCode"] == "BK1"
         assert out["top"][0]["sum10d"] == 2.0
@@ -305,7 +456,13 @@ class TestGet:
     def test_get_empty(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "get_latest_date", lambda: "")
         monkeypatch.setattr(iff, "resolve_effective_as_of", lambda d: "")
-        assert iff.get_cn_industry_fund_flow() == {"asOfDate": "", "days": 10, "topN": 30, "dates": [], "top": []}
+        assert iff.get_cn_industry_fund_flow() == {
+            "asOfDate": "",
+            "days": 10,
+            "topN": 30,
+            "dates": [],
+            "top": [],
+        }
         monkeypatch.setattr(iff, "resolve_effective_as_of", lambda d: "2026-08-07")
         out = iff.get_cn_industry_fund_flow(as_of_date="2026-08-07")
         assert out["asOfDate"] == "2026-08-07"

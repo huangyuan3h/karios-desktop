@@ -91,7 +91,9 @@ def fetch_by_id(journal_id: str) -> dict[str, Any] | None:
     }
 
 
-def create_journal(*, journal_id: str, title: str, content_md: str, created_at: str, updated_at: str) -> dict[str, Any]:
+def create_journal(
+    *, journal_id: str, title: str, content_md: str, created_at: str, updated_at: str
+) -> dict[str, Any]:
     """Create a new journal entry."""
     ensure_table()
     with get_connection() as conn:
@@ -107,7 +109,9 @@ def create_journal(*, journal_id: str, title: str, content_md: str, created_at: 
     return fetch_by_id(journal_id) or {}
 
 
-def update_journal(*, journal_id: str, title: str | None = None, content_md: str | None = None, updated_at: str) -> dict[str, Any] | None:
+def update_journal(
+    *, journal_id: str, title: str | None = None, content_md: str | None = None, updated_at: str
+) -> dict[str, Any] | None:
     """Update journal title and/or content. Returns updated journal or None if not found."""
     ensure_table()
     existing = fetch_by_id(journal_id)

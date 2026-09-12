@@ -108,10 +108,13 @@ def twin_star_refresh() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
 
+
 _timeline_cache: dict[tuple, dict[str, Any]] = {}
 # Engine context for stock-leg attribution (not file-persisted).
 _timeline_engine_cache: dict[tuple, dict[str, Any]] = {}
-TIMELINE_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
+TIMELINE_CACHE_DIR = (
+    Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
+)
 TIMELINE_CACHE_TTL_HOURS = 24
 # Bump when pick / trail logic changes so stale file caches are ignored.
 _TIMELINE_MODE = "mom_compare_t8"
@@ -138,12 +141,16 @@ def _load_timeline_file(start: str, end: str) -> dict[str, Any] | None:
     except Exception:
         return None
 
+
 def _save_timeline_file(start: str, end: str, data: dict[str, Any]) -> None:
     try:
         TIMELINE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _timeline_file(start, end).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        _timeline_file(start, end).write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
     except Exception:
         pass
+
 
 LATEST_REPORT = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "latest.json"
 
@@ -158,8 +165,12 @@ LONG_WINDOW_CN = {
     "sharpe": 2.65,
     "trades": 1401,
     "byYear": {
-        "2021": 341.0, "2022": 93.0, "2023": -263.0,
-        "2024": 606.0, "2025": 956.0, "2026": 1325.0,
+        "2021": 341.0,
+        "2022": 93.0,
+        "2023": -263.0,
+        "2024": 606.0,
+        "2025": 956.0,
+        "2026": 1325.0,
     },
 }
 
@@ -268,7 +279,9 @@ def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
 
 @router.post("/behavior-audit/refresh")
 def behavior_audit_refresh(
-    tradeDate: str | None = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),
+    tradeDate: str | None = Query(
+        default=None, description="Audit day (YYYY-MM-DD); default today."
+    ),
 ) -> dict[str, Any]:
     """OPT-106: run the behavior audit NOW and persist it.
 
@@ -284,11 +297,18 @@ def behavior_audit_refresh(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"behavior audit failed: {exc}") from exc
     summary = {
-        m: {"expected": v["expected"], "actual": v["actual"],
-            "extra": v.get("extraList", []), "missing": v.get("missingList", []),
-            "satExpected": v.get("satExpected", 0), "actualSat": v.get("actualSat", 0),
-            "satExtra": v.get("satExtraList", []), "satMissing": v.get("satMissingList", [])}
-        for m, v in out["markets"].items() if v.get("available")
+        m: {
+            "expected": v["expected"],
+            "actual": v["actual"],
+            "extra": v.get("extraList", []),
+            "missing": v.get("missingList", []),
+            "satExpected": v.get("satExpected", 0),
+            "actualSat": v.get("actualSat", 0),
+            "satExtra": v.get("satExtraList", []),
+            "satMissing": v.get("satMissingList", []),
+        }
+        for m, v in out["markets"].items()
+        if v.get("available")
     }
     return {"ok": True, "reconDate": out["reconDate"], "markets": summary}
 
@@ -304,16 +324,54 @@ def backtest_run(
     score_floor: float = Query(30.0, ge=0, le=100),
     market: str = Query("CN", pattern="^(CN|HK)$"),
     gates: str = Query("full", pattern="^(none|regime|full)$"),
-    trailing_stop_pct: float = Query(0.0, le=0, description="Peak-pullback trailing stop (<=0; 0 disables)."),
-    position_pct: float = Query(0.05, gt=0, le=1, description="Per-trade position size (default 0.05 = 5% sleeve)."),
-    max_positions: int = Query(10, ge=1, le=100, description="Max simultaneous positions (default 10)."),
-    rs_rank_min: float = Query(0.0, ge=0, le=1, description="Min whole-market RS percentile (0 disables; 0.8 = top 20% 20d relative strength)."),
-    diverging_scale: float = Query(0.0, ge=0, le=1, description="Position size when regime=Diverging (0 = no entries, 0.5 = half size)."),
-    drawdown_circuit_pct: float = Query(0.0, le=0, description="Halt new entries when trailing 30d realized pnl <= this (<=0; 0 disables)."),
-    panic_cooldown_days: int = Query(0, ge=0, le=30, description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3)."),
-    slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % on top of the round-trip cost model. Default/expert 0: the cost model already carries slippage (CN 10bps, HK 15bps /side) — do not double-count (E5, 2026-09-10)."),
-    trend_score_min: float = Query(0.0, ge=0, le=100, description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only)."),
-    exclude_boards: str = Query("", description="Comma-separated 3-digit board prefixes to exclude (e.g. '300' = ChiNext; empty = no filter)."),
+    trailing_stop_pct: float = Query(
+        0.0, le=0, description="Peak-pullback trailing stop (<=0; 0 disables)."
+    ),
+    position_pct: float = Query(
+        0.05, gt=0, le=1, description="Per-trade position size (default 0.05 = 5% sleeve)."
+    ),
+    max_positions: int = Query(
+        10, ge=1, le=100, description="Max simultaneous positions (default 10)."
+    ),
+    rs_rank_min: float = Query(
+        0.0,
+        ge=0,
+        le=1,
+        description="Min whole-market RS percentile (0 disables; 0.8 = top 20% 20d relative strength).",
+    ),
+    diverging_scale: float = Query(
+        0.0,
+        ge=0,
+        le=1,
+        description="Position size when regime=Diverging (0 = no entries, 0.5 = half size).",
+    ),
+    drawdown_circuit_pct: float = Query(
+        0.0,
+        le=0,
+        description="Halt new entries when trailing 30d realized pnl <= this (<=0; 0 disables).",
+    ),
+    panic_cooldown_days: int = Query(
+        0,
+        ge=0,
+        le=30,
+        description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3).",
+    ),
+    slippage_pct: float = Query(
+        0.0,
+        ge=0,
+        le=2,
+        description="One-way slippage % on top of the round-trip cost model. Default/expert 0: the cost model already carries slippage (CN 10bps, HK 15bps /side) — do not double-count (E5, 2026-09-10).",
+    ),
+    trend_score_min: float = Query(
+        0.0,
+        ge=0,
+        le=100,
+        description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only).",
+    ),
+    exclude_boards: str = Query(
+        "",
+        description="Comma-separated 3-digit board prefixes to exclude (e.g. '300' = ChiNext; empty = no filter).",
+    ),
 ) -> dict[str, Any]:
     """Run one backtest configuration (signals = historical TrendOK scores
     filtered by entry gates — traffic-light regime / sector flow / mainline)."""
@@ -367,7 +425,12 @@ def backtest_sensitivity(
             with_benchmark_excess(r, benchmarks)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"sensitivity failed: {exc}") from exc
-    return {"ok": True, "configs": len(grid), "benchmarks": benchmarks, "results": [r.to_dict() for r in results]}
+    return {
+        "ok": True,
+        "configs": len(grid),
+        "benchmarks": benchmarks,
+        "results": [r.to_dict() for r in results],
+    }
 
 
 @router.get("/paper-vs-backtest")
@@ -437,9 +500,7 @@ def backtest_timeline(
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "pick_strong",
-        description=(
-            "pick_strong | twin_star (机会双子星) | state_bucket (独立 S-gap 可执行)"
-        ),
+        description=("pick_strong | twin_star (机会双子星) | state_bucket (独立 S-gap 可执行)"),
     ),
     sat_fill: str = Query(
         "next_open",
@@ -533,11 +594,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
             with get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(sql, params)
-                    return [
-                        (str(r[0]), float(r[1]))
-                        for r in cur.fetchall()
-                        if r[1] is not None
-                    ]
+                    return [(str(r[0]), float(r[1])) for r in cur.fetchall() if r[1] is not None]
 
         shares = rsg.load_etf_share_series(list(BROAD_ETF_CODES), warm, end)
         share_maps = {c: dict(s) for c, s in shares.items()}
@@ -568,7 +625,9 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
                 # skip Δ across data gaps (>10 calendar days) to avoid fake spikes
                 if (date_type.fromisoformat(cur_d) - date_type.fromisoformat(prev_d)).days > 10:
                     continue
-                nat_daily[cur_d] = nat_daily.get(cur_d, 0.0) + (s_map[cur_d] - s_map[prev_d]) * nav / 1e4
+                nat_daily[cur_d] = (
+                    nat_daily.get(cur_d, 0.0) + (s_map[cur_d] - s_map[prev_d]) * nav / 1e4
+                )
         nat_daily = {d: round(v, 1) for d, v in nat_daily.items()}
         nat_days = sorted(nat_daily)
         nat20: dict[str, float] = {}
@@ -795,9 +854,7 @@ def _get_or_build_timeline(
                 HK_S3_CONFIG,
             )
 
-            cfg_hk = BacktestConfig(
-                start_date=start, end_date=end, **HK_S3_CONFIG
-            )  # type: ignore[arg-type]
+            cfg_hk = BacktestConfig(start_date=start, end_date=end, **HK_S3_CONFIG)  # type: ignore[arg-type]
             data_hk = BacktestData(cfg_hk)
             run_hk = simulate(cfg_hk, data_hk)
             cal_hk = list(data_hk.calendar)
@@ -959,9 +1016,7 @@ def backtest_return_attribution(
                     close_by_ts_day=engine["close_by_ts_day"],
                     calendar=engine["calendar"],
                 )
-            pick_pkg = attribute_pick_strong(
-                rows, stock_legs_by_day=stock_legs, top_k=top_k
-            )
+            pick_pkg = attribute_pick_strong(rows, stock_legs_by_day=stock_legs, top_k=top_k)
             # Align totalGeo with timeline summary when available
             summary = timeline.get("summary") or {}
             fused = summary.get("fusedPct")
@@ -1091,7 +1146,9 @@ def weekly_plan_latest() -> dict[str, Any]:
 
 @router.get("/correlation-status")
 def correlation_status(
-    include_matrix: bool = Query(False, description="Also compute the empirical 20d correlation matrix."),
+    include_matrix: bool = Query(
+        False, description="Also compute the empirical 20d correlation matrix."
+    ),
 ) -> dict[str, Any]:
     """Portfolio correlation firewall status (L3-P5 / V7.0-01).
 
@@ -1126,7 +1183,9 @@ def correlation_status(
                     ind = em_industry_for_ts_code(resolved[1])
                     if ind:
                         industries[sym] = ind
-        result = evaluate_correlation_cap(positions, industries=industries, include_matrix=include_matrix)
+        result = evaluate_correlation_cap(
+            positions, industries=industries, include_matrix=include_matrix
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"correlation status failed: {exc}") from exc
     return {"ok": True, **result}

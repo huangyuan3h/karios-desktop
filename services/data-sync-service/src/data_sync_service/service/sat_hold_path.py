@@ -103,11 +103,7 @@ def summarize_paths(paths: list[dict[str, Any]], *, protect_pct: float = 5.0) ->
     recovered = [p for p in d2_red if float(p["pnl3"]) >= 0]
     improved = [p for p in d2_red if float(p["pnl3"]) > float(p["pnl2"])]
     stayed = [p for p in d2_red if float(p["pnl3"]) < 0]
-    hit = [
-        p
-        for p in paths
-        if min(float(p["pnl1"]), float(p["pnl2"])) <= -protect_pct
-    ]
+    hit = [p for p in paths if min(float(p["pnl1"]), float(p["pnl2"])) <= -protect_pct]
     hit_green = [p for p in hit if float(p["pnl3"]) >= 0]
 
     def _pct(k: int, den: int) -> float | None:

@@ -50,7 +50,9 @@ def run() -> None:
             continue
 
         if "error" in summary:
-            insert_record(f"{JOB_ID}_{market}", success=False, error_message=str(summary.get("error")))
+            insert_record(
+                f"{JOB_ID}_{market}", success=False, error_message=str(summary.get("error"))
+            )
             logger.warning("paper_s3_intake[%s] partial: %s", market, summary)
             continue
 

@@ -52,10 +52,12 @@ def test_run_persists_and_records_success() -> None:
 
 
 def test_run_emits_audit_issues_when_found() -> None:
-    run_persist = MagicMock(return_value=_out(
-        extra=[{"symbol": "CN:300628", "kind": "never_entered"}],
-        missing=[{"symbol": "HK:02099"}],
-    ))
+    run_persist = MagicMock(
+        return_value=_out(
+            extra=[{"symbol": "CN:300628", "kind": "never_entered"}],
+            missing=[{"symbol": "HK:02099"}],
+        )
+    )
     emit = MagicMock()
     with (
         patch("data_sync_service.db.paper_trading.today_iso", return_value="2026-08-14"),

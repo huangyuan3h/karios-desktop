@@ -309,7 +309,12 @@ def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
         breaker = breaker_status()
     except Exception:  # noqa: BLE001
         status = {"at": None, "checks": [], "failing": []}
-        breaker = {"ban_latched": False, "cooldown_remaining_s": 0, "fail_streak": 0, "proxy_degraded": False}
+        breaker = {
+            "ban_latched": False,
+            "cooldown_remaining_s": 0,
+            "fail_streak": 0,
+            "proxy_degraded": False,
+        }
     at = status.get("at")
     age_minutes = int((time.time() - at) / 60) if at else None
     failing = status.get("failing") or []

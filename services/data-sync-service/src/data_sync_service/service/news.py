@@ -56,7 +56,7 @@ def _normalize_title(title: str) -> str:
     # Remove parenthetical content
     t = re.sub(r"[（(][^)）]*[)）]", "", t)
     # Strip punctuation
-    t = re.sub("[，。！？、；：\"\"''「」\\[\\]【】(),.!?;:\"]", "", t)
+    t = re.sub('[，。！？、；：""\'\'「」\\[\\]【】(),.!?;:"]', "", t)
     t = _MULTI_SPACE_RE.sub("", t)
     return t
 
@@ -68,9 +68,7 @@ def fetch_rss_feed(url: str) -> list[dict]:
     # feedparser.parse(url) downloads via urllib with no timeout — a stalled
     # RSS host would hang the scheduler thread forever (coalesce drops later
     # runs). Download with an explicit timeout, then parse the bytes.
-    req = urllib.request.Request(
-        url, headers={"User-Agent": RSS_USER_AGENT}, method="GET"
-    )
+    req = urllib.request.Request(url, headers={"User-Agent": RSS_USER_AGENT}, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=RSS_FETCH_TIMEOUT_SECONDS) as resp:
             raw = resp.read()

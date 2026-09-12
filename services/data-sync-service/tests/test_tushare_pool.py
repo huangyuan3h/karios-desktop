@@ -115,7 +115,9 @@ def test_all_keys_hot_sleeps_once_then_retries() -> None:
 
         return _run
 
-    pool, _, clock = _make_pool(["A", "B"], {"A": {"daily": flaky("A")}, "B": {"daily": flaky("B")}})
+    pool, _, clock = _make_pool(
+        ["A", "B"], {"A": {"daily": flaky("A")}, "B": {"daily": flaky("B")}}
+    )
     out = pool.call("daily", trade_date="20260904")
     assert out["token"] in ("A", "B")
     assert clock.sleeps == [ALL_KEYS_HOT_SLEEP_SECONDS]

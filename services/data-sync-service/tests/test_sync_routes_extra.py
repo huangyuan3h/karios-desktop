@@ -17,7 +17,9 @@ def _patch_deps(monkeypatch):
     monkeypatch.setattr(sr, "sync_stock_basic", lambda: {"ok": True, "updated": 10})
     monkeypatch.setattr(sr, "sync_hk_basic", lambda **kw: {"ok": True})
     monkeypatch.setattr(sr, "sync_etf_fund_basic", lambda **kw: {"ok": True})
-    monkeypatch.setattr(sr, "get_etf_fund_basic_sync_status", lambda: {"job_type": "etf_fund_basic_sync"})
+    monkeypatch.setattr(
+        sr, "get_etf_fund_basic_sync_status", lambda: {"job_type": "etf_fund_basic_sync"}
+    )
     monkeypatch.setattr(sr, "sync_etf_daily_full", lambda: {"ok": True, "updated": 3})
     monkeypatch.setattr(sr, "get_etf_daily_sync_status", lambda: {"job_type": "etf_daily_full"})
     monkeypatch.setattr(sr, "sync_close", lambda **kw: {"ok": True, "updated_daily_rows": 5})
@@ -29,8 +31,12 @@ def _patch_deps(monkeypatch):
     monkeypatch.setattr(sr, "sync_macro_daily_full", lambda: {"ok": True})
     monkeypatch.setattr(sr, "sync_trade_calendar", lambda **kw: {"ok": True})
     monkeypatch.setattr(sr, "sync_etf_fund_flow_watchlist", lambda force=False: {"ok": True})
-    monkeypatch.setattr(sr, "sync_option_iv_daily", lambda force=False, trade_date=None: {"ok": True})
-    monkeypatch.setattr(sr, "sync_top_inst_watchlist", lambda force=False, trade_date=None: {"ok": True})
+    monkeypatch.setattr(
+        sr, "sync_option_iv_daily", lambda force=False, trade_date=None: {"ok": True}
+    )
+    monkeypatch.setattr(
+        sr, "sync_top_inst_watchlist", lambda force=False, trade_date=None: {"ok": True}
+    )
     monkeypatch.setattr(sr, "run_post_close_sync", lambda: {"postClose": True})
     from data_sync_service.db import sync_job_record as sjr
 
@@ -75,7 +81,9 @@ def test_eastmoney_industry_status(monkeypatch) -> None:
 def test_sync_eastmoney_industry_symbols(monkeypatch) -> None:
     from data_sync_service.service import eastmoney_industry as ei
 
-    monkeypatch.setattr(ei, "sync_eastmoney_industry", lambda symbols=None, limit=500: {"ok": True, "updated": 2})
+    monkeypatch.setattr(
+        ei, "sync_eastmoney_industry", lambda symbols=None, limit=500: {"ok": True, "updated": 2}
+    )
     r = client.post("/sync/eastmoney-industry")
     assert r.status_code == 200 and r.json()["updated"] == 2
 
@@ -83,7 +91,9 @@ def test_sync_eastmoney_industry_symbols(monkeypatch) -> None:
 def test_sync_eastmoney_industry_missing(monkeypatch) -> None:
     from data_sync_service.service import eastmoney_industry as ei
 
-    monkeypatch.setattr(ei, "sync_eastmoney_industry_incremental", lambda **kw: {"ok": True, "mode": kw["mode"]})
+    monkeypatch.setattr(
+        ei, "sync_eastmoney_industry_incremental", lambda **kw: {"ok": True, "mode": kw["mode"]}
+    )
     r = client.post("/sync/eastmoney-industry", params={"mode": "missing", "limit": 100})
     assert r.status_code == 200 and r.json()["mode"] == "missing"
 
@@ -94,7 +104,9 @@ def test_sync_stock_basic() -> None:
 
 
 def test_sync_hk_basic() -> None:
-    r = client.post("/sync/hk-basic", params={"ts_code": "00005.HK", "list_status": "D", "force": "true"})
+    r = client.post(
+        "/sync/hk-basic", params={"ts_code": "00005.HK", "list_status": "D", "force": "true"}
+    )
     assert r.status_code == 200
 
 
@@ -118,7 +130,9 @@ def test_market_sync_ok() -> None:
 
 
 def test_market_sync_error(monkeypatch) -> None:
-    monkeypatch.setattr(sr, "sync_stock_basic", lambda: {"ok": False, "error": "TU_SHARE_API_KEY is not set"})
+    monkeypatch.setattr(
+        sr, "sync_stock_basic", lambda: {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+    )
     r = client.post("/market/sync")
     body = r.json()
     assert body["ok"] is False and "API_KEY" in body["error"]
@@ -138,7 +152,9 @@ def test_sync_hk_daily() -> None:
 def test_sync_hk_industry(monkeypatch) -> None:
     from data_sync_service.service import hk_industry as hi
 
-    monkeypatch.setattr(hi, "sync_hk_industry", lambda symbols=None, limit=500: {"ok": True, "updated": 1})
+    monkeypatch.setattr(
+        hi, "sync_hk_industry", lambda symbols=None, limit=500: {"ok": True, "updated": 1}
+    )
     r = client.post("/sync/hk-industry", params={"symbols": ["00700.HK"]})
     assert r.status_code == 200 and r.json()["updated"] == 1
     monkeypatch.setattr(hi, "get_hk_industry_status", lambda: {"mapped": 100})
@@ -163,7 +179,10 @@ def test_sync_macro_daily_force() -> None:
 
 
 def test_sync_trade_cal() -> None:
-    r = client.post("/sync/trade-cal", params={"exchange": "SSE", "start_date": "20260801", "end_date": "20260810"})
+    r = client.post(
+        "/sync/trade-cal",
+        params={"exchange": "SSE", "start_date": "20260801", "end_date": "20260810"},
+    )
     assert r.status_code == 200 and r.json()["ok"] is True
 
 
@@ -198,7 +217,9 @@ def test_sync_jobs_aggregate(monkeypatch) -> None:
     from data_sync_service.service import alpha_radar_pipeline as ap
     from data_sync_service.service import hk_industry as hi
 
-    monkeypatch.setattr(sjr, "get_today_run", lambda jt: {"job_type": jt} if jt == "stock_basic_sync" else None)
+    monkeypatch.setattr(
+        sjr, "get_today_run", lambda jt: {"job_type": jt} if jt == "stock_basic_sync" else None
+    )
     monkeypatch.setattr(sjr, "get_last_success", lambda jt: {"job_type": jt})
     monkeypatch.setattr(hi, "get_hk_industry_status", lambda: {"mapped": 1})
     monkeypatch.setattr(ap, "pipeline_status", lambda: {"phase": "idle"})
@@ -221,9 +242,15 @@ def test_sync_jobs_aggregate_errors(monkeypatch) -> None:
 
     monkeypatch.setattr(sjr, "get_today_run", lambda jt: None)
     monkeypatch.setattr(sjr, "get_last_success", lambda jt: None)
-    monkeypatch.setattr(hi, "get_hk_industry_status", lambda: (_ for _ in ()).throw(RuntimeError("hk down")))
-    monkeypatch.setattr(ap, "pipeline_status", lambda: (_ for _ in ()).throw(RuntimeError("pipeline down")))
-    monkeypatch.setattr(wa, "get_latest_run", lambda: (_ for _ in ()).throw(RuntimeError("wa down")))
+    monkeypatch.setattr(
+        hi, "get_hk_industry_status", lambda: (_ for _ in ()).throw(RuntimeError("hk down"))
+    )
+    monkeypatch.setattr(
+        ap, "pipeline_status", lambda: (_ for _ in ()).throw(RuntimeError("pipeline down"))
+    )
+    monkeypatch.setattr(
+        wa, "get_latest_run", lambda: (_ for _ in ()).throw(RuntimeError("wa down"))
+    )
     body = client.get("/sync/jobs").json()
     assert body["hkIndustryCoverage"] == {"ok": False, "error": "hk down"}
     assert body["alphaRadar"] == {"ok": False, "error": "pipeline down"}

@@ -46,7 +46,9 @@ def downgrade() -> None:
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS small_net_inflow;")
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS medium_net_inflow;")
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS large_net_inflow;")
-    op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS super_large_net_inflow;")
+    op.execute(
+        "ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS super_large_net_inflow;"
+    )
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS main_net_inflow;")
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS trade_time;")
     op.execute("ALTER TABLE market_etf_fund_flow_daily DROP COLUMN IF EXISTS source;")

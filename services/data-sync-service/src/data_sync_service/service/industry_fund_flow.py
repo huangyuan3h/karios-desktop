@@ -154,10 +154,14 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
     cmd = [
         "curl",
         "-s",
-        "--max-time", "20",
-        "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "-H", "Accept: application/json,text/plain,*/*",
-        "-H", "Referer: https://data.eastmoney.com/",
+        "--max-time",
+        "20",
+        "-A",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "-H",
+        "Accept: application/json,text/plain,*/*",
+        "-H",
+        "Referer: https://data.eastmoney.com/",
     ]
     # EASTMONEY_PROXY (e.g. http://127.0.0.1:7890) routes via the ClashX node
     # exit — the home-line IP is banned by eastmoney (2026-08-09). Once the
@@ -397,7 +401,9 @@ def _resolve_sync_as_of(*, today: date, force: bool) -> tuple[date | None, dict[
     return latest_open, None
 
 
-def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10, force: bool = False) -> dict[str, Any]:
+def sync_cn_industry_fund_flow(
+    *, days: int = 10, top_n: int = 10, force: bool = False
+) -> dict[str, Any]:
     today = shanghai_today()
     as_of, skip_out = _resolve_sync_as_of(today=today, force=bool(force))
     if skip_out is not None:
@@ -454,7 +460,9 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10, force: bool =
     return out
 
 
-def get_cn_industry_fund_flow(*, days: int = 10, top_n: int = 30, as_of_date: str | None = None) -> dict[str, Any]:
+def get_cn_industry_fund_flow(
+    *, days: int = 10, top_n: int = 30, as_of_date: str | None = None
+) -> dict[str, Any]:
     raw = (as_of_date or "").strip() or (get_latest_date() or "")
     d = resolve_effective_as_of(raw) if raw else ""
     if not d:
@@ -474,7 +482,9 @@ def get_cn_industry_fund_flow(*, days: int = 10, top_n: int = 30, as_of_date: st
                 "industryName": name,
                 "netInflow": float(r.get("net_inflow") or 0.0),
                 "sum10d": float(sum10d),
-                "series10d": [{"date": x["date"], "netInflow": float(x["net_inflow"])} for x in series],
+                "series10d": [
+                    {"date": x["date"], "netInflow": float(x["net_inflow"])} for x in series
+                ],
                 "taxonomy": r.get("taxonomy") or "SW",
                 "industryLevel": r.get("industry_level"),
                 "source": r.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,

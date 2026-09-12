@@ -25,7 +25,7 @@ def _core_rows(navs: list[float]) -> list[dict]:
         nav *= 1.0 + ret
         rows.append(
             {
-                "date": f"2026-01-{i+1:02d}",
+                "date": f"2026-01-{i + 1:02d}",
                 "navSingle": round(nav, 6),
                 "navSingleReturnPct": round((nav - 1) * 100, 2),
                 "navMulti": round(nav, 6),
@@ -48,7 +48,7 @@ def _sat_rows(
         nav *= 1.0 + ret
         p = pos[i] if i < len(pos) else 0
         row: dict = {
-            "date": f"2026-01-{i+1:02d}",
+            "date": f"2026-01-{i + 1:02d}",
             "satNav": round(nav, 6),
             "satNavReturnPct": round((nav - 1) * 100, 2),
             "satPositions": p,
@@ -174,7 +174,7 @@ def _core_rows_picks(navs: list[float], picks: list[str]) -> list[dict]:
         nav *= 1.0 + ret
         rows.append(
             {
-                "date": f"2026-01-{i+1:02d}",
+                "date": f"2026-01-{i + 1:02d}",
                 "navSingle": round(nav, 6),
                 "navSingleReturnPct": round((nav - 1) * 100, 2),
                 "navMulti": round(nav, 6),
@@ -186,7 +186,7 @@ def _core_rows_picks(navs: list[float], picks: list[str]) -> list[dict]:
 
 def _sim_curve(rets: list[float]) -> tuple[list[float], list[str]]:
     """(nav_curve, own_calendar) with terminal point: len = n_days + 1."""
-    cal = [f"2026-01-{i+1:02d}" for i in range(len(rets))]
+    cal = [f"2026-01-{i + 1:02d}" for i in range(len(rets))]
     nav = [1.0]
     for r in rets:
         nav.append(round(nav[-1] * (1.0 + r), 8))

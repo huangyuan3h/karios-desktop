@@ -93,32 +93,32 @@ def _pre_decision_holdings(
             continue
         if _opened_by_sleeve_job_today(r, day):
             continue
-        holdings.append({
-            "symbol": r.get("symbol"),
-            "ts_code": r.get("tsCode") or r.get("ts_code"),
-            "sleeve_pct": r.get("sleevePct") or 0,
-        })
+        holdings.append(
+            {
+                "symbol": r.get("symbol"),
+                "ts_code": r.get("tsCode") or r.get("ts_code"),
+                "sleeve_pct": r.get("sleevePct") or 0,
+            }
+        )
     for r in closed_rows:
         if (
             str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
             and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
             and _day_of(r.get("closeDate")) == day
         ):
-            holdings.append({
-                "symbol": r.get("symbol"),
-                "ts_code": r.get("tsCode") or r.get("ts_code"),
-                "sleeve_pct": r.get("sleevePct") or 0,
-            })
+            holdings.append(
+                {
+                    "symbol": r.get("symbol"),
+                    "ts_code": r.get("tsCode") or r.get("ts_code"),
+                    "sleeve_pct": r.get("sleevePct") or 0,
+                }
+            )
     return holdings
 
 
-def _rebuild_decision(
-    day: str, holdings: list[dict[str, Any]]
-) -> dict[str, Any]:
+def _rebuild_decision(day: str, holdings: list[dict[str, Any]]) -> dict[str, Any]:
     cn_block = _health_block(market="CN", day=day)
-    return build_multi_asset_sleeve(
-        day=day, cn_block=cn_block, holdings_override=holdings
-    )
+    return build_multi_asset_sleeve(day=day, cn_block=cn_block, holdings_override=holdings)
 
 
 def _expected_flows(
@@ -175,16 +175,14 @@ def _user_alignment(
     if not expected_buys and not expected_sells:
         return "idle"
     buy_days = {day, user_exec_date or ""}
+
     def _norm(sym: str) -> str:
-        return (
-            str(sym or "").upper().replace("ETF:", "").replace(".SH", "")
-        )
+        return str(sym or "").upper().replace("ETF:", "").replace(".SH", "")
 
     user_buys = {
         _norm(r.get("symbol"))
         for r in user_rows
-        if str(r.get("side") or "") in ("BUY", "ADD")
-        and _day_of(r.get("trade_date")) in buy_days
+        if str(r.get("side") or "") in ("BUY", "ADD") and _day_of(r.get("trade_date")) in buy_days
     }
     user_sells = {
         _norm(r.get("symbol"))
@@ -216,11 +214,13 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
         return {"day": day, "ok": False, "error": f"list paper failed: {exc}"}
 
     pre_legs = [
-        r for r in open_rows
+        r
+        for r in open_rows
         if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
         and _day_of(r.get("createdAt")) != day
     ] + [
-        r for r in closed_rows
+        r
+        for r in closed_rows
         if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
         and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
         and _day_of(r.get("closeDate")) == day
@@ -234,19 +234,23 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
     pick = multi.get("pick") or {}
     expected_buys, expected_sells = _expected_flows(multi, pre_legs)
 
-    created_today = sorted({
-        str(r.get("symbol") or "").upper()
-        for r in open_rows
-        if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
-        and _day_of(r.get("createdAt")) == day
-    })
-    sold_today = sorted({
-        str(r.get("symbol") or "").upper()
-        for r in closed_rows
-        if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
-        and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
-        and _day_of(r.get("closeDate")) == day
-    })
+    created_today = sorted(
+        {
+            str(r.get("symbol") or "").upper()
+            for r in open_rows
+            if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
+            and _day_of(r.get("createdAt")) == day
+        }
+    )
+    sold_today = sorted(
+        {
+            str(r.get("symbol") or "").upper()
+            for r in closed_rows
+            if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
+            and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
+            and _day_of(r.get("closeDate")) == day
+        }
+    )
     missed_buys = sorted(set(expected_buys) - set(created_today))
     missed_sells = sorted(set(expected_sells) - set(sold_today))
     extra_opens = sorted(set(created_today) - set(expected_buys))
@@ -280,12 +284,14 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
         "missedSells": missed_sells,
         "extraOpens": extra_opens,
         "userBuys": sorted(
-            str(r.get("symbol") or "") for r in user_rows
+            str(r.get("symbol") or "")
+            for r in user_rows
             if str(r.get("side") or "") in ("BUY", "ADD")
             and _day_of(r.get("trade_date")) in {day, user_exec_date or ""}
         ),
         "userSells": sorted(
-            str(r.get("symbol") or "") for r in user_rows
+            str(r.get("symbol") or "")
+            for r in user_rows
             if str(r.get("side") or "") == "SELL" and _day_of(r.get("trade_date")) == day
         ),
         "userAlignment": _user_alignment(

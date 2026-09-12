@@ -32,8 +32,15 @@ class TestAccounts:
 
     def test_create(self, monkeypatch) -> None:
         seen = {}
-        monkeypatch.setattr(br, "create_broker_account", lambda **kw: seen.update(kw) or {"id": "a1"})
-        assert create_account_endpoint({"broker": "PingAn", "title": " 主账户 ", "accountMasked": "6222"})["id"] == "a1"
+        monkeypatch.setattr(
+            br, "create_broker_account", lambda **kw: seen.update(kw) or {"id": "a1"}
+        )
+        assert (
+            create_account_endpoint(
+                {"broker": "PingAn", "title": " 主账户 ", "accountMasked": "6222"}
+            )["id"]
+            == "a1"
+        )
         assert seen["broker"] == "pingan" and seen["title"] == "主账户"
         assert seen["account_masked"] == "6222"
         with pytest.raises(HTTPException) as exc:
@@ -67,7 +74,15 @@ class TestSnapshots:
         assert out == [{"id": "s1"}]
 
     def test_get(self, monkeypatch) -> None:
-        snap = {"id": "s1", "broker": "pingan", "accountId": "a1", "capturedAt": "c", "kind": "k", "createdAt": "cr", "extracted": {"x": 1}}
+        snap = {
+            "id": "s1",
+            "broker": "pingan",
+            "accountId": "a1",
+            "capturedAt": "c",
+            "kind": "k",
+            "createdAt": "cr",
+            "extracted": {"x": 1},
+        }
         monkeypatch.setattr(br, "get_broker_snapshot", lambda sid: snap)
         out = get_pingan_snapshot_endpoint("s1")
         assert out["imagePath"] == "/broker/pingan/snapshots/s1/image"
@@ -77,7 +92,9 @@ class TestSnapshots:
         assert exc.value.status_code == 404
 
     def test_get_image(self, monkeypatch) -> None:
-        monkeypatch.setattr(br, "get_broker_snapshot_image", lambda sid: {"bytes": b"abc", "mediaType": "image/png"})
+        monkeypatch.setattr(
+            br, "get_broker_snapshot_image", lambda sid: {"bytes": b"abc", "mediaType": "image/png"}
+        )
         out = get_pingan_snapshot_image_endpoint("s1")
         assert isinstance(out, Response)
         assert out.body == b"abc"
@@ -90,16 +107,28 @@ class TestSnapshots:
 class TestImport:
     def test_import(self, monkeypatch) -> None:
         seen = {}
-        monkeypatch.setattr(br, "import_broker_screenshots", lambda **kw: seen.update(kw) or [{"id": "i1"}])
-        req = BrokerImportRequest(accountId="a1", capturedAt="2026-08-07", images=[{"id": "i1", "name": "n", "mediaType": "image/png", "dataUrl": "data:"}])
+        monkeypatch.setattr(
+            br, "import_broker_screenshots", lambda **kw: seen.update(kw) or [{"id": "i1"}]
+        )
+        req = BrokerImportRequest(
+            accountId="a1",
+            capturedAt="2026-08-07",
+            images=[{"id": "i1", "name": "n", "mediaType": "image/png", "dataUrl": "data:"}],
+        )
         out = import_pingan_screenshots_endpoint(req)
         assert out == {"ok": True, "items": [{"id": "i1"}]}
         assert seen["broker"] == "pingan" and seen["account_id"] == "a1"
         assert seen["images"][0]["id"] == "i1"
 
     def test_import_exception(self, monkeypatch) -> None:
-        monkeypatch.setattr(br, "import_broker_screenshots", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
-        req = BrokerImportRequest(images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}])
+        monkeypatch.setattr(
+            br,
+            "import_broker_screenshots",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        req = BrokerImportRequest(
+            images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}]
+        )
         with pytest.raises(HTTPException) as exc:
             import_pingan_screenshots_endpoint(req)
         assert exc.value.status_code == 500
@@ -115,8 +144,12 @@ class TestState:
 
     def test_sync(self, monkeypatch) -> None:
         seen = {}
-        monkeypatch.setattr(br, "sync_account_from_images", lambda **kw: seen.update(kw) or {"ok": True})
-        req = BrokerSyncRequest(capturedAt="c", images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}])
+        monkeypatch.setattr(
+            br, "sync_account_from_images", lambda **kw: seen.update(kw) or {"ok": True}
+        )
+        req = BrokerSyncRequest(
+            capturedAt="c", images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}]
+        )
         assert sync_pingan_state_endpoint("a1", req) == {"ok": True}
         assert seen["account_id"] == "a1"
         with pytest.raises(HTTPException) as exc:
@@ -124,28 +157,44 @@ class TestState:
         assert exc.value.status_code == 400
 
     def test_sync_exception(self, monkeypatch) -> None:
-        monkeypatch.setattr(br, "sync_account_from_images", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
-        req = BrokerSyncRequest(images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}])
+        monkeypatch.setattr(
+            br, "sync_account_from_images", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        req = BrokerSyncRequest(
+            images=[{"id": "i1", "name": "n", "mediaType": "t", "dataUrl": "d"}]
+        )
         with pytest.raises(HTTPException) as exc:
             sync_pingan_state_endpoint("a1", req)
         assert exc.value.status_code == 500
 
     def test_delete_conditional(self, monkeypatch) -> None:
         seen = {}
-        monkeypatch.setattr(br, "delete_conditional_order", lambda **kw: seen.update(kw) or {"ok": True})
+        monkeypatch.setattr(
+            br, "delete_conditional_order", lambda **kw: seen.update(kw) or {"ok": True}
+        )
         req = DeleteBrokerConditionalOrderRequest(order={"id": "o1"})
         assert delete_pingan_conditional_order_endpoint("a1", req) == {"ok": True}
         with pytest.raises(HTTPException) as exc:
             delete_pingan_conditional_order_endpoint("   ", req)
         assert exc.value.status_code == 400
         with pytest.raises(HTTPException) as exc:
-            delete_pingan_conditional_order_endpoint("a1", DeleteBrokerConditionalOrderRequest(order={}))
+            delete_pingan_conditional_order_endpoint(
+                "a1", DeleteBrokerConditionalOrderRequest(order={})
+            )
         assert exc.value.status_code == 400
-        monkeypatch.setattr(br, "delete_conditional_order", lambda **kw: (_ for _ in ()).throw(KeyError("no such order")))
+        monkeypatch.setattr(
+            br,
+            "delete_conditional_order",
+            lambda **kw: (_ for _ in ()).throw(KeyError("no such order")),
+        )
         with pytest.raises(HTTPException) as exc:
             delete_pingan_conditional_order_endpoint("a1", req)
         assert exc.value.status_code == 404
-        monkeypatch.setattr(br, "delete_conditional_order", lambda **kw: (_ for _ in ()).throw(ValueError("bad order")))
+        monkeypatch.setattr(
+            br,
+            "delete_conditional_order",
+            lambda **kw: (_ for _ in ()).throw(ValueError("bad order")),
+        )
         with pytest.raises(HTTPException) as exc:
             delete_pingan_conditional_order_endpoint("a1", req)
         assert exc.value.status_code == 400

@@ -174,8 +174,13 @@ def sync_research_reports(
         refresh_report_scores()
     except Exception as exc:  # noqa: BLE001
         logger.warning("research report score refresh failed: %s", exc)
-    return {"ok": error is None and (fetched > 0 or inserted >= 0), "fetched": fetched,
-            "inserted": inserted, "pages": (params["pageNo"] - 1), "error": error}
+    return {
+        "ok": error is None and (fetched > 0 or inserted >= 0),
+        "fetched": fetched,
+        "inserted": inserted,
+        "pages": (params["pageNo"] - 1),
+        "error": error,
+    }
 
 
 def _current_closes(symbols: list[str]) -> dict[str, float]:
@@ -209,8 +214,12 @@ def build_research_catalyst_payload(
 
     reports = db.fetch_reports_for_score_window(window_days=window_days)
     if not reports:
-        return {"stalenessBasis": "report_window", "maxAgeDays": window_days,
-                "total": 0, "items": []}
+        return {
+            "stalenessBasis": "report_window",
+            "maxAgeDays": window_days,
+            "total": 0,
+            "items": [],
+        }
 
     today = date.today()
     by_symbol: dict[str, list[dict[str, Any]]] = {}
@@ -223,8 +232,12 @@ def build_research_catalyst_payload(
         by_symbol.setdefault(sym, []).append(rep)
 
     if not by_symbol:
-        return {"stalenessBasis": "report_window", "maxAgeDays": window_days,
-                "total": 0, "items": []}
+        return {
+            "stalenessBasis": "report_window",
+            "maxAgeDays": window_days,
+            "total": 0,
+            "items": [],
+        }
 
     closes = _current_closes(sorted(by_symbol.keys()))
     items: list[dict[str, Any]] = []

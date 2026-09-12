@@ -87,9 +87,7 @@ class TestNationalTeamState:
     def test_trigger_and_release(self) -> None:
         cal = _cal(6)
         index = [(d, 100.0) for d in cal]  # flat → below MA2? 100 > MA2(100,100)=100 → False
-        shares = {
-            code: [(d, 100.0) for d in cal] for code in ("510300.SH", "510500.SH")
-        }
+        shares = {code: [(d, 100.0) for d in cal] for code in ("510300.SH", "510500.SH")}
         state = national_team_state_by_day(index, shares, cal, n=2, ma_window=2)
         # index never above; share delta = 0 ≤ 0 → ON from day3 (needs n+1=3 share pts)
         assert [state[d] for d in cal] == [False, False, False, True, True, True]
@@ -97,7 +95,9 @@ class TestNationalTeamState:
     def test_share_growth_releases(self) -> None:
         cal = _cal(6)
         index = [(d, 100.0) for d in cal]
-        shares = {code: [(d, 100.0 + 10.0 * i) for i, d in enumerate(cal)] for code in ("510300.SH",)}
+        shares = {
+            code: [(d, 100.0 + 10.0 * i) for i, d in enumerate(cal)] for code in ("510300.SH",)
+        }
         state = national_team_state_by_day(index, shares, cal, n=2, ma_window=2)
         assert not any(state.values())
 

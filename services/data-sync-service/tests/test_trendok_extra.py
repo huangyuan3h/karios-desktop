@@ -17,7 +17,13 @@ def _dates(n: int, start: str = "2026-01-01") -> list[str]:
     return [(d + timedelta(days=i)).isoformat() for i in range(n)]
 
 
-def _rising_bars(n: int = 120, start: float = 100.0, growth: float = 0.01, vol: float = bar_vol, vol_tail: float | None = None) -> list[tuple[str, str, str, str, str, str]]:
+def _rising_bars(
+    n: int = 120,
+    start: float = 100.0,
+    growth: float = 0.01,
+    vol: float = bar_vol,
+    vol_tail: float | None = None,
+) -> list[tuple[str, str, str, str, str, str]]:
     dates = _dates(n)
     bars = []
     for i, dt in enumerate(dates):
@@ -35,17 +41,26 @@ def _surge_end(bars: list) -> list:
     prev_close = float(bars[-2][4])
     new_close = prev_close * 1.05
     open_ = prev_close
-    bars[-1] = (dt, f"{open_:.3f}", f"{new_close * 1.005:.3f}", f"{prev_close * 0.99:.3f}", f"{new_close:.3f}", bars[-1][5])
+    bars[-1] = (
+        dt,
+        f"{open_:.3f}",
+        f"{new_close * 1.005:.3f}",
+        f"{prev_close * 0.99:.3f}",
+        f"{new_close:.3f}",
+        bars[-1][5],
+    )
     return bars
 
 
-def _flat_then_crash(n: int = 120, boom: int = 70, drop_pct: float = 0.03, vol: float = bar_vol) -> list[tuple[str, str, str, str, str, str]]:
+def _flat_then_crash(
+    n: int = 120, boom: int = 70, drop_pct: float = 0.03, vol: float = bar_vol
+) -> list[tuple[str, str, str, str, str, str]]:
     dates = _dates(n)
     bars = []
-    peak = 100.0 * (1.01 ** boom)
+    peak = 100.0 * (1.01**boom)
     for i, dt in enumerate(dates):
         if i < boom:
-            close = 100.0 * (1.01 ** i)
+            close = 100.0 * (1.01**i)
         else:
             close = peak * (1.0 - drop_pct * (i - boom))
         open_ = close * 1.002
@@ -113,9 +128,47 @@ class TestPureHelpers:
         assert tk._atr14([1.0] * 30, [1.0] * 30, [1.0] * 30, 0) is None
 
     def test_atr14_value(self) -> None:
-        highs = [10.0, 11.0, 12.0, 11.0, 12.0, 13.0, 14.0, 13.0, 14.0, 15.0, 16.0, 15.0, 16.0, 17.0, 18.0, 17.0, 18.0, 19.0]
+        highs = [
+            10.0,
+            11.0,
+            12.0,
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            17.0,
+            18.0,
+            19.0,
+        ]
         lows = [9.0] * 18
-        closes = [9.5, 10.5, 11.5, 10.5, 11.5, 12.5, 13.5, 12.5, 13.5, 14.5, 15.5, 14.5, 15.5, 16.5, 17.5, 16.5, 17.5, 18.5]
+        closes = [
+            9.5,
+            10.5,
+            11.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            16.5,
+            17.5,
+            18.5,
+        ]
         v = tk._atr14(highs, lows, closes, 14)
         assert v is not None and v > 0
 
@@ -191,15 +244,30 @@ class TestPureHelpers:
 
     def test_anti_spike_penalties(self) -> None:
         p, parts = tk._score_anti_spike_penalties(
-            close=10.0, ema20=9.0, intraday_chg_pct=7.0, atr14=0.6, vol_today=1e6, avg_vol30=1e5,
+            close=10.0,
+            ema20=9.0,
+            intraday_chg_pct=7.0,
+            atr14=0.6,
+            vol_today=1e6,
+            avg_vol30=1e5,
         )
         assert p > 40.0 and "penalty_intraday_spike" in parts
         p2, parts2 = tk._score_anti_spike_penalties(
-            close=8.0, ema20=10.0, intraday_chg_pct=None, atr14=None, vol_today=1e5, avg_vol30=1e5,
+            close=8.0,
+            ema20=10.0,
+            intraday_chg_pct=None,
+            atr14=None,
+            vol_today=1e5,
+            avg_vol30=1e5,
         )
         assert p2 == 30.0 and "penalty_below_ema20" in parts2
         p3, parts3 = tk._score_anti_spike_penalties(
-            close=10.0, ema20=9.0, intraday_chg_pct=None, atr14=None, vol_today=1e5, avg_vol30=1e5,
+            close=10.0,
+            ema20=9.0,
+            intraday_chg_pct=None,
+            atr14=None,
+            vol_today=1e5,
+            avg_vol30=1e5,
         )
         assert p3 == 0.0 and parts3 == {}
 
@@ -227,7 +295,14 @@ class TestPureHelpers:
     def test_merge_realtime_bar_append(self) -> None:
         bars = _rising_bars(5)
         _ = bars[-1][0]
-        quote = {"price": "150.0", "trade_time": "2026-08-06 15:00:00", "open": "149.0", "high": "151.0", "low": "148.5", "volume": "123456"}
+        quote = {
+            "price": "150.0",
+            "trade_time": "2026-08-06 15:00:00",
+            "open": "149.0",
+            "high": "151.0",
+            "low": "148.5",
+            "volume": "123456",
+        }
         merged = tk._merge_realtime_bar(bars, quote)
         assert len(merged) == 6
         assert merged[-1][0] == "2026-08-06"
@@ -280,7 +355,9 @@ class TestPureHelpers:
         opens = [c - 0.05 for c in closes]
         vols = [1.0] * 19 + [3.0]
         res = {"score": 30.0, "trendOk": False, "scoreParts": {}, "checks": {}}
-        tk.apply_alpha_s_trend_recovering(res, closes=closes, opens=opens, vols=vols, is_alpha_s=True)
+        tk.apply_alpha_s_trend_recovering(
+            res, closes=closes, opens=opens, vols=vols, is_alpha_s=True
+        )
         assert res["trendOk"] is True
         assert res["score"] == 60.0
         assert res["trendStatus"] == "recovering"
@@ -291,7 +368,9 @@ class TestPureHelpers:
         opens = [c - 0.05 for c in closes]
         vols = [1.0] * 19 + [3.0]
         res = {"score": 30.0, "trendOk": True, "scoreParts": {}, "checks": {}}
-        tk.apply_alpha_s_trend_recovering(res, closes=closes, opens=opens, vols=vols, is_alpha_s=False)
+        tk.apply_alpha_s_trend_recovering(
+            res, closes=closes, opens=opens, vols=vols, is_alpha_s=False
+        )
         assert res["trendStatus"] == "ok"
         assert res["checks"]["alphaSTrendRecovering"] is False
 
@@ -300,7 +379,9 @@ class TestPureHelpers:
         opens = [c - 0.05 for c in closes]
         vols = [1.0] * 19 + [3.0]
         res = {"score": "abc", "scoreParts": {}, "checks": {}}
-        tk.apply_alpha_s_trend_recovering(res, closes=closes, opens=opens, vols=vols, is_alpha_s=True)
+        tk.apply_alpha_s_trend_recovering(
+            res, closes=closes, opens=opens, vols=vols, is_alpha_s=True
+        )
         assert res["score"] == 60.0
 
     def test_volume_vs_avg10_none_short(self) -> None:
@@ -308,7 +389,9 @@ class TestPureHelpers:
         opens = [c - 0.05 for c in closes]
         vols = [1.0] * 5
         res = {"score": 30.0, "scoreParts": {}, "checks": {}}
-        tk.apply_alpha_s_trend_recovering(res, closes=closes, opens=opens, vols=vols, is_alpha_s=True)
+        tk.apply_alpha_s_trend_recovering(
+            res, closes=closes, opens=opens, vols=vols, is_alpha_s=True
+        )
         assert res["trendStatus"] is None
 
     def test_score_for_momentum_surge_gate(self) -> None:
@@ -392,17 +475,19 @@ class TestTrendokOne:
         boom = 80
         dates = _dates(n)
         bars = []
-        peak = 100.0 * (1.01 ** boom)
+        peak = 100.0 * (1.01**boom)
         for i, dt in enumerate(dates):
             if i < boom:
-                close = 100.0 * (1.01 ** i)
+                close = 100.0 * (1.01**i)
             else:
                 close = peak * (1.0 - 0.06 * (i - boom))
             open_ = close * 1.01
             high = close * 1.02
             low = close * 0.98
             v = bar_vol * (0.3 if i >= boom else 1.0)
-            bars.append((dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}"))
+            bars.append(
+                (dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}")
+            )
         res = _trendok_one(bars=bars)
         assert res["stopLossParts"]["exit_now"] is True
         assert res["stopLossParts"]["exit_reasons"]
@@ -412,17 +497,19 @@ class TestTrendokOne:
         boom = 90
         dates = _dates(n)
         bars = []
-        peak = 100.0 * (1.01 ** boom)
+        peak = 100.0 * (1.01**boom)
         for i, dt in enumerate(dates):
             if i < boom:
-                close = 100.0 * (1.01 ** i)
+                close = 100.0 * (1.01**i)
             else:
                 close = peak * (1.0 - 0.004 * (i - boom))
             open_ = close * 1.002
             high = close * 1.004
             low = close * 0.996
             v = bar_vol * (0.5 if i >= boom else 1.0)
-            bars.append((dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}"))
+            bars.append(
+                (dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}")
+            )
         res = _trendok_one(bars=bars)
         if res["stopLossParts"].get("warn_hist_shrink_cnt_3", 0) >= 2:
             assert res["stopLossParts"]["warn_reduce_half"] is True
@@ -458,17 +545,35 @@ class TestTrendokOne:
         assert res["stopLossParts"]["vol_bin"] == "low"
         noisy = []
         for i in range(120):
-            close = 100.0 * (1.01 ** i) * (1.0 + 0.04 * math.sin(i * 1.7))
-            noisy.append((_dates(1, start=(date.fromisoformat("2026-01-01") + timedelta(days=i)).isoformat())[0],
-                          f"{close * 0.995:.3f}", f"{close * 1.01:.3f}", f"{close * 0.99:.3f}", f"{close:.3f}", "1000000"))
+            close = 100.0 * (1.01**i) * (1.0 + 0.04 * math.sin(i * 1.7))
+            noisy.append(
+                (
+                    _dates(
+                        1, start=(date.fromisoformat("2026-01-01") + timedelta(days=i)).isoformat()
+                    )[0],
+                    f"{close * 0.995:.3f}",
+                    f"{close * 1.01:.3f}",
+                    f"{close * 0.99:.3f}",
+                    f"{close:.3f}",
+                    "1000000",
+                )
+            )
         res2 = _trendok_one(symbol="ETF:510300", bars=noisy)
         assert res2["stopLossParts"]["vol_bin"] == "high"
 
     def test_sector_divergence_rejection(self) -> None:
         bars = _surge_end(_rising_bars())
-        flow_ctx = {"ok": True, "outflow_today_3": {"白酒"}, "top_today_3": set(), "top_today_5": set(),
-                    "top_yesterday_3": set(), "top_5d_3": set(), "bottom_5d_5": set(),
-                    "net_today": {}, "net_yesterday": {}}
+        flow_ctx = {
+            "ok": True,
+            "outflow_today_3": {"白酒"},
+            "top_today_3": set(),
+            "top_today_5": set(),
+            "top_yesterday_3": set(),
+            "top_5d_3": set(),
+            "bottom_5d_5": set(),
+            "net_today": {},
+            "net_yesterday": {},
+        }
         res = _trendok_one(bars=bars, flow_ctx=flow_ctx, industry="白酒")
         assert res["checks"]["sector_divergence"] is True
         assert res["buyAction"] == "avoid"
@@ -482,12 +587,12 @@ class TestTrendokOne:
         t1_close = None
         for i, dt in enumerate(dates):
             if i < 118:
-                close = 100.0 * (1.01 ** i)
+                close = 100.0 * (1.01**i)
                 open_ = close * 0.995
                 v = bar_vol
             elif i == 118:
-                close = 100.0 * (1.01 ** i) * 1.08
-                open_ = 100.0 * (1.01 ** i) * 1.02
+                close = 100.0 * (1.01**i) * 1.08
+                open_ = 100.0 * (1.01**i) * 1.02
                 v = bar_vol * 1.2
             else:
                 close = t1_close * 0.985
@@ -497,7 +602,9 @@ class TestTrendokOne:
                 t1_close = close
             high = close * 1.006
             low = close * 0.994
-            bars.append((dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}"))
+            bars.append(
+                (dt, f"{open_:.3f}", f"{high:.3f}", f"{low:.3f}", f"{close:.3f}", f"{v:.0f}")
+            )
         res = _trendok_one(bars=bars, market_regime="Weak")
         assert res["checks"]["t1_surge"] is True
         assert res["checks"]["t1_strong"] is True
@@ -510,7 +617,9 @@ class TestTrendokOne:
 
     def test_rs_leader(self) -> None:
         bars = _rising_bars(growth=0.03)
-        res = _trendok_one(bars=bars, index_20d_ret=-5.0, index_ema20_down=True, market_regime="Weak")
+        res = _trendok_one(
+            bars=bars, index_20d_ret=-5.0, index_ema20_down=True, market_regime="Weak"
+        )
         assert res["checks"]["rs_leader"] is True
         assert res["rs"] is not None
 
@@ -520,13 +629,17 @@ class TestTrendokOne:
 
     def test_finalize_trendok_response_caches_prelock(self, monkeypatch) -> None:
         rows = [{"symbol": "CN:600000", "buyAction": "buy"}]
-        monkeypatch.setattr(tk, "_read_latest_sentiment_for_macro_lock", lambda: ("extreme_caution", 5000))
+        monkeypatch.setattr(
+            tk, "_read_latest_sentiment_for_macro_lock", lambda: ("extreme_caution", 5000)
+        )
         out = tk._finalize_trendok_response(rows)
         assert out[0]["buyAction"] == "avoid"
         assert rows[0]["buyAction"] == "buy"
 
     def test_read_latest_sentiment_fail_closed(self, monkeypatch) -> None:
-        monkeypatch.setattr(tk, "list_days", lambda **kw: (_ for _ in ()).throw(RuntimeError("db down")))
+        monkeypatch.setattr(
+            tk, "list_days", lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        )
         tk._macro_lock_cache.clear()
         risk, down = tk._read_latest_sentiment_for_macro_lock()
         assert risk == "extreme_caution"
@@ -586,7 +699,15 @@ class _EmptyConn:
 
 
 class TestComputeTrendokForSymbols:
-    def _patch_db(self, monkeypatch, bars_by_code=None, names=None, industries=None, inst_by_code=None, regime="Strong"):
+    def _patch_db(
+        self,
+        monkeypatch,
+        bars_by_code=None,
+        names=None,
+        industries=None,
+        inst_by_code=None,
+        regime="Strong",
+    ):
         from data_sync_service import db as dbmod
         from data_sync_service.db import index_daily, watchlist_automation
         from data_sync_service.service import market_quotes
@@ -599,10 +720,20 @@ class TestComputeTrendokForSymbols:
         names = names or {"600519.SH": "贵州茅台", "000001.SZ": "平安银行"}
         industries = industries or {"600519.SH": "白酒", "000001.SZ": "银行"}
 
-        monkeypatch.setattr(tk, "fetch_last_ohlcv_batch", lambda codes, days: {c: bars_by_code.get(c, []) for c in codes})
+        monkeypatch.setattr(
+            tk,
+            "fetch_last_ohlcv_batch",
+            lambda codes, days: {c: bars_by_code.get(c, []) for c in codes},
+        )
         monkeypatch.setattr(tk, "ensure_stock_basic", lambda: None)
-        monkeypatch.setattr(tk, "lookup_em_industries", lambda codes: {c: industries.get(c) for c in codes if c in industries})
-        monkeypatch.setattr(tk, "fetch_summaries_for_codes", lambda codes, trade_date=None: inst_by_code or {})
+        monkeypatch.setattr(
+            tk,
+            "lookup_em_industries",
+            lambda codes: {c: industries.get(c) for c in codes if c in industries},
+        )
+        monkeypatch.setattr(
+            tk, "fetch_summaries_for_codes", lambda codes, trade_date=None: inst_by_code or {}
+        )
         monkeypatch.setattr(tk, "fetch_daily_seats_batch", lambda keys: {})
         monkeypatch.setattr(tk, "get_stoploss_batch", lambda codes: {})
         monkeypatch.setattr(tk, "upsert_stoploss_batch", lambda rows: None)
@@ -610,9 +741,30 @@ class TestComputeTrendokForSymbols:
         monkeypatch.setattr(tk, "get_latest_industry_date", lambda: "2026-08-07")
         monkeypatch.setattr(tk, "get_dates_upto", lambda as_of, n: _dates(n)[-n:])
         monkeypatch.setattr(tk, "get_rows_for_dates", lambda dates: [])
-        monkeypatch.setattr(tk, "trade_dates_upto", lambda flow_date, n, fallback_dates_fn=None: _dates(n)[-n:])
-        monkeypatch.setattr(tk, "get_market_regime", lambda **kw: {"regime": regime, "bias": None, "indexSignals": []})
-        monkeypatch.setattr(tk, "build_trendok_flow_context_from_rows", lambda **kw: {"asOfDate": kw.get("flow_date"), "ok": True, "top_today_3": set(), "top_today_5": set(), "top_yesterday_3": set(), "top_5d_3": set(), "bottom_5d_5": set(), "net_today": {}, "net_yesterday": {}, "outflow_today_3": set()})
+        monkeypatch.setattr(
+            tk, "trade_dates_upto", lambda flow_date, n, fallback_dates_fn=None: _dates(n)[-n:]
+        )
+        monkeypatch.setattr(
+            tk,
+            "get_market_regime",
+            lambda **kw: {"regime": regime, "bias": None, "indexSignals": []},
+        )
+        monkeypatch.setattr(
+            tk,
+            "build_trendok_flow_context_from_rows",
+            lambda **kw: {
+                "asOfDate": kw.get("flow_date"),
+                "ok": True,
+                "top_today_3": set(),
+                "top_today_5": set(),
+                "top_yesterday_3": set(),
+                "top_5d_3": set(),
+                "bottom_5d_5": set(),
+                "net_today": {},
+                "net_yesterday": {},
+                "outflow_today_3": set(),
+            },
+        )
         monkeypatch.setattr(index_daily, "fetch_last_closes", lambda ts_code, days: [])
         monkeypatch.setattr(watchlist_automation, "list_registry", lambda: [])
         monkeypatch.setattr(market_quotes, "normalize_market_symbol", lambda s: s)
@@ -631,11 +783,14 @@ class TestComputeTrendokForSymbols:
         assert len(out) == 200
 
     def test_compute_full(self, monkeypatch) -> None:
-        self._patch_db(monkeypatch, bars_by_code={
-            "600519.SH": _rising_bars(),
-            "000001.SZ": _flat_then_crash(),
-            "00700.HK": _rising_bars(),
-        })
+        self._patch_db(
+            monkeypatch,
+            bars_by_code={
+                "600519.SH": _rising_bars(),
+                "000001.SZ": _flat_then_crash(),
+                "00700.HK": _rising_bars(),
+            },
+        )
         out = tk.compute_trendok_for_symbols(["CN:600519", "CN:000001", "HK:700"], realtime=False)
         by = {r["symbol"]: r for r in out}
         assert by["CN:600519"]["score"] is not None
@@ -645,8 +800,20 @@ class TestComputeTrendokForSymbols:
     def test_compute_realtime_merge(self, monkeypatch) -> None:
         self._patch_db(monkeypatch)
         monkeypatch.setattr(
-            tk, "fetch_realtime_quotes",
-            lambda codes: {"ok": True, "items": [{"ts_code": "600519.SH", "price": "199.0", "trade_time": "2026-08-07 14:00:00", "volume": "500000", "amount": "5e8"}]},
+            tk,
+            "fetch_realtime_quotes",
+            lambda codes: {
+                "ok": True,
+                "items": [
+                    {
+                        "ts_code": "600519.SH",
+                        "price": "199.0",
+                        "trade_time": "2026-08-07 14:00:00",
+                        "volume": "500000",
+                        "amount": "5e8",
+                    }
+                ],
+            },
         )
         out = tk.compute_trendok_for_symbols(["CN:600519"], realtime=True)
         assert out[0]["values"]["rtVwap"] is not None
@@ -656,7 +823,11 @@ class TestComputeTrendokForSymbols:
         from data_sync_service.db import watchlist_automation
 
         self._patch_db(monkeypatch)
-        monkeypatch.setattr(watchlist_automation, "list_registry", lambda: [{"symbol": "CN:600519", "positionPct": 50, "costPrice": 110.0}])
+        monkeypatch.setattr(
+            watchlist_automation,
+            "list_registry",
+            lambda: [{"symbol": "CN:600519", "positionPct": 50, "costPrice": 110.0}],
+        )
         out = tk.compute_trendok_for_symbols(["CN:600519"], realtime=False)
         assert "hard_stop_entry" in out[0]["stopLossParts"]
 
@@ -668,8 +839,12 @@ class TestComputeTrendokForSymbols:
     def test_compute_alpha_s(self, monkeypatch) -> None:
         from data_sync_service.service import watchlist_automation as svc_wa
 
-        self._patch_db(monkeypatch, bars_by_code={"600519.SH": _rising_bars(30, vol_tail=3.0)}, inst_by_code={})
-        monkeypatch.setattr(svc_wa, "load_catalyst_window", lambda *a, **kw: (["CN:600519"], ["CN:600519"]))
+        self._patch_db(
+            monkeypatch, bars_by_code={"600519.SH": _rising_bars(30, vol_tail=3.0)}, inst_by_code={}
+        )
+        monkeypatch.setattr(
+            svc_wa, "load_catalyst_window", lambda *a, **kw: (["CN:600519"], ["CN:600519"])
+        )
         out = tk.compute_trendok_for_symbols(["CN:600519"])
         assert out[0]["trendOk"] is True
         assert out[0]["trendStatus"] == "recovering"
@@ -678,13 +853,17 @@ class TestComputeTrendokForSymbols:
         from data_sync_service import db as dbmod
 
         self._patch_db(monkeypatch)
-        monkeypatch.setattr(dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+        monkeypatch.setattr(
+            dbmod, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("db down"))
+        )
         out = tk.compute_trendok_for_symbols(["CN:600519"])
         assert out[0]["name"] is None
 
     def test_compute_macro_lock_applied(self, monkeypatch) -> None:
         self._patch_db(monkeypatch, bars_by_code={"600519.SH": _rising_bars()}, inst_by_code={})
-        monkeypatch.setattr(tk, "_read_latest_sentiment_for_macro_lock", lambda: ("extreme_caution", 5000))
+        monkeypatch.setattr(
+            tk, "_read_latest_sentiment_for_macro_lock", lambda: ("extreme_caution", 5000)
+        )
         out = tk.compute_trendok_for_symbols(["CN:600519"])
         assert out[0]["macroLock"]["active"] is True
         assert out[0]["buyAction"] == "avoid"

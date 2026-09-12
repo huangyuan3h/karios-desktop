@@ -50,7 +50,11 @@ def upsert_daily_rows(rows: Iterable[dict[str, Any]]) -> int:
                 float(r.get("trend_score") or 0.0),
                 float(r.get("total_score") or 0.0),
                 str(r.get("updated_at") or ""),
-                Json(r.get("flags") if isinstance(r.get("flags"), dict) else {"flags": r.get("flags")}),
+                Json(
+                    r.get("flags")
+                    if isinstance(r.get("flags"), dict)
+                    else {"flags": r.get("flags")}
+                ),
             )
         )
     with get_connection() as conn:

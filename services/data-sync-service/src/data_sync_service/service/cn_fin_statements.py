@@ -116,7 +116,9 @@ def sync_statements_for_codes(
             frames: dict[str, list[dict]] = {}
             for endpoint in TABLES:
                 df = _with_retry(
-                    lambda endpoint=endpoint, ts_code=ts_code: getattr(pro, endpoint)(ts_code=ts_code)
+                    lambda endpoint=endpoint, ts_code=ts_code: getattr(pro, endpoint)(
+                        ts_code=ts_code
+                    )
                 )
                 rows = []
                 if df is not None and not df.empty:
@@ -141,8 +143,13 @@ def sync_statements_for_codes(
         if (i + 1) % progress_every == 0:
             logger.info(
                 "%sprogress %d/%d done=%d bal=%d inc=%d cf=%d failed=%d",
-                log_prefix, i + 1, len(codes), done,
-                updated["balancesheet"], updated["income"], updated["cashflow"],
+                log_prefix,
+                i + 1,
+                len(codes),
+                done,
+                updated["balancesheet"],
+                updated["income"],
+                updated["cashflow"],
                 len(failed),
             )
         time.sleep(sleep)

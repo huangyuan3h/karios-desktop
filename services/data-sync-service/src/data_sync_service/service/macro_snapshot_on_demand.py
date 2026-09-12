@@ -229,7 +229,9 @@ def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
     }
 
 
-def _fetch_on_demand_series(pro: Any | None, series_id: str) -> tuple[dict[str, Any], str | None, str | None]:
+def _fetch_on_demand_series(
+    pro: Any | None, series_id: str
+) -> tuple[dict[str, Any], str | None, str | None]:
     """
     Returns (metrics, source_label, underlying_ts_code).
     US/HK indices prefer yfinance (works without Tushare token).
@@ -328,6 +330,7 @@ def _fetch_on_demand_series(pro: Any | None, series_id: str) -> tuple[dict[str, 
 
 ALWAYS_REFRESH_SERIES = [SID_IXIC, SID_DJI, SID_SPX, SID_USDCNH, SID_A50, SID_HSI, SID_HSTECH]
 
+
 def _is_data_stale(as_of_date: str | None) -> bool:
     """Check if data is stale (older than 2 days for offshore series)."""
     if not as_of_date:
@@ -339,6 +342,7 @@ def _is_data_stale(as_of_date: str | None) -> bool:
         return age_days >= 2
     except Exception:
         return True
+
 
 def enrich_macro_items_on_demand(macro_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Fill missing/stale macro rows using yfinance and/or Tushare daily APIs (no DB writes)."""
@@ -396,7 +400,5 @@ def fetch_hk_index_on_demand(series_id: str) -> tuple[dict[str, Any], str | None
 
 def macro_snapshot_warning() -> str | None:
     if not get_settings().tu_share_api_key:
-        return (
-            "TU_SHARE_API_KEY is not set; US/HK macro may still refresh via yfinance on demand."
-        )
+        return "TU_SHARE_API_KEY is not set; US/HK macro may still refresh via yfinance on demand."
     return None

@@ -18,6 +18,7 @@ def _non_darwin(monkeypatch):
     if sys.platform == "darwin":
         monkeypatch.setattr(sys, "platform", "linux")
 
+
 def test_get_macro_snapshot_endpoint(monkeypatch) -> None:
     import data_sync_service.api.query_routes as query_routes  # type: ignore[import-not-found]
 

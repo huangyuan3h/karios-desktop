@@ -34,8 +34,7 @@ def _load(table: str, cols: tuple[str, ...], end_from: str = "2018-01-01") -> pd
     use = ", ".join(["ts_code", "ann_date", "end_date", "report_type", "comp_type", *cols])
     with get_connection() as conn:
         df = pd.read_sql(
-            f"SELECT {use} FROM {table} "
-            "WHERE end_date >= %s AND report_type = '1'",
+            f"SELECT {use} FROM {table} WHERE end_date >= %s AND report_type = '1'",
             conn,
             params=(end_from,),
         )
@@ -61,16 +60,18 @@ def _single_quarter(df: pd.DataFrame, cols: tuple[str, ...]) -> pd.DataFrame:
 def _ttm(df: pd.DataFrame, sq_cols: tuple[str, ...]) -> pd.DataFrame:
     df = df.sort_values(["ts_code", "end_date"])
     for c in sq_cols:
-        df[c + "_ttm"] = (
-            df.groupby("ts_code")[c].transform(lambda s: s.rolling(4, min_periods=4).sum())
+        df[c + "_ttm"] = df.groupby("ts_code")[c].transform(
+            lambda s: s.rolling(4, min_periods=4).sum()
         )
     return df
 
 
 def roe_ttm_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     """One row per (ts_code, end_date): roe_ttm + industry + median + flag."""
-    inc = _ttm(_single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
-               tuple(c + "_sq" for c in INCOME_COLS))
+    inc = _ttm(
+        _single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
+        tuple(c + "_sq" for c in INCOME_COLS),
+    )
     bal = _load("cn_balance_sheet", BALANCE_COLS, end_from)
     eq = bal.sort_values(["ts_code", "end_date"]).copy()
     eq["eq_avg4"] = eq.groupby("ts_code")["total_hldr_eqy_inc_min_int"].transform(
@@ -84,18 +85,28 @@ def roe_ttm_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     m["roe_ttm"] = m["n_income_attr_p_sq_ttm"] / m["eq_avg4"]
     m = m[(m["eq_avg4"] > 0)].copy()
     with get_connection() as conn:
-        ind = pd.read_sql(
-            "SELECT ts_code, industry FROM stock_basic", conn
-        )
+        ind = pd.read_sql("SELECT ts_code, industry FROM stock_basic", conn)
     m = m.merge(ind, on="ts_code", how="left")
     m["ind_med"] = m.groupby(["end_date", "industry"])["roe_ttm"].transform("median")
     m["above_ind"] = m["roe_ttm"] > m["ind_med"]
     m["is_fin"] = m["comp_type"] != "1"
     m = m.sort_values(by=["ann_date", "ts_code"])
-    return _as_frame(m[[
-        "ts_code", "end_date", "ann_date", "roe_ttm", "industry", "ind_med",
-        "above_ind", "is_fin", "n_income_attr_p_sq_ttm", "eq_avg4",
-    ]]).reset_index(drop=True)
+    return _as_frame(
+        m[
+            [
+                "ts_code",
+                "end_date",
+                "ann_date",
+                "roe_ttm",
+                "industry",
+                "ind_med",
+                "above_ind",
+                "is_fin",
+                "n_income_attr_p_sq_ttm",
+                "eq_avg4",
+            ]
+        ]
+    ).reset_index(drop=True)
 
 
 def cashconv_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -105,10 +116,14 @@ def cashconv_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     losses — coverage loss is reported, not hidden). ``accruals`` =
     (NI_sq_ttm - CFO_sq_ttm) / avg assets works for all (Sloan-style).
     """
-    inc = _ttm(_single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
-               tuple(c + "_sq" for c in INCOME_COLS))
-    cf = _ttm(_single_quarter(_load("cn_cashflow_stmt", CASHFLOW_COLS, end_from), CASHFLOW_COLS),
-              tuple(c + "_sq" for c in CASHFLOW_COLS))
+    inc = _ttm(
+        _single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
+        tuple(c + "_sq" for c in INCOME_COLS),
+    )
+    cf = _ttm(
+        _single_quarter(_load("cn_cashflow_stmt", CASHFLOW_COLS, end_from), CASHFLOW_COLS),
+        tuple(c + "_sq" for c in CASHFLOW_COLS),
+    )
     bal = _load("cn_balance_sheet", BALANCE_COLS, end_from)
     assets = bal.sort_values(["ts_code", "end_date"]).copy()
     assets["assets_avg4"] = assets.groupby("ts_code")["total_assets"].transform(
@@ -137,10 +152,21 @@ def cashconv_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     m = m.merge(ind, on="ts_code", how="left")
     m["is_fin"] = m["comp_type"] != "1"
     m = m.sort_values(by=["ann_date", "ts_code"])
-    return _as_frame(m[[
-        "ts_code", "end_date", "ann_date", "ccr", "accruals", "industry",
-        "is_fin", "n_income_attr_p_sq_ttm", "n_cashflow_act_sq_ttm",
-    ]]).reset_index(drop=True)
+    return _as_frame(
+        m[
+            [
+                "ts_code",
+                "end_date",
+                "ann_date",
+                "ccr",
+                "accruals",
+                "industry",
+                "is_fin",
+                "n_income_attr_p_sq_ttm",
+                "n_cashflow_act_sq_ttm",
+            ]
+        ]
+    ).reset_index(drop=True)
 
 
 def leverage_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -160,10 +186,21 @@ def leverage_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     bal["below_ind"] = bal["debt_ratio"] < bal["ind_med"]
     bal["is_fin"] = bal["comp_type"] != "1"
     bal = bal.sort_values(by=["ann_date", "ts_code"])
-    return _as_frame(bal[[
-        "ts_code", "end_date", "ann_date", "debt_ratio", "lev_safe", "industry",
-        "ind_med", "below_ind", "is_fin",
-    ]]).reset_index(drop=True)
+    return _as_frame(
+        bal[
+            [
+                "ts_code",
+                "end_date",
+                "ann_date",
+                "debt_ratio",
+                "lev_safe",
+                "industry",
+                "ind_med",
+                "below_ind",
+                "is_fin",
+            ]
+        ]
+    ).reset_index(drop=True)
 
 
 def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -174,20 +211,29 @@ def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     the rest); coverage is reported by callers. No dividend yield leg —
     no dividend table exists locally (honest boundary, P18 spec minus 股息率).
     """
-    inc = _ttm(_single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
-               tuple(c + "_sq" for c in INCOME_COLS))
-    cf = _ttm(_single_quarter(_load("cn_cashflow_stmt", ("free_cashflow",), end_from),
-                              ("free_cashflow",)),
-              ("free_cashflow_sq",))
+    inc = _ttm(
+        _single_quarter(_load("cn_income_stmt", INCOME_COLS, end_from), INCOME_COLS),
+        tuple(c + "_sq" for c in INCOME_COLS),
+    )
+    cf = _ttm(
+        _single_quarter(
+            _load("cn_cashflow_stmt", ("free_cashflow",), end_from), ("free_cashflow",)
+        ),
+        ("free_cashflow_sq",),
+    )
     bal = _load("cn_balance_sheet", BALANCE_COLS, end_from)
     m = inc.merge(
         cf[["ts_code", "end_date", "free_cashflow_sq_ttm", "ann_date"]],
-        on=["ts_code", "end_date"], how="inner", suffixes=("", "_cf"),
+        on=["ts_code", "end_date"],
+        how="inner",
+        suffixes=("", "_cf"),
     )
     m["ann_date"] = pd.concat([m["ann_date"], m["ann_date_cf"]], axis=1).max(axis=1)
     m = m.merge(
         bal[["ts_code", "end_date", "total_hldr_eqy_inc_min_int", "ann_date"]],
-        on=["ts_code", "end_date"], how="inner", suffixes=("", "_bal"),
+        on=["ts_code", "end_date"],
+        how="inner",
+        suffixes=("", "_bal"),
     )
     m["ann_date"] = pd.concat([m["ann_date"], m["ann_date_bal"]], axis=1).max(axis=1)
     m = m[(m["total_hldr_eqy_inc_min_int"] > 0)].copy()
@@ -196,38 +242,56 @@ def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     m = m.merge(ind, on="ts_code", how="left")
     m["is_fin"] = m["comp_type"] != "1"
     m = m.sort_values(by=["ann_date", "ts_code"])
-    return _as_frame(m[[
-        "ts_code", "end_date", "ann_date", "n_income_attr_p_sq_ttm",
-        "total_revenue_sq_ttm", "total_hldr_eqy_inc_min_int",
-        "free_cashflow_sq_ttm", "industry", "is_fin",
-    ]]).reset_index(drop=True)
+    return _as_frame(
+        m[
+            [
+                "ts_code",
+                "end_date",
+                "ann_date",
+                "n_income_attr_p_sq_ttm",
+                "total_revenue_sq_ttm",
+                "total_hldr_eqy_inc_min_int",
+                "free_cashflow_sq_ttm",
+                "industry",
+                "is_fin",
+            ]
+        ]
+    ).reset_index(drop=True)
 
 
 def ni_sq_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     """Single-quarter attributable NI per (ts_code, end_date), PiT ann_date."""
-    df = _single_quarter(_load("cn_income_stmt", ("n_income_attr_p",), end_from),
-                         ("n_income_attr_p",))
+    df = _single_quarter(
+        _load("cn_income_stmt", ("n_income_attr_p",), end_from), ("n_income_attr_p",)
+    )
     df["is_fin"] = df["comp_type"] != "1"
     df = df.sort_values(by=["ts_code", "end_date", "ann_date"])
-    return _as_frame(df[["ts_code", "end_date", "ann_date", "n_income_attr_p_sq",
-                         "comp_type", "is_fin"]]).reset_index(drop=True)
+    return _as_frame(
+        df[["ts_code", "end_date", "ann_date", "n_income_attr_p_sq", "comp_type", "is_fin"]]
+    ).reset_index(drop=True)
 
 
 def load_trade_calendar() -> tuple[list[str], dict[str, int]]:
     """All trade dates (daily table) + index map. A-share full since 2021."""
     with get_connection() as conn:
-        cal = pd.read_sql(
-            "SELECT DISTINCT trade_date FROM daily ORDER BY trade_date", conn,
-            parse_dates=["trade_date"],
-        )["trade_date"].dt.strftime("%Y-%m-%d").tolist()
+        cal = (
+            pd.read_sql(
+                "SELECT DISTINCT trade_date FROM daily ORDER BY trade_date",
+                conn,
+                parse_dates=["trade_date"],
+            )["trade_date"]
+            .dt.strftime("%Y-%m-%d")
+            .tolist()
+        )
     return cal, {d: i for i, d in enumerate(cal)}
 
 
 def load_price_map() -> dict[str, dict[str, float]]:
     """{ts_code: {trade_date: close}} (qfq-adjusted closes)."""
     with get_connection() as conn:
-        closes = pd.read_sql("SELECT ts_code, trade_date, close FROM daily", conn,
-                             parse_dates=["trade_date"])
+        closes = pd.read_sql(
+            "SELECT ts_code, trade_date, close FROM daily", conn, parse_dates=["trade_date"]
+        )
     closes["trade_date"] = closes["trade_date"].dt.strftime("%Y-%m-%d")
     px: dict[str, dict[str, float]] = {}
     for ts, d, c in zip(closes["ts_code"], closes["trade_date"], closes["close"], strict=False):
@@ -236,9 +300,14 @@ def load_price_map() -> dict[str, dict[str, float]]:
     return px
 
 
-def shift_return(px: dict[str, dict[str, float]], cal: list[str],
-                 idx_of: dict[str, int], ts: str, base: str,
-                 horizon: int) -> float | None:
+def shift_return(
+    px: dict[str, dict[str, float]],
+    cal: list[str],
+    idx_of: dict[str, int],
+    ts: str,
+    base: str,
+    horizon: int,
+) -> float | None:
     """Forward (horizon>0) / backward (horizon<0) N-trading-day return %."""
     i = idx_of.get(base)
     if i is None or not 0 <= i + horizon < len(cal):
@@ -257,7 +326,8 @@ def load_mv_map(col: str = "circ_mv") -> dict[str, dict[str, float]]:
     assert col in ("circ_mv", "total_mv")
     with get_connection() as conn:
         df = pd.read_sql(
-            f"SELECT ts_code, trade_date, {col} FROM stock_dailybasic", conn,
+            f"SELECT ts_code, trade_date, {col} FROM stock_dailybasic",
+            conn,
             parse_dates=["trade_date"],
         )
     df["trade_date"] = df["trade_date"].dt.strftime("%Y-%m-%d")
@@ -268,9 +338,14 @@ def load_mv_map(col: str = "circ_mv") -> dict[str, dict[str, float]]:
     return mv
 
 
-def mv_asof(mv: dict[str, dict[str, float]], cal: list[str],
-            idx_of: dict[str, int], ts: str, base: str,
-            lookback: int = 10) -> float | None:
+def mv_asof(
+    mv: dict[str, dict[str, float]],
+    cal: list[str],
+    idx_of: dict[str, int],
+    ts: str,
+    base: str,
+    lookback: int = 10,
+) -> float | None:
     """Latest market value on/before base trading day (lookback sessions)."""
     i = idx_of.get(base)
     if i is None:

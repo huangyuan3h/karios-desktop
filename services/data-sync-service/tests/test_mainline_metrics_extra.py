@@ -8,8 +8,14 @@ from data_sync_service.service import mainline as ml
 
 
 def _row(ts, pre, close, pct, name=None, industry=None) -> dict:
-    return {"ts_code": ts, "pre_close": pre, "close": close, "pct_chg": pct,
-            "name": name, "industry": industry}
+    return {
+        "ts_code": ts,
+        "pre_close": pre,
+        "close": close,
+        "pct_chg": pct,
+        "name": name,
+        "industry": industry,
+    }
 
 
 def test_fetch_daily_rows_by_dates_empty(monkeypatch) -> None:
@@ -80,8 +86,13 @@ class _FakeConn:
 def test_prev_open_date_via_calendar(monkeypatch) -> None:
     monkeypatch.setattr(ml, "is_trading_day", lambda exc, d: True)
     monkeypatch.setattr(
-        ml, "get_open_dates",
-        lambda exchange, start_date, end_date: [date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7)],
+        ml,
+        "get_open_dates",
+        lambda exchange, start_date, end_date: [
+            date(2026, 8, 5),
+            date(2026, 8, 6),
+            date(2026, 8, 7),
+        ],
     )
     assert ml._prev_open_date("SSE", date(2026, 8, 7)) == date(2026, 8, 6)
 
@@ -109,13 +120,13 @@ def test_compute_industry_metrics_full(monkeypatch) -> None:
         "_fetch_daily_rows_by_dates",
         lambda dates: {
             "2026-08-07": [
-                _row("600000.SH", 10.0, 11.0, 10.0, "浦发", "银行"),   # limit up
-                _row("600001.SH", 10.0, 10.5, 5.0, "工行", "银行"),    # normal
+                _row("600000.SH", 10.0, 11.0, 10.0, "浦发", "银行"),  # limit up
+                _row("600001.SH", 10.0, 10.5, 5.0, "工行", "银行"),  # normal
                 _row("300001.SZ", 1.0, 1.21, 21.0, "特锐德", "电气"),  # surge
-                _row("300002.SZ", 1.0, 1.05, 5.0, "x", ""),           # no industry
+                _row("300002.SZ", 1.0, 1.05, 5.0, "x", ""),  # no industry
             ],
             "2026-08-06": [
-                _row("600000.SH", 9.0, 10.0, 11.0, "浦发", "银行"),   # limit up prev
+                _row("600000.SH", 9.0, 10.0, 11.0, "浦发", "银行"),  # limit up prev
                 _row("600001.SH", 10.0, 10.0, 0.0, "工行", "银行"),
             ],
         },
@@ -157,7 +168,9 @@ def test_ensure_metrics_for_dates(monkeypatch) -> None:
         return [{"date": d}] if d == "2026-08-06" else []
 
     monkeypatch.setattr(ml, "metrics_rows_by_date", fake_rows_by_date)
-    monkeypatch.setattr(ml, "_compute_industry_metrics_for_date", lambda d: computed.append(d) or [{"a": 1}])
+    monkeypatch.setattr(
+        ml, "_compute_industry_metrics_for_date", lambda d: computed.append(d) or [{"a": 1}]
+    )
     monkeypatch.setattr(ml, "metrics_upsert_rows", lambda rows: upserted.append(rows))
     out = ml.ensure_metrics_for_dates(["2026-08-06", "2026-08-07"])
     assert out == {"ensured": 1}
@@ -168,13 +181,17 @@ def test_ensure_metrics_for_dates(monkeypatch) -> None:
 def test_ensure_metrics_empty_rows_no_upsert(monkeypatch) -> None:
     monkeypatch.setattr(ml, "metrics_rows_by_date", lambda d: [])
     monkeypatch.setattr(ml, "_compute_industry_metrics_for_date", lambda d: [])
-    monkeypatch.setattr(ml, "metrics_upsert_rows", lambda rows: (_ for _ in ()).throw(AssertionError("no upsert")))
+    monkeypatch.setattr(
+        ml, "metrics_upsert_rows", lambda rows: (_ for _ in ()).throw(AssertionError("no upsert"))
+    )
     assert ml.ensure_metrics_for_dates(["2026-08-07"]) == {"ensured": 0}
 
 
 def test_ensure_scores_for_dates(monkeypatch) -> None:
     upserted: list[list] = []
-    monkeypatch.setattr(ml, "scores_rows_by_date", lambda d: [{"x": 1}] if d == "2026-08-06" else [])
+    monkeypatch.setattr(
+        ml, "scores_rows_by_date", lambda d: [{"x": 1}] if d == "2026-08-06" else []
+    )
     monkeypatch.setattr(ml, "compute_scores_for_date", lambda d: [{"s": 1}])
     monkeypatch.setattr(ml, "scores_upsert_rows", lambda rows: upserted.append(rows))
     out = ml.ensure_scores_for_dates(["2026-08-06", "2026-08-07"])
@@ -183,7 +200,11 @@ def test_ensure_scores_for_dates(monkeypatch) -> None:
 
 
 def test_score_trend_short_series() -> None:
-    ctx = {"dates": ["2026-08-01"], "series": {"银行": [("2026-08-01", 1.0)]}, "market_avg_close": {}}
+    ctx = {
+        "dates": ["2026-08-01"],
+        "series": {"银行": [("2026-08-01", 1.0)]},
+        "market_avg_close": {},
+    }
     score, flags = ml._score_trend("银行", ctx)
     assert score == 0.0
     assert flags["rpsQualified"] is False

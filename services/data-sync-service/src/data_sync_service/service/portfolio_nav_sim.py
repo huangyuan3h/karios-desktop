@@ -233,7 +233,9 @@ def simulate_sleeve_nav(
             "maxDdSleevePct": round(max_dd_sleeve * 100.0, 1),
             "holdDays": hold_days,
             "idleDays": idle_days,
-            "avgIdlePct": round(sum(r["idlePct"] for r in rows) / len(rows) * 100.0, 1) if rows else 0.0,
+            "avgIdlePct": round(sum(r["idlePct"] for r in rows) / len(rows) * 100.0, 1)
+            if rows
+            else 0.0,
             "engineNav": bool(use_engine),
         },
     }

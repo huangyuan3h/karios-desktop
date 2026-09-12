@@ -11,6 +11,7 @@ from data_sync_service.db.macro_daily import (
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_numeric_none():
     assert _numeric(None) is None
 

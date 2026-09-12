@@ -166,7 +166,9 @@ def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.5, max_sleep_s: f
     raise RuntimeError("Retry wrapper failed unexpectedly.")
 
 
-def compute_avg_price(*, close: float | None, vol: float | None, amount: float | None) -> float | None:
+def compute_avg_price(
+    *, close: float | None, vol: float | None, amount: float | None
+) -> float | None:
     """VWAP from fund_daily amount (千元) and vol (手); fallback to close."""
     try:
         v = float(vol or 0.0)
@@ -523,7 +525,9 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
 
     total_rows = upsert_daily_rows(rows)
     success = bool(rows)
-    error_message = None if success else (fetch_error or "no realtime ETF flow rows from East Money")
+    error_message = (
+        None if success else (fetch_error or "no realtime ETF flow rows from East Money")
+    )
     insert_record(
         job_type=JOB_TYPE,
         success=success,
@@ -712,7 +716,9 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
         rows_by_date = by_code_date.get(code, {})
         as_of_row = rows_by_date.get(as_of)
         row_source = str((as_of_row or {}).get("source") or "")
-        has_realtime_flow = row_source == EM_ETF_FLOW_SOURCE and (as_of_row or {}).get("net_inflow") is not None
+        has_realtime_flow = (
+            row_source == EM_ETF_FLOW_SOURCE and (as_of_row or {}).get("net_inflow") is not None
+        )
         if (as_of_row is None or as_of_row.get("fd_share") is None) and not has_realtime_flow:
             share_lag = True
 
@@ -774,7 +780,11 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             data_source = EM_ETF_FLOW_SOURCE
         elif as_of_row and as_of_row.get("fd_share") is not None:
             data_source = "tushare"
-        elif as_of_row and as_of_row.get("net_inflow") is not None and as_of_row.get("fd_share") is None:
+        elif (
+            as_of_row
+            and as_of_row.get("net_inflow") is not None
+            and as_of_row.get("fd_share") is None
+        ):
             data_source = "eastmoney"
         elif stale_flow:
             data_source = "tushare"
@@ -833,7 +843,8 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "live": has_live_main_flow,
                 "flowStatus": flow_status,
                 "flowProvider": flow_provider,
-                "tradeTime": (as_of_row or {}).get("trade_time") or (em_realtime_row or {}).get("tradeTime"),
+                "tradeTime": (as_of_row or {}).get("trade_time")
+                or (em_realtime_row or {}).get("tradeTime"),
                 "mainNetInflow": (as_of_row or {}).get("main_net_inflow")
                 if (as_of_row or {}).get("main_net_inflow") is not None
                 else (em_realtime_row or {}).get("mainNetInflow"),
@@ -887,9 +898,7 @@ def aggregate_etf_flow_signal(bundle: dict[str, Any]) -> dict[str, Any]:
     sector_dir = _group_signal(sector, "Sector Momentum", "Inst Outflow")
 
     confirm_count = sum(
-        1
-        for it in items
-        if str(it.get("signal") or "") in ("National Team Buy", "Sector Momentum")
+        1 for it in items if str(it.get("signal") or "") in ("National Team Buy", "Sector Momentum")
     )
     contradict_count = sum(
         1

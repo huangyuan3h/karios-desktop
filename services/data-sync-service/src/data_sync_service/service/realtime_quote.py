@@ -233,9 +233,7 @@ def _parse_sina_hk_payload(ticker: str, payload: str) -> dict[str, Any] | None:
     }
 
 
-def _sina_hk_quotes_fresh(
-    tickers: list[str], *, force: bool = False
-) -> dict[str, dict[str, Any]]:
+def _sina_hk_quotes_fresh(tickers: list[str], *, force: bool = False) -> dict[str, dict[str, Any]]:
     """Fetch the given HK tickers from Sina Finance. Returns ticker -> quote.
 
     Result is cached per ticker for `_SINA_HK_QUOTE_TTL_S` so repeated calls
@@ -578,4 +576,3 @@ def fetch_realtime_quotes_batched(
             if isinstance(resp, dict) and resp.get("ok"):
                 items.extend(resp.get("items") or [])
     return items
-

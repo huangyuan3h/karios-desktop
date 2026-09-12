@@ -36,12 +36,21 @@ def ensure_table() -> None:
             cur.execute(CREATE_SQL)
 
 
-def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
-                 actual: int, aligned: int, missing: int, extra: int,
-                 aligned_return_diff_pct: float | None = None,
-                 bt_return_median_pct: float | None = None,
-                 paper_return_median_pct: float | None = None,
-                 detail: list[dict] | None = None) -> None:
+def insert_recon(
+    *,
+    recon_date: str,
+    market: str,
+    window: str,
+    expected: int,
+    actual: int,
+    aligned: int,
+    missing: int,
+    extra: int,
+    aligned_return_diff_pct: float | None = None,
+    bt_return_median_pct: float | None = None,
+    paper_return_median_pct: float | None = None,
+    detail: list[dict] | None = None,
+) -> None:
     """Upsert the day's reconciliation per market (re-running the same day
     is idempotent — the cron re-runs Monday morning freely)."""
     ensure_table()
@@ -66,9 +75,20 @@ def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
                     detail = EXCLUDED.detail,
                     created_at = now()
                 """,
-                (recon_date, market, window, expected, actual, aligned, missing, extra,
-                 aligned_return_diff_pct, bt_return_median_pct, paper_return_median_pct,
-                 json.dumps(detail, ensure_ascii=False) if detail else None),
+                (
+                    recon_date,
+                    market,
+                    window,
+                    expected,
+                    actual,
+                    aligned,
+                    missing,
+                    extra,
+                    aligned_return_diff_pct,
+                    bt_return_median_pct,
+                    paper_return_median_pct,
+                    json.dumps(detail, ensure_ascii=False) if detail else None,
+                ),
             )
             conn.commit()
 
@@ -90,18 +110,20 @@ def latest_recon(limit: int = 4) -> list[dict[str, Any]]:
             rows = cur.fetchall()
     out = []
     for r in rows:
-        out.append({
-            "reconDate": r[0],
-            "market": r[1],
-            "window": r[2],
-            "expected": r[3],
-            "actual": r[4],
-            "aligned": r[5],
-            "missing": r[6],
-            "extra": r[7],
-            "alignedReturnDiffPct": float(r[8]) if r[8] is not None else None,
-            "btReturnMedianPct": float(r[9]) if r[9] is not None else None,
-            "paperReturnMedianPct": float(r[10]) if r[10] is not None else None,
-            "detail": json.loads(r[11]) if r[11] else None,
-        })
+        out.append(
+            {
+                "reconDate": r[0],
+                "market": r[1],
+                "window": r[2],
+                "expected": r[3],
+                "actual": r[4],
+                "aligned": r[5],
+                "missing": r[6],
+                "extra": r[7],
+                "alignedReturnDiffPct": float(r[8]) if r[8] is not None else None,
+                "btReturnMedianPct": float(r[9]) if r[9] is not None else None,
+                "paperReturnMedianPct": float(r[10]) if r[10] is not None else None,
+                "detail": json.loads(r[11]) if r[11] else None,
+            }
+        )
     return out

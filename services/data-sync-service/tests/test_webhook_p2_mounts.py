@@ -19,9 +19,7 @@ class TestE2PaperChainIssue:
         # OPT-144: run_close() is a REAL close-sync (threadpool side effects
         # write real job records). Stub it — this test covers the watchdog's
         # missing-chain branch, not close_sync itself.
-        monkeypatch.setattr(
-            "data_sync_service.scheduler.close_sync_job.run", lambda: None
-        )
+        monkeypatch.setattr("data_sync_service.scheduler.close_sync_job.run", lambda: None)
 
         def fake_emit(event_type, payload, dedupe_key):
             emitted.append({"type": event_type, "payload": payload, "key": dedupe_key})
@@ -54,7 +52,16 @@ class TestE4NearStop:
             emitted.append({"type": event_type, "payload": payload, "key": dedupe_key})
             return True
 
-        alerts = [{"type": "alert", "symbol": "CN:600000", "market": "CN", "line": "stop", "pnlPct": -4.6, "distancePct": 0.4}]
+        alerts = [
+            {
+                "type": "alert",
+                "symbol": "CN:600000",
+                "market": "CN",
+                "line": "stop",
+                "pnlPct": -4.6,
+                "distancePct": 0.4,
+            }
+        ]
         monkeypatch.setattr(trading_brief, "_health", lambda: {"holdings": []})
         monkeypatch.setattr(trading_brief, "_alerts_section", lambda h: alerts)
         monkeypatch.setattr(trading_brief, "_regime_section", lambda h: [])
@@ -103,7 +110,9 @@ class TestE5CandidateDiff:
             return [{"symbol": "CN:600001"}]  # previous day
 
         monkeypatch.setattr(cdj, "build_s3_candidates", fake_candidates)
-        monkeypatch.setattr(cdj, "last_trading_day", lambda exchange, d: __import__("datetime").date(2026, 8, 11))
+        monkeypatch.setattr(
+            cdj, "last_trading_day", lambda exchange, d: __import__("datetime").date(2026, 8, 11)
+        )
         with patch("data_sync_service.db.webhook.emit_event", side_effect=fake_emit):
             out = cdj.candidate_diff(trade_date="2026-08-12")
         assert out["added_by_market"]["CN"] == ["CN:600002"]
@@ -126,7 +135,9 @@ class TestE5CandidateDiff:
             return [] if trade_date == "2026-08-12" else [{"symbol": "CN:600001"}]
 
         monkeypatch.setattr(cdj, "build_s3_candidates", fake_candidates)
-        monkeypatch.setattr(cdj, "last_trading_day", lambda exchange, d: __import__("datetime").date(2026, 8, 11))
+        monkeypatch.setattr(
+            cdj, "last_trading_day", lambda exchange, d: __import__("datetime").date(2026, 8, 11)
+        )
         with patch("data_sync_service.db.webhook.emit_event", side_effect=fake_emit):
             out = cdj.candidate_diff(trade_date="2026-08-12")
         assert out["added_by_market"] == {}
@@ -148,10 +159,26 @@ class TestE6E7:
         monkeypatch.setattr(
             roj,
             "_summarize",
-            lambda run: {"totalNetPnlPct": -8.5, "maxDrawdownPct": 19.5, "sharpe": -3.2, "closed": 55},
+            lambda run: {
+                "totalNetPnlPct": -8.5,
+                "maxDrawdownPct": 19.5,
+                "sharpe": -3.2,
+                "closed": 55,
+            },
         )
         monkeypatch.setattr(roj, "insert_record", lambda *a, **k: None)
-        monkeypatch.setattr(roj, "REPORT_FILE", type("F", (), {"parent": type("P", (), {"mkdir": lambda *a, **k: None}), "write_text": lambda *a, **k: None})())
+        monkeypatch.setattr(
+            roj,
+            "REPORT_FILE",
+            type(
+                "F",
+                (),
+                {
+                    "parent": type("P", (), {"mkdir": lambda *a, **k: None}),
+                    "write_text": lambda *a, **k: None,
+                },
+            )(),
+        )
         with patch("data_sync_service.db.webhook.emit_event", side_effect=fake_emit):
             roj.run()
         assert len(emitted) == 1
@@ -168,13 +195,17 @@ class TestE6E7:
             return True
 
         monkeypatch.setattr(brj, "insert_record", lambda *a, **k: None)
-        monkeypatch.setattr(brj, "run_and_persist", lambda day, **kwargs: {
-            "reconDate": day,
-            "markets": {
-                "HK": {"available": True, "missing": 3},
-                "CN": {"available": True, "missing": 0},
+        monkeypatch.setattr(
+            brj,
+            "run_and_persist",
+            lambda day, **kwargs: {
+                "reconDate": day,
+                "markets": {
+                    "HK": {"available": True, "missing": 3},
+                    "CN": {"available": True, "missing": 0},
+                },
             },
-        })
+        )
         with patch("data_sync_service.db.webhook.emit_event", side_effect=fake_emit):
             brj.run()
         assert len(emitted) == 1
@@ -185,10 +216,17 @@ class TestE6E7:
         from data_sync_service.scheduler import backtest_recon_job as brj
 
         monkeypatch.setattr(brj, "insert_record", lambda *a, **k: None)
-        monkeypatch.setattr(brj, "run_and_persist", lambda day, **kwargs: {
-            "reconDate": day,
-            "markets": {"HK": {"available": True, "missing": 0}, "CN": {"available": True, "missing": 0}},
-        })
+        monkeypatch.setattr(
+            brj,
+            "run_and_persist",
+            lambda day, **kwargs: {
+                "reconDate": day,
+                "markets": {
+                    "HK": {"available": True, "missing": 0},
+                    "CN": {"available": True, "missing": 0},
+                },
+            },
+        )
         with patch("data_sync_service.db.webhook.emit_event") as emit_mock:
             brj.run()
         emit_mock.assert_not_called()

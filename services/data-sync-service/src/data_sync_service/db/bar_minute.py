@@ -67,9 +67,15 @@ def upsert_minute_bars(ts_code: str, trade_date: str, rows: list[dict[str, Any]]
                         close = EXCLUDED.close, vol = EXCLUDED.vol, amount = EXCLUDED.amount
                     """,
                     (
-                        ts_code, trade_date, r["time"],
-                        r.get("open"), r.get("high"), r.get("low"),
-                        r["close"], r.get("vol"), r.get("amount"),
+                        ts_code,
+                        trade_date,
+                        r["time"],
+                        r.get("open"),
+                        r.get("high"),
+                        r.get("low"),
+                        r["close"],
+                        r.get("vol"),
+                        r.get("amount"),
                     ),
                 )
         conn.commit()

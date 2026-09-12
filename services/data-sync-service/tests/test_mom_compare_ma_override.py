@@ -3,6 +3,7 @@
 Flag-off (None) must equal legacy behavior bit-for-bit; an override must
 affect only the named key.
 """
+
 import copy
 
 from data_sync_service.service import pick_strong_track as pst
@@ -20,6 +21,7 @@ def _fixture():
 
 def _run(days, etf, **kw):
     import copy
+
     pst.MULTI_TS = {"K1": "K1.TS", "K2": "K2.TS"}
     try:
         return build_mom_compare_timeline(
@@ -32,8 +34,12 @@ def _run(days, etf, **kw):
             **kw,
         )
     finally:
-        pst.MULTI_TS = {"GOLD": "518880.SH", "OIL": "513350.SH",
-                        "NASDAQ": "513110.SH", "BOND10": "511260.SH"}
+        pst.MULTI_TS = {
+            "GOLD": "518880.SH",
+            "OIL": "513350.SH",
+            "NASDAQ": "513110.SH",
+            "BOND10": "511260.SH",
+        }
 
 
 def test_flag_off_equals_legacy():
@@ -85,8 +91,12 @@ def _run_floor(days, etf, **kw):
             **kw,
         )
     finally:
-        pst.MULTI_TS = {"GOLD": "518880.SH", "OIL": "513350.SH",
-                        "NASDAQ": "513110.SH", "BOND10": "511260.SH"}
+        pst.MULTI_TS = {
+            "GOLD": "518880.SH",
+            "OIL": "513350.SH",
+            "NASDAQ": "513110.SH",
+            "BOND10": "511260.SH",
+        }
 
 
 def test_etf_floor_off_picks_weak_etf():

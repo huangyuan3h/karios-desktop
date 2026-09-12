@@ -5,6 +5,7 @@ from data_sync_service.main import app  # type: ignore[import-not-found]
 
 pytestmark = pytest.mark.requires_postgres
 
+
 def test_sync_index_daily_no_index_list(monkeypatch) -> None:
     import data_sync_service.service.index_daily as index_daily  # type: ignore[import-not-found]
 
@@ -76,7 +77,9 @@ def test_sync_index_daily_force_clears_today_record(monkeypatch) -> None:
 def test_sync_close_endpoint_includes_index_daily(monkeypatch) -> None:
     import data_sync_service.api.sync_routes as sync_routes  # type: ignore[import-not-found]
 
-    monkeypatch.setattr(sync_routes, "sync_close", lambda exchange, force: {"ok": True, "updated": 1})
+    monkeypatch.setattr(
+        sync_routes, "sync_close", lambda exchange, force: {"ok": True, "updated": 1}
+    )
 
     def _post() -> dict:
         return {

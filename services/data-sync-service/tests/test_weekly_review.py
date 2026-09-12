@@ -106,7 +106,11 @@ def test_render_markdown_empty_book() -> None:
 def test_weekly_review_api_endpoint() -> None:
     with patch(
         "data_sync_service.service.weekly_review.build_weekly_review",
-        return_value={"ok": True, "week": {"start": "2026-08-03", "end": "2026-08-08"}, "markdown": "# 报告"},
+        return_value={
+            "ok": True,
+            "week": {"start": "2026-08-03", "end": "2026-08-08"},
+            "markdown": "# 报告",
+        },
     ):
         resp = client.get("/api/backtest/weekly-review?end=2026-08-08")
     assert resp.status_code == 200

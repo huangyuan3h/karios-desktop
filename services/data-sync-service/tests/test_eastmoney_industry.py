@@ -125,7 +125,9 @@ def test_sync_eastmoney_industry_incremental_missing() -> None:
         ),
         patch("data_sync_service.service.eastmoney_industry.count_rows", return_value=50),
     ):
-        out = sync_eastmoney_industry_incremental(mode="missing", batch_size=500, max_batches=1, sleep_s=0)
+        out = sync_eastmoney_industry_incremental(
+            mode="missing", batch_size=500, max_batches=1, sleep_s=0
+        )
     assert out["ok"] is True
     assert out["requested"] == 2
     assert out["resolved"] == 1
@@ -140,7 +142,9 @@ def test_sync_eastmoney_industry_incremental_missing() -> None:
 def test_sync_eastmoney_industry_incremental_skips_when_empty() -> None:
     with (
         patch("data_sync_service.service.eastmoney_industry.get_today_run", return_value=None),
-        patch("data_sync_service.service.eastmoney_industry.list_missing_cn_ts_codes", return_value=[]),
+        patch(
+            "data_sync_service.service.eastmoney_industry.list_missing_cn_ts_codes", return_value=[]
+        ),
         patch(
             "data_sync_service.service.eastmoney_industry.coverage_stats",
             return_value={"totalCnStocks": 100, "emMapped": 100, "missingCount": 0},

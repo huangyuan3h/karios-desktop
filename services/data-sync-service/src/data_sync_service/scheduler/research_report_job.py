@@ -36,8 +36,7 @@ def run():
             error_message=summary.get("error"),
         )
         logger.info(
-            f"[research] Done: fetched={summary.get('fetched')} "
-            f"inserted={summary.get('inserted')}"
+            f"[research] Done: fetched={summary.get('fetched')} inserted={summary.get('inserted')}"
         )
     except Exception as e:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(e))

@@ -34,6 +34,7 @@ def _in_decision_window(snapshot_at) -> bool:
     mins = t.hour * 60 + t.minute
     return _DECISION_WINDOW_MIN <= mins <= _DECISION_WINDOW_MAX
 
+
 TABLE_NAME = "sat_push_log"
 
 CREATE_SQL = f"""
@@ -133,11 +134,19 @@ def _log_push(screen: dict) -> int:
             if not ts:
                 continue
             stage = row.get("stage")
-            vals.append((day, slot, ts, _num(row.get("amp")),
-                         _num(row.get("gapPct")),
-                         None if gate is None else bool(gate),
-                         breadth, snap,
-                         str(stage)[:40] if stage else None))
+            vals.append(
+                (
+                    day,
+                    slot,
+                    ts,
+                    _num(row.get("amp")),
+                    _num(row.get("gapPct")),
+                    None if gate is None else bool(gate),
+                    breadth,
+                    snap,
+                    str(stage)[:40] if stage else None,
+                )
+            )
     if not vals:
         return 0
     with get_connection() as conn:

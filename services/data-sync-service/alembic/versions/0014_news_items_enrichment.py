@@ -46,13 +46,9 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS idx_news_items_enrichment_status "
         "ON news_items (enrichment_status);"
     )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_news_items_importance ON news_items (importance);")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_news_items_importance "
-        "ON news_items (importance);"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_news_items_tickers "
-        "ON news_items USING GIN (tickers);"
+        "CREATE INDEX IF NOT EXISTS idx_news_items_tickers ON news_items USING GIN (tickers);"
     )
 
 

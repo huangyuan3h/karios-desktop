@@ -10,7 +10,10 @@ from data_sync_service.service import market_regime as mr
 
 
 def _closes_vol(n: int = 80, growth: float = 0.01, vol: float = 1e8, base: float = 3000.0):
-    return [(f"2026-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}", base * (1 + growth) ** i, vol) for i in range(n)]
+    return [
+        (f"2026-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}", base * (1 + growth) ** i, vol)
+        for i in range(n)
+    ]
 
 
 def _cn_series(n: int = 80, growth: float = 0.01, vol: float = 1e8, base: float = 3000.0):
@@ -57,8 +60,13 @@ class TestTimeHelpers:
         assert mr._trade_date_from_trade_time("garbage") is None
 
     def test_realtime_pct_or_price(self) -> None:
-        assert mr._realtime_pct_or_price({"price": "10.0", "pre_close": "9.5", "pct_chg": "5.26"}) == (5.26, 10.0)
-        assert mr._realtime_pct_or_price({"price": "10.0", "pre_close": "9.5"}) == (pytest.approx(5.263, abs=0.01), 10.0)
+        assert mr._realtime_pct_or_price(
+            {"price": "10.0", "pre_close": "9.5", "pct_chg": "5.26"}
+        ) == (5.26, 10.0)
+        assert mr._realtime_pct_or_price({"price": "10.0", "pre_close": "9.5"}) == (
+            pytest.approx(5.263, abs=0.01),
+            10.0,
+        )
         assert mr._realtime_pct_or_price({"price": None, "pre_close": "9.5"}) == (None, None)
         assert mr._realtime_pct_or_price({"price": "abc"}) == (None, None)
 
@@ -71,7 +79,10 @@ class TestTimeHelpers:
         out3 = mr._merge_on_demand_into_series(series, {"asOfDate": "2026-08-05", "close": 99.0})
         assert out3 == series
         assert mr._merge_on_demand_into_series(series, {}) == series
-        assert mr._merge_on_demand_into_series(series, {"asOfDate": "2026-08-08", "close": "bad"}) == series
+        assert (
+            mr._merge_on_demand_into_series(series, {"asOfDate": "2026-08-08", "close": "bad"})
+            == series
+        )
 
     def test_hsi_series_stale(self) -> None:
         yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
@@ -79,7 +90,9 @@ class TestTimeHelpers:
         assert mr._hsi_series_stale([(yesterday, 100.0)]) is False
 
     def test_hsi_source_label(self) -> None:
-        assert mr._hsi_source_label(used_realtime=True, on_demand_src=None) == "tushare.realtime_quote"
+        assert (
+            mr._hsi_source_label(used_realtime=True, on_demand_src=None) == "tushare.realtime_quote"
+        )
         assert mr._hsi_source_label(used_realtime=False, on_demand_src="yf") == "yf"
         assert mr._hsi_source_label(used_realtime=False, on_demand_src=None) == "db.macro_daily"
 
@@ -126,7 +139,10 @@ class TestRegimeFromSignals:
         assert mr._regime_from_signals(signals) == ("Weak", None)
 
     def test_weak_fallback_names(self) -> None:
-        signals = [{"tsCode": "000001.SH", "signal": "red"}, {"tsCode": "399006.SZ", "signal": "yellow"}]
+        signals = [
+            {"tsCode": "000001.SH", "signal": "red"},
+            {"tsCode": "399006.SZ", "signal": "yellow"},
+        ]
         assert mr._regime_from_signals(signals) == ("Weak", None)
 
     def test_single_signal_weak(self) -> None:
@@ -137,17 +153,41 @@ class TestRegimeFromSignals:
 class TestIndexSignals:
     def _patch_basics(self, monkeypatch, series=None):
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
-        monkeypatch.setattr(mr, "fetch_last_closes_vol_batch", lambda codes, days, as_of_date=None: _cn_series() if series is None else series)
-        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [("2026-08-06", 20000.0), ("2026-08-07", 20100.0)])
-        monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": None, "asOfDate": None}, None))
-        monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **kw: {"ratio": 0.7, "total": 100, "above_count": 70})
-        monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", lambda **kw: {
-            "total_turnover_cny": 1.6e12, "max_industry_inflow": 6e9,
-            "turnover_above_1_5T": True, "mainline_inflow_above_5B": True,
-        })
+        monkeypatch.setattr(
+            mr,
+            "fetch_last_closes_vol_batch",
+            lambda codes, days, as_of_date=None: _cn_series() if series is None else series,
+        )
+        monkeypatch.setattr(
+            mr,
+            "fetch_macro_last_closes",
+            lambda series_id, days, **kwargs: [("2026-08-06", 20000.0), ("2026-08-07", 20100.0)],
+        )
+        monkeypatch.setattr(
+            mr,
+            "fetch_hk_index_on_demand",
+            lambda series_id: ({"close": None, "asOfDate": None}, None),
+        )
+        monkeypatch.setattr(
+            mr,
+            "_get_breadth_above_ma20_ratio",
+            lambda **kw: {"ratio": 0.7, "total": 100, "above_count": 70},
+        )
+        monkeypatch.setattr(
+            mr,
+            "_get_market_liquidity_and_mainline",
+            lambda **kw: {
+                "total_turnover_cny": 1.6e12,
+                "max_industry_inflow": 6e9,
+                "turnover_above_1_5T": True,
+                "mainline_inflow_above_5B": True,
+            },
+        )
 
     def test_compute_short_data(self, monkeypatch) -> None:
-        self._patch_basics(monkeypatch, series={c["ts_code"]: _closes_vol(10) for c in mr.INDEX_SIGNALS})
+        self._patch_basics(
+            monkeypatch, series={c["ts_code"]: _closes_vol(10) for c in mr.INDEX_SIGNALS}
+        )
         out = mr._compute_index_signals()
         assert out[0]["signal"] == "unknown"
         assert out[0]["rules"] == ["insufficient data for MA20"]
@@ -161,7 +201,10 @@ class TestIndexSignals:
         assert cn[0]["ma20"] is not None
 
     def test_compute_red(self, monkeypatch) -> None:
-        self._patch_basics(monkeypatch, series={c["ts_code"]: _closes_vol(80, growth=-0.01) for c in mr.INDEX_SIGNALS})
+        self._patch_basics(
+            monkeypatch,
+            series={c["ts_code"]: _closes_vol(80, growth=-0.01) for c in mr.INDEX_SIGNALS},
+        )
         out = mr._compute_index_signals(as_of_date="2026-08-07")
         assert out[0]["signal"] == "red"
 
@@ -190,10 +233,23 @@ class TestIndexSignals:
         series = _cn_series()
         self._patch_basics(monkeypatch, series=series)
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: True)
-        monkeypatch.setattr(mr, "_fetch_realtime_quote_map", lambda codes: (
-            {c: {"ts_code": c, "price": "3200.0", "pct_chg": "2.0", "trade_time": "2026-04-30 15:00:00", "volume": "1e8"} for c in codes},
-            {},
-        ))
+        monkeypatch.setattr(
+            mr,
+            "_fetch_realtime_quote_map",
+            lambda codes: (
+                {
+                    c: {
+                        "ts_code": c,
+                        "price": "3200.0",
+                        "pct_chg": "2.0",
+                        "trade_time": "2026-04-30 15:00:00",
+                        "volume": "1e8",
+                    }
+                    for c in codes
+                },
+                {},
+            ),
+        )
         out = mr._compute_index_signals()
         assert out[0]["realtime"] is True
         assert out[0]["source"] == "tushare.realtime_quote"
@@ -202,14 +258,20 @@ class TestIndexSignals:
     def test_realtime_merge_quote_errors(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: True)
-        monkeypatch.setattr(mr, "_fetch_realtime_quote_map", lambda codes: ({}, {codes[0]: "rate_limited"}))
+        monkeypatch.setattr(
+            mr, "_fetch_realtime_quote_map", lambda codes: ({}, {codes[0]: "rate_limited"})
+        )
         out = mr._compute_index_signals(as_of_date=None)
         assert out[0]["quoteError"] == "rate_limited"
 
     def test_hk_no_data(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)
         monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
-        monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": None, "asOfDate": None}, None))
+        monkeypatch.setattr(
+            mr,
+            "fetch_hk_index_on_demand",
+            lambda series_id: ({"close": None, "asOfDate": None}, None),
+        )
         out = mr._compute_index_signals(as_of_date="2026-08-07")
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
         assert hk[0]["signal"] == "unknown"
@@ -218,7 +280,11 @@ class TestIndexSignals:
     def test_hk_on_demand_merge(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)
         monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
-        monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf"))
+        monkeypatch.setattr(
+            mr,
+            "fetch_hk_index_on_demand",
+            lambda series_id: ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf"),
+        )
         out = mr._compute_index_signals()
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
         assert hk[0]["close"] == 21000.0
@@ -231,8 +297,11 @@ class TestIndexSignals:
         calls: list[str] = []
         monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
         monkeypatch.setattr(
-            mr, "fetch_hk_index_on_demand",
-            lambda series_id: (calls.append(series_id) or ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf")),
+            mr,
+            "fetch_hk_index_on_demand",
+            lambda series_id: (
+                calls.append(series_id) or ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf")
+            ),
         )
         out = mr._compute_index_signals(as_of_date="2026-08-07")
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
@@ -263,7 +332,15 @@ class TestIndexSignals:
         mr._liquidity_cache_live["k"] = 3
         mr._liquidity_cache_hist["k"] = 4
         mr.clear_market_breadth_cache()
-        assert all(len(c) == 0 for c in (mr._breadth_cache_live, mr._breadth_cache_hist, mr._liquidity_cache_live, mr._liquidity_cache_hist))
+        assert all(
+            len(c) == 0
+            for c in (
+                mr._breadth_cache_live,
+                mr._breadth_cache_hist,
+                mr._liquidity_cache_live,
+                mr._liquidity_cache_hist,
+            )
+        )
 
 
 class TestBreadthAndLiquidity:
@@ -271,8 +348,28 @@ class TestBreadthAndLiquidity:
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
         monkeypatch.setattr(mr, "ensure_stock_basic", lambda: None)
         monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: ["600000.SH", "000001.SZ"])
-        rising = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 5.0 if i < 20 else 10.0, 0.0, 0.0, 5.0 if i < 20 else 10.0, 1e6) for i in range(30)]
-        falling = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 10.0 if i < 20 else 5.0, 0.0, 0.0, 10.0 if i < 20 else 5.0, 1e6) for i in range(30)]
+        rising = [
+            (
+                f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}",
+                5.0 if i < 20 else 10.0,
+                0.0,
+                0.0,
+                5.0 if i < 20 else 10.0,
+                1e6,
+            )
+            for i in range(30)
+        ]
+        falling = [
+            (
+                f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}",
+                10.0 if i < 20 else 5.0,
+                0.0,
+                0.0,
+                10.0 if i < 20 else 5.0,
+                1e6,
+            )
+            for i in range(30)
+        ]
 
         def batch(codes, days, as_of=None, **kwargs):
             return {"600000.SH": rising, "000001.SZ": falling}
@@ -284,18 +381,30 @@ class TestBreadthAndLiquidity:
     def test_compute_breadth_no_codes(self, monkeypatch) -> None:
         monkeypatch.setattr(mr, "ensure_stock_basic", lambda: None)
         monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: [])
-        assert mr._compute_breadth_above_ma20_ratio() == {"ratio": 0.0, "total": 0, "above_count": 0}
+        assert mr._compute_breadth_above_ma20_ratio() == {
+            "ratio": 0.0,
+            "total": 0,
+            "above_count": 0,
+        }
 
     def test_get_breadth_cached(self, monkeypatch) -> None:
-        monkeypatch.setattr(mr, "_compute_breadth_above_ma20_ratio", lambda **kw: {"ratio": 0.5, "total": 2, "above_count": 1})
+        monkeypatch.setattr(
+            mr,
+            "_compute_breadth_above_ma20_ratio",
+            lambda **kw: {"ratio": 0.5, "total": 2, "above_count": 1},
+        )
         mr.clear_market_breadth_cache()
         assert mr._get_breadth_above_ma20_ratio()["ratio"] == 0.5
         mr._breadth_cache_live.clear()
         assert mr._get_breadth_above_ma20_ratio(as_of_date="2026-08-07")["ratio"] == 0.5
 
     def test_compute_liquidity_eod(self, monkeypatch) -> None:
-        monkeypatch.setattr(mr, "fetch_cn_market_breadth_eod", lambda dt: {"total_turnover_cny": 1.6e12})
-        monkeypatch.setattr(mr, "get_rows_by_date", lambda d: [{"net_inflow": 6e9}, {"net_inflow": 1e9}])
+        monkeypatch.setattr(
+            mr, "fetch_cn_market_breadth_eod", lambda dt: {"total_turnover_cny": 1.6e12}
+        )
+        monkeypatch.setattr(
+            mr, "get_rows_by_date", lambda d: [{"net_inflow": 6e9}, {"net_inflow": 1e9}]
+        )
         out = mr._compute_market_liquidity_and_mainline(as_of_date="2026-01-05", breadth_ratio=0.5)
         assert out["turnover_above_1_5T"] is True
         assert out["mainline_inflow_above_5B"] is True
@@ -303,20 +412,34 @@ class TestBreadthAndLiquidity:
 
     def test_compute_liquidity_intraday_fallback(self, monkeypatch) -> None:
         monkeypatch.setattr(mr, "fetch_cn_market_breadth_eod", lambda dt: {})
-        monkeypatch.setattr(mr, "fetch_cn_market_breadth_intraday", lambda dt: {"total_turnover_cny": 2e12})
+        monkeypatch.setattr(
+            mr, "fetch_cn_market_breadth_intraday", lambda dt: {"total_turnover_cny": 2e12}
+        )
         monkeypatch.setattr(mr, "get_rows_by_date", lambda d: [])
         out = mr._compute_market_liquidity_and_mainline(as_of_date=None, breadth_ratio=0.5)
         assert out["total_turnover_cny"] == 2e12
         assert out["mainline_inflow_above_5B"] is False
 
     def test_compute_liquidity_errors(self, monkeypatch) -> None:
-        monkeypatch.setattr(mr, "fetch_cn_market_breadth_eod", lambda dt: (_ for _ in ()).throw(RuntimeError("down")))
-        monkeypatch.setattr(mr, "fetch_cn_market_breadth_intraday", lambda dt: (_ for _ in ()).throw(RuntimeError("down")))
-        monkeypatch.setattr(mr, "get_rows_by_date", lambda d: (_ for _ in ()).throw(RuntimeError("down")))
+        monkeypatch.setattr(
+            mr,
+            "fetch_cn_market_breadth_eod",
+            lambda dt: (_ for _ in ()).throw(RuntimeError("down")),
+        )
+        monkeypatch.setattr(
+            mr,
+            "fetch_cn_market_breadth_intraday",
+            lambda dt: (_ for _ in ()).throw(RuntimeError("down")),
+        )
+        monkeypatch.setattr(
+            mr, "get_rows_by_date", lambda d: (_ for _ in ()).throw(RuntimeError("down"))
+        )
         out = mr._compute_market_liquidity_and_mainline(as_of_date="2026-01-05", breadth_ratio=0.5)
         assert out == {
-            "total_turnover_cny": 0.0, "max_industry_inflow": 0.0,
-            "turnover_above_1_5T": False, "mainline_inflow_above_5B": False,
+            "total_turnover_cny": 0.0,
+            "max_industry_inflow": 0.0,
+            "turnover_above_1_5T": False,
+            "mainline_inflow_above_5B": False,
         }
 
     def test_get_liquidity_cached(self, monkeypatch) -> None:
@@ -325,16 +448,23 @@ class TestBreadthAndLiquidity:
         assert mr._get_market_liquidity_and_mainline(breadth_ratio=0.5) == {"x": 1}
 
     def test_fetch_realtime_quote_map_missing_fallback(self, monkeypatch) -> None:
-        monkeypatch.setattr(mr, "fetch_realtime_quotes", lambda codes: (
-            {"ok": True, "items": [{"ts_code": "000001.SH", "price": "10.0"}]}
-            if len(codes) == 2 else {"ok": True, "items": []}
-        ))
+        monkeypatch.setattr(
+            mr,
+            "fetch_realtime_quotes",
+            lambda codes: (
+                {"ok": True, "items": [{"ts_code": "000001.SH", "price": "10.0"}]}
+                if len(codes) == 2
+                else {"ok": True, "items": []}
+            ),
+        )
         quotes, errors = mr._fetch_realtime_quote_map(["000001.SH", "399006.SZ"])
         assert "000001.SH" in quotes
         assert "399006.SZ" in errors
 
     def test_fetch_realtime_quote_map_batch_fail(self, monkeypatch) -> None:
-        monkeypatch.setattr(mr, "fetch_realtime_quotes", lambda codes: {"ok": False, "error": "quota"})
+        monkeypatch.setattr(
+            mr, "fetch_realtime_quotes", lambda codes: {"ok": False, "error": "quota"}
+        )
         quotes, errors = mr._fetch_realtime_quote_map(["000001.SH"])
         assert quotes == {}
         assert errors["000001.SH"] == "quota"
@@ -345,7 +475,14 @@ class TestBreadthAndLiquidity:
 
     def test_apply_realtime_quotes(self) -> None:
         rt_price, rt_time, rt_pct, rt_vol = {}, {}, {}, {}
-        quotes = {"600000.SH": {"price": "11.0", "pct_chg": "1.5", "trade_time": "2026-08-07 14:00:00", "volume": "5e6"}}
+        quotes = {
+            "600000.SH": {
+                "price": "11.0",
+                "pct_chg": "1.5",
+                "trade_time": "2026-08-07 14:00:00",
+                "volume": "5e6",
+            }
+        }
         mr._apply_realtime_quotes(quotes, rt_price, rt_time, rt_pct, rt_vol)
         assert rt_price["600000.SH"] == 11.0
         assert rt_pct["600000.SH"] == 1.5
