@@ -213,6 +213,7 @@ class TusharePool:
         tried_this_round: set[str] = set()
         rounds = 0
         last_error: Exception | None = None
+        pro: Any = None
         while True:
             with self._lock:
                 now = self._clock()

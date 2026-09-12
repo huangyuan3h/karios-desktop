@@ -251,7 +251,7 @@ def latest_buy_leg(symbol: str) -> str:
             return LEG_S3  # pre-0041 DBs have no leg column
     if not row:
         return LEG_S3
-    return str((dict(row).get("leg") or LEG_S3))
+    return str(dict(row).get("leg") or LEG_S3)
 
 
 def fetch_sell_rows() -> list[dict[str, Any]]:

@@ -10,12 +10,24 @@ Shared by F1..F4 diagnostics (P0-11). Conventions:
 
 from __future__ import annotations
 
+from typing import cast
+
 import pandas as pd
 
 from data_sync_service.db import get_connection
+
 INCOME_COLS = ("n_income_attr_p", "total_revenue", "operate_profit")
 BALANCE_COLS = ("total_hldr_eqy_inc_min_int", "total_assets", "total_liab")
 CASHFLOW_COLS = ("n_cashflow_act",)
+
+
+def _as_frame(sel: object) -> pd.DataFrame:
+    """Bridge for the type checker: a list column selection is a DataFrame.
+
+    pandas 3.0 leaves ``DataFrame.__getitem__`` un-annotated, so pyright infers
+    ``DataFrame | Series``; this narrows it back without a runtime copy.
+    """
+    return cast(pd.DataFrame, sel)
 
 
 def _load(table: str, cols: tuple[str, ...], end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -79,10 +91,11 @@ def roe_ttm_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     m["ind_med"] = m.groupby(["end_date", "industry"])["roe_ttm"].transform("median")
     m["above_ind"] = m["roe_ttm"] > m["ind_med"]
     m["is_fin"] = m["comp_type"] != "1"
-    return m[[
+    m = m.sort_values(by=["ann_date", "ts_code"])
+    return _as_frame(m[[
         "ts_code", "end_date", "ann_date", "roe_ttm", "industry", "ind_med",
         "above_ind", "is_fin", "n_income_attr_p_sq_ttm", "eq_avg4",
-    ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
+    ]]).reset_index(drop=True)
 
 
 def cashconv_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -123,10 +136,11 @@ def cashconv_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
         ind = pd.read_sql("SELECT ts_code, industry FROM stock_basic", conn)
     m = m.merge(ind, on="ts_code", how="left")
     m["is_fin"] = m["comp_type"] != "1"
-    return m[[
+    m = m.sort_values(by=["ann_date", "ts_code"])
+    return _as_frame(m[[
         "ts_code", "end_date", "ann_date", "ccr", "accruals", "industry",
         "is_fin", "n_income_attr_p_sq_ttm", "n_cashflow_act_sq_ttm",
-    ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
+    ]]).reset_index(drop=True)
 
 
 def leverage_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -145,10 +159,11 @@ def leverage_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     bal["lev_safe"] = bal["ind_med"] - bal["debt_ratio"]
     bal["below_ind"] = bal["debt_ratio"] < bal["ind_med"]
     bal["is_fin"] = bal["comp_type"] != "1"
-    return bal[[
+    bal = bal.sort_values(by=["ann_date", "ts_code"])
+    return _as_frame(bal[[
         "ts_code", "end_date", "ann_date", "debt_ratio", "lev_safe", "industry",
         "ind_med", "below_ind", "is_fin",
-    ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
+    ]]).reset_index(drop=True)
 
 
 def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -180,11 +195,12 @@ def value_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
         ind = pd.read_sql("SELECT ts_code, industry FROM stock_basic", conn)
     m = m.merge(ind, on="ts_code", how="left")
     m["is_fin"] = m["comp_type"] != "1"
-    return m[[
+    m = m.sort_values(by=["ann_date", "ts_code"])
+    return _as_frame(m[[
         "ts_code", "end_date", "ann_date", "n_income_attr_p_sq_ttm",
         "total_revenue_sq_ttm", "total_hldr_eqy_inc_min_int",
         "free_cashflow_sq_ttm", "industry", "is_fin",
-    ]].sort_values(["ann_date", "ts_code"]).reset_index(drop=True)
+    ]]).reset_index(drop=True)
 
 
 def ni_sq_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
@@ -192,9 +208,9 @@ def ni_sq_panel(end_from: str = "2018-01-01") -> pd.DataFrame:
     df = _single_quarter(_load("cn_income_stmt", ("n_income_attr_p",), end_from),
                          ("n_income_attr_p",))
     df["is_fin"] = df["comp_type"] != "1"
-    return df[["ts_code", "end_date", "ann_date", "n_income_attr_p_sq",
-               "comp_type", "is_fin"]].sort_values(
-        ["ts_code", "end_date", "ann_date"]).reset_index(drop=True)
+    df = df.sort_values(by=["ts_code", "end_date", "ann_date"])
+    return _as_frame(df[["ts_code", "end_date", "ann_date", "n_income_attr_p_sq",
+                         "comp_type", "is_fin"]]).reset_index(drop=True)
 
 
 def load_trade_calendar() -> tuple[list[str], dict[str, int]]:
@@ -214,7 +230,7 @@ def load_price_map() -> dict[str, dict[str, float]]:
                              parse_dates=["trade_date"])
     closes["trade_date"] = closes["trade_date"].dt.strftime("%Y-%m-%d")
     px: dict[str, dict[str, float]] = {}
-    for ts, d, c in zip(closes["ts_code"], closes["trade_date"], closes["close"]):
+    for ts, d, c in zip(closes["ts_code"], closes["trade_date"], closes["close"], strict=False):
         if c and c > 0:
             px.setdefault(ts, {})[d] = float(c)
     return px
@@ -246,7 +262,7 @@ def load_mv_map(col: str = "circ_mv") -> dict[str, dict[str, float]]:
         )
     df["trade_date"] = df["trade_date"].dt.strftime("%Y-%m-%d")
     mv: dict[str, dict[str, float]] = {}
-    for ts, d, v in zip(df["ts_code"], df["trade_date"], df[col]):
+    for ts, d, v in zip(df["ts_code"], df["trade_date"], df[col], strict=False):
         if v and v > 0:
             mv.setdefault(ts, {})[d] = float(v)
     return mv

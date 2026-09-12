@@ -115,7 +115,9 @@ def sync_statements_for_codes(
         try:
             frames: dict[str, list[dict]] = {}
             for endpoint in TABLES:
-                df = _with_retry(lambda endpoint=endpoint: getattr(pro, endpoint)(ts_code=ts_code))
+                df = _with_retry(
+                    lambda endpoint=endpoint, ts_code=ts_code: getattr(pro, endpoint)(ts_code=ts_code)
+                )
                 rows = []
                 if df is not None and not df.empty:
                     for r in df.itertuples():

@@ -43,6 +43,7 @@ from data_sync_service.db.market_sentiment import CREATE_SQL as MARKET_SENTIMENT
 from data_sync_service.db.news import CREATE_ITEMS_SQL
 from data_sync_service.db.news import CREATE_SOURCES_SQL as NEWS_SOURCES_SQL
 from data_sync_service.db.research import CREATE_TABLE_SQL as RESEARCH_CREATE_SQL
+from data_sync_service.db.sat_push_log import CREATE_SQL as SAT_PUSH_LOG_CREATE_SQL
 from data_sync_service.db.stock_basic import CREATE_SQL as STOCK_BASIC_CREATE_SQL
 from data_sync_service.db.stock_eastmoney_industry import CREATE_SQL as EM_INDUSTRY_CREATE_SQL
 from data_sync_service.db.stock_forecast import CREATE_SQL as STOCK_FORECAST_CREATE_SQL
@@ -53,7 +54,6 @@ from data_sync_service.db.system_prompts import CREATE_SQL as SYSTEM_PROMPTS_CRE
 from data_sync_service.db.top_inst import CREATE_SQL as TOP_INST_CREATE_SQL
 from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CREATE_SQL
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
-from data_sync_service.db.sat_push_log import CREATE_SQL as SAT_PUSH_LOG_CREATE_SQL
 from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
 from data_sync_service.db.webhook import CREATE_SQL as WEBHOOK_CREATE_SQL

@@ -16,6 +16,8 @@ modules read global_index_daily instead.
 
 from __future__ import annotations
 
+from typing import LiteralString
+
 from data_sync_service.db import get_connection
 from data_sync_service.db._ensure_guard import ensure_once
 
@@ -101,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_cn_flow_daily_date ON {FLOW_DAILY_TABLE}(trade_da
 """
 
 
-def _ensure_sql(sql: str, name: str) -> None:
+def _ensure_sql(sql: LiteralString, name: str) -> None:
     def _impl() -> None:
         with get_connection() as conn:
             with conn.cursor() as cur:

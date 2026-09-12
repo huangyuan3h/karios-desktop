@@ -18,8 +18,8 @@ from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-f
 from pydantic import BaseModel
 
 from data_sync_service.db.user_trades import (
-    LEGS,
     LEG_S3,
+    LEGS,
     SIDES,
     delete_trade,
     ensure_tables,
