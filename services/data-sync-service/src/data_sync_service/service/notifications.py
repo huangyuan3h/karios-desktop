@@ -12,13 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-SAT_BODY = 3
 
 REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports"
 
@@ -33,8 +31,7 @@ TRADING_JOB_TYPES = {
     "paper_chain_watchdog",
     "cn_industry_post_close_sync",
     "index_basic_sync",
-    # Twin-star live tape + core-leg freshness (knife 5 / OPT-133)
-    "twin_star_intraday",
+    # Core-leg ETF freshness (knife 5 / OPT-133)
     "sleeve_etf_daily_sync",
     "stock_daily_basic_sync",
     # OPT-151: core-leg sleeve mirror + expected-vs-actual recon
@@ -68,75 +65,12 @@ def _note(
     }
 
 
-def _parse_iso_day(raw: Any) -> date | None:
-    try:
-        return date.fromisoformat(str(raw)[:10])
-    except (TypeError, ValueError):
-        return None
-
-
-def _count_weekdays_inclusive(start: date, end: date) -> int:
-    """SSE open sessions in [start, end] (body-day counter, holiday-aware)."""
-    try:
-        from data_sync_service.service.trade_calendar_utils import count_open_sessions
-
-        return count_open_sessions(start.isoformat(), end.isoformat())
-    except Exception:  # noqa: BLE001
-        if end < start:
-            return 0
-        # Intentional Mon–Fri fallback (OPT-142): only reached when the
-        # trading calendar is unreadable; keep the scatter HERE, nowhere else.
-        n = 0
-        cur = start
-        while cur <= end:
-            if cur.weekday() < 5:
-                n += 1
-            cur += timedelta(days=1)
-        return n
-
-
-def _nth_weekday_inclusive(start: date, n: int) -> date | None:
-    """Date of the n-th open session on/after start (1-indexed)."""
-    try:
-        from data_sync_service.service.trade_calendar_utils import nth_open_session
-
-        iso = nth_open_session(start.isoformat(), n)
-        return date.fromisoformat(iso) if iso else None
-    except Exception:  # noqa: BLE001
-        if n < 1:
-            return None
-        seen = 0
-        cur = start
-        for _ in range(40):
-            if cur.weekday() < 5:
-                seen += 1
-                if seen >= n:
-                    return cur
-            cur += timedelta(days=1)
-        return None
-
-
 def _as_float(v: Any) -> float | None:
     try:
         n = float(v)
     except (TypeError, ValueError):
         return None
     return n if n == n else None  # NaN
-
-
-def _holding_book(
-    mode: str,
-    pick: str | None,
-    market: str,
-    symbol: str | None = None,
-    sat_ts: set[str] | None = None,
-) -> str:
-    """Which rulebook a holding is under — delegates to the single leg truth
-    (``twin_star_daily.holding_book``, OPT-140). Kept as a private alias so
-    call sites and tests don't churn."""
-    from data_sync_service.service.twin_star_daily import holding_book
-
-    return holding_book(mode, pick, market, symbol=symbol, sat_ts=sat_ts)
 
 
 def _load_health_ctx() -> dict[str, Any]:
@@ -146,7 +80,7 @@ def _load_health_ctx() -> dict[str, Any]:
         h = build_portfolio_health(trade_date=None, markets=("CN", "HK"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("notifications: portfolio health failed: %s", exc)
-        return {"blocks": {}, "pick": None, "tradeDate": None, "satTs": set()}
+        return {"blocks": {}, "pick": None, "tradeDate": None}
     blocks: dict[str, dict[str, Any]] = {}
     for key, market in (("", "CN"), ("hkHealth", "HK")):
         block = h if key == "" else h.get("hkHealth") or {}
@@ -154,79 +88,15 @@ def _load_health_ctx() -> dict[str, Any]:
             blocks[market] = block
     pick_raw = (h.get("multiAssetSleeve") or {}).get("pick") or {}
     pick = pick_raw.get("key") if isinstance(pick_raw, dict) else None
-    sat_ts: set[str] = set()
-    try:
-        from data_sync_service.service.twin_star_daily import live_sat_ts_codes
-
-        sat_ts = live_sat_ts_codes()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("notifications: sat ts codes failed: %s", exc)
-    return {"blocks": blocks, "pick": pick, "tradeDate": h.get("tradeDate"), "satTs": sat_ts}
+    return {"blocks": blocks, "pick": pick, "tradeDate": h.get("tradeDate")}
 
 
 def _anchor_blocks() -> dict[str, dict[str, Any]]:
     return _load_health_ctx()["blocks"]
 
 
-def _sat_holding_alerts(
-    *,
-    market: str,
-    hold: dict[str, Any],
-    as_of: date | None,
-) -> list[dict[str, Any]]:
-    """Twin-star satellite: body=3 day-3 14:30 sell. No protect stop (habit)."""
-    symbol = str(hold.get("symbol") or "")
-    name = str(hold.get("name") or symbol)
-    out: list[dict[str, Any]] = []
-    entry = _parse_iso_day(hold.get("entryDate"))
-    if entry and as_of:
-        held = _count_weekdays_inclusive(entry, as_of)
-        due = _nth_weekday_inclusive(entry, SAT_BODY)
-        due_s = due.isoformat() if due else None
-        if held >= SAT_BODY:
-            out.append(
-                _note(
-                    nid=f"sat-exit:{market}:{symbol}",
-                    type="sat_exit",
-                    severity="high",
-                    title=f"卫星到期卖 · {name}",
-                    detail=f"{symbol} body3 第 {held} 个交易日 · 到期 {due_s or '今日'} 14:30卖",
-                    anchor="holdings",
-                    lane="trade",
-                    book="sat",
-                )
-            )
-        elif held == SAT_BODY - 1:
-            out.append(
-                _note(
-                    nid=f"sat-soon:{market}:{symbol}",
-                    type="sat_expire_soon",
-                    severity="medium",
-                    title=f"卫星明日14:30卖 · {name}",
-                    detail=f"{symbol} 已持 {held}/{SAT_BODY} · 到期 {due_s}",
-                    anchor="holdings",
-                    lane="trade",
-                    book="sat",
-                )
-            )
-    elif not entry:
-        out.append(
-            _note(
-                nid=f"sat-entry:{market}:{symbol}",
-                type="sat_missing_entry",
-                severity="medium",
-                title=f"卫星缺入场日 · {name}",
-                detail=f"{symbol} 补录入场日才能算 body3 到期",
-                anchor="holdings",
-                lane="trade",
-                book="sat",
-            )
-        )
-    return out
-
-
 def _s3_holding_alerts(market: str, hold: dict[str, Any]) -> list[dict[str, Any]]:
-    """S-3 basket: EXIT / nearStop (price) / line updates / 60d expire. Not satellite."""
+    """S-3 basket: EXIT / nearStop (price) / line updates / 60d expire."""
     symbol = str(hold.get("symbol") or "")
     name = str(hold.get("name") or symbol)
     out: list[dict[str, Any]] = []
@@ -315,14 +185,10 @@ def _s3_holding_alerts(market: str, hold: dict[str, Any]) -> list[dict[str, Any]
     return out
 
 
-def _stop_trail_alerts(
-    mode: str = "single_track", ctx: dict[str, Any] | None = None
-) -> list[dict[str, Any]]:
-    """Holdings that need a broker action today. Book follows strategy mode + pick."""
+def _stop_trail_alerts(ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Holdings that need a broker action today."""
     ctx = ctx or {"blocks": _anchor_blocks(), "pick": None, "tradeDate": None}
     pick = ctx.get("pick")
-    as_of = _parse_iso_day(ctx.get("tradeDate")) or date.today()
-    sat_ts = ctx.get("satTs") if isinstance(ctx.get("satTs"), set) else set()
     out: list[dict[str, Any]] = []
     rotate_n = 0
     for market, block in (ctx.get("blocks") or {}).items():
@@ -330,22 +196,10 @@ def _stop_trail_alerts(
             symbol = str(hold.get("symbol") or "")
             if not symbol:
                 continue
-            book = _holding_book(
-                mode,
-                pick if isinstance(pick, str) else None,
-                market,
-                symbol,
-                sat_ts,
-            )
-            if book == "idle":
-                continue
-            if mode == "single_track" and pick not in (None, "STOCK") and market == "CN":
+            if pick not in (None, "STOCK") and market == "CN":
                 rotate_n += 1
                 continue
-            if book == "sat":
-                out.extend(_sat_holding_alerts(market=market, hold=hold, as_of=as_of))
-            else:
-                out.extend(_s3_holding_alerts(market, hold))
+            out.extend(_s3_holding_alerts(market, hold))
     if rotate_n > 0 and pick:
         out.insert(
             0,
@@ -449,30 +303,18 @@ def _rolling_oos_warning() -> list[dict[str, Any]]:
     ]
 
 
-def _pyramid_trigger_alerts(
-    mode: str = "single_track", ctx: dict[str, Any] | None = None
-) -> list[dict[str, Any]]:
-    """S-3 pyramid-add: leftover basket names only. Never on satellite."""
+def _pyramid_trigger_alerts(ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """S-3 pyramid-add: basket names only."""
     ctx = ctx or {"blocks": _anchor_blocks(), "pick": None}
     pick = ctx.get("pick")
     if pick not in (None, "STOCK"):
         return []
-    sat_ts = ctx.get("satTs") if isinstance(ctx.get("satTs"), set) else set()
     out: list[dict[str, Any]] = []
     for market, block in (ctx.get("blocks") or {}).items():
         for hold in block.get("holdings") or []:
             symbol = str(hold.get("symbol") or "")
             name = str(hold.get("name") or symbol)
             if not symbol:
-                continue
-            book = _holding_book(
-                mode,
-                pick if isinstance(pick, str) else None,
-                market,
-                symbol,
-                sat_ts,
-            )
-            if book != "s3":
                 continue
             if hold.get("pyramidAdded"):
                 continue
@@ -531,103 +373,21 @@ def _third_asset_notification() -> list[dict[str, Any]]:
     ]
 
 
-def _twin_star_snapshot_alert(mode: str = "single_track") -> list[dict[str, Any]]:
-    """lane=system when today's 12:30 East Money snapshot is missing/stale."""
-    if mode != "twin_star":
-        return []
-    try:
-        from data_sync_service.service.trade_calendar_utils import is_non_trading_day
-        from data_sync_service.service.twin_star_intraday import (
-            intraday_snapshot_status,
-            now_cn,
-        )
-
-        now = now_cn()
-        if is_non_trading_day(now.date()):
-            return []
-        status = intraday_snapshot_status(now=now)
-        if status.get("ok"):
-            return []
-        reason = status.get("reason") or "snapshot unavailable"
-        return [
-            _note(
-                nid=f"twin-star-snap:{status.get('session')}",
-                type="twin_star_snapshot",
-                severity="high",
-                title="双子星 · 今日盘中快照失败",
-                detail=(
-                    "东财 12:30 全市场快照不可用，卫星名单今日不可交易。"
-                    f"不要用 T-1 名单下单（{reason}）。"
-                ),
-                anchor="watchlist",
-                lane="system",
-                book="sat",
-                created_at=now.isoformat(),
-            )
-        ]
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("notifications twin-star snapshot failed: %s", exc)
-        return []
-
-
-def _twin_star_notification(mode: str = "single_track") -> list[dict[str, Any]]:
-    """双子星 14:30 前提醒 — only when the live strategy is twin_star."""
-    if mode != "twin_star":
-        return []
-    from data_sync_service.service.trade_calendar_utils import is_non_trading_day
-    from data_sync_service.service.twin_star_daily import (
-        build_twin_star_reminder_payload,
-        now_cn,
-    )
-
-    try:
-        now = now_cn()
-        if is_non_trading_day(now.date()):
-            return []
-        payload = build_twin_star_reminder_payload(date.today())
-        detail = payload.get("detail") or ""
-        if not detail:
-            return []
-        sat = payload.get("sat") or {}
-        gate = sat.get("gateOpen")
-        severity = "medium" if gate else "low"
-        return [
-            _note(
-                nid=f"twin-star:{now.date().isoformat()}",
-                type="twin_star",
-                severity=severity,
-                title=payload.get("title") or "双子星 · 14:30 前操作提醒",
-                detail=detail,
-                anchor="watchlist",
-                lane="trade",
-                book="sat",
-                created_at=now.isoformat(),
-            )
-        ]
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("notifications twin-star failed: %s", exc)
-        return []
-
-
-def build_notifications(mode: str = "twin_star") -> list[dict[str, Any]]:
+def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
     """All actionable notifications, most severe first.
 
-    ``mode`` is the live Settings strategy (``twin_star`` | ``single_track``).
-    Default is twin-star (clip4). Twin-star CN holdings use the S-gap habit clock
-    (body=3, day-3 14:30 sell, no protect stop); S-3 pyramid/trail and
-    paper-vs-backtest recon stay on the single-track book.
+    S-3 pyramid/trail and paper-vs-backtest recon run on the single-track book.
+    ``mode`` is accepted for client compatibility and always resolves to
+    ``single_track``.
     """
-    live_mode = "twin_star" if mode == "twin_star" else "single_track"
     ctx = _load_health_ctx()
     items = (
-        _stop_trail_alerts(live_mode, ctx)
-        + _pyramid_trigger_alerts(live_mode, ctx)
+        _stop_trail_alerts(ctx)
+        + _pyramid_trigger_alerts(ctx)
         + _cron_failures()
-        + (_recon_alerts() if live_mode == "single_track" else [])
+        + _recon_alerts()
         + _rolling_oos_warning()
         + _third_asset_notification()
-        + _twin_star_notification(live_mode)
-        + _twin_star_snapshot_alert(live_mode)
     )
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda x: order.get(str(x.get("severity")), 2))

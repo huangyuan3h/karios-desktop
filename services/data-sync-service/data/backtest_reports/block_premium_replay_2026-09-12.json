@@ -1,0 +1,113 @@
+{
+  "tag": "block-premium-replay-2026-09-12",
+  "prereg": "docs/designs/block-premium-replay-prereg-2026-09-12.md",
+  "by_window": {
+    "OOS2": {
+      "bench": {
+        "n": 243,
+        "ann": 26.25,
+        "sharpe": 1.04,
+        "mdd": -17.91
+      },
+      "premium": {
+        "n": 243,
+        "ann": 25.43,
+        "sharpe": 1.01,
+        "mdd": -14.29
+      },
+      "premium_excess_ann": -0.65,
+      "premium_hit": 46.5,
+      "big_disc": {
+        "n": 243,
+        "ann": 26.43,
+        "sharpe": 0.86,
+        "mdd": -23.19
+      },
+      "big_disc_excess_ann": 2.64,
+      "big_disc_hit": 54.7
+    },
+    "train": {
+      "bench": {
+        "n": 123,
+        "ann": 77.94,
+        "sharpe": 2.96,
+        "mdd": -9.5
+      },
+      "premium": {
+        "n": 123,
+        "ann": 71.99,
+        "sharpe": 3.15,
+        "mdd": -8.3
+      },
+      "premium_excess_ann": -3.87,
+      "premium_hit": 48.0,
+      "big_disc": {
+        "n": 123,
+        "ann": 37.52,
+        "sharpe": 1.76,
+        "mdd": -8.09
+      },
+      "big_disc_excess_ann": -26.01,
+      "big_disc_hit": 39.0
+    },
+    "valid": {
+      "bench": {
+        "n": 110,
+        "ann": -17.92,
+        "sharpe": -0.5,
+        "mdd": -20.21
+      },
+      "premium": {
+        "n": 110,
+        "ann": -10.82,
+        "sharpe": -0.35,
+        "mdd": -17.54
+      },
+      "premium_excess_ann": 6.62,
+      "premium_hit": 54.5,
+      "big_disc": {
+        "n": 110,
+        "ann": -18.05,
+        "sharpe": -0.52,
+        "mdd": -23.85
+      },
+      "big_disc_excess_ann": -0.3,
+      "big_disc_hit": 48.2
+    },
+    "long": {
+      "bench": {
+        "n": 1355,
+        "ann": 1.96,
+        "sharpe": 0.2,
+        "mdd": -47.31
+      },
+      "premium": {
+        "n": 1355,
+        "ann": 0.89,
+        "sharpe": 0.15,
+        "mdd": -48.58
+      },
+      "premium_excess_ann": -1.33,
+      "premium_hit": 47.9,
+      "big_disc": {
+        "n": 1355,
+        "ann": -6.86,
+        "sharpe": -0.14,
+        "mdd": -60.92
+      },
+      "big_disc_excess_ann": -8.06,
+      "big_disc_hit": 48.6
+    }
+  },
+  "avg_active": 178.45,
+  "days_with_pos": 1355,
+  "n_days": 1356,
+  "verdict": {
+    "covers": true,
+    "k1": false,
+    "k2": true,
+    "k3": true,
+    "call": "REJECT / park"
+  },
+  "as_of": "2026-09-13T00:19:52+00:00"
+}

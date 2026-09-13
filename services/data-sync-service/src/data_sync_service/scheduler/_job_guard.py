@@ -3,8 +3,8 @@
 Every cron ``run()`` must leave a ``sync_job_record`` row — success or
 failure — so the watchdog, hub health and ``job_failed`` Bark pushes can see
 it. Before this module, 15/50 jobs had no ``try`` and 21/50 never called
-``insert_record`` (notably ``twin_star_reminder``: the most important push
-had no execution record at all).
+``insert_record`` (notably the intraday reminder jobs: the most important
+pushes had no execution record at all).
 
 Three primitives; jobs keep their exact log lines and skip semantics —
 the guard only adds records:

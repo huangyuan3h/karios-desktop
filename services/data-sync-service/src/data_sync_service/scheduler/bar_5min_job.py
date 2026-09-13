@@ -1,7 +1,7 @@
 """Last-hour 5-minute bars — weekdays 18:40 Asia/Shanghai.
 
 After close_sync (17:10) today's daily exists, so we can restrict the
-pull to S-gap names (open/pre_close > 3%) plus open CN paper holdings.
+pull to intraday gap names (open/pre_close > 3%) plus open CN paper holdings.
 Historical year backfill is scripts/backfill_bar_5min.py (baostock).
 """
 

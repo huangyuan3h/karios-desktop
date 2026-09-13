@@ -67,7 +67,7 @@ describe('ThirdAssetSleeveBanner', () => {
       },
     } as never);
     renderBanner();
-    expect(await screen.findByText(/择强单轨/)).toBeInTheDocument();
+    expect(await screen.findByText(/港湾/)).toBeInTheDocument();
     expect(screen.getByText(/买入 OIL/)).toBeInTheDocument();
   });
 

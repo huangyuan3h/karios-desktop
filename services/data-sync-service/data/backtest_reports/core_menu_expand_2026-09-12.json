@@ -1,0 +1,278 @@
+{
+  "tag": "core-menu-expand-2026-09-12",
+  "protocol": "frozen pick-strong trail8 (LB60/MA200/hold1/mom). Variants differ ONLY in the ETF candidate menu added to the STOCK leg. Read-only; Live unchanged.",
+  "variants": [
+    {
+      "id": "base",
+      "label": "GOLD/OIL/NASDAQ/BOND (frozen)",
+      "extra": []
+    },
+    {
+      "id": "m_csi",
+      "label": "+CSI300+CSI500",
+      "extra": [
+        "CSI300",
+        "CSI500"
+      ]
+    },
+    {
+      "id": "m_hstech",
+      "label": "+HSTECH",
+      "extra": [
+        "HSTECH"
+      ]
+    },
+    {
+      "id": "m_all",
+      "label": "+CSI500+ChiNext+HSTECH",
+      "extra": [
+        "CSI500",
+        "CHINEXT",
+        "HSTECH"
+      ]
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "base": {
+        "label": "GOLD/OIL/NASDAQ/BOND (frozen)",
+        "stats": {
+          "n_days": 254,
+          "total_pct": 12.1,
+          "max_dd": 18.4,
+          "sharpe": 0.54
+        },
+        "switches": 34,
+        "stockDayPct": 57.7,
+        "etfPicks": {
+          "NASDAQ": 22,
+          "GOLD": 60,
+          "BOND10": 10,
+          "OIL": 14
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "m_csi": {
+        "label": "+CSI300+CSI500",
+        "stats": {
+          "n_days": 254,
+          "total_pct": -9.0,
+          "max_dd": 29.3,
+          "sharpe": -0.17
+        },
+        "switches": 48,
+        "stockDayPct": 53.0,
+        "etfPicks": {
+          "NASDAQ": 18,
+          "GOLD": 42,
+          "BOND10": 10,
+          "CSI300": 6,
+          "CSI500": 28,
+          "OIL": 14
+        },
+        "delta_base_pt": -21.1,
+        "delta_base_sharpe": -0.71,
+        "delta_base_dd": 10.9
+      },
+      "m_hstech": {
+        "label": "+HSTECH",
+        "stats": {
+          "n_days": 254,
+          "total_pct": -7.1,
+          "max_dd": 32.2,
+          "sharpe": -0.07
+        },
+        "switches": 45,
+        "stockDayPct": 40.3,
+        "etfPicks": {
+          "NASDAQ": 19,
+          "GOLD": 39,
+          "BOND10": 10,
+          "HSTECH": 68,
+          "OIL": 13
+        },
+        "delta_base_pt": -19.2,
+        "delta_base_sharpe": -0.61,
+        "delta_base_dd": 13.8
+      },
+      "m_all": {
+        "label": "+CSI500+ChiNext+HSTECH",
+        "stats": {
+          "n_days": 254,
+          "total_pct": -11.6,
+          "max_dd": 34.7,
+          "sharpe": -0.15
+        },
+        "switches": 50,
+        "stockDayPct": 31.2,
+        "etfPicks": {
+          "NASDAQ": 18,
+          "GOLD": 39,
+          "BOND10": 10,
+          "HSTECH": 35,
+          "CHINEXT": 55,
+          "OIL": 13
+        },
+        "delta_base_pt": -23.7,
+        "delta_base_sharpe": -0.69,
+        "delta_base_dd": 16.3
+      }
+    },
+    "train": {
+      "base": {
+        "label": "GOLD/OIL/NASDAQ/BOND (frozen)",
+        "stats": {
+          "n_days": 128,
+          "total_pct": 36.3,
+          "max_dd": 7.2,
+          "sharpe": 2.65
+        },
+        "switches": 12,
+        "stockDayPct": 25.2,
+        "etfPicks": {
+          "NASDAQ": 32,
+          "OIL": 2,
+          "GOLD": 60
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "m_csi": {
+        "label": "+CSI300+CSI500",
+        "stats": {
+          "n_days": 128,
+          "total_pct": 37.9,
+          "max_dd": 10.8,
+          "sharpe": 2.57
+        },
+        "switches": 10,
+        "stockDayPct": 25.2,
+        "etfPicks": {
+          "NASDAQ": 3,
+          "CSI500": 45,
+          "GOLD": 46
+        },
+        "delta_base_pt": 1.6,
+        "delta_base_sharpe": -0.08,
+        "delta_base_dd": 3.6
+      },
+      "m_hstech": {
+        "label": "+HSTECH",
+        "stats": {
+          "n_days": 128,
+          "total_pct": 30.1,
+          "max_dd": 10.1,
+          "sharpe": 2.1
+        },
+        "switches": 14,
+        "stockDayPct": 25.2,
+        "etfPicks": {
+          "NASDAQ": 19,
+          "HSTECH": 24,
+          "OIL": 2,
+          "GOLD": 49
+        },
+        "delta_base_pt": -6.2,
+        "delta_base_sharpe": -0.55,
+        "delta_base_dd": 2.9
+      },
+      "m_all": {
+        "label": "+CSI500+ChiNext+HSTECH",
+        "stats": {
+          "n_days": 128,
+          "total_pct": 62.3,
+          "max_dd": 14.3,
+          "sharpe": 3.16
+        },
+        "switches": 6,
+        "stockDayPct": 25.2,
+        "etfPicks": {
+          "CHINEXT": 71,
+          "GOLD": 24
+        },
+        "delta_base_pt": 26.0,
+        "delta_base_sharpe": 0.51,
+        "delta_base_dd": 7.1
+      }
+    },
+    "valid": {
+      "base": {
+        "label": "GOLD/OIL/NASDAQ/BOND (frozen)",
+        "stats": {
+          "n_days": 112,
+          "total_pct": 86.0,
+          "max_dd": 17.8,
+          "sharpe": 2.84
+        },
+        "switches": 15,
+        "stockDayPct": 26.1,
+        "etfPicks": {
+          "OIL": 51,
+          "NASDAQ": 26
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "m_csi": {
+        "label": "+CSI300+CSI500",
+        "stats": {
+          "n_days": 112,
+          "total_pct": 86.0,
+          "max_dd": 17.8,
+          "sharpe": 2.84
+        },
+        "switches": 15,
+        "stockDayPct": 26.1,
+        "etfPicks": {
+          "OIL": 51,
+          "NASDAQ": 26
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "m_hstech": {
+        "label": "+HSTECH",
+        "stats": {
+          "n_days": 112,
+          "total_pct": 86.0,
+          "max_dd": 17.8,
+          "sharpe": 2.84
+        },
+        "switches": 15,
+        "stockDayPct": 26.1,
+        "etfPicks": {
+          "OIL": 51,
+          "NASDAQ": 26
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "m_all": {
+        "label": "+CSI500+ChiNext+HSTECH",
+        "stats": {
+          "n_days": 112,
+          "total_pct": 51.0,
+          "max_dd": 19.4,
+          "sharpe": 2.02
+        },
+        "switches": 23,
+        "stockDayPct": 24.3,
+        "etfPicks": {
+          "OIL": 47,
+          "CHINEXT": 15,
+          "NASDAQ": 16
+        },
+        "delta_base_pt": -35.0,
+        "delta_base_sharpe": -0.82,
+        "delta_base_dd": 1.6
+      }
+    }
+  },
+  "as_of": "2026-09-12T11:51:51+00:00"
+}

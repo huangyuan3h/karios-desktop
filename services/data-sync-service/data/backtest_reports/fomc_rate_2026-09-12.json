@@ -1,0 +1,371 @@
+{
+  "tag": "fomc-rate-2026-09-12",
+  "prereg": "docs/designs/fomc-rate-prereg-2026-09-12.md",
+  "results": {
+    "518880.SH": {
+      "label": "黄金",
+      "baseline_pct": 0.067,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.395,
+        "hit_pos_pct": 64.0,
+        "car02_pct": 0.27,
+        "pre_car_pct": -0.28,
+        "by_period_pct": {
+          "2021-2022": 0.09,
+          "2023-2024": 0.93
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": -0.168,
+        "hit_pos_pct": 33.0,
+        "car02_pct": 0.41,
+        "pre_car_pct": -0.96,
+        "by_period_pct": {
+          "2023-2024": -0.17
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": 0.006,
+        "hit_pos_pct": 48.0,
+        "car02_pct": 0.01,
+        "pre_car_pct": 0.22,
+        "by_period_pct": {
+          "2021-2022": -0.41,
+          "2023-2024": 0.29,
+          "2025": 0.25
+        }
+      }
+    },
+    "513100.SH": {
+      "label": "纳指100",
+      "baseline_pct": 0.081,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": -0.12,
+        "hit_pos_pct": 45.0,
+        "car02_pct": -0.13,
+        "pre_car_pct": 0.03,
+        "by_period_pct": {
+          "2021-2022": -0.27,
+          "2023-2024": 0.14
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": -0.296,
+        "hit_pos_pct": 67.0,
+        "car02_pct": 0.68,
+        "pre_car_pct": 4.37,
+        "by_period_pct": {
+          "2023-2024": -0.3
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": 0.408,
+        "hit_pos_pct": 70.0,
+        "car02_pct": 0.14,
+        "pre_car_pct": 0.58,
+        "by_period_pct": {
+          "2021-2022": -0.12,
+          "2023-2024": 0.71,
+          "2025": 0.81
+        }
+      }
+    },
+    "513110.SH": {
+      "label": "纳指100b",
+      "baseline_pct": 0.122,
+      "hike": {
+        "n": 3,
+        "abnormal_d0_pct": -0.581,
+        "hit_pos_pct": 33.0,
+        "car02_pct": 0.87,
+        "pre_car_pct": 0.25,
+        "by_period_pct": {
+          "2023-2024": -0.58
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": -0.425,
+        "hit_pos_pct": 67.0,
+        "car02_pct": 0.61,
+        "pre_car_pct": 4.39,
+        "by_period_pct": {
+          "2023-2024": -0.42
+        }
+      },
+      "hold": {
+        "n": 14,
+        "abnormal_d0_pct": 0.757,
+        "hit_pos_pct": 71.0,
+        "car02_pct": 0.42,
+        "pre_car_pct": 0.44,
+        "by_period_pct": {
+          "2023-2024": 0.79,
+          "2025": 0.7
+        }
+      }
+    },
+    "513180.SH": {
+      "label": "恒生科技",
+      "baseline_pct": -0.017,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.171,
+        "hit_pos_pct": 45.0,
+        "car02_pct": 0.48,
+        "pre_car_pct": 1.25,
+        "by_period_pct": {
+          "2021-2022": -0.27,
+          "2023-2024": 0.94
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": 1.154,
+        "hit_pos_pct": 100.0,
+        "car02_pct": 0.12,
+        "pre_car_pct": 1.81,
+        "by_period_pct": {
+          "2023-2024": 1.15
+        }
+      },
+      "hold": {
+        "n": 20,
+        "abnormal_d0_pct": 0.779,
+        "hit_pos_pct": 60.0,
+        "car02_pct": 0.38,
+        "pre_car_pct": -1.26,
+        "by_period_pct": {
+          "2021-2022": 0.56,
+          "2023-2024": 1.47,
+          "2025": -0.2
+        }
+      }
+    },
+    "510300.SH": {
+      "label": "沪深300",
+      "baseline_pct": 0.006,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.004,
+        "hit_pos_pct": 27.0,
+        "car02_pct": 0.01,
+        "pre_car_pct": -0.15,
+        "by_period_pct": {
+          "2021-2022": -0.08,
+          "2023-2024": 0.15
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": -0.103,
+        "hit_pos_pct": 67.0,
+        "car02_pct": -0.17,
+        "pre_car_pct": 1.67,
+        "by_period_pct": {
+          "2023-2024": -0.1
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": -0.084,
+        "hit_pos_pct": 43.0,
+        "car02_pct": -0.2,
+        "pre_car_pct": -0.28,
+        "by_period_pct": {
+          "2021-2022": 0.17,
+          "2023-2024": -0.01,
+          "2025": -0.68
+        }
+      }
+    },
+    "510500.SH": {
+      "label": "中证500",
+      "baseline_pct": 0.032,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.211,
+        "hit_pos_pct": 64.0,
+        "car02_pct": 0.17,
+        "pre_car_pct": -0.49,
+        "by_period_pct": {
+          "2021-2022": 0.34,
+          "2023-2024": -0.02
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": 0.442,
+        "hit_pos_pct": 67.0,
+        "car02_pct": 0.02,
+        "pre_car_pct": 0.73,
+        "by_period_pct": {
+          "2023-2024": 0.44
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": -0.167,
+        "hit_pos_pct": 43.0,
+        "car02_pct": -0.58,
+        "pre_car_pct": 0.09,
+        "by_period_pct": {
+          "2021-2022": 0.09,
+          "2023-2024": -0.24,
+          "2025": -0.49
+        }
+      }
+    },
+    "159915.SZ": {
+      "label": "创业板",
+      "baseline_pct": 0.033,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.072,
+        "hit_pos_pct": 45.0,
+        "car02_pct": 0.65,
+        "pre_car_pct": -0.34,
+        "by_period_pct": {
+          "2021-2022": 0.29,
+          "2023-2024": -0.31
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": 0.153,
+        "hit_pos_pct": 67.0,
+        "car02_pct": 0.33,
+        "pre_car_pct": 1.79,
+        "by_period_pct": {
+          "2023-2024": 0.15
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": 0.168,
+        "hit_pos_pct": 48.0,
+        "car02_pct": 0.23,
+        "pre_car_pct": 0.14,
+        "by_period_pct": {
+          "2021-2022": 0.55,
+          "2023-2024": 0.2,
+          "2025": -0.57
+        }
+      }
+    },
+    "588000.SH": {
+      "label": "科创50",
+      "baseline_pct": 0.037,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.581,
+        "hit_pos_pct": 82.0,
+        "car02_pct": 0.38,
+        "pre_car_pct": -0.66,
+        "by_period_pct": {
+          "2021-2022": 0.98,
+          "2023-2024": -0.12
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": 0.412,
+        "hit_pos_pct": 67.0,
+        "car02_pct": 0.97,
+        "pre_car_pct": 0.93,
+        "by_period_pct": {
+          "2023-2024": 0.41
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": 0.211,
+        "hit_pos_pct": 48.0,
+        "car02_pct": -0.08,
+        "pre_car_pct": 0.09,
+        "by_period_pct": {
+          "2021-2022": 0.79,
+          "2023-2024": -0.2,
+          "2025": -0.08
+        }
+      }
+    },
+    "511260.SH": {
+      "label": "十年国债",
+      "baseline_pct": 0.018,
+      "hike": {
+        "n": 11,
+        "abnormal_d0_pct": 0.013,
+        "hit_pos_pct": 45.0,
+        "car02_pct": 0.03,
+        "pre_car_pct": 0.19,
+        "by_period_pct": {
+          "2021-2022": -0.02,
+          "2023-2024": 0.06
+        }
+      },
+      "cut": {
+        "n": 3,
+        "abnormal_d0_pct": -0.025,
+        "hit_pos_pct": 33.0,
+        "car02_pct": 0.34,
+        "pre_car_pct": 0.45,
+        "by_period_pct": {
+          "2023-2024": -0.03
+        }
+      },
+      "hold": {
+        "n": 23,
+        "abnormal_d0_pct": 0.001,
+        "hit_pos_pct": 48.0,
+        "car02_pct": 0.09,
+        "pre_car_pct": 0.08,
+        "by_period_pct": {
+          "2021-2022": -0.07,
+          "2023-2024": -0.0,
+          "2025": 0.13
+        }
+      }
+    }
+  },
+  "n_events": 37,
+  "n_directional": 14,
+  "verdict": {
+    "k1": false,
+    "k2": false,
+    "call": "REJECT / close line",
+    "k1_hits": [
+      [
+        "513110.SH",
+        -0.58,
+        -0.42,
+        false,
+        false,
+        false
+      ],
+      [
+        "513180.SH",
+        0.17,
+        1.15,
+        false,
+        false,
+        false
+      ],
+      [
+        "588000.SH",
+        0.58,
+        0.41,
+        false,
+        false,
+        false
+      ]
+    ]
+  },
+  "as_of": "2026-09-12T14:59:09+00:00"
+}

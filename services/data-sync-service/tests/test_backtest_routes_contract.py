@@ -10,42 +10,18 @@ from fastapi import HTTPException
 from data_sync_service.api import backtest_routes as br
 
 
-def test_twin_star_action_ok_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import data_sync_service.service.twin_star_daily as daily
-    import data_sync_service.service.twin_star_intraday as intra
-
-    monkeypatch.setattr(intra, "maybe_refresh_intraday_sat", lambda *a, **k: {"asOf": "d"})
-    monkeypatch.setattr(daily, "build_twin_star_daily_action", lambda: {"action": "BUY"})
-    assert br.twin_star_action() == {"ok": True, "action": "BUY"}
-
-    def boom() -> dict:
-        raise RuntimeError("no data")
-
-    monkeypatch.setattr(daily, "build_twin_star_daily_action", boom)
+def test_timeline_rejects_removed_twin_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
-        br.twin_star_action()
-    assert exc.value.status_code == 500
+        br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="twin_star")
+    assert exc.value.status_code == 400
+    assert "harbor|pick_strong|state_bucket" in exc.value.detail
 
 
-def test_twin_star_refresh_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    import data_sync_service.service.twin_star_daily as daily
-    import data_sync_service.service.twin_star_intraday as intra
-
-    monkeypatch.setattr(intra, "maybe_refresh_intraday_sat", lambda *a, **k: {"asOf": "d"})
-    monkeypatch.setattr(daily, "build_twin_star_daily_action", lambda: {"action": "HOLD"})
-    out = br.twin_star_refresh()
-    assert out["ok"] is True and out["refreshed"] is True
-
-    monkeypatch.setattr(intra, "maybe_refresh_intraday_sat", lambda *a, **k: None)
-    assert br.twin_star_refresh()["refreshed"] is False
-
-    def boom(*a, **k):
-        raise RuntimeError("em down")
-
-    monkeypatch.setattr(intra, "maybe_refresh_intraday_sat", boom)
-    with pytest.raises(HTTPException) as exc:
-        br.twin_star_refresh()
-    assert exc.value.status_code == 500
+def test_timeline_accepts_harbor(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"ok": True, "strategy": "港湾", "rows": [], "summary": {"fusedPct": 0.0}}
+    monkeypatch.setattr(br, "_get_or_build_timeline", lambda s, e, **kw: (payload, None))
+    out = br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="harbor")
+    assert out["strategy"] == "港湾"
 
 
 def test_recon_and_behavior_latest(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -14,7 +14,8 @@ Rule (G2 prototype 2026-08-23, 661d 2023-11~2026-08):
   => rotation beats single asset, equal weight best sharpe. We keep rotation as tactical sleeve,
      equal4 as strategic note.
 
-States: same as third_asset_sleeve but etf is dynamic (GOLD/OIL/NASDAQ/BOND).
+States: Harbor parking — park the idle fraction in the mom60+MA200 ETF argmax
+(GOLD/OIL/NASDAQ/BOND10); no candidate above MA200 -> REPO.
 """
 
 from __future__ import annotations
@@ -70,11 +71,7 @@ def _etf_market_data(ts: str) -> dict[str, Any]:
 LOOKBACK = 60
 MA_WINDOW = 200
 COST = 0.0005
-MIN_IDLE_PCT = 20.0
-# Product 择强单轨 A0: min_hold=1 (sleeve-era hold5 rejected on fused absolute NAV).
-MIN_HOLD_DAYS = 1
-# Live / Watchlist ETF risk exit (sleeve-exit-study 2026-08-28).
-# Not applied in pick_strong_track mom_compare NAV — hard switch only there.
+# Harbor ETF risk exit (causal: trigger on the decision print, no same-day credit).
 TRAILING_PCT = 8.0
 
 
@@ -131,11 +128,11 @@ def _closes(ts: str, days: int = 260) -> list[float]:
 
 
 def _signal_closes(ts: str, days: int = 260) -> list[float]:
-    """Closes up to the latest COMPLETED trading day (excludes today's bar).
+    """Closes through the latest COMPLETED bar (today's close after the daily sync).
 
-    Decision signals must use t-1 close only (same semantics as the backtest:
-    signal at t-1 close -> execute at t). During the session the daily table
-    has no today bar yet, so the naive ``closes[:-1]`` would fall back to t-2.
+    Harbor clock: signal at T close (job runs 18:20) -> execute T+1 open.
+    During the session the daily table has no today bar, so this naturally
+    falls back to the previous session.
     """
     from data_sync_service.service.trade_calendar_utils import shanghai_today
 
@@ -147,7 +144,7 @@ def _signal_closes(ts: str, days: int = 260) -> list[float]:
     out = []
     for b in bars:
         d = str(b.get("date") or b.get("trade_date") or "")
-        if d >= today:
+        if d > today:
             continue
         try:
             c = float(b.get("close"))
@@ -168,7 +165,9 @@ def _pick() -> dict[str, Any] | None:
     raw_map: dict[str, list[list[float]]] = {}
     for c in CANDIDATES:
         closes = _signal_closes(c["ts"], 260)
-        if len(closes) < MA_WINDOW + LOOKBACK:
+        # Eligibility matches the frozen backtest: MA200 needs 200 bars; mom60
+        # uses the close LOOKBACK+1 bars back (index i-LOOKBACK).
+        if len(closes) < MA_WINDOW:
             logger.warning(
                 "multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes)
             )
@@ -178,7 +177,12 @@ def _pick() -> dict[str, Any] | None:
     for key, lists in raw_map.items():
         if not lists:
             return None
-        best = max(lists, key=lambda lst: lst[-1] / lst[-LOOKBACK] if lst[-LOOKBACK] != 0 else -1)
+        best = max(
+            lists,
+            key=lambda lst: lst[-1] / lst[-(LOOKBACK + 1)]
+            if lst[-(LOOKBACK + 1)] != 0
+            else -1,
+        )
         closes_map[key] = best
     if any(k not in closes_map for k in ["GOLD", "OIL", "NASDAQ", "BOND10"]):
         if len(closes_map) < 3:
@@ -191,7 +195,8 @@ def _pick() -> dict[str, Any] | None:
             continue
         ma200 = sum(closes_t1[-MA_WINDOW:]) / MA_WINDOW
         close_t1 = closes_t1[-1]
-        mom60 = close_t1 / closes_t1[-LOOKBACK] - 1 if closes_t1[-LOOKBACK] != 0 else -1e9
+        ago = closes_t1[-(LOOKBACK + 1)] if len(closes_t1) >= LOOKBACK + 1 else 0.0
+        mom60 = close_t1 / ago - 1 if ago else -1e9
         mom[key] = mom60
         above[key] = close_t1 >= ma200
     filtered = {k: v for k, v in mom.items() if above.get(k)}
@@ -211,49 +216,6 @@ def _pick() -> dict[str, Any] | None:
         "above_ma200": above[pick_key],
         "all_mom": {k: round(v * 100, 2) for k, v in mom.items()},
         "all_above": above,
-    }
-
-
-def _stock_basket_mom_from_holdings(holdings: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Avg mom60 (t-1) of CN/HK stock holdings — STOCK leg for mom_compare."""
-    moms: list[float] = []
-    for h in holdings:
-        sym = str(h.get("symbol") or "").upper()
-        if not (sym.startswith("CN:") or sym.startswith("HK:")):
-            continue
-        ts = str(h.get("ts_code") or "").strip()
-        if not ts:
-            # best-effort: CN:600000 -> 600000.SH / .SZ
-            bare = sym.split(":", 1)[-1]
-            if bare.startswith("6"):
-                ts = f"{bare}.SH"
-            elif bare.startswith(("0", "3")):
-                ts = f"{bare}.SZ"
-            elif bare.isdigit() and len(bare) == 5:
-                ts = f"{bare}.HK"
-            else:
-                continue
-        closes = _signal_closes(ts, 260)
-        if len(closes) < LOOKBACK + 2:
-            continue
-        closes_t1 = closes
-        if len(closes_t1) < LOOKBACK:
-            continue
-        ago = closes_t1[-LOOKBACK]
-        if not ago:
-            continue
-        moms.append(closes_t1[-1] / ago - 1.0)
-    if not moms:
-        return None
-    avg = sum(moms) / len(moms)
-    return {
-        "key": "STOCK",
-        "ts": "STOCK_BASKET",
-        "symbol": "STOCK",
-        "name": "S-3 股票篮",
-        "mom60": round(avg * 100, 2),
-        "above_ma200": True,  # STOCK gate = has holdings (matches backtest)
-        "n": len(moms),
     }
 
 
@@ -371,10 +333,11 @@ def _idle_pct(holdings: list[dict[str, Any]]) -> float:
 def build_multi_asset_sleeve(
     *, day: str, cn_block: dict[str, Any], holdings_override=None
 ) -> dict[str, Any]:
-    """Live 择强单轨 hint: equal-asset mom_compare (STOCK basket ∪ ETF pool).
+    """Live Harbor hint: park idle cash in the mom60+MA200 ETF argmax.
 
-    No Nasdaq-first / no auto SELL_TO_A_SHARE when S-3 has candidates — STOCK
-    only wins when its basket mom60 beats ETFs above MA200.
+    Rule (frozen by B11, `docs/backtests/stable/etf-parking-baseline-2026-09-13.md`):
+    no STOCK gate, no idle floor; no ETF above MA200 -> REPO (exit if held).
+    Exit = causal trail8. Position size = idle% (paper sleeve_pct).
     """
     holdings = (
         holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
@@ -397,102 +360,34 @@ def build_multi_asset_sleeve(
                 break
 
     etf_pick = _pick()
-    stock_pick = _stock_basket_mom_from_holdings(holdings)
     out: dict[str, Any] = {
         "active": False,
         "action": "NONE",
         "idlePct": round(idle, 1),
         "s3BuySetup": s3_buy_setup,
-        "mode": "mom_compare",
-        "strategy": "择强单轨",
+        "mode": "harbor",
+        "strategy": "港湾",
     }
 
-    # Equal pool: STOCK (if held) vs ETF above-MA picks.
-    pool: dict[str, dict[str, Any]] = {}
-    if etf_pick is not None:
-        pool[etf_pick["key"]] = etf_pick
-    if stock_pick is not None:
-        pool["STOCK"] = stock_pick
-    if not pool:
-        out["note"] = "候选数据不足（无 ETF 过线且无股票持仓）"
-        return out
+    # Harbor (P1, B11): park idle cash in the mom60+MA200 argmax ETF —
+    # no STOCK gate, no idle floor. No candidate above MA200 -> REPO.
+    out.update({"pick": etf_pick, "holding": bool(held), "etfPick": etf_pick})
 
-    pick_key = max(pool.keys(), key=lambda k: float(pool[k].get("mom60") or -1e9))
-    pick = pool[pick_key]
-    out.update({"pick": pick, "holding": bool(held), "etfPick": etf_pick, "stockPick": stock_pick})
-
-    # STOCK wins → follow stock leg; sell ETF sleeve if held.
-    if pick_key == "STOCK":
-        if held:
-            out.update(
-                {
-                    "active": True,
-                    "action": "SELL_TO_A_SHARE",
-                    "message": (
-                        f"择强 STOCK（mom60 {pick['mom60']}%）> ETF → 卖出 "
-                        f"{held.get('symbol')} 回股票篮"
-                    ),
-                    "label": "择强→股票",
-                }
-            )
-            return out
-        out.update(
-            {
-                "active": True,
-                "action": "HOLD",
-                "message": f"择强 STOCK（mom60 {pick['mom60']}% · n={pick.get('n')}）· 跟股票篮",
-                "label": "持有股票篮",
-            }
-        )
-        return out
-
-    # ETF wins — risk trail8 before rotate / min-hold / MA hold (live Watchlist).
     if held:
         trail = _etf_trail_exit(held, day=day)
         if trail is not None:
             out.update(trail)
             return out
-        held_sym = str(held.get("symbol") or "").upper()
-        if held_sym != pick["symbol"]:
-            try:
-                from datetime import date as _date
+    held_sym = str((held or {}).get("symbol") or "").upper()
+    pick_sym = str((etf_pick or {}).get("symbol") or "").upper()
 
-                entry = str(held.get("entryDate") or held.get("entry_date") or "")
-                if entry and MIN_HOLD_DAYS > 1:
-                    held_days = (_date.fromisoformat(day) - _date.fromisoformat(entry[:10])).days
-                    if held_days < MIN_HOLD_DAYS:
-                        held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
-                        md = _etf_market_data(held_ts)
-                        if md.get("ok") and md.get("above"):
-                            out.update(
-                                {
-                                    "active": True,
-                                    "action": "HOLD",
-                                    "message": f"持有 {held_sym}（防抖 {held_days}d）",
-                                    "label": "持有（防抖）",
-                                }
-                            )
-                            return out
-            except Exception:
-                pass
-            out.update(
-                {
-                    "active": True,
-                    "action": "ROTATE",
-                    "message": (
-                        f"择强轮动：卖出 {held_sym} → {pick['symbol']} "
-                        f"({pick['name']} mom60 {pick['mom60']}%)"
-                    ),
-                    "label": f"轮动至 {pick['key']}",
-                }
-            )
-            return out
-        if not pick.get("above_ma200"):
+    if etf_pick is None:
+        if held:
             out.update(
                 {
                     "active": True,
                     "action": "SELL_TO_REPO",
-                    "message": f"{pick['symbol']} 跌破200日线 → 转逆回购",
+                    "message": f"全候选跌破200日线 → 卖出 {held_sym} 转逆回购",
                     "label": "卖出转repo",
                 }
             )
@@ -500,60 +395,55 @@ def build_multi_asset_sleeve(
         out.update(
             {
                 "active": True,
-                "action": "HOLD",
-                "message": (
-                    f"择强持有 {pick['symbol']}（mom60 {pick['mom60']}% · "
-                    f"强于股票篮 {stock_pick['mom60'] if stock_pick else '—'}%）"
-                ),
-                "label": "持有",
+                "action": "DONT_BUY",
+                "message": "无 ETF 站上200日线 → 闲置留现金",
+                "label": "不买",
             }
         )
         return out
 
-    # not holding ETF
-    if not pick.get("above_ma200"):
+    if held and held_sym == pick_sym:
         out.update(
             {
                 "active": True,
-                "action": "DONT_BUY",
-                "message": f"{pick['symbol']} 虽最强但已破200日线，不买",
-                "label": "今日不买",
+                "action": "HOLD",
+                "message": f"港湾停车：持有 {etf_pick['symbol']}（mom60 {etf_pick['mom60']}%）",
+                "label": "持有",
             }
         )
         return out
-    # Stocks held but ETF wins → hard-switch message (do not BUY ETF on top blindly).
-    has_stock = any(str(h.get("symbol") or "").upper().startswith(("CN:", "HK:")) for h in holdings)
-    if has_stock:
+    if held:
         out.update(
             {
                 "active": True,
                 "action": "ROTATE",
                 "message": (
-                    f"择强 {pick['key']}（mom60 {pick['mom60']}%）> STOCK → "
-                    f"减股票篮、买入 {pick['symbol']}"
+                    f"港湾停车轮动：卖出 {held_sym} → {etf_pick['symbol']} "
+                    f"({etf_pick['name']} mom60 {etf_pick['mom60']}%)"
                 ),
-                "label": f"切至 {pick['key']}",
+                "label": f"轮动至 {etf_pick['key']}",
             }
         )
         return out
-    if idle >= MIN_IDLE_PCT:
+    if idle <= 0:
         out.update(
             {
                 "active": True,
-                "action": "BUY",
-                "message": (
-                    f"择强 {pick['symbol']}（mom60 {pick['mom60']}%）· 闲置 {idle:.0f}% → 买入"
-                ),
-                "label": f"买入 {pick['key']}",
+                "action": "DONT_BUY",
+                "message": "无闲置现金（股票仓已满）",
+                "label": "不买",
             }
         )
         return out
     out.update(
         {
             "active": True,
-            "action": "DONT_BUY",
-            "message": f"{pick['symbol']} 最强但闲置{idle:.0f}%不足",
-            "label": "不买",
+            "action": "BUY",
+            "message": (
+                f"港湾停车：{etf_pick['symbol']}（{etf_pick['name']} mom60 {etf_pick['mom60']}%）"
+                f" · 闲置 {idle:.0f}% → 买入"
+            ),
+            "label": f"买入 {etf_pick['key']}",
         }
     )
     return out

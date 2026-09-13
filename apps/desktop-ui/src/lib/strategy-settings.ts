@@ -4,21 +4,21 @@ import * as React from 'react';
 
 import { loadJson, saveJson } from '@/lib/storage';
 
-export type StrategyMode = 'twin_star' | 'single_track';
+export type StrategyMode = 'harbor';
 
 const STORAGE_KEY = 'karios.strategyMode';
 
-/** Live product default: opportunity twin-star v3.1 clip4 (4 × 12.5% NAV). */
-export const DEFAULT_STRATEGY_MODE: StrategyMode = 'twin_star';
+/** Live product default: 港湾 (S-3 stock core + idle-cash ETF parking). */
+export const DEFAULT_STRATEGY_MODE: StrategyMode = 'harbor';
 
 export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
-  twin_star: '机会双子星',
-  single_track: '单轨择强',
+  harbor: '港湾',
 };
 
+/** Stored values from retired modes collapse to the single live baseline. */
 export function getStrategyMode(): StrategyMode {
-  const v = loadJson<StrategyMode | null>(STORAGE_KEY, null);
-  if (v === 'single_track' || v === 'twin_star') return v;
+  const v = loadJson<unknown>(STORAGE_KEY, null);
+  if (v !== 'harbor') saveJson(STORAGE_KEY, 'harbor');
   return DEFAULT_STRATEGY_MODE;
 }
 
@@ -27,7 +27,7 @@ export function setStrategyMode(mode: StrategyMode): void {
   window.dispatchEvent(new Event('karios:strategy-mode'));
 }
 
-export function useStrategyMode(): [StrategyMode, (mode: StrategyMode) => void] {
+export function useStrategyMode(): StrategyMode {
   const [mode, setMode] = React.useState<StrategyMode>(() => getStrategyMode());
   React.useEffect(() => {
     const sync = () => setMode(getStrategyMode());
@@ -38,6 +38,5 @@ export function useStrategyMode(): [StrategyMode, (mode: StrategyMode) => void] 
       window.removeEventListener('storage', sync);
     };
   }, []);
-  const set = React.useCallback((next: StrategyMode) => setStrategyMode(next), []);
-  return [mode, set];
+  return mode;
 }

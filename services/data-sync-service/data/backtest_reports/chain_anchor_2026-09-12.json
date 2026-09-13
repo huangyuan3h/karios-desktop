@@ -1,0 +1,107 @@
+{
+  "tag": "chain-anchor-2026-09-12",
+  "prereg": "docs/designs/chain-anchor-prereg-2026-09-12.md",
+  "corr_gap": 0.318,
+  "corr_intraday": -0.01,
+  "per_pair": {
+    "机器人概念": {
+      "gap": 0.232,
+      "intraday": 0.001,
+      "n": 2101
+    },
+    "消费电子概念": {
+      "gap": 0.382,
+      "intraday": -0.048,
+      "n": 1938
+    },
+    "苹果概念": {
+      "gap": 0.388,
+      "intraday": -0.042,
+      "n": 1858
+    },
+    "数据中心(AIDC)": {
+      "gap": 0.319,
+      "intraday": -0.041,
+      "n": 1574
+    },
+    "PCB概念": {
+      "gap": 0.33,
+      "intraday": 0.02,
+      "n": 1110
+    },
+    "共封装光学(CPO)": {
+      "gap": 0.341,
+      "intraday": 0.009,
+      "n": 863
+    },
+    "存储芯片": {
+      "gap": 0.412,
+      "intraday": 0.007,
+      "n": 820
+    },
+    "液冷服务器": {
+      "gap": 0.288,
+      "intraday": -0.003,
+      "n": 810
+    },
+    "英伟达概念": {
+      "gap": 0.355,
+      "intraday": -0.022,
+      "n": 790
+    },
+    "人形机器人": {
+      "gap": 0.248,
+      "intraday": -0.012,
+      "n": 610
+    },
+    "铜缆高速连接": {
+      "gap": 0.384,
+      "intraday": 0.007,
+      "n": 594
+    },
+    "光刻机": {
+      "gap": 0.407,
+      "intraday": 0.002,
+      "n": 477
+    }
+  },
+  "by_window": {
+    "OOS2": {
+      "high": 8.04,
+      "low": 4.63,
+      "diff": 3.41,
+      "n": 2814
+    },
+    "train": {
+      "high": 4.83,
+      "low": 5.41,
+      "diff": -0.58,
+      "n": 1476
+    },
+    "valid": {
+      "high": 4.71,
+      "low": 0.08,
+      "diff": 4.63,
+      "n": 1272
+    },
+    "long": {
+      "high": 2.36,
+      "low": 2.68,
+      "diff": -0.32,
+      "n": 11322
+    }
+  },
+  "tercile_thr": [
+    -0.0117,
+    0.081
+  ],
+  "hi_lo_fwd20": -0.11,
+  "verdict": {
+    "k1": true,
+    "k2": false,
+    "k2_intra": false,
+    "k2_drift": false,
+    "call": "REJECT (§一.14 gap-consumed)"
+  },
+  "as_of": "2026-09-13T00:24:52+00:00"
+}

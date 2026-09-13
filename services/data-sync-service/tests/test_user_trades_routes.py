@@ -166,11 +166,11 @@ def test_record_leg_passthrough(monkeypatch) -> None:
             "side": "BUY",
             "price": 221.0,
             "positionPct": 12.5,
-            "leg": "sat",
+            "leg": "parking",
         },
     )
     assert r.status_code == 200
-    assert seen.get("leg") == "sat"
+    assert seen.get("leg") == "parking"
     r = client.post(
         "/trades",
         json={"symbol": "CN:600000", "side": "BUY", "price": 10.0, "positionPct": 10.0},
@@ -254,9 +254,9 @@ def test_patch_trade_leg(monkeypatch) -> None:
             {"id": trade_id, "leg": kw.get("leg", "s3")} if trade_id == "t1" else None
         ),
     )
-    r = client.patch("/trades/t1", json={"leg": "sat"})
+    r = client.patch("/trades/t1", json={"leg": "parking"})
     assert r.status_code == 200
-    assert r.json()["trade"]["leg"] == "sat"
-    assert client.patch("/trades/missing", json={"leg": "sat"}).status_code == 404
+    assert r.json()["trade"]["leg"] == "parking"
+    assert client.patch("/trades/missing", json={"leg": "parking"}).status_code == 404
     assert client.patch("/trades/t1", json={"leg": "x"}).status_code == 400
     assert client.patch("/trades/t1", json={}).status_code == 400

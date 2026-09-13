@@ -132,7 +132,7 @@ SLEEVE_ETF_TS_CODES = ["518880.SH", "513350.SH", "513110.SH", "513100.SH", "5112
 
 
 def sync_sleeve_etfs() -> dict[str, Any]:
-    """Incremental daily sync for the 5 Twin-Star core-leg ETFs only.
+    """Incremental daily sync for the 5 core-leg sleeve ETFs only.
 
     The full-market ``etf_daily_full`` cron runs monthly and keeps failing on
     the tushare per-minute rate limit (200 calls/min for ~1000 ETFs), which

@@ -344,6 +344,47 @@ class TestBuildSgapTimeline:
         held = [i for i, row in enumerate(r["rows"]) if row["satPositions"] == 1]
         assert len(held) == 3
 
+    def test_body_by_stage_tier_extends_tier0(self, monkeypatch) -> None:
+        """Research hook: tier0 (S2&climax) can hold one day longer than body."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        monkeypatch.setattr(
+            sbt, "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry}}},
+        )
+        monkeypatch.setattr(
+            sbt, "_stage_labels_at",
+            lambda ctx, ts, day, hhmm: {"wein": "S2-advance", "runup5": "climax"},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0], end=dates[-1], fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430", body_by_stage_tier={0: 4},
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["entryDate"] == dates[20]
+        assert fill_blot[0]["exitDate"] == dates[23]
+
+    def test_body_by_stage_tier_keeps_other_tiers_at_body(self, monkeypatch) -> None:
+        """Other tiers fall back to the uniform body (3)."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
+        monkeypatch.setattr(
+            sbt, "_load_bar5_closes",
+            lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry}}},
+        )
+        monkeypatch.setattr(
+            sbt, "_stage_labels_at",
+            lambda ctx, ts, day, hhmm: {"wein": "S1-base", "runup5": "cool"},
+        )
+        r = sbt.build_sgap_timeline(
+            start=dates[0], end=dates[-1], fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430", body_by_stage_tier={0: 4},
+        )
+        fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
+        assert fill_blot[0]["exitDate"] == dates[22]
+
     def test_body_exit_at_1430_print(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()
         _patch_loaders(monkeypatch, dates, per_ts, mv)

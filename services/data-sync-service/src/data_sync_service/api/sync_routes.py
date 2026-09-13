@@ -223,7 +223,7 @@ def sync_index_basic_endpoint() -> dict:
 
 @router.post("/sync/daily-basic")
 def sync_daily_basic_endpoint(end_date: str | None = Query(None)) -> dict:
-    """Incrementally sync stock_dailybasic (total_mv — Twin-Star satellite dep)."""
+    """Incrementally sync stock_dailybasic (total_mv / market-cap dep)."""
     from data_sync_service.db.stock_dailybasic import sync_daily_basic_gap
 
     return sync_daily_basic_gap(end_date=end_date)
@@ -231,7 +231,7 @@ def sync_daily_basic_endpoint(end_date: str | None = Query(None)) -> dict:
 
 @router.post("/sync/sleeve-etfs")
 def sync_sleeve_etfs_endpoint() -> dict:
-    """Incremental daily sync for the 5 Twin-Star core-leg ETFs."""
+    """Incremental daily sync for the core-leg ETFs."""
     from data_sync_service.service.etf_daily import sync_sleeve_etfs
 
     return sync_sleeve_etfs()
@@ -368,12 +368,13 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "behavior_audit",
     "cn_extra_sync",
     "risk_state_sync",
-    "paper_twin_star",
     "bar_5min_close",
     "factor_signals_sync",
     # OPT-151: core-leg sleeve mirror + daily expected-vs-actual recon
     "sleeve_paper_auto",
     "sleeve_paper_recon",
+    # P0-13 attention: Snowball follow daily snapshot (forward-only panel)
+    "xq_follow_snapshot",
 )
 
 

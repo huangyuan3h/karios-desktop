@@ -1,0 +1,175 @@
+{
+  "tag": "ipo-ev-2026-09-12",
+  "prereg": "docs/designs/ipo-ev-prereg-2026-09-12.md",
+  "windows": {
+    "OOS2": {
+      "M10": {
+        "profit_yuan": 4136.0,
+        "exp_hit_shares": 155.0,
+        "ev_pct_of_M": 4.14,
+        "n": 90,
+        "annual_ev_pct": 4.14
+      },
+      "M20": {
+        "profit_yuan": 7174.0,
+        "exp_hit_shares": 279.0,
+        "ev_pct_of_M": 3.59,
+        "n": 90,
+        "annual_ev_pct": 3.59
+      },
+      "M50": {
+        "profit_yuan": 10088.0,
+        "exp_hit_shares": 480.2,
+        "ev_pct_of_M": 2.02,
+        "n": 90,
+        "annual_ev_pct": 2.02
+      },
+      "M100": {
+        "profit_yuan": 11037.0,
+        "exp_hit_shares": 678.9,
+        "ev_pct_of_M": 1.1,
+        "n": 90,
+        "annual_ev_pct": 1.1
+      }
+    },
+    "train": {
+      "M10": {
+        "profit_yuan": 4312.0,
+        "exp_hit_shares": 59.5,
+        "ev_pct_of_M": 4.31,
+        "n": 44,
+        "annual_ev_pct": 8.56
+      },
+      "M20": {
+        "profit_yuan": 6954.0,
+        "exp_hit_shares": 109.1,
+        "ev_pct_of_M": 3.48,
+        "n": 44,
+        "annual_ev_pct": 6.91
+      },
+      "M50": {
+        "profit_yuan": 8902.0,
+        "exp_hit_shares": 182.5,
+        "ev_pct_of_M": 1.78,
+        "n": 44,
+        "annual_ev_pct": 3.53
+      },
+      "M100": {
+        "profit_yuan": 10233.0,
+        "exp_hit_shares": 249.8,
+        "ev_pct_of_M": 1.02,
+        "n": 44,
+        "annual_ev_pct": 2.02
+      }
+    },
+    "valid": {
+      "M10": {
+        "profit_yuan": 5438.0,
+        "exp_hit_shares": 70.7,
+        "ev_pct_of_M": 5.44,
+        "n": 36,
+        "annual_ev_pct": 12.5
+      },
+      "M20": {
+        "profit_yuan": 8522.0,
+        "exp_hit_shares": 132.9,
+        "ev_pct_of_M": 4.26,
+        "n": 36,
+        "annual_ev_pct": 9.79
+      },
+      "M50": {
+        "profit_yuan": 13075.0,
+        "exp_hit_shares": 268.9,
+        "ev_pct_of_M": 2.61,
+        "n": 36,
+        "annual_ev_pct": 6.0
+      },
+      "M100": {
+        "profit_yuan": 19064.0,
+        "exp_hit_shares": 453.6,
+        "ev_pct_of_M": 1.91,
+        "n": 36,
+        "annual_ev_pct": 4.39
+      }
+    },
+    "long": {
+      "M10": {
+        "profit_yuan": 24998.0,
+        "exp_hit_shares": 2119.2,
+        "ev_pct_of_M": 25.0,
+        "n": 1262,
+        "annual_ev_pct": 4.47
+      },
+      "M20": {
+        "profit_yuan": 42959.0,
+        "exp_hit_shares": 3710.2,
+        "ev_pct_of_M": 21.48,
+        "n": 1262,
+        "annual_ev_pct": 3.84
+      },
+      "M50": {
+        "profit_yuan": 63740.0,
+        "exp_hit_shares": 6303.4,
+        "ev_pct_of_M": 12.75,
+        "n": 1262,
+        "annual_ev_pct": 2.28
+      },
+      "M100": {
+        "profit_yuan": 79655.0,
+        "exp_hit_shares": 8889.8,
+        "ev_pct_of_M": 7.97,
+        "n": 1262,
+        "annual_ev_pct": 1.42
+      }
+    }
+  },
+  "per_year": {
+    "2020": {
+      "n": 352,
+      "ev_pct": 7.25,
+      "exp_hits": 1059.9
+    },
+    "2021": {
+      "n": 481,
+      "ev_pct": 6.59,
+      "exp_hits": 1349.2
+    },
+    "2022": {
+      "n": 333,
+      "ev_pct": -0.03,
+      "exp_hits": 888.2
+    },
+    "2023": {
+      "n": 237,
+      "ev_pct": 2.4,
+      "exp_hits": 829.7
+    },
+    "2024": {
+      "n": 79,
+      "ev_pct": 3.18,
+      "exp_hits": 236.6
+    },
+    "2025": {
+      "n": 87,
+      "ev_pct": 4.7,
+      "exp_hits": 254.7
+    },
+    "2026": {
+      "n": 54,
+      "ev_pct": 5.29,
+      "exp_hits": 167.6
+    }
+  },
+  "verdict": {
+    "k1": true,
+    "k2": true,
+    "k3": true,
+    "call": "BUILD 打新层",
+    "wf_ev_pct": {
+      "OOS2": 3.59,
+      "train": 3.48,
+      "valid": 4.26
+    }
+  },
+  "as_of": "2026-09-12T14:32:24+00:00"
+}

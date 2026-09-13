@@ -145,56 +145,29 @@ def test_cron_failures_filters_trading_jobs(monkeypatch) -> None:
     assert "paper_trading_update" in out[0]["title"]
 
 
-def test_trading_job_types_cover_twin_star_health() -> None:
+def test_trading_job_types_cover_sleeve_health() -> None:
     assert {
-        "twin_star_intraday",
         "sleeve_etf_daily_sync",
         "stock_daily_basic_sync",
+        "sleeve_paper_auto",
     } <= nf.TRADING_JOB_TYPES
 
 
-def test_cron_failures_includes_twin_star_snapshot(monkeypatch) -> None:
+def test_cron_failures_includes_sleeve_recon(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.sync_job_record.list_recent_failures",
         lambda hours=24: [
             {
-                "job_type": "twin_star_intraday",
+                "job_type": "sleeve_paper_recon",
                 "sync_at": "2026-09-02T04:35:00Z",
-                "error_message": "no_session_snapshot",
+                "error_message": "recon_failed",
             },
         ],
     )
     out = nf._cron_failures()
     assert len(out) == 1
     assert out[0]["lane"] == "system"
-    assert "twin_star_intraday" in out[0]["title"]
-
-
-def test_twin_star_snapshot_alert_system_lane(monkeypatch) -> None:
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
-    monkeypatch.setattr(
-        "data_sync_service.service.twin_star_intraday.now_cn",
-        lambda: datetime(2026, 9, 2, 13, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
-    )
-    monkeypatch.setattr(
-        "data_sync_service.service.twin_star_intraday.intraday_snapshot_status",
-        lambda now=None: {
-            "ok": False,
-            "missing": True,
-            "stale": True,
-            "session": "2026-09-02",
-            "reason": "no_session_snapshot",
-        },
-    )
-    out = nf._twin_star_snapshot_alert("twin_star")
-    assert len(out) == 1
-    assert out[0]["type"] == "twin_star_snapshot"
-    assert out[0]["lane"] == "system"
-    assert out[0]["severity"] == "high"
-    assert "不要用 T-1" in out[0]["detail"]
-    assert nf._twin_star_snapshot_alert("single_track") == []
+    assert "sleeve_paper_recon" in out[0]["title"]
 
 
 def test_rolling_oos_warning_reads_file(monkeypatch, tmp_path) -> None:
@@ -268,7 +241,7 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     monkeypatch.setattr(
         nf,
         "_stop_trail_alerts",
-        lambda mode="single_track", ctx=None: [
+        lambda ctx=None: [
             {
                 "id": "a",
                 "type": "near_line",
@@ -297,10 +270,8 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     )
     monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
-    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda mode="single_track", ctx=None: [])
+    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda ctx=None: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
-    monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
-    monkeypatch.setattr(nf, "_twin_star_snapshot_alert", lambda mode="single_track": [])
     monkeypatch.setattr(
         nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None}
     )
@@ -343,10 +314,10 @@ def test_route_ok(monkeypatch) -> None:
     import data_sync_service.api.notifications_routes as nr
     from data_sync_service.api.notifications_routes import router
 
-    seen: list[str] = []
+    calls: list[tuple] = []
 
-    def _capture(mode: str = "twin_star") -> list[dict]:
-        seen.append(mode)
+    def _capture(*args, **kwargs) -> list[dict]:
+        calls.append((args, kwargs))
         return [{"id": "x", "severity": "high"}]
 
     monkeypatch.setattr(nr, "build_notifications", _capture)
@@ -355,119 +326,12 @@ def test_route_ok(monkeypatch) -> None:
     r = TestClient(app).get("/api/notifications")
     assert r.status_code == 200
     assert r.json()["items"][0]["severity"] == "high"
-    assert seen == ["twin_star"]
+    assert calls == [((), {})]
 
 
-def test_twin_star_does_not_emit_s3_pyramid_or_false_near_line(monkeypatch) -> None:
-    ctx = {
-        "pick": "OIL",
-        "tradeDate": "2026-09-02",
-        "blocks": {
-            "CN": {
-                "holdings": [
-                    {
-                        "symbol": "CN:600540",
-                        "name": "新赛股份",
-                        "action": "HOLD",
-                        "pyramidAdded": False,
-                        "pyramidTriggerLine": 6.57,
-                        "lastClose": 6.73,
-                        "costPrice": 6.41,
-                        "entryDate": "2026-09-02",
-                        "pnlPct": 4.99,
-                        "stopLossLine": 6.09,
-                        "trailingLine": 6.192,
-                    }
-                ]
-            }
-        },
-    }
-    assert nf._pyramid_trigger_alerts("twin_star", ctx) == []
-    out = nf._stop_trail_alerts("twin_star", ctx)
-    titles = [x["title"] for x in out]
-    assert not any("金字塔" in t for t in titles)
-    assert not any("接近止损" in t for t in titles)
-    assert not any("接近移动" in t for t in titles)
-    assert all(x.get("book") == "sat" for x in out)
-
-
-def test_twin_star_stock_day_splits_sat_from_s3_leftover() -> None:
-    ctx = {
-        "pick": "STOCK",
-        "tradeDate": "2026-09-02",
-        "satTs": {"300413.SZ"},
-        "blocks": {
-            "CN": {
-                "holdings": [
-                    {
-                        "symbol": "CN:300413",
-                        "name": "芒果超媒",
-                        "action": "HOLD",
-                        "pyramidAdded": False,
-                        "pyramidTriggerLine": 20.5,
-                        "lastClose": 21.0,
-                        "costPrice": 20,
-                        "entryDate": "2026-09-02",
-                        "trailingLine": 19.5,
-                        "nearStop": True,
-                        "nearStopLabel": "移动",
-                        "nearStopDistancePct": 0.4,
-                    },
-                    {
-                        "symbol": "CN:600111",
-                        "name": "北方稀土",
-                        "action": "HOLD",
-                        "pyramidAdded": False,
-                        "pyramidTriggerLine": 18.0,
-                        "lastClose": 19.0,
-                        "trailingLine": 17.2,
-                    },
-                ]
-            }
-        },
-    }
-    trail = nf._stop_trail_alerts("twin_star", ctx)
-    titles = [x["title"] for x in trail]
-    assert not any("接近移动" in t for t in titles)
-    assert not any("金字塔" in t for t in titles)
-    assert not any(x.get("book") == "s3" and "芒果" in x["title"] for x in trail)
-    pyramids = nf._pyramid_trigger_alerts("twin_star", ctx)
-    assert len(pyramids) == 1
-    assert "北方稀土" in pyramids[0]["title"]
-    assert pyramids[0]["book"] == "s3"
-
-
-def test_twin_star_sat_exit_ignores_protect_stop(monkeypatch) -> None:
-    ctx = {
-        "pick": "OIL",
-        "tradeDate": "2026-09-02",
-        "blocks": {
-            "CN": {
-                "holdings": [
-                    {
-                        "symbol": "CN:300413",
-                        "name": "芒果超媒",
-                        "costPrice": 20,
-                        "entryDate": "2026-08-31",
-                        "lastClose": 18.9,
-                    }
-                ]
-            }
-        },
-    }
-    out = nf._stop_trail_alerts("twin_star", ctx)
-    types = {x["type"] for x in out}
-    assert "sat_exit" in types
-    assert "sat_stop" not in types
-    assert "sat_near_stop" not in types
-
-
-def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:
-    monkeypatch.setattr(
-        nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "OIL", "tradeDate": "2026-09-02"}
-    )
-    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda *a, **k: [])
-    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda *a, **k: [])
+def test_build_notifications_includes_recon(monkeypatch) -> None:
+    monkeypatch.setattr(nf, "_stop_trail_alerts", lambda ctx=None: [])
+    monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda ctx=None: [])
     monkeypatch.setattr(nf, "_cron_failures", lambda: [])
     monkeypatch.setattr(
         nf,
@@ -485,7 +349,7 @@ def test_build_notifications_hides_recon_in_twin_star(monkeypatch) -> None:
     )
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
     monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
-    monkeypatch.setattr(nf, "_twin_star_notification", lambda mode="single_track": [])
-    monkeypatch.setattr(nf, "_twin_star_snapshot_alert", lambda mode="single_track": [])
-    assert nf.build_notifications("twin_star") == []
-    assert len(nf.build_notifications("single_track")) == 1
+    monkeypatch.setattr(
+        nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "STOCK", "tradeDate": None}
+    )
+    assert len(nf.build_notifications()) == 1

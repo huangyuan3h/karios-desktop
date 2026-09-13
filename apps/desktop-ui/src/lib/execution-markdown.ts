@@ -336,11 +336,13 @@ export function buildPositionsExecutionMarkdown(
     const pickStrong = health?.multiAssetSleeve;
     const pickKey = pickStrong?.pick?.key ?? null;
     if (pickStrong?.active && pickStrong.action && pickStrong.action !== 'NONE') {
-      lines.push(`${heading} 择强单轨（今日真源 · mom_compare）`);
+      lines.push(`${heading} 港湾（今日真源 · mom_compare）`);
       lines.push(
         `- pick **${pickKey ?? 'REPO'}** · ${pickStrong.label ?? pickStrong.action} · ${pickStrong.message ?? ''}`,
       );
-      lines.push('- note: 产品策略=全资产同权 100% 硬切；下列 S-3 候选仅当 pick=STOCK 时可执行');
+      lines.push(
+        '- note: 产品策略=港湾（S-3 核心 + 闲置现金 ETF 停车场）；下列 S-3 候选仅当 pick=STOCK 时可执行',
+      );
       lines.push('');
     }
     const cnCands = health?.s3Candidates ?? [];

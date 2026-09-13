@@ -52,14 +52,8 @@ def warm_default_timelines() -> None:
     except ValueError:  # Feb 29 -> Feb 28 of previous year
         start = date(d0.year - 1, 2, 28).isoformat()
     plans: list[dict[str, Any]] = [
+        {"strategy": "harbor", "need_engine": True},
         {"strategy": "pick_strong", "need_engine": True},
-        {
-            "strategy": "twin_star",
-            "need_engine": True,
-            "sat_fill": "same_1430",
-            "sat_exit": "1430",
-            "c1_pct": 0.03,
-        },
     ]
     for kwargs in plans:
         try:
@@ -67,46 +61,6 @@ def warm_default_timelines() -> None:
             logger.info("timeline warmup ok: %s %s %s", start, end, kwargs.get("strategy"))
         except Exception:  # noqa: BLE001
             logger.warning("timeline warmup failed: %s", kwargs, exc_info=True)
-
-
-@router.get("/twin-star/action")
-def twin_star_action() -> dict[str, Any]:
-    """双子星 (Twin-Star) 今日操作信号: core pick-strong target + S-gap 卫星闸/候选.
-
-    JSON contract: ``packages/shared`` ``TwinStarActionResponseSchema`` (OPT-134).
-    ``clip4`` literals must stay 4 × 12.5% / body=3; the UI Zod-parses them.
-
-    In-session the cache refreshes from a full A-share snapshot at most once a
-    minute. After 15:00 the last tape is frozen until 09:00 the next morning.
-    """
-    from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
-    from data_sync_service.service.twin_star_intraday import maybe_refresh_intraday_sat
-
-    try:
-        maybe_refresh_intraday_sat()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        return {"ok": True, **build_twin_star_daily_action()}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
-
-
-@router.post("/twin-star/refresh")
-def twin_star_refresh() -> dict[str, Any]:
-    """Pull a fresh East Money snapshot and rebuild today's satellite screen."""
-    from data_sync_service.service.twin_star_daily import build_twin_star_daily_action
-    from data_sync_service.service.twin_star_intraday import maybe_refresh_intraday_sat
-
-    try:
-        sat = maybe_refresh_intraday_sat(force=True)
-        refreshed = sat is not None
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"twin-star refresh failed: {exc}") from exc
-    try:
-        return {"ok": True, "refreshed": refreshed, **build_twin_star_daily_action()}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"twin-star action failed: {exc}") from exc
 
 
 _timeline_cache: dict[tuple, dict[str, Any]] = {}
@@ -248,9 +202,9 @@ def backtest_recon_latest(limit: int = Query(4, ge=1, le=30)) -> dict[str, Any]:
 def sleeve_recon_latest(day: str | None = None) -> dict[str, Any]:
     """OPT-151: core-leg (multi-asset sleeve) paper expected-vs-actual.
 
-    Mirrors the satellite H5 recon: reproduces the 18:20 sleeve decision from
-    the pre-job paper book, then checks the paper book recorded the flows and
-    the user actually executed them. Computed on demand — no snapshot table.
+    Reproduces the 18:20 sleeve decision from the pre-job paper book, then
+    checks the paper book recorded the flows and the user actually executed
+    them. Computed on demand — no snapshot table.
     """
     from data_sync_service.service.sleeve_paper_recon import sleeve_paper_recon
 
@@ -267,9 +221,7 @@ def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
 
     Compares the user's actual registry holdings against the S-3 backtest
     "should hold" set: extra = 买了不该买 / 该卖没卖, missing = 该持没买.
-    OPT-140: satellite-leg holdings are split out (satExpected/actualSat/
-    satExtra/satMissing vs the twin-star engine book) and never count as
-    S-3 extra. Refreshed by POST /backtest/behavior-audit/refresh (simulate
+    Refreshed by POST /backtest/behavior-audit/refresh (simulate
     ~minutes) or the daily close cron.
     """
     from data_sync_service.db.behavior_audit import latest_audit
@@ -302,10 +254,6 @@ def behavior_audit_refresh(
             "actual": v["actual"],
             "extra": v.get("extraList", []),
             "missing": v.get("missingList", []),
-            "satExpected": v.get("satExpected", 0),
-            "actualSat": v.get("actualSat", 0),
-            "satExtra": v.get("satExtraList", []),
-            "satMissing": v.get("satMissingList", []),
         }
         for m, v in out["markets"].items()
         if v.get("available")
@@ -440,7 +388,7 @@ def backtest_paper_vs_backtest() -> dict[str, Any]:
     scripts/paper_vs_backtest_report.py.
 
     Reconciles every closed S-3 paper trade against the backtest engine's
-    twin trade. 404 when the report script has never been run; the verdict
+    matching trade. 404 when the report script has never been run; the verdict
     field flags sample <20 as "not yet conclusive".
     """
     report_path = REPORTS_DIR / "paper_vs_backtest_latest.json"
@@ -499,20 +447,8 @@ def backtest_timeline(
     start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
-        "pick_strong",
-        description=("pick_strong | twin_star (机会双子星) | state_bucket (独立 S-gap 可执行)"),
-    ),
-    sat_fill: str = Query(
-        "next_open",
-        description="Satellite fill: next_open (frozen) | same_1430 (habit 14:30).",
-    ),
-    sat_exit: str | None = Query(
-        None,
-        description="Satellite body-exit print: None=daily close (frozen) | 1000 | 1430 (habit).",
-    ),
-    c1_pct: float | None = Query(
-        None,
-        description="Habit C1 filter: skip when 14:30/open-1 exceeds this (e.g. 0.03). Requires sat_fill=same_1430.",
+        "harbor",
+        description="harbor | pick_strong | state_bucket",
     ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
@@ -520,13 +456,9 @@ def backtest_timeline(
     Query ``start``/``end`` select the window. UI labels trailing vs product
     past-year vs OOS2/train/valid (gate) vs holdout (read-only).
 
-    - strategy=pick_strong: 择强单轨 ``mom_compare`` (equal-asset pool).
-    - strategy=twin_star: 机会双子星 — 择强核心 + S-gap 机会增强
-      (涨停可能买不进 → 可执行口径；闲置跟核心).
-      Frozen default: sat_fill=next_open, sat_exit=close, c1 unset.
-      Habit对照: sat_fill=same_1430&c1_pct=0.03&sat_exit=1430 reproduces
-      sat-exit-hhmm 2026-09-03 C1+day-3 14:30 sell (beats_core, Live recipe).
-    - strategy=state_bucket: 状态分桶 S-gap 独立腿 (同可执行口径，不混合择强).
+    - strategy=harbor: 港湾 baseline (S-3 core + idle-cash ETF parking).
+    - strategy=pick_strong: legacy 择强单轨 ``mom_compare`` (research only).
+    - strategy=state_bucket: 状态分桶 research timeline (独立腿).
     """
     from datetime import date as date_type
     from datetime import timedelta
@@ -536,34 +468,12 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    if strategy not in ("pick_strong", "twin_star", "state_bucket"):
+    if strategy not in ("harbor", "pick_strong", "state_bucket"):
         raise HTTPException(
             status_code=400,
-            detail=f"unknown strategy={strategy!r}; use pick_strong|twin_star|state_bucket",
+            detail=f"unknown strategy={strategy!r}; use harbor|pick_strong|state_bucket",
         )
-    if sat_fill not in ("next_open", "same_1430"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown sat_fill={sat_fill!r}; use next_open|same_1430",
-        )
-    if sat_exit is not None and sat_exit not in ("1000", "1430"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown sat_exit={sat_exit!r}; use 1000|1430",
-        )
-    if c1_pct is not None and sat_fill != "same_1430":
-        raise HTTPException(
-            status_code=400,
-            detail="c1_pct requires sat_fill=same_1430",
-        )
-    result, _engine = _get_or_build_timeline(
-        start,
-        end,
-        strategy=strategy,
-        sat_fill=sat_fill,
-        sat_exit=sat_exit,
-        c1_pct=c1_pct,
-    )
+    result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
 
 
@@ -765,7 +675,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
 
 
 def _load_flow_by_day(start: str, end: str) -> dict[str, dict[str, float | None]]:
-    """TIP-017 flow layer for the twin-star timeline (display only, fail-open)."""
+    """TIP-017 flow layer for the timeline (display only, fail-open)."""
     try:
         return {
             r["date"]: {
@@ -800,19 +710,16 @@ def _get_or_build_timeline(
     start: str,
     end: str,
     *,
-    strategy: str = "pick_strong",
+    strategy: str = "harbor",
     need_engine: bool = False,
-    sat_fill: str = "next_open",
-    sat_exit: str | None = None,
-    c1_pct: float | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing."""
-    cache_key = (start, end, strategy, sat_fill, sat_exit or "", c1_pct or 0)
+    cache_key = (start, end, strategy)
     cached = _timeline_cache.get(cache_key)
     engine = _timeline_engine_cache.get(cache_key)
     if cached is not None and (not need_engine or engine is not None):
         return cached, engine
-    if cached is None and strategy == "pick_strong" and sat_fill == "next_open":
+    if cached is None and strategy == "pick_strong":
         file_cached = _load_timeline_file(start, end)
         if file_cached is not None and not need_engine:
             _timeline_cache[cache_key] = file_cached
@@ -843,46 +750,48 @@ def _get_or_build_timeline(
     try:
         data = BacktestData(cfg)
         run = simulate(cfg, data)
-        cal_cn = list(data.calendar)
-        nav_cn = list(run.nav_curve or [])
-        cn_trades = list(run.trades or [])
-        nav_hk: list[float] = []
-        cal_hk: list[str] = []
-        hk_trades: list = []
-        try:
-            from run_walk_forward import (  # noqa: E402  # pyright: ignore[reportMissingImports]
-                HK_S3_CONFIG,
-            )
+        if strategy != "harbor":
+            try:
+                from run_walk_forward import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+                    HK_S3_CONFIG,
+                )
 
-            cfg_hk = BacktestConfig(start_date=start, end_date=end, **HK_S3_CONFIG)  # type: ignore[arg-type]
-            data_hk = BacktestData(cfg_hk)
-            run_hk = simulate(cfg_hk, data_hk)
-            cal_hk = list(data_hk.calendar)
-            nav_hk = list(run_hk.nav_curve or [])
-            hk_trades = list(run_hk.trades or [])
-            hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
-            for s in run.positions_by_day:
-                day = str(s.get("date"))
-                hk_s = hk_by_day.get(day)
-                if hk_s:
-                    s["positions"] = (s.get("positions") or []) + (hk_s.get("positions") or [])
-            for ts, mp in data_hk.close_by_ts_day.items():
-                if ts not in data.close_by_ts_day:
-                    data.close_by_ts_day[ts] = mp
-                else:
-                    data.close_by_ts_day[ts].update(mp)
-            data.calendar = sorted(set(data.calendar) | set(data_hk.calendar))
-        except Exception:
-            pass
+                cfg_hk = BacktestConfig(start_date=start, end_date=end, **HK_S3_CONFIG)  # type: ignore[arg-type]
+                data_hk = BacktestData(cfg_hk)
+                run_hk = simulate(cfg_hk, data_hk)
+                hk_by_day = {str(s.get("date")): s for s in run_hk.positions_by_day}
+                for s in run.positions_by_day:
+                    day = str(s.get("date"))
+                    hk_s = hk_by_day.get(day)
+                    if hk_s:
+                        s["positions"] = (s.get("positions") or []) + (hk_s.get("positions") or [])
+                for ts, mp in data_hk.close_by_ts_day.items():
+                    if ts not in data.close_by_ts_day:
+                        data.close_by_ts_day[ts] = mp
+                    else:
+                        data.close_by_ts_day[ts].update(mp)
+                data.calendar = sorted(set(data.calendar) | set(data_hk.calendar))
+            except Exception:
+                pass
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline S-3 failed: {exc}") from exc
 
     try:
-        built = build_mom_compare_timeline(
-            calendar=data.calendar,
-            positions_by_day=run.positions_by_day,
-            close_by_ts_day=data.close_by_ts_day,
-        )
+        if strategy == "harbor":
+            from data_sync_service.service.harbor import build_harbor_timeline
+            from data_sync_service.service.portfolio_nav_sim import engine_nav_by_day_from_run
+
+            built = build_harbor_timeline(
+                calendar=data.calendar,
+                positions_by_day=run.positions_by_day,
+                engine_nav_by_day=engine_nav_by_day_from_run(data.calendar, run.nav_curve),
+            )
+        else:
+            built = build_mom_compare_timeline(
+                calendar=data.calendar,
+                positions_by_day=run.positions_by_day,
+                close_by_ts_day=data.close_by_ts_day,
+            )
         result = {
             "ok": True,
             "start": start,
@@ -898,64 +807,6 @@ def _get_or_build_timeline(
             "positions_by_day": run.positions_by_day,
             "close_by_ts_day": data.close_by_ts_day,
         }
-        if strategy == "twin_star":
-            from data_sync_service.service.pick_strong_track import build_twin_star_timeline
-            from data_sync_service.service.state_bucket_track import build_sgap_timeline
-
-            # 机会双子星: 涨停可能买不进 → T-1 涨停候选剔除 (不假设一字板能成交)
-            # Frozen default: next_open/close. Habit对照 passes
-            # sat_fill=same_1430&c1_pct=0.03&sat_exit=1430 (C1+day-3 14:30).
-            sat = build_sgap_timeline(
-                start=start,
-                end=end,
-                skip_t1_limit=True,
-                pool_mode="strict",
-                fill_mode=sat_fill,
-                fill_hhmm="1430",
-                exit_hhmm=sat_exit,
-                max_open_to_1430_pct=c1_pct,
-                # Habit line (14:30 clock) ranks by the 14:30-knowable amplitude
-                # so the curve matches Live (zero lookahead). Frozen default
-                # (next_open) keeps the original full-day ranking.
-                rank_key="amp_1430" if sat_fill == "same_1430" else None,
-            )
-            built = build_twin_star_timeline(
-                core_rows=result["rows"],
-                core_summary=result["summary"],
-                sat_rows=sat["rows"],
-                sat_blotter=sat.get("blotter"),
-                opportunity=True,
-                sim_nav_cn=nav_cn or None,
-                sim_cal_cn=cal_cn or None,
-                sim_nav_hk=nav_hk or None,
-                sim_cal_hk=cal_hk or None,
-                cn_trades=cn_trades or None,
-                hk_trades=hk_trades or None,
-                sentiment_by_day={
-                    str(k): str(v)
-                    for k, v in (getattr(data, "sentiment_risk_by_day", {}) or {}).items()
-                },
-                flow_by_day=_load_flow_by_day(start, end),
-            )
-            result = {
-                "ok": True,
-                "start": start,
-                "end": end,
-                "mode": built.get("mode") or "opportunity_twin_star",
-                "strategy": built.get("strategy") or "机会双子星 (Opportunity Twin-Star)",
-                "summary": built.get("summary"),
-                "rows": built.get("rows") or [],
-                "blotter": built.get("blotter") or [],
-                "coreMode": built.get("coreMode"),
-                "coreWeight": built.get("coreWeight"),
-                "satWeight": built.get("satWeight"),
-                "opportunity": built.get("opportunity"),
-                "satSummary": sat.get("summary"),
-                "satFill": sat_fill,
-                "satExit": sat_exit,
-                "c1Pct": c1_pct,
-                "trailPct": built.get("trailPct"),
-            }
         _timeline_cache[cache_key] = result
         _timeline_engine_cache[cache_key] = engine_ctx
         if strategy == "pick_strong":

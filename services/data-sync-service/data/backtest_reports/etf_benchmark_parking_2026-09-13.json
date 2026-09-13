@@ -1,0 +1,554 @@
+{
+  "tag": "etf-benchmark-parking-2026-09-13",
+  "results": {
+    "OOS2": {
+      "停车场基线": {
+        "total_pct": 55.9,
+        "cagr": 55.61,
+        "max_dd": -15.4,
+        "sharpe": 1.31,
+        "corr": 1.0
+      },
+      "上证50": {
+        "total_pct": 19.9,
+        "cagr": 19.81,
+        "max_dd": -11.9,
+        "sharpe": 1.02,
+        "corr": 0.39
+      },
+      "沪深300": {
+        "total_pct": 21.3,
+        "cagr": 21.24,
+        "max_dd": -16.3,
+        "sharpe": 0.97,
+        "corr": 0.47
+      },
+      "中证500": {
+        "total_pct": 29.6,
+        "cagr": 29.5,
+        "max_dd": -16.6,
+        "sharpe": 1.14,
+        "corr": 0.45
+      },
+      "创业板": {
+        "total_pct": 40.8,
+        "cagr": 40.58,
+        "max_dd": -33.7,
+        "sharpe": 0.98,
+        "corr": 0.58
+      },
+      "科创50": {
+        "total_pct": 41.0,
+        "cagr": 40.76,
+        "max_dd": -19.0,
+        "sharpe": 1.01,
+        "corr": 0.55
+      },
+      "黄金": {
+        "total_pct": 34.2,
+        "cagr": 34.0,
+        "max_dd": -11.5,
+        "sharpe": 1.96,
+        "corr": 0.23
+      },
+      "十年国债": {
+        "total_pct": 4.4,
+        "cagr": 4.4,
+        "max_dd": -2.2,
+        "sharpe": 1.54,
+        "corr": -0.14
+      },
+      "纳指100": {
+        "total_pct": 14.2,
+        "cagr": 14.16,
+        "max_dd": -24.0,
+        "sharpe": 0.64,
+        "corr": 0.19
+      },
+      "恒生科技": {
+        "total_pct": 54.8,
+        "cagr": 54.54,
+        "max_dd": -24.1,
+        "sharpe": 1.5,
+        "corr": 0.35
+      },
+      "等权买持(9只)": {
+        "total_pct": 28.9,
+        "cagr": 28.78,
+        "max_dd": -11.7,
+        "sharpe": 1.33,
+        "corr": 0.57
+      },
+      "等权月再平衡": {
+        "total_pct": 35.7,
+        "cagr": 35.56,
+        "max_dd": -11.1,
+        "sharpe": 1.68,
+        "corr": 0.53
+      },
+      "风险预算(300/500/金/纳/债)": {
+        "total_pct": 18.0,
+        "cagr": 17.87,
+        "max_dd": -3.9,
+        "sharpe": 1.93,
+        "corr": 0.54
+      },
+      "60/40 日再平衡": {
+        "total_pct": 15.7,
+        "cagr": 15.62,
+        "max_dd": -8.0,
+        "sharpe": 1.18,
+        "corr": 0.46
+      },
+      "300×MA200 择时(+债)": {
+        "total_pct": 4.4,
+        "cagr": 4.35,
+        "max_dd": -2.2,
+        "sharpe": 1.52,
+        "corr": -0.13,
+        "switches": 1
+      },
+      "停车场套筒单独": {
+        "total_pct": 5.1,
+        "cagr": 5.05,
+        "max_dd": -14.6,
+        "sharpe": 0.34,
+        "corr": 0.44
+      },
+      "基线×风险预算 50/50": {
+        "total_pct": 37.7,
+        "cagr": 37.54,
+        "max_dd": -9.2,
+        "sharpe": 1.53,
+        "corr": 0.99
+      },
+      "基线×等权买持 50/50": {
+        "total_pct": 43.7,
+        "cagr": 43.45,
+        "max_dd": -10.5,
+        "sharpe": 1.47,
+        "corr": 0.95
+      },
+      "最强单只(事后)": {
+        "total_pct": 54.8,
+        "cagr": 54.54,
+        "max_dd": -24.1,
+        "sharpe": 1.5,
+        "corr": 0.35,
+        "name": "恒生科技"
+      }
+    },
+    "train": {
+      "停车场基线": {
+        "total_pct": 40.4,
+        "cagr": 96.12,
+        "max_dd": -10.0,
+        "sharpe": 2.28,
+        "corr": 1.0
+      },
+      "上证50": {
+        "total_pct": 12.3,
+        "cagr": 25.94,
+        "max_dd": -4.0,
+        "sharpe": 1.9,
+        "corr": 0.3
+      },
+      "沪深300": {
+        "total_pct": 16.9,
+        "cagr": 36.43,
+        "max_dd": -6.3,
+        "sharpe": 2.22,
+        "corr": 0.32
+      },
+      "中证500": {
+        "total_pct": 35.3,
+        "cagr": 82.08,
+        "max_dd": -9.5,
+        "sharpe": 3.08,
+        "corr": 0.43
+      },
+      "创业板": {
+        "total_pct": 44.8,
+        "cagr": 108.48,
+        "max_dd": -12.0,
+        "sharpe": 2.63,
+        "corr": 0.18
+      },
+      "科创50": {
+        "total_pct": 45.6,
+        "cagr": 110.61,
+        "max_dd": -16.5,
+        "sharpe": 2.37,
+        "corr": 0.21
+      },
+      "黄金": {
+        "total_pct": 49.7,
+        "cagr": 122.8,
+        "max_dd": -10.1,
+        "sharpe": 3.43,
+        "corr": 0.66
+      },
+      "十年国债": {
+        "total_pct": 0.5,
+        "cagr": 0.97,
+        "max_dd": -1.0,
+        "sharpe": 0.56,
+        "corr": -0.07
+      },
+      "纳指100": {
+        "total_pct": 12.6,
+        "cagr": 26.48,
+        "max_dd": -8.2,
+        "sharpe": 1.42,
+        "corr": 0.15
+      },
+      "恒生科技": {
+        "total_pct": 1.6,
+        "cagr": 3.24,
+        "max_dd": -17.8,
+        "sharpe": 0.25,
+        "corr": 0.3
+      },
+      "等权买持(9只)": {
+        "total_pct": 24.4,
+        "cagr": 54.14,
+        "max_dd": -7.3,
+        "sharpe": 2.91,
+        "corr": 0.42
+      },
+      "等权月再平衡": {
+        "total_pct": 11.5,
+        "cagr": 24.03,
+        "max_dd": -6.9,
+        "sharpe": 1.66,
+        "corr": 0.43
+      },
+      "风险预算(300/500/金/纳/债)": {
+        "total_pct": 16.8,
+        "cagr": 36.17,
+        "max_dd": -2.2,
+        "sharpe": 4.19,
+        "corr": 0.41
+      },
+      "60/40 日再平衡": {
+        "total_pct": 9.9,
+        "cagr": 20.5,
+        "max_dd": -3.7,
+        "sharpe": 2.24,
+        "corr": 0.32
+      },
+      "300×MA200 择时(+债)": {
+        "total_pct": 0.4,
+        "cagr": 0.87,
+        "max_dd": -1.0,
+        "sharpe": 0.5,
+        "corr": -0.07,
+        "switches": 1
+      },
+      "停车场套筒单独": {
+        "total_pct": 18.0,
+        "cagr": 38.84,
+        "max_dd": -11.3,
+        "sharpe": 1.5,
+        "corr": 0.66
+      },
+      "基线×风险预算 50/50": {
+        "total_pct": 28.8,
+        "cagr": 65.22,
+        "max_dd": -5.3,
+        "sharpe": 2.92,
+        "corr": 0.98
+      },
+      "基线×等权买持 50/50": {
+        "total_pct": 32.8,
+        "cagr": 75.69,
+        "max_dd": -6.0,
+        "sharpe": 2.88,
+        "corr": 0.94
+      },
+      "最强单只(事后)": {
+        "total_pct": 49.7,
+        "cagr": 122.8,
+        "max_dd": -10.1,
+        "sharpe": 3.43,
+        "corr": 0.66,
+        "name": "黄金"
+      }
+    },
+    "valid": {
+      "停车场基线": {
+        "total_pct": 47.8,
+        "cagr": 142.85,
+        "max_dd": -23.1,
+        "sharpe": 1.91,
+        "corr": 1.0
+      },
+      "上证50": {
+        "total_pct": -1.9,
+        "cagr": -4.23,
+        "max_dd": -8.2,
+        "sharpe": -0.15,
+        "corr": -0.07
+      },
+      "沪深300": {
+        "total_pct": 0.3,
+        "cagr": 0.58,
+        "max_dd": -9.9,
+        "sharpe": 0.13,
+        "corr": 0.01
+      },
+      "中证500": {
+        "total_pct": -6.9,
+        "cagr": -14.98,
+        "max_dd": -18.8,
+        "sharpe": -0.38,
+        "corr": 0.04
+      },
+      "创业板": {
+        "total_pct": 9.3,
+        "cagr": 22.28,
+        "max_dd": -25.6,
+        "sharpe": 0.7,
+        "corr": 0.1
+      },
+      "科创50": {
+        "total_pct": 19.2,
+        "cagr": 48.91,
+        "max_dd": -30.2,
+        "sharpe": 1.02,
+        "corr": 0.09
+      },
+      "黄金": {
+        "total_pct": -22.1,
+        "cagr": -43.3,
+        "max_dd": -27.6,
+        "sharpe": -1.91,
+        "corr": -0.24
+      },
+      "十年国债": {
+        "total_pct": 1.7,
+        "cagr": 3.91,
+        "max_dd": -0.5,
+        "sharpe": 3.23,
+        "corr": 0.04
+      },
+      "纳指100": {
+        "total_pct": 25.7,
+        "cagr": 68.23,
+        "max_dd": -13.7,
+        "sharpe": 1.95,
+        "corr": 0.05
+      },
+      "恒生科技": {
+        "total_pct": -6.0,
+        "cagr": -13.07,
+        "max_dd": -18.5,
+        "sharpe": -0.34,
+        "corr": -0.07
+      },
+      "等权买持(9只)": {
+        "total_pct": 2.1,
+        "cagr": 4.92,
+        "max_dd": -11.2,
+        "sharpe": 0.32,
+        "corr": 0.03
+      },
+      "等权月再平衡": {
+        "total_pct": 8.7,
+        "cagr": 20.76,
+        "max_dd": -9.7,
+        "sharpe": 1.04,
+        "corr": 0.19
+      },
+      "风险预算(300/500/金/纳/债)": {
+        "total_pct": 1.5,
+        "cagr": 3.54,
+        "max_dd": -10.1,
+        "sharpe": 0.33,
+        "corr": -0.27
+      },
+      "60/40 日再平衡": {
+        "total_pct": 1.8,
+        "cagr": 4.08,
+        "max_dd": -5.9,
+        "sharpe": 0.38,
+        "corr": 0.03
+      },
+      "300×MA200 择时(+债)": {
+        "total_pct": 1.7,
+        "cagr": 3.79,
+        "max_dd": -0.5,
+        "sharpe": 3.13,
+        "corr": 0.03,
+        "switches": 1
+      },
+      "停车场套筒单独": {
+        "total_pct": 4.6,
+        "cagr": 10.8,
+        "max_dd": -30.2,
+        "sharpe": 0.45,
+        "corr": 0.7
+      },
+      "基线×风险预算 50/50": {
+        "total_pct": 24.9,
+        "cagr": 65.67,
+        "max_dd": -11.8,
+        "sharpe": 2.07,
+        "corr": 0.97
+      },
+      "基线×等权买持 50/50": {
+        "total_pct": 25.2,
+        "cagr": 66.6,
+        "max_dd": -15.4,
+        "sharpe": 1.86,
+        "corr": 0.92
+      },
+      "最强单只(事后)": {
+        "total_pct": 25.7,
+        "cagr": 68.23,
+        "max_dd": -13.7,
+        "sharpe": 1.95,
+        "corr": 0.05,
+        "name": "纳指100"
+      }
+    },
+    "long": {
+      "停车场基线": {
+        "total_pct": 184.5,
+        "cagr": 23.08,
+        "max_dd": -23.6,
+        "sharpe": 0.83,
+        "corr": 1.0
+      },
+      "上证50": {
+        "total_pct": 3.4,
+        "cagr": 0.67,
+        "max_dd": -31.4,
+        "sharpe": 0.12,
+        "corr": 0.23
+      },
+      "沪深300": {
+        "total_pct": 5.2,
+        "cagr": 1.01,
+        "max_dd": -34.9,
+        "sharpe": 0.14,
+        "corr": 0.31
+      },
+      "中证500": {
+        "total_pct": 25.8,
+        "cagr": 4.66,
+        "max_dd": -39.5,
+        "sharpe": 0.32,
+        "corr": 0.34
+      },
+      "创业板": {
+        "total_pct": 5.7,
+        "cagr": 1.1,
+        "max_dd": -56.5,
+        "sharpe": 0.19,
+        "corr": 0.37
+      },
+      "科创50": {
+        "total_pct": 11.0,
+        "cagr": 2.1,
+        "max_dd": -59.5,
+        "sharpe": 0.22,
+        "corr": 0.34
+      },
+      "黄金": {
+        "total_pct": 141.6,
+        "cagr": 19.15,
+        "max_dd": -30.5,
+        "sharpe": 1.11,
+        "corr": 0.21
+      },
+      "十年国债": {
+        "total_pct": 21.7,
+        "cagr": 3.97,
+        "max_dd": -2.2,
+        "sharpe": 1.88,
+        "corr": -0.05
+      },
+      "纳指100": {
+        "total_pct": 127.6,
+        "cagr": 17.74,
+        "max_dd": -27.5,
+        "sharpe": 0.83,
+        "corr": 0.17
+      },
+      "恒生科技": {
+        "total_pct": -28.1,
+        "cagr": -6.35,
+        "max_dd": -54.6,
+        "sharpe": -0.03,
+        "corr": 0.21
+      },
+      "等权买持(9只)": {
+        "total_pct": 34.9,
+        "cagr": 6.12,
+        "max_dd": -23.2,
+        "sharpe": 0.49,
+        "corr": 0.38
+      },
+      "等权月再平衡": {
+        "total_pct": 37.1,
+        "cagr": 6.47,
+        "max_dd": -25.5,
+        "sharpe": 0.47,
+        "corr": 0.37
+      },
+      "风险预算(300/500/金/纳/债)": {
+        "total_pct": 45.2,
+        "cagr": 7.68,
+        "max_dd": -5.0,
+        "sharpe": 1.71,
+        "corr": 0.37
+      },
+      "60/40 日再平衡": {
+        "total_pct": 13.5,
+        "cagr": 2.55,
+        "max_dd": -19.3,
+        "sharpe": 0.3,
+        "corr": 0.31
+      },
+      "300×MA200 择时(+债)": {
+        "total_pct": 19.6,
+        "cagr": 3.62,
+        "max_dd": -5.3,
+        "sharpe": 0.98,
+        "corr": 0.0,
+        "switches": 1
+      },
+      "停车场套筒单独": {
+        "total_pct": 63.4,
+        "cagr": 10.25,
+        "max_dd": -30.2,
+        "sharpe": 0.54,
+        "corr": 0.49
+      },
+      "基线×风险预算 50/50": {
+        "total_pct": 114.2,
+        "cagr": 16.34,
+        "max_dd": -12.2,
+        "sharpe": 1.01,
+        "corr": 0.99
+      },
+      "基线×等权买持 50/50": {
+        "total_pct": 106.0,
+        "cagr": 15.43,
+        "max_dd": -16.5,
+        "sharpe": 0.85,
+        "corr": 0.94
+      },
+      "最强单只(事后)": {
+        "total_pct": 141.6,
+        "cagr": 19.15,
+        "max_dd": -30.5,
+        "sharpe": 1.11,
+        "corr": 0.21,
+        "name": "黄金"
+      }
+    }
+  },
+  "as_of": "2026-09-13T11:19:58+00:00"
+}

@@ -285,6 +285,12 @@ class TestSleeveReconEndToEnd:
             market="CN",
         )
         multi = _multi(action="SELL_TO_REPO", pick_symbol=self.FAKE_SYMBOL)
+        exit_fill = {
+            "entry_date": "2026-08-21",
+            "entry_price": 2.30,
+            "pending_open_fill": False,
+            "signal_snapshot": {"entryMode": "next_open", "signalDate": DAY, "pendingOpenFill": False},
+        }
         with (
             patch(
                 "data_sync_service.service.sleeve_paper_auto._build_multi_for_paper",
@@ -294,12 +300,16 @@ class TestSleeveReconEndToEnd:
                 "data_sync_service.service.sleeve_paper_auto.CANDIDATE_SYMBOLS",
                 {self.FAKE_SYMBOL},
             ),
+            patch(
+                "data_sync_service.service.sleeve_paper_auto.resolve_next_open_fill",
+                return_value=exit_fill,
+            ),
             patch(f"{_RECON}.CANDIDATE_SYMBOLS", {self.FAKE_SYMBOL}),
         ):
             apply_sleeve_to_paper(day=DAY)
         # Real paper rows; only the decision + candidate set are stubbed.
-        # Pre-state = the leg closed today → SELL_TO_REPO reproduced, and the
-        # close today is the actual → ok.
+        # Pre-state = the leg closed (booked at the T+1 exec date) → SELL_TO_REPO
+        # reproduced and the booked close matches the expected exec date → ok.
         with (
             patch(f"{_RECON}.CANDIDATE_SYMBOLS", {self.FAKE_SYMBOL}),
             patch(f"{_RECON}._rebuild_decision", return_value=multi),

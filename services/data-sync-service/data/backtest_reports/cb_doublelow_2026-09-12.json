@@ -1,0 +1,318 @@
+{
+  "tag": "cb-doublelow-2026-09-12",
+  "prereg": "docs/designs/cb-doublelow-prereg-2026-09-12.md",
+  "windows": {
+    "OOS2": {
+      "doublelow": {
+        "n_days": 243,
+        "total_pct": 31.8,
+        "max_dd": 8.1,
+        "sharpe": 1.75,
+        "turnover_pct": 36.6
+      },
+      "lowprem": {
+        "n_days": 243,
+        "total_pct": 37.9,
+        "max_dd": 15.7,
+        "sharpe": 1.54,
+        "turnover_pct": 32.2
+      },
+      "lowprice": {
+        "n_days": 243,
+        "total_pct": 34.6,
+        "max_dd": 6.6,
+        "sharpe": 2.25,
+        "turnover_pct": 50.3
+      },
+      "highprem": {
+        "n_days": 243,
+        "total_pct": 14.5,
+        "max_dd": 7.2,
+        "sharpe": 1.4,
+        "turnover_pct": 56.1
+      },
+      "ew": {
+        "n_days": 243,
+        "total_pct": 20.9,
+        "max_dd": 9.5,
+        "sharpe": 1.38,
+        "turnover_pct": 32.5
+      }
+    },
+    "train": {
+      "doublelow": {
+        "n_days": 123,
+        "total_pct": 6.1,
+        "max_dd": 6.1,
+        "sharpe": 1.08,
+        "turnover_pct": 42.6
+      },
+      "lowprem": {
+        "n_days": 123,
+        "total_pct": 12.4,
+        "max_dd": 9.1,
+        "sharpe": 1.25,
+        "turnover_pct": 39.0
+      },
+      "lowprice": {
+        "n_days": 123,
+        "total_pct": 8.0,
+        "max_dd": 4.6,
+        "sharpe": 1.81,
+        "turnover_pct": 50.9
+      },
+      "highprem": {
+        "n_days": 123,
+        "total_pct": 15.9,
+        "max_dd": 4.9,
+        "sharpe": 2.62,
+        "turnover_pct": 58.5
+      },
+      "ew": {
+        "n_days": 123,
+        "total_pct": 16.7,
+        "max_dd": 6.7,
+        "sharpe": 2.09,
+        "turnover_pct": 30.7
+      }
+    },
+    "valid": {
+      "doublelow": {
+        "n_days": 110,
+        "total_pct": -7.7,
+        "max_dd": 10.6,
+        "sharpe": -1.22,
+        "turnover_pct": 43.7
+      },
+      "lowprem": {
+        "n_days": 110,
+        "total_pct": -1.0,
+        "max_dd": 14.9,
+        "sharpe": 0.04,
+        "turnover_pct": 43.5
+      },
+      "lowprice": {
+        "n_days": 110,
+        "total_pct": -5.4,
+        "max_dd": 12.0,
+        "sharpe": -1.24,
+        "turnover_pct": 47.2
+      },
+      "highprem": {
+        "n_days": 110,
+        "total_pct": 0.6,
+        "max_dd": 11.4,
+        "sharpe": 0.17,
+        "turnover_pct": 57.5
+      },
+      "ew": {
+        "n_days": 110,
+        "total_pct": -2.4,
+        "max_dd": 10.6,
+        "sharpe": -0.16,
+        "turnover_pct": 28.3
+      }
+    },
+    "past_year": {
+      "doublelow": {
+        "n_days": 247,
+        "total_pct": -0.6,
+        "max_dd": 11.2,
+        "sharpe": 0.02,
+        "turnover_pct": 41.8
+      },
+      "lowprem": {
+        "n_days": 247,
+        "total_pct": 14.5,
+        "max_dd": 17.0,
+        "sharpe": 0.71,
+        "turnover_pct": 39.7
+      },
+      "lowprice": {
+        "n_days": 247,
+        "total_pct": -1.4,
+        "max_dd": 13.8,
+        "sharpe": -0.1,
+        "turnover_pct": 47.4
+      },
+      "highprem": {
+        "n_days": 247,
+        "total_pct": 10.2,
+        "max_dd": 15.0,
+        "sharpe": 0.69,
+        "turnover_pct": 56.9
+      },
+      "ew": {
+        "n_days": 247,
+        "total_pct": 13.3,
+        "max_dd": 13.6,
+        "sharpe": 0.77,
+        "turnover_pct": 28.3
+      }
+    },
+    "long": {
+      "doublelow": {
+        "n_days": 1356,
+        "total_pct": 59.2,
+        "max_dd": 20.4,
+        "sharpe": 0.69,
+        "turnover_pct": 39.9
+      },
+      "lowprem": {
+        "n_days": 1356,
+        "total_pct": 56.6,
+        "max_dd": 39.7,
+        "sharpe": 0.5,
+        "turnover_pct": 32.3
+      },
+      "lowprice": {
+        "n_days": 1356,
+        "total_pct": 43.4,
+        "max_dd": 23.5,
+        "sharpe": 0.67,
+        "turnover_pct": 52.2
+      },
+      "highprem": {
+        "n_days": 1356,
+        "total_pct": -24.5,
+        "max_dd": 44.8,
+        "sharpe": -0.34,
+        "turnover_pct": 56.2
+      },
+      "ew": {
+        "n_days": 1356,
+        "total_pct": 18.8,
+        "max_dd": 32.8,
+        "sharpe": 0.29,
+        "turnover_pct": 31.5
+      }
+    }
+  },
+  "per_year": {
+    "2021": {
+      "doublelow": {
+        "n_days": 243,
+        "total_pct": 37.6,
+        "max_dd": 12.0,
+        "sharpe": 2.52
+      },
+      "ew": {
+        "n_days": 243,
+        "total_pct": 23.0,
+        "max_dd": 9.5,
+        "sharpe": 1.79
+      },
+      "delta": 14.6
+    },
+    "2022": {
+      "doublelow": {
+        "n_days": 242,
+        "total_pct": -2.9,
+        "max_dd": 14.2,
+        "sharpe": -0.15
+      },
+      "ew": {
+        "n_days": 242,
+        "total_pct": -15.1,
+        "max_dd": 18.3,
+        "sharpe": -1.09
+      },
+      "delta": 12.2
+    },
+    "2023": {
+      "doublelow": {
+        "n_days": 242,
+        "total_pct": 0.6,
+        "max_dd": 8.0,
+        "sharpe": 0.12
+      },
+      "ew": {
+        "n_days": 242,
+        "total_pct": -0.9,
+        "max_dd": 9.6,
+        "sharpe": -0.06
+      },
+      "delta": 1.5
+    },
+    "2024": {
+      "doublelow": {
+        "n_days": 242,
+        "total_pct": 4.5,
+        "max_dd": 16.6,
+        "sharpe": 0.33
+      },
+      "ew": {
+        "n_days": 242,
+        "total_pct": 0.5,
+        "max_dd": 14.2,
+        "sharpe": 0.11
+      },
+      "delta": 4.0
+    },
+    "2025": {
+      "doublelow": {
+        "n_days": 243,
+        "total_pct": 19.8,
+        "max_dd": 7.8,
+        "sharpe": 1.62
+      },
+      "ew": {
+        "n_days": 243,
+        "total_pct": 25.1,
+        "max_dd": 9.5,
+        "sharpe": 1.72
+      },
+      "delta": -5.3
+    },
+    "2026": {
+      "doublelow": {
+        "n_days": 144,
+        "total_pct": -4.6,
+        "max_dd": 9.6,
+        "sharpe": -0.54
+      },
+      "ew": {
+        "n_days": 144,
+        "total_pct": 5.2,
+        "max_dd": 13.4,
+        "sharpe": 0.53
+      },
+      "delta": -9.8
+    }
+  },
+  "robustness": {
+    "20bp_close": {
+      "n_days": 1356,
+      "total_pct": 59.2,
+      "max_dd": 20.4,
+      "sharpe": 0.69,
+      "delta_vs_ew": 18.3
+    },
+    "40bp_close": {
+      "n_days": 1356,
+      "total_pct": 28.2,
+      "max_dd": 28.0,
+      "sharpe": 0.4,
+      "delta_vs_ew": -12.7
+    },
+    "20bp_open": {
+      "n_days": 1356,
+      "total_pct": 48.5,
+      "max_dd": 19.8,
+      "sharpe": 0.6,
+      "delta_vs_ew": 7.6
+    }
+  },
+  "verdict": {
+    "wf_delta": [
+      10.9,
+      -10.6,
+      -5.3
+    ],
+    "long_delta_20bp": 18.3,
+    "long_delta_40bp": -12.7,
+    "positive_years": 4,
+    "tag": "REJECT"
+  },
+  "as_of": "2026-09-12T13:14:24+00:00"
+}

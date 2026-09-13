@@ -1,0 +1,51 @@
+{
+  "tag": "gdhs-concentration-2026-09-12",
+  "prereg": "docs/designs/gdhs-concentration-prereg-2026-09-12.md",
+  "excess_pct": {
+    "strong_down": {
+      "10": 0.63,
+      "20": 0.36,
+      "60": -0.84
+    },
+    "mild_down": {
+      "10": 0.68,
+      "20": 0.76,
+      "60": 0.25
+    },
+    "up": {
+      "10": 0.3,
+      "20": 0.18,
+      "60": -0.65
+    }
+  },
+  "by_window": {
+    "OOS2": {
+      "strong_down": 2.97,
+      "up": 2.31,
+      "diff": 0.66
+    },
+    "train": {
+      "strong_down": -10.49,
+      "up": -25.32,
+      "diff": 14.83
+    },
+    "valid": {
+      "strong_down": null,
+      "up": -6.98,
+      "diff": 6.98
+    },
+    "long": {
+      "strong_down": 0.36,
+      "up": 0.18,
+      "diff": 0.18
+    }
+  },
+  "n_events": 245272,
+  "verdict": {
+    "k1": false,
+    "k2": true,
+    "k3": false,
+    "call": "REJECT / close line"
+  },
+  "as_of": "2026-09-12T23:48:58+00:00"
+}

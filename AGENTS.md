@@ -162,28 +162,23 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 ## Strategy / parameter changes（Agent 必读）
 
-用户问「能不能改策略 / 少买几只 / 加止损 / 赢家拿长一点 / 卫星怎么卖」时，**先查过往实验，再谈改不改**。禁止凭直觉改 Live 参数。
+用户问「能不能改策略 / 少买几只 / 加止损 / 赢家拿长一点 / 闲置现金怎么停」时，**先查过往实验，再谈改不改**。禁止凭直觉改 Live 参数。
 
 0. 新想法先过 [`first-principles-2026-09-05.md`](docs/backtests/first-principles-2026-09-05.md) 自查：撞上已杀直觉（§一不变量 / §三死因）的不开诊断；撞上不变量的直接用；只有档里没有的才开预注册。
 
-1. **先读** [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)（拒收总表 + 失败模式），再打开对口实验：
-   - 卫星槽/单票 → [`sat-clip-concentration-2026-09-02.md`](docs/backtests/sat/sat-clip-concentration-2026-09-02.md)
-   - 核心 S-3 篮只数 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core/core-stock-clip-2026-09-03.md)
-   - 卫星退出 / −5% / trail → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat/sat-exit-trail-2026-09-03.md)
-   - 卫星 14:30 / 收盘成交日历 → [`sat-fill-same-close-2026-09-03.md`](docs/backtests/sat/sat-fill-same-close-2026-09-03.md)
-   - 卫星 14:30 入场过滤 C1/C2 → [`sat-entry-c1-2026-09-03.md`](docs/backtests/sat/sat-entry-c1-2026-09-03.md)
-   - 卫星 3 天 vs 4 天 / 下午买点 → [`sat-habit-clock-2026-09-03.md`](docs/backtests/sat/sat-habit-clock-2026-09-03.md)
-   - 卫星 C1 + 第 3 日 10:00/14:30 卖 → [`sat-exit-hhmm-2026-09-03.md`](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)
-    - 2026-09-03 讨论与 Live 对齐 → [`clip4-ops-decisions-2026-09-03.md`](docs/backtests/clip4-ops-decisions-2026-09-03.md)
-     - 冻结配方真值 → [`state-bucket-algo-2026-08-31.md`](docs/backtests/core/state-bucket-algo-2026-08-31.md)
-     - **卫星时钟统一（14:30 买+卖 · `amp_1430` 零前视排序）→ [`sat-clock-unify-1430-2026-09-11.md`](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md)**
-- **调参查找**（用户说法 → 对口实验）：篮子太多 → [`core-stock-clip-2026-09-03.md`](docs/backtests/core/core-stock-clip-2026-09-03.md)；
-  止损/拿长一点/第几天卖 → [`sat-exit-trail-2026-09-03.md`](docs/backtests/sat/sat-exit-trail-2026-09-03.md) + [讨论记录](docs/backtests/clip4-ops-decisions-2026-09-03.md) + [第 3 日卖点](docs/backtests/sat/sat-exit-hhmm-2026-09-03.md)；
-  对齐 14:30 习惯回测/排序/时钟 → [`sat-clock-unify-1430-2026-09-11.md`](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md) + [C1 过滤](docs/backtests/sat/sat-entry-c1-2026-09-03.md) + [3 天/买点](docs/backtests/sat/sat-habit-clock-2026-09-03.md)。
-2. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
-3. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。**例外（2026-09-11 起）**：卫星腿 Live 时钟 = 习惯 14:30（`same_1430` + C1 + 第3日14:30卖 + `rank_key="amp_1430"`），已三窗验证并统一 Live/回测/审计/paper；冻结 `next_open`/全天 amp/收盘卖只作 S-gap 研究对照。见 [sat-clock-unify-1430](docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md)。
-4. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
-5. 改完把结论写进 `docs/backtests/`（PASS 或 REJECT 都留档），不要只停在对话里。
+1. **现行产品基线 = 「港湾」（Harbor）= S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；真值 [`docs/modules/pick-strong-track.md`](docs/modules/pick-strong-track.md)）。三窗增量 **+9.6/+13.7/+9.0pt**、long **+119.6pt**（幻影日修正）；停车场只作用于 S-3 闲置现金（14:30、`mom60+MA200` argmax、因果 trail8）。
+   - 停车场真值 → [`etf-parking-baseline-2026-09-13.md`](docs/backtests/stable/etf-parking-baseline-2026-09-13.md)（B11）
+   - ETF 基准 / 最佳拟合 → [`etf-benchmark-parking-2026-09-13.md`](docs/backtests/stable/etf-benchmark-parking-2026-09-13.md)（B13；港湾×风险预算 50/50，落地需另起预注册）
+   - S-3 参数真值 → [`docs/modules/strategy-params.md`](docs/modules/strategy-params.md) §1；拒收总表 → [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)
+   - Live 现状：旧 `twin_star`/择强路径仍在且有前视/账本 bug → **OPT-178**（修完前不按旧卫星指令下单）。
+2. **历史（REJECT / 已下线，不要再当实盘方案提出）**：
+   - 择强单轨「全资产同权 100% argmax」被 **OPT-177** 证伪（long ≈ +0.8% / MDD −58%）；
+   - 机会双子星 / 卫星腿（14:30 名单 + C1 3% + 第 3 日 14:30 卖 + 4×12.5%）重拟合 **REJECT**：[`twin-star-parking-refit-2026-09-13.md`](docs/backtests/stable/twin-star-parking-refit-2026-09-13.md)（B12：long −55.6pt / 回撤 −48.3；卫星 standalone 2022 −34.8% / 2023 −48.0% / MDD −80.6%）。
+   - 旧卫星 / 14:30 / C1 各专题档（`sat-*`、`clip4-ops-decisions`、`state-bucket-algo` 等）仅作历史参考，索引见 [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)。
+3. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
+4. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。
+5. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
+6. 改完把结论写进 `docs/backtests/`（PASS 或 REJECT 都留档），不要只停在对话里。
 
 ---
 

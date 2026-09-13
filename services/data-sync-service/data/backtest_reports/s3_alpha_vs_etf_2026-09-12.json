@@ -1,0 +1,127 @@
+{
+  "tag": "s3-alpha-vs-etf-2026-09-12",
+  "prereg": "docs/designs/s3-alpha-vs-etf-prereg-2026-09-12.md",
+  "windows": {
+    "OOS2": {
+      "n_trades": 91,
+      "board": {
+        "n": 91,
+        "mean_excess_pct": 1.88,
+        "median_excess_pct": -1.22,
+        "win_rate_pct": 37.4,
+        "mean_stock_pct": 4.41,
+        "mean_bench_pct": 2.53
+      },
+      "sector": {
+        "n": 73,
+        "mean_excess_pct": 3.57,
+        "median_excess_pct": -1.13,
+        "win_rate_pct": 46.6,
+        "mean_stock_pct": 4.59,
+        "mean_bench_pct": 1.02
+      },
+      "broad300": {
+        "n": 91,
+        "mean_excess_pct": 2.36,
+        "median_excess_pct": -1.43,
+        "win_rate_pct": 41.8,
+        "mean_stock_pct": 4.41,
+        "mean_bench_pct": 2.05
+      },
+      "sector_coverage_pct": 80.2
+    },
+    "train": {
+      "n_trades": 51,
+      "board": {
+        "n": 51,
+        "mean_excess_pct": 4.09,
+        "median_excess_pct": 0.12,
+        "win_rate_pct": 51.0,
+        "mean_stock_pct": 7.46,
+        "mean_bench_pct": 3.37
+      },
+      "sector": {
+        "n": 42,
+        "mean_excess_pct": 0.09,
+        "median_excess_pct": -2.54,
+        "win_rate_pct": 42.9,
+        "mean_stock_pct": 8.32,
+        "mean_bench_pct": 8.23
+      },
+      "broad300": {
+        "n": 51,
+        "mean_excess_pct": 5.75,
+        "median_excess_pct": -2.13,
+        "win_rate_pct": 47.1,
+        "mean_stock_pct": 7.46,
+        "mean_bench_pct": 1.71
+      },
+      "sector_coverage_pct": 82.4
+    },
+    "valid": {
+      "n_trades": 16,
+      "board": {
+        "n": 16,
+        "mean_excess_pct": 9.62,
+        "median_excess_pct": -3.14,
+        "win_rate_pct": 43.8,
+        "mean_stock_pct": 22.88,
+        "mean_bench_pct": 13.26
+      },
+      "sector": {
+        "n": 16,
+        "mean_excess_pct": 3.26,
+        "median_excess_pct": -1.84,
+        "win_rate_pct": 50.0,
+        "mean_stock_pct": 22.88,
+        "mean_bench_pct": 19.62
+      },
+      "broad300": {
+        "n": 16,
+        "mean_excess_pct": 20.03,
+        "median_excess_pct": 16.47,
+        "win_rate_pct": 62.5,
+        "mean_stock_pct": 22.88,
+        "mean_bench_pct": 2.84
+      },
+      "sector_coverage_pct": 100.0
+    },
+    "long": {
+      "n_trades": 410,
+      "board": {
+        "n": 410,
+        "mean_excess_pct": 1.22,
+        "median_excess_pct": -2.65,
+        "win_rate_pct": 34.6,
+        "mean_stock_pct": 2.27,
+        "mean_bench_pct": 1.05
+      },
+      "sector": {
+        "n": 321,
+        "mean_excess_pct": 1.55,
+        "median_excess_pct": -1.76,
+        "win_rate_pct": 41.1,
+        "mean_stock_pct": 2.73,
+        "mean_bench_pct": 1.18
+      },
+      "broad300": {
+        "n": 410,
+        "mean_excess_pct": 1.58,
+        "median_excess_pct": -3.25,
+        "win_rate_pct": 33.7,
+        "mean_stock_pct": 2.27,
+        "mean_bench_pct": 0.69
+      },
+      "sector_coverage_pct": 78.3
+    }
+  },
+  "verdict": {
+    "board_wf_wins": 3,
+    "sector_wf_wins": 3,
+    "k1": true,
+    "k2": true,
+    "k3": false,
+    "conclusion": "stock leg ≈ sector beta → ETF replacement worth an A/B replay"
+  },
+  "as_of": "2026-09-12T13:31:21+00:00"
+}

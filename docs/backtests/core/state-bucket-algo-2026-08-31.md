@@ -127,6 +127,8 @@ PYTHONPATH=src:scripts python3 scripts/compare_ps_g50x_deep.py --save-report
 
 ### 3.0 冻结：机会双子星 v3.1 clip4（2026-09-02 · 4×12.5% NAV · `opportunity_twin_star_v3_clip4_frozen.json`）
 
+> ⚠️ **2026-09-13 作废**：本表**核心腿含 OPT-177 前视**（trail8 当日收盘触发），且卫星腿旧验证窗（2024-08 起）恰为其 **2024 +164.7%/2025 +77.4% 黄金段**——重拟合（停车场核心 × same_1430 卫星）后 **REJECT**：long Δtotal −55.6、回撤 −23.6→−48.3；卫星 standalone **2022 −34.8% / 2023 −48.0% / long MDD −80.6%（boom-bust）**。本表数字**不可再引用**。见 [twin-star-parking-refit-2026-09-13](../stable/twin-star-parking-refit-2026-09-13.md)。
+
 相对 v3 15×5% 的 Δ 在末列。回测网格：`docs/backtests/sat-clip-concentration-2026-09-02.md`。
 
 | 窗口 | 择强单轨 total/sr/dd | S-gap 卫星 (4×25%) | **机会双子星 clip4** | Δ vs 核心 | Δ vs v3 15×5% |

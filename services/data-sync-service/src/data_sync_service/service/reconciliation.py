@@ -377,56 +377,12 @@ def _real_holdings_on(day: str) -> dict[str, dict]:
     return out
 
 
-def _sym_from_ts(ts: str) -> str:
-    """ts code (600000.SH / 00700.HK) -> registry symbol (CN:600000 / HK:00700)."""
-    code, _, suffix = str(ts or "").partition(".")
-    if suffix.upper() == "HK":
-        return f"HK:{code}"
-    return f"CN:{code}"
-
-
-def _leg_ctx(day: str) -> dict[str, Any]:
-    """pick + satellite ts sets for the leg split. Never raises —
-    on failure everything stays S-3 (legacy behavior)."""
-    from datetime import date as _date
-
-    pick: str | None = None
-    sat_ts: set[str] = set()
-    book_ts: set[str] = set()
-    push_ts: set[str] = set()
-    try:
-        from data_sync_service.service.multi_asset_sleeve import _pick as sleeve_pick
-
-        p = sleeve_pick()
-        pick = p.get("key") if isinstance(p, dict) else getattr(p, "key", None)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from data_sync_service.service.twin_star_daily import (
-            live_sat_ts_codes,
-            pushed_sat_ts,
-            sat_book_ts_codes,
-        )
-
-        d = _date.fromisoformat(day[:10])
-        sat_ts = set(live_sat_ts_codes(d))
-        book_ts = set(sat_book_ts_codes(d))
-        # Signal-sanctioned names: the actual 14:20-14:35 pushed candidates over
-        # the holding window. A real holding that appears here is following the
-        # signal, not "off-book", even if the coarse replay disagrees.
-        push_ts = set(pushed_sat_ts(d))
-    except Exception:  # noqa: BLE001
-        pass
-    return {"pick": pick, "sat_ts": sat_ts, "book_ts": book_ts, "push_ts": push_ts}
-
-
 def reconcile_registry(
     day: str,
     *,
     window: str = "valid",
     end_date: str | None = None,
-    mode: str = "twin_star",
-    leg_ctx: dict[str, Any] | None = None,
+    mode: str = "single_track",
 ) -> dict[str, Any]:
     """BEHAVIOR AUDIT (2026-08-13): the user's REAL holdings vs the S-3
     backtest "should hold" set for one trading day.
@@ -435,37 +391,23 @@ def reconcile_registry(
     (``user_trades`` reconstructed as-of ``day``; registry fallback) against the
     engine's end-of-day snapshot:
 
-      - ``extra``  → CORE-leg holding the backtest does NOT hold:
+      - ``extra``  → holding the backtest does NOT hold:
         · backtest never entered it  → "买了不该买"
         · backtest already exited it → "该卖没卖" (backtest closed, user still in)
       - ``missing``→ backtest holds it, the user does not (info: 该持没买)
 
-    OPT-140 (twin_star mode): satellite-leg holdings are split out via the
-    shared ``holding_book`` predicate — they are compared against the
-    twin-star engine book instead (``satExtra``/``satMissing``) and NEVER
-    counted as S-3 ``extra`` (no more "买了不该买" on satellite names).
-    ``mode="single_track"`` keeps the legacy all-S-3 behavior.
-    Pass ``leg_ctx`` explicitly in tests to avoid live pick/engine calls.
+    ``mode`` is accepted for caller compatibility; the audit is S-3 only.
 
     Returns {reconDate, window, markets: {CN: {…, extraList: [{symbol, name,
-    costPrice, entryDate, pnlPct?, kind: 'never_entered'|'exited'}],
-    satExtraList, satMissingList}}}. The caller persists it
-    (db.behavior_audit) and the watchlist page renders it.
+    costPrice, entryDate, pnlPct?, kind: 'never_entered'|'exited'}]}}}. The
+    caller persists it (db.behavior_audit) and the watchlist page renders it.
     """
-    from data_sync_service.service.twin_star_daily import holding_book
-
     if window not in WINDOWS:
         raise ValueError(f"unknown window {window!r} (valid: {list(WINDOWS)})")
     start, w_end = WINDOWS[window]
     end = max(end_date or day, w_end, day)  # audit day always covered
     if not (start <= day <= end):
         raise ValueError(f"{day} not in window {start}..{end}")
-
-    leg = leg_ctx if leg_ctx is not None else (_leg_ctx(day) if mode == "twin_star" else None)
-    pick = (leg or {}).get("pick")
-    sat_ts: set[str] = set((leg or {}).get("sat_ts") or set())
-    book_syms = {_sym_from_ts(ts) for ts in ((leg or {}).get("book_ts") or set())}
-    push_syms = {_sym_from_ts(ts) for ts in ((leg or {}).get("push_ts") or set())}
 
     real = _real_holdings_on(day)
     markets: dict[str, Any] = {}
@@ -493,31 +435,19 @@ def reconcile_registry(
             if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
         }
         extra_list: list[dict[str, Any]] = []
-        sat_extra_list: list[dict[str, Any]] = []
         for s in sorted(set(in_market) - expect):
             r = in_market[s]
             cost = r.get("costPrice")
             entry = str(r.get("entryDate") or "")
-            item = {
-                "symbol": s,
-                "name": str(r.get("name") or ""),
-                "costPrice": float(cost) if cost else None,
-                "entryDate": entry,
-            }
-            book = holding_book(mode, pick, market, s, sat_ts) if leg is not None else "s3"
-            if book == "sat":
-                # Only flag as off-book when the signal never pushed this name in
-                # the holding window. A pushed holding is following the signal;
-                # the coarse engine replay diverging is not the user's error.
-                if s not in push_syms:
-                    sat_extra_list.append({**item, "kind": "sat_leg"})
-            else:
-                extra_list.append(
-                    {
-                        **item,
-                        "kind": "exited" if s in was_held else "never_entered",
-                    }
-                )
+            extra_list.append(
+                {
+                    "symbol": s,
+                    "name": str(r.get("name") or ""),
+                    "costPrice": float(cost) if cost else None,
+                    "entryDate": entry,
+                    "kind": "exited" if s in was_held else "never_entered",
+                }
+            )
         missing_list: list[dict[str, Any]] = [
             {
                 "symbol": s,
@@ -532,21 +462,6 @@ def reconcile_registry(
             }
             for s in sorted(expect - set(in_market))
         ]
-        # Satellite leg should-hold vs actually held. When the push log exists,
-        # only signal-sanctioned names count — you cannot "miss" a name the
-        # 14:20 screen never offered. Falls back to the engine book otherwise.
-        sat_pool = (book_syms & push_syms) if push_syms else book_syms
-        sat_expect = (
-            {
-                s
-                for s in sat_pool
-                if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
-            }
-            if leg is not None
-            else set()
-        )
-        sat_missing_list = [{"symbol": s} for s in sorted(sat_expect - set(in_market))]
-        sat_actual = len(set(in_market) & (sat_expect | {e["symbol"] for e in sat_extra_list}))
         markets[market] = {
             "available": True,
             "expected": len(expect),
@@ -555,18 +470,12 @@ def reconcile_registry(
             "missing": len(missing_list),
             "extraList": extra_list,
             "missingList": missing_list,
-            "satExpected": len(sat_expect),
-            "actualSat": sat_actual,
-            "satExtra": len(sat_extra_list),
-            "satMissing": len(sat_missing_list),
-            "satExtraList": sat_extra_list,
-            "satMissingList": sat_missing_list,
         }
     return {"reconDate": day, "window": window, "markets": markets}
 
 
 def run_registry_and_persist(
-    day: str, *, window: str = "valid", mode: str = "twin_star"
+    day: str, *, window: str = "valid", mode: str = "single_track"
 ) -> dict[str, Any]:
     """reconcile_registry + persist to db.behavior_audit (idempotent)."""
     from data_sync_service.db.behavior_audit import insert_audit
@@ -584,11 +493,5 @@ def run_registry_and_persist(
             missing=m["missing"],
             extra_list=m.get("extraList") or [],
             missing_list=m.get("missingList") or [],
-            sat_expected=m.get("satExpected", 0),
-            sat_actual=m.get("actualSat", 0),
-            sat_extra=m.get("satExtra", 0),
-            sat_missing=m.get("satMissing", 0),
-            sat_extra_list=m.get("satExtraList") or [],
-            sat_missing_list=m.get("satMissingList") or [],
         )
     return out

@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 CANDIDATE_SYMBOLS = {c["symbol"] for c in CANDIDATES}
 
 BUY_ACTIONS = ("BUY", "ROTATE")
-SELL_ACTIONS = ("SELL_TO_A_SHARE", "SELL_TO_REPO")
+SELL_ACTIONS = ("SELL_TO_REPO",)
 
 
 def _day_of(value: Any) -> str:
@@ -81,11 +81,17 @@ def _pre_decision_holdings(
     open_rows: list[dict[str, Any]],
     closed_rows: list[dict[str, Any]],
     day: str,
+    exec_day: str | None = None,
 ) -> list[dict[str, Any]]:
     """Paper-book holdings as the 18:20 job saw them (shape-identical to
     ``_build_multi_for_paper``: symbol / ts_code / sleeve_pct, no entryDate —
     so the reproduced decision matches the job's, including its trail blind
-    spot)."""
+    spot).
+
+    Harbor exits book at the next session (closeDate = exec_day); include those
+    as held at ``day`` close so the decision is reproduced.
+    """
+    sold_days = {day, exec_day or day}
     holdings: list[dict[str, Any]] = []
     for r in open_rows:
         sym = str(r.get("symbol") or "").upper()
@@ -104,7 +110,7 @@ def _pre_decision_holdings(
         if (
             str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
             and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
-            and _day_of(r.get("closeDate")) == day
+            and _day_of(r.get("closeDate")) in sold_days
         ):
             holdings.append(
                 {
@@ -208,6 +214,13 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
     from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 
     day = day or shanghai_today_iso()
+    exit_exec_date: str | None = None
+    try:
+        from data_sync_service.service.paper_entry_fill import _next_session_after
+
+        exit_exec_date = _next_session_after(day)
+    except Exception:  # noqa: BLE001
+        exit_exec_date = None
     try:
         open_rows, closed_rows = _paper_snapshot()
     except Exception as exc:  # noqa: BLE001
@@ -223,9 +236,9 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
         for r in closed_rows
         if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
         and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
-        and _day_of(r.get("closeDate")) == day
+        and _day_of(r.get("closeDate")) in {day, exit_exec_date or day}
     ]
-    holdings = _pre_decision_holdings(open_rows, closed_rows, day)
+    holdings = _pre_decision_holdings(open_rows, closed_rows, day, exit_exec_date)
     try:
         multi = _rebuild_decision(day, holdings)
     except Exception as exc:  # noqa: BLE001
@@ -242,13 +255,17 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
             and _day_of(r.get("createdAt")) == day
         }
     )
+    # Harbor exits fill at the next session (signal T close -> T+1 open), so a
+    # sell decided today is booked with closeDate = next session (placeholder
+    # when the open is not printed yet).
+    sold_days = {day, exit_exec_date or day}
     sold_today = sorted(
         {
             str(r.get("symbol") or "").upper()
             for r in closed_rows
             if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
             and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
-            and _day_of(r.get("closeDate")) == day
+            and _day_of(r.get("closeDate")) in sold_days
         }
     )
     missed_buys = sorted(set(expected_buys) - set(created_today))
@@ -298,4 +315,5 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
             expected_buys, expected_sells, user_rows, user_exec_date, day
         ),
         "userExecDate": user_exec_date,
+        "exitExecDate": exit_exec_date,
     }

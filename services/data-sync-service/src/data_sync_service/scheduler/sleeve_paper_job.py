@@ -1,12 +1,12 @@
-"""Sleeve auto-configuration for the paper book (T6 · 2026-08-21 落地).
+"""Harbor parking auto-configuration for the paper book.
 
 Weekdays 18:20 Asia/Shanghai — after close_sync (17:10), watchlist_automation
-(17:30) and cn_industry_post_close (17:35), mirror the third-asset sleeve
-decision into paper_trades: open ETF:513100 on BUY_513100, close the sleeve
-leg on SELL_TO_REPO / SELL_TO_A_SHARE. Idempotent by design.
+(17:30) and cn_industry_post_close (17:35), mirror the Harbor idle-cash ETF
+parking decision into paper_trades: signal on the T close, fill/buy at the
+T+1 open (`resolve_next_open_fill`), close the leg on SELL_TO_REPO / ROTATE.
+Idempotent by design.
 
-Three-window validation of the underlying rule: scripts/sleeve_nav_sim.py
-(OPT-119 — all windows positive delta).
+Rule: B11 `docs/backtests/stable/etf-parking-baseline-2026-09-13.md`.
 """
 
 from __future__ import annotations

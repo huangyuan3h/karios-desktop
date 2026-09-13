@@ -23,9 +23,7 @@ type QuickBuyDialogProps = {
   busy?: boolean;
   error?: string | null;
   onClose: () => void;
-  onConfirm: (values: { price: number; positionPct: number; leg?: 's3' | 'sat' }) => void;
-  /** OPT-149: which book this leg belongs to (BUY only; SELL inherits on backend). */
-  defaultLeg?: 's3' | 'sat';
+  onConfirm: (values: { price: number; positionPct: number; leg?: 's3' }) => void;
 };
 
 const PRICE_RE = /^\d+(\.\d{0,3})?$/;
@@ -40,17 +38,12 @@ export function QuickBuyDialog({
   error = null,
   onClose,
   onConfirm,
-  defaultLeg,
 }: QuickBuyDialogProps) {
   const hasInitial =
     typeof initialPrice === 'number' && Number.isFinite(initialPrice) && initialPrice > 0;
   const [positionPct, setPositionPct] = React.useState(String(suggestPct));
   const [price, setPrice] = React.useState(hasInitial ? String(initialPrice) : '');
   const [priceLoading, setPriceLoading] = React.useState(!hasInitial);
-  // 2026-09-10: the book is chosen by context (caller passes defaultLeg from the
-  // plan row's sleeve), never inferred from the exact 12.5% size — round-lot
-  // sizes (7%/13.9%/…) must not flip a satellite buy into the core book.
-  const [leg, setLeg] = React.useState<'s3' | 'sat'>(defaultLeg ?? 's3');
 
   React.useEffect(() => {
     setPositionPct(String(suggestPct));
@@ -153,23 +146,7 @@ export function QuickBuyDialog({
             />
           </div>
           {side === 'BUY' && (
-            <div>
-              <div className="mb-1 text-[var(--k-muted)]">
-                账本（卫星=双子星 body=3，核心=S-3 规则）
-              </div>
-              <div className="grid grid-cols-2 gap-1 rounded-md border border-[var(--k-border)] p-1">
-                {(['sat', 's3'] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setLeg(v)}
-                    className={`h-8 rounded text-xs ${leg === v ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]'}`}
-                  >
-                    {v === 'sat' ? '卫星 12.5%' : '核心 S-3'}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <div className="text-[11px] text-[var(--k-muted)]">账本：核心 S-3 规则</div>
           )}
         </div>
         <div className="mt-4 flex justify-end gap-2">
@@ -182,7 +159,7 @@ export function QuickBuyDialog({
             onClick={() =>
               onConfirm(
                 side === 'BUY'
-                  ? { price: parsedPrice, positionPct: parsedPct, leg }
+                  ? { price: parsedPrice, positionPct: parsedPct, leg: 's3' }
                   : { price: parsedPrice, positionPct: parsedPct },
               )
             }

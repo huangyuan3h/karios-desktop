@@ -7,18 +7,29 @@ afterEach(() => {
 });
 
 describe('getStrategyMode', () => {
-  it('defaults to twin_star when unset', () => {
-    expect(DEFAULT_STRATEGY_MODE).toBe('twin_star');
-    expect(getStrategyMode()).toBe('twin_star');
+  it('defaults to harbor when unset', () => {
+    expect(DEFAULT_STRATEGY_MODE).toBe('harbor');
+    expect(getStrategyMode()).toBe('harbor');
   });
 
-  it('keeps an explicit single_track opt-out', () => {
-    setStrategyMode('single_track');
-    expect(getStrategyMode()).toBe('single_track');
+  it('migrates a stored twin_star value to harbor', () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('twin_star'));
+    expect(getStrategyMode()).toBe('harbor');
+    expect(window.localStorage.getItem('karios.strategyMode')).toBe('"harbor"');
   });
 
-  it('ignores corrupt storage and falls back to twin_star', () => {
+  it('migrates a stored single_track value to harbor', () => {
+    window.localStorage.setItem('karios.strategyMode', JSON.stringify('single_track'));
+    expect(getStrategyMode()).toBe('harbor');
+  });
+
+  it('ignores corrupt storage and falls back to harbor', () => {
     window.localStorage.setItem('karios.strategyMode', 'not-json');
-    expect(getStrategyMode()).toBe('twin_star');
+    expect(getStrategyMode()).toBe('harbor');
+  });
+
+  it('keeps an explicit harbor value', () => {
+    setStrategyMode('harbor');
+    expect(getStrategyMode()).toBe('harbor');
   });
 });

@@ -565,7 +565,7 @@ function buildStrategyAppendixDash(
     );
   }
   lines.push(
-    '- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮∪金/油/纳/债同权比t-1 mom60（ETF≥MA200），argmax 100%硬切，空档GC001；LB60·MA200·hold1',
+    '- 港湾定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline?strategy=harbor`）：S-3 核心＝STOCK篮∪金/油/纳/债同权比t-1 mom60（ETF≥MA200），argmax 100%硬切；闲置现金停进核心 ETF，空档GC001；LB60·MA200·hold1',
   );
   lines.push(
     '- 多资产 sleeve：GOLD 518880·OIL 513350·NASDAQ 513100·BOND10 511260 · 多头轮动·可1.4×杠杆',

@@ -15,21 +15,16 @@ Watchlist 模块是 Karios 的**核心操作中心**，用于管理用户关注�
 - **技术分析**：提供 TrendOK 检查和 Score 评分
 - **交易建议**：给出买入/等待/回避建议和止损价位
 
-### 机会双子星（实盘默认 · v3.1 clip4）
+### 「港湾」（Harbor）今日操作（实盘口径 · 2026-09-13 上线）
 
-Watchlist「今日操作」默认 `strategyMode=twin_star`，走冻结引擎，不走 S-3 10%×10。Settings 可切回单轨对照。
+Watchlist「今日操作」的目标口径 = **港湾**：**S-3 股票核心 + 闲置现金 ETF 停车场**。旧 `strategyMode=twin_star` 卫星路径（14:30 名单、12:30 快照、4×12.5%、第 3 日卖出）已随 B12 **REJECT 下线**，不再产生卫星指令。
 
-- 卫星最多 **4 只**，每只 **总资产 12.5%**（套筒 25%；开闸 50/50 时 4×12.5% = 卫星半仓）
-- 常量锁步：`@karios/shared` `TWIN_STAR_CLIP4`（4 × 12.5%、body=3、`protectStopPct=0`）；后端 `MAX_POS=4` `POSITION_PCT=0.25`；前端 `SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` 从 shared 取。action API 带 `clip4` 字面量，Zod 拒收 10%×10
-- 日对齐横幅按 clip4 对照核心% + 卫星套筒；开闸持有 CN 股票不算「偏离 100% 硬切」。表行买入预填 12.5% NAV
-- 14:30 前不公布当日卫星名单；涨停跳过、不顺位补。桶内按 **14:30 可得振幅**（`bar_5min` ≤14:30 的 max high−min low ÷ 14:30 价，零前视）升序取最低波前 1/3；**Live / 回测 / 审计 / paper 同一口径**（`rank_key="amp_1430"`，见 [clock-unify](../backtests/sat/sat-clock-unify-1430-2026-09-11.md)）。回测 Timeline 日表有候选/跳过/成交/空槽回核，blotter 能点开一笔卫星看振幅名次与贡献 pt
-- 交易日 **12:30 后**必须有当日东财全市场快照；失败时 Watchlist 红条「卫星名单不可用」、通知 `lane=system`，**不**用 T-1 名单下单。核心 ETF 日线 / `stock_dailybasic` 陈旧走系统自检「双子星」标签
-- 单轨 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30%）仍约束 Watchlist 行；双子星交易计划按 12.5% 开 QuickBuy，12.5% < 15% 不撞单票闸
-- **卫星仓 ≠ 股票篮**：核心 pick ≠ `STOCK` 时，Watchlist 里所有 CN A 股持仓都算卫星（S-gap `body=3` 到期退出），**不**走 S-3「股票篮应轮出」。pick=`STOCK` 时，只有落在卫星 recipe/候选集合里的名字算卫星，其余仍是 S-3 股票篮（移动线/金字塔只贴剩余篮内持仓）
-- 今日决策卡拆成：**今日顺序**（14:20 提醒 → 14:30 名单 → ①核心 ETF ②到期卖 ③缺口买）→ 核心 ETF 块 → **卫星仓**（持有 / body 到期卖 / 缺口买）→ A 股线（股票篮，pick≠STOCK 时闲置）。占用真值 = Watchlist 最多 4 槽；引擎 `openPositions` 只作对照（卡片写「C4 占用对照，不是交易铃」）。独立 paper 簿 `source=twin_star`（17:43，**body=3、第 3 日 14:30 卖、无 −5%**），不走 S-3 C4 / 金字塔 / 60 日持有
-- **卫星何时卖**：按 Watchlist `entryDate` 数交易日，**入场日算第 1 天，第 3 个交易日 14:30 卖**（Live 习惯口径；冻结 S-gap 对照仍是 `held >= body` 当日 close）。到期日与「已持 n/3」写在每只旁边；到期日 14:30 改成卖出。中途跌破 −5% **不卖**。
-- **无保护止损**：2026-09-03 三窗把 −5% 写入引擎 → REJECT。Watchlist 不再「复制止损」；只提示第 3 日 14:30 卖。没有入场日时会提示补录，否则无法算到期
-- **提醒铃铛**按 Settings 策略拆开：`twin_star` 只报卫星 body=3 第 3 日 14:30 卖 / 核心择强；STOCK 日 leftover 篮内才报 S-3 金字塔。**不**报港股缺票对账。面板分「今日交易 / 系统 / 策略体检」；滚动 OOS、S-3 纸面对账只在回测页标「单轨对照」，不当成下单。`GET /api/notifications?mode=`
+- **核心（S-3）**：按冻结参数持有/轮出 A 股 + HK 股票篮（10%×10 名义上限）；今日决策卡列出 S-3 持仓与买卖（score≥65 · RS 前 50% · regime 非 Weak · 主线白名单 · 非持仓 · CN only）。
+- **停车场（闲置现金）**：空闲资金每日按 **14:30 口径**在 `mom60+MA200` 的金（518880）/ 油（513350）/ 纳指（513110 / 513100 best）/ 国债（511260）里取 **`argmax`** 停一只；**无候选 → 留现金/REPO**；因果 trail8（t-1 收盘触发）出场后回现金。只在 S-3 闲置现金上作用，不抢核心股票仓。
+- **展示**：顶部显示「核心仓位 + 停车场当前 pick（ETF / mom60 / 是否站上 MA200）」；S-3 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30% `SECTOR_CONC_BLOCK` / 袖子 `SLEEVE_CAP_BLOCK`）不变。数据依赖 = 核心 ETF 日线（`daily`）+ S-3 持仓账本；陈旧走系统自检。
+- **无卫星指令**：不再有 14:30 卫星名单、12:30 东财全市场快照、C1 3% 过滤、第 3 日 14:30 卖出、`source=twin_star` paper 簿、`SAT_MAX_POS` / `SAT_SLOT_NAV_PCT` 等；前端/后端残留路径已随 **OPT-178** 清理（✅）。
+- **提醒铃铛**：目标只剩核心 S-3 交易与停车场换仓；旧 `mode=twin_star` 通知已随 OPT-178 下线（通知默认 `single_track`）。
+- **Live 现状（2026-09-13 起）**：港湾已上线——`paper_twin_star` intake 前视、套筒 trail 记账前视、`_pnl_for` 恒 0、`SELL_TO_A_SHARE` 0 元平仓等**已全部修复/删除**；审计与清单见 [`optimization-checklist.md` OPT-178](../optimization-checklist.md) 与 [B11 档](../backtests/stable/etf-parking-baseline-2026-09-13.md)。
 
 ---
 

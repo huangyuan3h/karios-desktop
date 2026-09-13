@@ -1,18 +1,16 @@
-"""Sleeve auto-configuration for the paper book (T6 · 2026-08-21 落地).
+"""Harbor parking automation for the paper book (idle-cash ETF sleeve).
 
-Daily close job: evaluate the sleeve state machine against the PAPER book
-(build_third_asset_sleeve_for_paper) and mirror the decision into
-paper_trades:
+Daily close job: evaluate the Harbor sleeve state machine against the PAPER
+book (build_multi_asset_sleeve) and mirror the decision into paper_trades:
 
-  BUY_513100      -> open ETF:513100 with sleeve_pct = idle%
-  SELL_TO_REPO    -> close the open sleeve leg (broke MA200)
-  SELL_TO_A_SHARE -> close the open sleeve leg (A-share buy points)
+  BUY             -> open the ETF pick with sleeve_pct = idle% (T+1 open fill)
+  ROTATE          -> close the old leg, open the new pick (T+1 open fill)
+  SELL_TO_REPO    -> close the open sleeve leg (no candidate / trail8)
   HOLD / DONT_BUY -> no-op
 
 Idempotent: insert_paper_trade has ON CONFLICT (symbol, entry_date, side);
-close_paper_trade only touches open rows. The three-window validation of the
-underlying rule lives in scripts/sleeve_nav_sim.py (all-windows positive
-delta, OPT-119).
+close_paper_trade only touches open rows. Rule: B11
+docs/backtests/stable/etf-parking-baseline-2026-09-13.md.
 """
 
 from __future__ import annotations
@@ -49,15 +47,31 @@ def _open_sleeve_legs() -> list[dict[str, Any]]:
 
 
 def _pnl_for(leg: dict[str, Any], close_price: float, day: str) -> tuple[float, int]:
-    entry = float(leg.get("entry_price") or 0)
-    if entry <= 0:
+    entry = float(leg.get("entryPrice") or leg.get("entry_price") or 0)
+    if entry <= 0 or close_price <= 0:
         return 0.0, 0
     pnl = (close_price / entry - 1.0) * 100.0
+    entry_date = str(leg.get("entryDate") or leg.get("entry_date") or "")
     try:
-        days = (date.fromisoformat(day) - date.fromisoformat(str(leg.get("entry_date")))).days
+        days = (date.fromisoformat(day) - date.fromisoformat(entry_date[:10])).days
     except (TypeError, ValueError):
         days = 0
     return pnl, max(0, days)
+
+
+def _exit_fill(leg: dict[str, Any], day: str) -> tuple[float, str] | None:
+    """Next-open exit fill for a held ETF leg (Harbor: signal T close -> T+1 open)."""
+    sym = str(leg.get("symbol") or "")
+    ts = str(leg.get("tsCode") or leg.get("ts_code") or sym.replace("ETF:", "") + ".SH")
+    if not ts:
+        return None
+    fill = resolve_next_open_fill(ts, day)
+    if fill is None:
+        return None
+    px = float(fill.get("entry_price") or 0)
+    if px <= 0:
+        return None
+    return px, str(fill.get("entry_date") or day)
 
 
 def _build_multi_for_paper(day: str) -> dict[str, Any]:
@@ -127,11 +141,15 @@ def apply_sleeve_to_paper(*, day: str) -> dict[str, Any]:
         if fill is None:
             return {"day": day, "action": action, "changed": False, "reason": "no next_open fill"}
         for leg in open_multi:
-            pnl, days = _pnl_for(leg, float(price or 0), day)
+            exit_fill = _exit_fill(leg, day)
+            if exit_fill is None:
+                continue
+            px, exit_day = exit_fill
+            pnl, days = _pnl_for(leg, px, exit_day)
             close_paper_trade(
                 trade_id=str(leg.get("id")),
-                close_date=day,
-                close_price=float(price or 0),
+                close_date=exit_day,
+                close_price=px,
                 pnl_pct=pnl,
                 holding_days=days,
                 close_reason=CLOSE_REASON_SLEEVE_EXIT,
@@ -141,7 +159,7 @@ def apply_sleeve_to_paper(*, day: str) -> dict[str, Any]:
             entry_date=str(fill["entry_date"]),
             side="BUY",
             entry_price=float(fill["entry_price"]),
-            why_at_entry=f"multi-sleeve rotate to {pick.get('key')} 5d",
+            why_at_entry=f"harbor parking rotate to {pick.get('key')}",
             sleeve_pct=idle,
             source=SOURCE_S3,
             market="CN",
@@ -155,14 +173,18 @@ def apply_sleeve_to_paper(*, day: str) -> dict[str, Any]:
             "price": fill["entry_price"],
             "entryDate": fill["entry_date"],
         }
-    if action in ("SELL_TO_A_SHARE", "SELL_TO_REPO") and open_multi:
+    if action == "SELL_TO_REPO" and open_multi:
         closed = 0
         for leg in open_multi:
-            pnl, days = _pnl_for(leg, float(price or 0), day)
+            exit_fill = _exit_fill(leg, day)
+            if exit_fill is None:
+                continue
+            px, exit_day = exit_fill
+            pnl, days = _pnl_for(leg, px, exit_day)
             if close_paper_trade(
                 trade_id=str(leg.get("id")),
-                close_date=day,
-                close_price=float(price or 0),
+                close_date=exit_day,
+                close_price=px,
                 pnl_pct=pnl,
                 holding_days=days,
                 close_reason=CLOSE_REASON_SLEEVE_EXIT,

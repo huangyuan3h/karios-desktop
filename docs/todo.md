@@ -5,38 +5,40 @@
 
 ## 0. 优先级（不可漂移）
 
-| 1 收益 | 机会双子星（核心+卫星）+ 回测可分析 |
+| 1 收益 | 港湾 Harbor（S-3 核心 + 闲置现金 ETF 停车场）+ 回测可分析 |
 | 2 API/AI | 外部打通 |
 | 3 工程部署 | 稳定性 |
 | 4 数据源 | 质量与覆盖 |
 
-> 给普通人的一页纸（2026-09-06 · 2 分钟版）：
+> 给普通人的一页纸（2026-09-13 · 2 分钟版）：
 > Karios 管的是家里钱中**博收益的那部分（卫星仓）**，每天告诉你买什么、卖什么、买多少。
-> 现在用的策略叫**机会双子星**：**核心**（全市场当时最强的资产，股票/金/油/纳指/债之间每天只拿最强那个）+
-> **卫星**（A 股有缺口的强势股，只拿 3 天，每天 14:30 买卖，最多 4 只×12.5%）。
-> 过去一年回测 **+194.9%**（光核心是 +190.6%，卫星多赚 4.3pt），最大回撤 12.6%。
-> 风险实话：卫星按月算 40% 的月份跑输核心，约 7% 的月份亏超 5 个点——所以**不对月考核**，看长窗。
-> 实盘 paper 验证攒到 20 笔平仓才算数（现在 3/20），验证完之前**不调任何策略参数**。
-> 下一步：把双子星在 Watchlist 里跑顺（P0-0/P0-4）；想深挖看 [回测 SUMMARY](./backtests/SUMMARY.md)，想动手先读仓库根 `AGENTS.md`。
+> 现在用的基线叫**港湾（Harbor）**：**S-3 股票核心**（选强势股，按纪律持有/退出）+
+> **闲置现金停车场**（没买股票的钱，按 `mom60+MA200` 停在金/油/纳指/国债四选一，无候选就留现金）。
+> 回测（三窗 + 长窗）：OOS2/train/valid **+55.9% / +40.4% / +47.8%**、长窗 **+184.5%**；相对纯 S-3 的增量 **+9.4 / +6.0 / +9.1pt**、长窗 **+90.0pt**。
+> 风险实话：停车场在 S-3 空仓期会满仓 ETF，valid 回撤由 −9.4% 加深到 **−23.1%**（换收益的提升）；长窗回撤/夏普反而更好（−23.6 / 0.83）。
+> 卫星腿（旧机会双子星，只拿 3 天）已被 2026-09-13 重拟合 **REJECT**（long −55.6pt、回撤 −48.3），不再使用。
+> 实盘 paper 验证攒到 20 笔平仓才算数（现在 3/20），验证完之前**不调任何策略参数**；Live 已切港湾（前视/账本修复 + 双子星退役 = **OPT-178 ✅**）。
+> 下一步：把港湾在 Watchlist 跑顺（P0-2；OPT-178 已落地）；想深挖看 [回测 SUMMARY](./backtests/SUMMARY.md)，想动手先读仓库根 `AGENTS.md`。
 
 ## 1. 状态看板
 
 | 域 | 状态 |
 |----|------|
-| S-3 选股 | ✅ 封闭（STOCK 腿生成器；pick=STOCK 才进篮） |
-| 机会双子星 | 🟢 **P0 主线** 实盘默认 = [机会双子星 v3.1 clip4](backtests/core/state-bucket-algo-2026-08-31.md)（4×12.5%）+ **习惯 Live：C1 3% + 第3日14:30卖**；核心腿 [择强单轨](./modules/pick-strong-track.md)（过去一年对照数见 [state-bucket §3.0](backtests/core/state-bucket-algo-2026-08-31.md)） |
+| S-3 选股 | ✅ 封闭（**港湾的股票核心**；参数冻结见 [strategy-params](./modules/strategy-params.md)） |
+| 港湾 Harbor | 🟢 **唯一产品基线**（2026-09-13 冻结 `harbor-p1-20260913`）= [S-3 核心 + 闲置现金 ETF 停车场](./modules/pick-strong-track.md)；三窗增量 +9.4/+6.0/+9.1、long +90.0（[B11](backtests/stable/etf-parking-baseline-2026-09-13.md)） |
+| 旧双子星/择强单轨 | ⚪ 历史：择强被 OPT-177 证伪；卫星重拟合 [B12 REJECT](backtests/stable/twin-star-parking-refit-2026-09-13.md)（long −55.6/回撤 −48.3），不再使用 |
 | 回测对照 | 🟡 运营阶段 B2–B5/A5 日流程已落地（OPT-135）；S-3 C4 统计仍等 20 笔 |
+| Live 口径 | ✅ 港湾已上线（2026-09-13）——双子星退役 + 前视/账本修复（OPT-178）；T6 展示收敛 OPT-179 |
 | 工程/数据源 | 按需 OPT（124–126 稳定性，127 已冬眠），不改策略 |
 
-## 当前方向（默认 clip4 之后）
+## 当前方向（港湾冻结之后）
 
-- **P0：把机会双子星跑成产品**——不扫新卫星参。三线并行：[工程 / 业务对齐 / 回测可分析](./designs/twin-star-ops-phase-2026-09-02.md)
-- 卫星 **成交日历要对齐习惯，不能拿冻结 9:30 当 14:30**（P0-4）——优化目标是「我 14:30 买还能不能赚」，不是贴近 9:30 回测
-- 卫星 **14:30 入场过滤**：C1 3% 已三窗（tot/sr/dd）[sat-entry-c1](backtests/sat/sat-entry-c1-2026-09-03.md) — 相对无过滤 PASS+；单配收盘卖时 vs 核心 valid tot −3.3，**配第3日14:30卖后三窗全过核心，已进 Live（习惯）**
-- 冻结对照：`skip_t1`+strict、4×12.5%、body=3 收盘卖（无 −5%）、S-3 篮 10×10%、回测=T 开盘、past_year 不当拒收闸；**Live 习惯：C1 3% + 第3日14:30卖**
-- 改策略走仓库根 `AGENTS.md` → Strategy / parameter changes（主流程；总表见 SUMMARY）
-- 单轨择强 = 核心腿 + Settings 对照，不再是实盘默认
-- 脉冲天平仍观察层；Watchlist 占用对照已是双子星 C4-lite（你卫星仓 vs 引擎模拟）；S-3 统计 C4 仍等 20 笔平仓
+- **P0：把港湾跑成产品**——S-3 核心 + 闲置现金停车场；先做完 **OPT-178**（Live 前视/账本修复 + 双子星下线），再谈新增强
+- 停车场落地口径 = **14:30 出信号/执行、闲置即停、因果 trail8、去掉 `MIN_IDLE_PCT` 与 `ETF>STOCK` 门槛**（B11 已验；[B11 档](backtests/stable/etf-parking-baseline-2026-09-13.md)）
+- 卫星腿（旧双子星：14:30 名单 / C1 3% / 第 3 日 14:30 卖 / 4×12.5%）**已 REJECT 下线**，不再扫参、不再排日历；[B12 档](backtests/stable/twin-star-parking-refit-2026-09-13.md) + [first-principles](backtests/first-principles-2026-09-05.md)
+- 组合增强候选：**港湾 × 风险预算 50/50**（B13：四窗 Sharpe 全升、MDD 减半、代价=收益）——若要落地须另起预注册
+- 改策略走仓库根 `AGENTS.md` → Strategy / parameter changes（主流程；拒收总表见 SUMMARY）
+- 脉冲天平仍观察层；S-3 统计 C4 仍等 20 笔平仓
 
 ### 产品化缺口盘点（2026-09-09 · 用户逐条拍板）
 
@@ -80,27 +82,24 @@
 - **节奏**：每周一 8:15 `scripts/commodity_pattern_scan.py` 跑分层表 → 追加一行到 `docs/backtests/gold-oil-nasdaq-balance.md`（条件→n→win→mean→可杠杆）→ `win>70% n>50` 才提 `paper 10%→20%`。
 - **纪律**：不写新策略代码，只加行；三窗纪律不变。
 
-## P0-2 套筒观察→实盘（§8 T6 · 2026-08-27 安排）
+## P0-2 闲置停车场落地（港湾核心件 · 2026-09-13 重立）
 
-**大白话**：闲钱别趴 GC001，让它跟着最强ETF跑；观察期后搬进 watchlist 实盘提示。
+**大白话**：闲钱别趴 GC001，让它停在四只 ETF 里最强的那个（金/油/纳指/国债）；这就是港湾的停车场，B11 已定案，剩下把 Live 代码改对。
 
-- 已固化：`multi_asset_sleeve.py:52` “纳指优先（>MA200 且 mom60>0 且 rank1 则纳指，否则 max mom60）” 三窗 `+19.3/+17.9/+14.4 past_year+38.1`，`portfolio_health` 返回 `multiAssetSleeve OIL 7.11%`，`sleeve_paper_auto 18:20 ROTATE` 自动换仓。
-- **待做**：
-  1. `20d -10%` 硬切 GC001 变体三窗验证（尾险）
-  2. `R3 risk-adj` 已证不如 `mom60`，标记废弃
-  3. 观察期后进实盘 watchlist（`ThirdAssetSleeveBanner` 已可消费 `multiAssetSleeve.pick`）
-  4. 联合 `R5CS`（CN/HK内部闲置吃套筒）三窗 `+10.8/+17.0/+30.9` 已验，需接 live `allocation.py`
-- **不做**：期货杠杆/外盘直连/高频。
+- **冻结口径（P1）**：S-3 闲置现金 → 14:30 口径 `mom60+MA200` argmax 停泊，因果 trail8，含 0.05%/边成本；三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt**（[B11](backtests/stable/etf-parking-baseline-2026-09-13.md)）。
+- **待做**（全部落 **OPT-178**，一会话一次改）：① 18:20 job → 14:28 出信号 / 14:30 执行；② trail 触发/记账同 print；③ `_pnl_for` 字段 bug；④ `SELL_TO_A_SHARE` 0 元平仓；⑤ 测试污染账本；⑥ 去掉 `MIN_IDLE_PCT` 与 `ETF>STOCK` 门槛；⑦ `third_asset_sleeve` / `multi_asset_sleeve` 双实现收敛。
+- **已拒**：`20d -10%` 硬切 GC001（单窗无信息，不进 Live，档 `sleeve-exit-hard20-2026-09-04.md`）；`R3 risk-adj` 不如 `mom60`。
+- **不做**：期货杠杆/外盘直连/高频；重开卫星腿。
 
 ## P0-3 C4 paper对照（跳过·等20笔）
 
-≥20笔平仓后 `scripts/paper_vs_backtest_report.py` 跑，现在 3/20 跳过。双子星占用对照（你卫星仓 vs 引擎模拟）已在 Watchlist，不当交易铃。
+≥20笔平仓后 `scripts/paper_vs_backtest_report.py` 跑，现在 3/20 跳过。卫星占用对照（旧双子星）随 B12 下线；港湾对账以核心 S-3 + 停车场为准。
 
-## P0-4 卫星成交日历：14:30 ≠ 冻结 9:30（2026-09-03）
+## P0-4 旧卫星日历线（**已收口 · REJECT 归档** · 2026-09-13）
 
-**大白话**：优化目标 = 在**你真实的买法**（当天缺口、约 14:30 买、C1 过滤、第 3 日 14:30 卖）上，三窗不过拟合地找还能不能比纯核心赚。冻结 clip4 的 9:30 边是另一套策略，当对照，不当你的成绩单。
+**大白话**：卫星腿（14:30 买、C1 3%、第 3 日 14:30 卖）整条线已随 B12 重拟合 **REJECT** 关闭——它在 2024–25 黄金段之外的 2022–23 熊市崩掉（standalone 2022 −34.8% / 2023 −48.0%、long MDD −80.6%），停车场核心上不再有增量（long −55.6pt、回撤 −48.3）。**不再调参、不再排日历、不再进 Live**；要救须带全周期门槛另起预注册。
 
-已测（收盘代理）：[sat-fill-same-close-2026-09-03.md](backtests/sat/sat-fill-same-close-2026-09-03.md) — 相对冻结 T 开盘 valid −17.7，**拒收当改写 9:30 引擎**。习惯日历要另开实验室，主判据 twin vs **核心**（任一窗 >5pt 差于核心或明显过拟合 → 不进 Live）。
+历史档（只读）：[B12 重拟合](backtests/stable/twin-star-parking-refit-2026-09-13.md) · [sat-fill-same-close-2026-09-03.md](backtests/sat/sat-fill-same-close-2026-09-03.md) · 下方「导入什么 / 回测顺序」为已完成的实验记录。
 
 ### 导入什么（机器 36GB / 盘余 136GB / 库已 5.6GB）
 
@@ -329,10 +328,47 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 | X1 | 另类数据 alpha 速筛（股东户数/陆股通/大单资金流） | **[done] 2026-09-11：REJECT/无增量**——陆股通/大单=噪音（t<1.5）；股东户数变化有信号（`chg2` 1月 IC+0.014/t3.05）**但控制市值后塌到 t0.66**=小市值代理，非独立 alpha。档 `backtests/factors/alt-alpha-screen-2026-09-11.md`；脚本 `scripts/incubate/alt_{alpha_ic,holder_refine,holder_ortho}.py` |
 | X2 | 5 分钟日内微结构 | **[done] 2026-09-11：REJECT/不可交易**——`bar_5min` 稀疏（尾盘 2021+、1000/1330/1400 仅 2024+）；`last30`→次日开盘 IC−0.112/t−53.8 但**非单调仅 Q5 尾部、毛 0.21%/天<30bp 成本**（净 x0.30）。不做完整 5min 回填。档 `backtests/factors/intraday-microstructure-2026-09-11.md`；脚本 `scripts/incubate/intraday_{probe,reversal}.py` |
 | X3 | 长史基本面 投资/应计 composite | **[done] 2026-09-11：INCUBATE（sleeve 本体）/ 组合 REJECT**——asset_growth IC−0.066/t−2.91、accruals −0.037/t−2.10；行业中性后流动池边 +2.0%/年(88%胜)；长持 sleeve 净 +5.3%/年 vs 流动 EW +3.4%；行业非PIT稳健性四重通过。**与 S-3 组合**：2024 起 sleeve 看似变好（选择偏差），**延到 2021 长窗后反转**——sleeve 自 DD−40%、组合收益/Sharpe↓、DD 几乎不变 → **REJECT**。档 `backtests/factors/fund-investment-accruals-2026-09-11.md` §2–8；脚本 `scripts/incubate/fundamental_{ic,combo,portfolio,neutral}.py` + `fund_sleeve{,_robust}.py` + `fund_s3_combine.py` |
+| T1 | **打板 / 涨停连板买进**（超短动量·事件驱动；用户方向） | **[done] 2026-09-12：已测形态全部关闭**（假设可成交的 S-limit 收益 80% 来自买不进的一字板；次日追板 v0 三窗近零）。真打板（日内封板排队）需 level-2/封单，parked | **全形态死因汇总见 [limitup-do-not-redo](backtests/limitup-do-not-redo-2026-09-12.md)，不再在现有数据上重开** |
+| B1 | **ETF 组合基准对照**（上证50 / 科创50 / 中证500 / 红利 / 港股科技 + 等权组合）vs 机会双子星 | **[done] 2026-09-12**（P0-13 A1）：双子星四窗全碾压所有 ETF 买持，相关 0~0.5；股票型 ETF 进**核心菜单**是负优化（`compare_core_menu`）。缺口：上证50/科创50 本地无数据。档 [newtracks-a](backtests/newtracks-a-2026-09-12.md) |
 
-**顺序**：V1 →（转正）V2；**R1（regime 配置腿）**；S1/H1/A1 parked，不并行。
+**顺序**：V1 →（转正）V2；**R1（regime 配置腿）**；S1/H1/T1/A1 parked，不并行；**B1（ETF 基准对照）只读可并跑**。
 **纪律**：新策略自有基线（等权买持），不用 S-3 三窗基线判 1 年持有；回放单开脚手架，不在 S-3 引擎加 gate；单假设预注册，零网格。
-**不做**：再给 S-3 加任何财务 gate；拿 60 天 horizon 测价值；调权重凑数。
+**不做**：再给 S-3 加任何财务 gate；拿 60 天 horizon 测价值；调权重凑数；把打板逻辑塞进卫星/S-3。
+
+---
+
+## P0-13 新赛道实验队列（2026-09-12 立 · 用户拍板：继续做实验/出结果/落档）
+
+**大白话**：A 股横截面 alpha 已挖尽（P0-12 全关）。换赛道按「工具/收益结构不同」排，不按「再挖一个因子」。分三阶段：A=现有数据即可跑；B=要先补数据；C=收益层（非 alpha）。一次一刀，只读诊断先行，落地走预注册 + 自有基线。
+
+| 阶段 | # | 方向 | 数据 | 第一刀（只读诊断） | 死因预判 / 验收 |
+|------|---|------|------|-------------------|-----------------|
+| A1 | **B1 ETF 买持基准** | `daily` ETF（现有 300/500/创业板/黄金/十年债/纳指/恒科；上证50/科创50 缺） | **[done] 2026-09-12**：双子星四窗全碾压所有 ETF 买持（OOS2 +82.4 vs 最强恒科 +54.8；past_year +141 vs 创业板 +55.7），相关仅 0~0.5 → 标尺成立 | 不改 Live；档 `backtests/newtracks-a-2026-09-12.md` |
+| A2 | **T1 打板 v0** | `daily` 涨跌停（现有） | **[done] 2026-09-12：方向关闭**——「涨停次日开盘追、T+1 卖」三窗 mixed 近零（ALL +0.14/+0.07/−0.20%），开盘溢价 0.8~3.9% 全付掉、无跟涨；3 板+ 买不进 9~17%。真打板（封板排队/开板回封）需封单/龙虎榜/level-2，**parked 等数据** | 不补网格；**打板全形态死因汇总见 [limitup-do-not-redo](backtests/limitup-do-not-redo-2026-09-12.md)** |
+| A3 | **ETF 深挖（板块/宽基）· 线收口** | tushare `fund_daily`+`fund_adj`（**本轮已建面板** `data/etf/etf_daily.csv`，35 只=6 宽基+29 板块/46,885 行，2021+） | **[done 2026-09-12 · 线收口]** ① 归因：S-3 逐笔 vs 同板块 ETF 均值超额 long +1.22%（board，3/3）/ +1.55%（sector，3/3，cov 78%）→ **不是纯 beta、被动 ETF 替代丢右尾**；中位负 → **右尾/option 型 alpha，不采纳替代**。② 同步止损：**REJECT**（long meanΔ +3.55% 但 OOS2 −1.50%/valid 零停火，放宽 MA20 OOS2 −4.76% = 截右尾/鞭打）。③ 板块动量信号：**REJECT**（H20 edge 微弱正 long +0.15%/WF 3/3，但轮动 long **−44.1% vs EW +4.0%**、DD 69%、0/3 窗，regime 翻转） | 档 [s3-alpha-vs-etf](backtests/etf/s3-alpha-vs-etf-2026-09-12.md) · [s3-etf-sync-stop](backtests/etf/s3-etf-sync-stop-2026-09-12.md) · [etf-sector-momentum](backtests/etf/etf-sector-momentum-2026-09-12.md)；**ETF 线收口** |
+| B1 | **CB 条款/估值线** | 数据已在 `~/Downloads/` + akshare PIT 溢价 | **[done 2026-09-12 · 线收口]** 日线 2021+（356,656 CB-day）+ PIT 溢价（449 只/382,643 行）；**全部 REJECT**：低价/低波（电池）、**mom20（长窗预注册 −24.2 vs EW+51.8、6/6 年负）**、**双低（长窗 Δ+18.3 但 WF 1/3、40bp 翻负 −12.7）** | 档 `backtests/cb/cb-{daily-factors,mom20,doublelow}-2026-09-12.md`；预注册 `designs/cb-{mom20,doublelow}-prereg-2026-09-12.md`。**CB 日线横截面全关，不再补因子**；仅剩条款事件（需 `cb_call`/`cb_price_chg` 权限） |
+| B2 | **事件驱动 / 深层次信号**（指数调样 / 利率 / 关注度 / 主力脚印） | 指数成分史**缺**；利率 akshare 全；关注度快照/1 年；龙虎榜/股东户数/大宗 **2021+（已落 `data/{lhb,gdhs,block}/`）** | **指数调样**暂缓；利率 [done·REJECT]；深层次三源全跑完：龙虎榜机构 [done·REJECT]、股东户数 [done·REJECT]、**大宗溢价 [done·交易级 PASS → 组合级 park]**（溢价>折价在组合层成立但**多头不可实现**：价值在空头腿；多头扣成本 long 超额 −1.33%）。**大宗线关闭**；残余：大折价=避配过滤器（待覆盖检验）。**散户关注度快照 job [done 2026-09-12 · OPT-176：`cn_xq_follow` + 工作日 15:40 job，向前积累，攒够 12 个月再开诊断]** | 利率 [fomc](backtests/event/fomc-rate-2026-09-12.md)·[rate-exp](backtests/event/rate-expectation-2026-09-12.md)；[lhb](backtests/inst/lhb-inst-netbuy-2026-09-12.md)·[gdhs](backtests/inst/gdhs-concentration-2026-09-12.md)·[block](backtests/inst/block-premium-2026-09-12.md)·[momneutral](backtests/inst/block-momneutral-2026-09-12.md)·[replay](backtests/inst/block-premium-replay-2026-09-12.md) |
+| C1 | **打新/新股 + 现金管理** | tushare `new_share`（**已落** `data/ipo/`） | **[done 2026-09-12]** 打新是正 EV 收益层（M=20万年化 ~3-7%）；与双子星结合顺手 +0.5~2%/年。**次要，有空再实现**；不专门建底仓 | 档 [ipo-ev](backtests/ipo/ipo-ev-2026-09-12.md) |
+| B3 | **产业链推理链（上下游传导）** | 同花顺概念指数（`data/chain/`，苹果 2019+/英伟达 2023-05+）+ 美股 anchor（`stock_us_daily`）✅；ths 产业链 tushare ❌ | **[done 2026-09-12 · REJECT（§一.14 确认）]** 12 配对：anchor→概念**隔夜 gap corr +0.318**、**日内 corr −0.01**、mom20→fwd20 high−low −0.11% → **传导全在隔夜跳空、无慢漂移，不可交易**。产业链信息 = A 股消费的海外信息。深挖需 PIT 供应链映射 → parked | 档 [chain-anchor](backtests/chain/chain-anchor-2026-09-12.md) · 预注册 [prereg](designs/chain-anchor-prereg-2026-09-12.md) |
+| B4 | **超跌反弹 / 国家队救市（事件择时）** | 库内即全：`cn_etf_share`（2018+）+ `index_daily`（2005+）；汇金公告 ⚠️ 可选 | **[done 2026-09-12 · REJECT]** K1 ✅/覆盖 ✅558，**K2 ❌**（现代"破 MA200 国家队必在买"→ 隔离不出增量；valid 反号）。**深度超跌&国家队买** 有生命体征（5d +1.07/10d +1.91，均值+中位双正、N 单调）但属均值回归家族。**"救市→反弹"机制不成立** | 档 [bounce-rescue](backtests/event/bounce-rescue-2026-09-12.md) · 预注册 [prereg](designs/bounce-rescue-prereg-2026-09-12.md) |
+| B5 | **现金流折现模型（DCF 估值）** | 财报三表（`cn_cashflow/income/balance`，2007+ 已回填）+ 无风险利率（`us_yields`/中债）；WACC/永续增长假设 | **未落地（用户 2026-09-12 提出，仅记录）**：用 FCFF/FCFE 或 DDM 折现估内在价值 → 选市价 < 内在价值。**预判死因**：#2 共线（可能=优质/低估值换皮，价值因子 P18/V1/V2 已测：价值增量≈0、慢价值仅 regime 腿）、假设敏感（折现率/增长率/永续 = 陷阱网格）、A 股周期股/财报质量/幸存者偏差。**关联**：[P18 价值×动量](factor-library/fundamental.md#p18-价值动量)、[V1/V2 慢价值](factor-library/fundamental.md#v1-慢价值)、[F1 ROE](backtests/factors/fin-f1-roe-ttm-2026-09-10.md)（REJECT） | 待开预注册；数据齐（无新同步） |
+| B6 | **稀有极端触发·高确信择时（一年数次）** | 库内：`index_daily`/`daily`/涨停/广度/成交量/`cn_etf_share`；政策事件（印花税/汇金公告）需另接 | **[done 2026-09-12 · NONE passed]** 5 预声明恐慌触发（崩盘/急跌/千股跌停/无差别抛售/放量），长窗 2015–26、门槛制（N5 胜率≥75%&均值≥+3%&中位>0&较基线+2pt）。**无一人选**；最接近 **C3 千股跌停**（n=35、胜率 65.7%/均值 +1.04%/中位 +1.95%，三子段稳）——**温和真边缘，非稳稳赚**（均值<中位=左尾巨亏）。**"明显恐慌稀有稳赚"证伪**；不调阈值重扫。复活只能换机制族（政策底/恐慌+企稳/个股错杀）另起预注册 | 档 [rare-triggers](backtests/event/rare-triggers-2026-09-12.md) · 预注册 [prereg](designs/rare-triggers-prereg-2026-09-12.md) |
+| B7 | **多资产稳健核心（独立结构）** | `data/etf/etf_daily.csv`（300/500/黄金/纳指/国债，2021+） | **[done 2026-09-12 · 找到可用结构]** **B3 = 5 资产波动率倒数（风险预算）月度再平衡**：long **Sharpe 1.47 / CAGR +7.3% / MDD −7.3%**（碾压 300 买持 0.09/−42.2、60/40、等权 0.91/−13.0）；三窗 Sharpe 2.64/4.15/0.82。**独立结论（未结合双子星）**；边界=样本 5.6 年、regime 依赖、经典 ARP | 档 [stable-core](backtests/stable/stable-core-2026-09-12.md) · 预注册 [prereg](designs/stable-core-prereg-2026-09-12.md) |
+| B8 | **双子星 × B3 稳健核心 · 组合层** | 组合层（现有两腿 NAV，无新数据） | **[done 2026-09-12 · 找到可用稳健组合 {T2,T3,T4}]** ⚠️ **OPT-177 修正**：初版 T0 含 trail8 前视；因果重跑后 **T0 long CAGR 4.04/Sharpe 0.28/MDD −41.4**，**T3「稳健双子星」long 6.24/0.52/−17.9、T4 7.63/1.21/−5.76——连收益都反超 T0**（原：T3 8.95/0.72/−16.9 vs T0 9.42/0.49/−39.9，作废）。两腿相关 0.273。**未落 Live**（若要落地需产品层预注册 + 证不被现有核心/套筒吸收） | 档 [twin-stable-combo](backtests/stable/twin-stable-combo-2026-09-12.md) · [audit-trail8](backtests/audit-trail8-2026-09-12.md) · 预注册 [prereg](designs/twin-stable-combo-prereg-2026-09-12.md) |
+| B9 | **稳健双子星 · 不对称择时版** | 组合层 + 沪深300/策略NAV（无新数据） | **[done 2026-09-12 · 修正后 A2/A3 PASS]** ⚠️ **OPT-177 修正**：初版对着含前视 T0 比较→NONE；因果重跑后 **A2（沪深300×MA200）/ A3（软切）由 out 变 PASS**（A2 long 8.79/0.52/−26.0、valid 49.45；A3 6.66/−31.4/44.86）；**A1 仍失败**（valid −24.4）。注：A2 的 long MDD 仍深于 T3。**教训：首版 A1 当日 NAV 前视假飙 35.4%→t-1 8.23%** | 档 [twin-stable-adaptive](backtests/stable/twin-stable-adaptive-2026-09-12.md) · 预注册 [prereg](designs/twin-stable-adaptive-prereg-2026-09-12.md) |
+| B10 | **闲置现金 ETF 停车场（回归原始定位）** | S-3 引擎 + ETF（518880/513350/513110/511260，2023+） | **[done 2026-09-12 · 可用 {V2,V3,V4}]** 只在 S-3 闲置现金上做多资产 mom60+MA200 轮动（**因果**）：**V4 +因果trail8 三窗 +11.2/+11.8/+11.4pt 最平滑**；V2/V3 +11.2/+13.2/+2.7；**V1 单纳指（旧 T6）valid −3.7 出局**。基线三窗与官方一致（口径正确）。**结论：ETF 层正确定位=闲置停车场，不是 100% argmax 同池（后者把 S-3 打崩 long ~0%/MDD −58%）** | 档 [idle-sleeve](backtests/stable/idle-sleeve-2026-09-12.md) · 预注册 [prereg](designs/idle-sleeve-prereg-2026-09-12.md) |
+| B11 | **ETF 停车场确立为 S-3 之上新基线「港湾」（Harbor）** | 无新数据（`data/etf/etf_daily.csv` 复权） | **[done 2026-09-13 · P1 PASS → 新基线「港湾」冻结（tag `harbor-p1-20260913`）]** 闲置即停（14:30 卫星口径/收盘代理、0.05%/边、三窗+long）：三窗 **+9.6/+13.7/+9.0**、long **+119.6**（K1/K2/K3 全过；2026-09-13 幻影日修正）；V0 三窗=官方基线 ✅。**Live overlay 代价**：20% 地板≈0；**ETF>STOCK 门槛 long +20.8 vs +90.0（−69pt）→ 应去掉**。**风险**：valid MDD −9.4→−23.1、Sharpe 2.44→1.91（空仓期停车场=满仓 ETF + trail 无冷却再进）；long MDD −23.6/Sharpe 0.83（均优于 V0）。**Live 修复清单待做**：14:30 job、trail 触发/记账同 print、`_pnl_for` 字段 bug（恒 0）、`SELL_TO_A_SHARE` 0 元平仓、测试污染真实账本、去 overlay、`third_asset_sleeve`/`multi_asset_sleeve` 双实现收敛、**`paper_twin_star` intake 15:00 快照前视**、卫星 replay breadth gate；**代码暂不改，攒完一次性修（OPT-178）** | 档 [etf-parking-baseline](backtests/stable/etf-parking-baseline-2026-09-13.md) · 预注册 [prereg](designs/etf-parking-baseline-prereg-2026-09-13.md) |
+| B12 | **习惯双子星重拟合（停车场核心）× Live 卫星** | 组合层（停车场 NAV + 卫星 replay，无新数据） | **[done 2026-09-13 · REJECT]** 50/50 双子星 vs 停车场核心：OOS2 +36.5/+1.14sr/回撤改善，train −11.8/−0.16，valid −28.8/−0.84，**long −55.6/−0.13 且回撤 −23.6→−48.3**；40/60、60/40 全不过。**根因**：卫星 standalone **2022 −34.8% / 2023 −48.0%、long MDD −80.6%**（boom-bust，active 52%/3.48 槽/1139 笔）；旧 clip4 三窗恰是其 2024+164.7%/2025+77.4% 黄金段 + 含前视核心腿 → **旧"50/50 用很少收益换 Sharpe/回撤"双失真**。**卫星现行配方不进新基线、禁止调参重扫**；要救须带全周期门槛另起预注册。下一步 B1 改对停车场基线（不含卫星）跑 | 档 [twin-star-parking-refit](backtests/stable/twin-star-parking-refit-2026-09-13.md) · 预注册 [prereg](designs/twin-star-parking-refit-prereg-2026-09-13.md) |
+| B13 | **ETF 买持基准 × 多方法拟合（停车场基线）** | `data/etf/etf_daily.csv`（41 只；510050/588000 已含） | **[done 2026-09-13 · 基线收益胜出]** 基线四窗 total 全高于所有单只 ETF/等权/风险预算/60-40/择时（事后最强单只仅 train 黄金 +49.7 反超；valid/long 输）。**风险上被动组合更强**：风险预算 long Sharpe 1.71/MDD −5.0 vs 基线 0.83/−23.6。**最佳拟合 = 基线×风险预算 50/50**：四窗 Sharpe 全升（1.53/2.92/2.07/1.01）、MDD 全面减半（−9.2/−5.3/−11.8/−12.2），代价=收益（long +114 vs +184）；基线×等权 50/50 略弱。套筒单独 long +63.4/0.54（S-3 才是收益主体）。**50/50 落地需另起预注册**（含 2022-23 压测与成本敏感性） | 档 [etf-benchmark-parking](backtests/stable/etf-benchmark-parking-2026-09-13.md) |
+
+**顺序**：A1/A2/A3 **[done]** → B1 CB **[done 线收口]** → **C1 打新 [done · 次要，有空再实现]**；**B2 利率 [done · REJECT（含预期差）]**；**B2 深层次三源 [done · 全 REJECT，大宗溢价最强生命体征]**；B2 指数调样（本地样本不足）暂缓。
+**计划（结合未做项 · 2026-09-12 定）**：
+- **P1 数据就绪、先跑只读诊断**：① ~~**B4 超跌/国家队救市**~~ **[done 2026-09-12 · REJECT]** ② ~~**大宗溢价动量中性化**~~ **[done · PASS]** ③ ~~**大宗溢价组合级回放**~~ **[done · REJECT/park — 多头不可实现]**。大宗线关闭。**下一步：有潜力项深挖（B3 产业链 / 打新实现 / 散户关注度 job）**。
+- **P2 数据先行**：③ ~~**散户关注度每日快照 job**~~ **[done 2026-09-12 · OPT-176 · `cn_xq_follow` 15:40 job 已上线，向前积累，12 个月后开诊断]** ④ ~~**B3 产业链**~~ **[done 2026-09-12 · REJECT（§一.14 确认）]**。深挖需 PIT 供应链映射 → parked。
+- **P3 次要/parked**：⑤ 打新实现（有空做）⑥ 指数调样（等外部成分史）⑦ ~~补 510050/588000 落库~~ **[done 2026-09-13：两只早已在 `data/etf/etf_daily.csv`（2021 起全），B13 基准已用；DB `daily` 缺口无影响]**。
+- 纪律不变：自有基线、预注册、零网格、不在 S-3/卫星引擎加 gate；一次一刀；结果落 `docs/backtests/` + SUMMARY 一行。
+**纪律**：同 P0-12（自有基线、预注册、零网格、不在 S-3/卫星引擎加 gate）；结果一律落 `docs/backtests/` + SUMMARY 一行。
+**不做**：再挖 A 股价量/财务因子；做空（hedge 已实现证伪）；期货/杠杆；小盘/微盘。
 
 ---
 
@@ -345,6 +381,24 @@ CSV **留在磁盘当档案**（zip 约 2.7GB 即可，解压的 13GB 目录导�
 
 ## 沉淀（近 5 条，余见 archive/README）
 
+| 2026-09-12 | P0-13 A1/A2/A3 + B1（ETF 买持/打板/ETF 深挖三刀 + CB 线） | `archive/2026-09-12-p013-newtracks-cb-etf.md` |
+| 2026-09-12 | P0-13 C1 打新收益层（EV 预注册 PASS，M=20万年化 3–7%） | `archive/2026-09-12-ipo-line.md` |
+| 2026-09-12 | P0-13 B2 利率线（FOMC 离散 REJECT + 预期差 ΔUS2Y「关系真不可交易」REJECT） | `archive/2026-09-12-event-rate.md` |
+| 2026-09-12 | P0-13 深层次信号三源（龙虎榜机构/股东户数/大宗溢价，全 REJECT） | `archive/2026-09-12-deeplayer-inst.md` |
+| 2026-09-12 | P0-13 B4 超跌×国家队净买→反弹（REJECT，"救市→反弹"机制不成立） | `archive/2026-09-12-bounce-rescue.md` |
+| 2026-09-12 | P0-13 大宗溢价动量中性化复验（H-BLK-B **PASS/REVIVE**，本轮唯一 PASS → 溢价腿待引擎回放） | `archive/2026-09-12-deeplayer-inst.md` |
+| 2026-09-12 | P0-13 大宗溢价组合级回放（H-BLK-C **REJECT/park**：K2 价差成立但多头不可实现 → 大宗线关闭） | `archive/2026-09-12-deeplayer-inst.md` |
+| 2026-09-12 | P0-13 B3 产业链 anchor→概念传导（H-CHAIN-A **REJECT**：隔夜 gap 消费、无慢漂移，§一.14 增补证据） | `archive/2026-09-12-chain-anchor.md` |
+| 2026-09-12 | P0-13 B6 稀有极端触发枚举（H-RARE **NONE passed**：5 预声明恐慌触发无一人选，C3 千股跌停最接近但仍非稳稳赚） | `archive/2026-09-12-rare-triggers.md` |
+| 2026-09-12 | P0-13 B7 多资产稳健核心（H-STABLE **找到可用独立结构**：B3 波动率倒数，Sharpe 1.47/CAGR 7.3%/MDD −7.3%） | `archive/2026-09-12-stable-core.md` |
+| 2026-09-12 | P0-13 B8 双子星×B3 组合层（H-COMBO **找到可用稳健组合 {T2,T3,T4}**：T3 50/50 MDD 腰斩、T4 风险预算 MDD −5.8%/Sharpe 1.34） | `archive/2026-09-12-stable-core.md` |
+| 2026-09-12 | P0-13 B9 稳健双子星不对称择时版（H-ADAPT **修正后 A2/A3 PASS**；含 1 日前视 bug 纪律教训） | `archive/2026-09-12-stable-core.md` |
+| 2026-09-12 | **OPT-177 ETF trail8 前视审计**（双子星核心回测污染；因果修复；推翻旧 trail8 证据） | `backtests/audit-trail8-2026-09-12.md` |
+| 2026-09-12 | P0-13 B10 闲置现金 ETF 停车场（H-SLEEVE **可用**：多资产轮动因果三窗 +11.2/+13.2/+2.7，V4 最平滑） | `archive/2026-09-12-stable-core.md` |
+| 2026-09-13 | P0-13 B11 ETF 停车场确立为 S-3 新基线（P1 PASS：+9.4/+6.0/+9.1/long +90.0；Live 前视+账本 bug 审计） | `archive/2026-09-13-etf-parking-baseline.md` |
+| 2026-09-13 | P0-13 B12 习惯双子星重拟合（停车场核心 × 卫星 **REJECT**：long −55.6/回撤 −48.3；卫星 2022 −34.8%/2023 −48.0%/MDD −80.6% boom-bust） | `archive/2026-09-13-etf-parking-baseline.md` |
+| 2026-09-13 | P0-13 B13 ETF 买持基准×多方法拟合（基线收益全胜；**最佳拟合=基线×风险预算 50/50**：Sharpe 全升、MDD 减半；510050/588000 面板已含） | `archive/2026-09-13-etf-parking-baseline.md` |
+| 2026-09-13 | **港湾上线 · 双子星退役**（后端/前端/paper/watchlist/回测/调度/DB 全切；Live 前视与账本修复 OPT-178；后端 4171 绿/前端 833 绿） | `archive/2026-09-13-etf-parking-baseline.md` |
 | 2026-09-12 | P0-12 价量公式因子速筛（Alpha101/GTJA191/HK；含 X3 sleeve PARK、GARP CLOSE） | `archive/2026-09-12-factor-library-screens.md` |
 | 2026-09-11 | P0-11 财务质量（三表 16.5 万行/表 + 7 诊断 + P18 三臂回放，全关） | `archive/2026-09-11-p11-fin-quality.md` |
 | 2026-09-06 | P0-9 文档轨 D0–D5（backtests 分夹/checklist 双拆/数字单一源/路由统一/一页纸） | `archive/2026-09-06-docs-p09-agent-friendly.md` |

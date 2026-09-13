@@ -46,14 +46,6 @@ export interface PortfolioHolding {
     rank5d?: number;
     total?: number;
   } | null;
-  /** Satellite body=3 progress on the trade calendar (CN stocks, backend-computed). */
-  satBody?: {
-    heldDays?: number | null;
-    daysLeft?: number | null;
-    exitDue?: string | null;
-    due?: boolean | null;
-    missingEntry?: boolean | null;
-  } | null;
 }
 
 export interface PortfolioCandidate {
@@ -163,7 +155,7 @@ export interface PortfolioHealthResponse {
     gateOpen?: boolean;
     note?: string;
   } | null;
-  /** 择强单轨 live pick (mom_compare: STOCK basket ∪ GOLD/OIL/NASDAQ/BOND10). */
+  /** 港湾 live pick (mom_compare: STOCK basket ∪ GOLD/OIL/NASDAQ/BOND10). */
   multiAssetSleeve?: {
     active?: boolean;
     action?: 'BUY' | 'ROTATE' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'HOLD' | 'DONT_BUY' | 'NONE';

@@ -2,8 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
-/** OPT-106: real book (registry) vs S-3 backtest "should hold" audit.
- * OPT-140: satellite leg split out (vs twin-star engine book) — never S-3 extra. */
+/** OPT-106: real book (registry) vs S-3 backtest "should hold" audit. */
 export interface BehaviorAuditItem {
   auditDate: string;
   market: string;
@@ -19,18 +18,6 @@ export interface BehaviorAuditItem {
     kind?: 'exited' | 'never_entered';
   }>;
   missingList?: Array<{ symbol: string; entry?: string | null; score?: number | null }>;
-  satExpected?: number;
-  actualSat?: number;
-  satExtra?: number;
-  satMissing?: number;
-  satExtraList?: Array<{
-    symbol: string;
-    name?: string;
-    costPrice?: number | null;
-    entryDate?: string;
-    kind?: 'sat_leg';
-  }>;
-  satMissingList?: Array<{ symbol: string }>;
 }
 
 export const behaviorAuditKey = 'behavior-audit';

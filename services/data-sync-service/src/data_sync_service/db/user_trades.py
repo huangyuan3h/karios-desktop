@@ -41,8 +41,8 @@ SIDE_SELL = "SELL"
 SIDES = (SIDE_BUY, SIDE_ADD, SIDE_SELL)
 
 LEG_S3 = "s3"
-LEG_SAT = "sat"
-LEGS = (LEG_S3, LEG_SAT)
+LEG_PARKING = "parking"
+LEGS = (LEG_S3, LEG_PARKING)
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     leg           TEXT NOT NULL DEFAULT 's3',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'sat'))
+    CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'parking'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_trades_symbol_date

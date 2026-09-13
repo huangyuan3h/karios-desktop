@@ -44,6 +44,9 @@
 |-----|------|-------------|
 | OPT-169 | [ ] | **UI 极简化美化**：按 `designs/ui-minimal-redesign.md`（拍板后从 designs 转 OPT）。验收：设计稿条目落地、前端测试绿 |
 | OPT-170 | [ ] | **健康聚合 / 告警巡检补强**：聚合 job 失败/数据新鲜度/熔断为单一 health 视图，巡检缺口。验收：缺口表 + 告警用例 |
+| OPT-178 | [x] 2026-09-13 · **Live 前视/账本修复 + 双子星退役 + 港湾上线**：① trail/记账统一为 **T 收盘信号 → T+1 开盘成交**（`_exit_fill`；不再用 t-1 收盘记账）；② `_pnl_for` 改读 camelCase（pnl/days 不再恒 0，新增回归测试）；③ `SELL_TO_A_SHARE` 0 元平仓路径**随双子星一并删除**；④ `tests/test_sleeve_paper_auto.py` 改假 symbol + patch 候选集（不再触碰真实腿）；⑤ `paper_twin_star`/`twin_star_daily`/`twin_star_intraday`/`sat_hold_path`/`sat_push_log` **删除**，3 个调度 job、2 个 API、`source=twin_star` 停写；⑥ 卫星 replay 仅研究脚本保留，非 Live；⑦ `multi_asset_sleeve` 重写为 **Harbor P1**（去 `MIN_IDLE_PCT`/STOCK gate；无候选→REPO；idle 即停），`/timeline?strategy=harbor` 新增（数字与 B11 一致：valid +47.8/base +38.7）；⑧ Alembic `0050_remove_twin_star`（drop `sat_push_log` + behavior_audit sat 列 + `user_trades.leg` sat→parking）；⑨ 前端默认 `harbor`、双子星组件/页面/契约删除（833 前端测试绿）。**残余（另计 OPT-179）**：旧 `third_asset_sleeve`（T6 单纳指，已不再交易，仅 health/brief 展示）与 Harbor 实现收敛 | — |
+| OPT-180 | [ ] | **Live=回测 对账归零（round 1 后残余 1.3%）**：决策单源（`harbor.py`/`multi_asset_sleeve` 共用同一 pick/trail 函数）+ 可执行时钟（回测支持 T 收盘信号→T+1 开盘成交，与 Live 同钟）+ NASDAQ 别名切换的 peak 语义对齐。验收：`scripts/verify_harbor_live_vs_backtest.py` 三窗+long **0 mismatch**。round 1 见 [audit-live-vs-backtest-2026-09-13](backtests/audit-live-vs-backtest-2026-09-13.md) | — |
+| OPT-179 | [ ] | **旧 T6 `third_asset_sleeve` 收敛**：B10 已判 V1 单纳指 valid −3.7 出局；现仅 `portfolio_health`/`trading_brief`/`allocation`/`core_holding_audit` 展示引用。验收：健康/简报统一显示 Harbor `multiAssetSleeve`；`third_asset_sleeve` 移入 scripts 或删除；相关测试更新 | — |
 
 ### E 策略实现准确度（2026-09-11 新增）✅ 全完成（OPT-171/172/173）
 
@@ -54,6 +57,8 @@
 ### 刚完成（待归档）
 
 | OPT-175 | [x] 2026-09-12 · **coverage 余量**：88.05% → **88.93%**（门 88 恢复安全垫）；新增 `test_fin_panel`(12)/`test_cn_fin_statements_sync`(11)/`test_commodity_signals`(17)；全量 4345 passed | — |
+| OPT-176 | [x] 2026-09-12 · **散户关注度快照基建**：新表 `cn_xq_follow`（migration `0049`，雪球 `stock_hot_follow_xq` 全市场关注数）+ 每日 job `xq_follow_snapshot`（工作日 15:40 Asia/Shanghai）+ `scripts/sync_xq_follow.py`；SYNC_JOB_TYPES + `SCHEDULER_JOB_CATALOG`（factors 组）；`tests/test_xq_follow.py` 4 passed；无历史接口，只能向前每日积累（P0-13） | — |
+| OPT-177 | [x] 2026-09-12 · **ETF trail8 前视 bug（双子星核心回测污染）**：`pick_strong_grid.build_nav_from_cache` 与 `pick_strong_track.build_mom_compare_timeline` 的 trail 用**当日收盘**触发、却把**当日收益记 0** → 1 日前视。实测 long 窗 `fusedPct 40.2 → 0.8`（因果）、valid `56.9 → 20.0`。**修复**：trail 改 t-1 收盘触发（`trail_causal` 默认 True；`build_mom_compare_timeline` 同步）；**连锁**：B8 修正后 T3 连收益都反超 T0、B9 A2/A3 变 PASS。审计档 [audit-trail8-2026-09-12](backtests/audit-trail8-2026-09-12.md) | — |
 | OPT-171 | [x] 2026-09-12 · **PiT 前视护栏**：`build_panel` 拆出纯 `build_panel_from_px`；`tests/test_pit_no_lookahead.py` 钉死"上月流动性选集"契约 + 禁 `.shift(-` | — |
 | OPT-172 | [x] 2026-09-12 · **配方 attestation 扩展**：`state_bucket_track.COSTS_ROUNDTRIP` 改为从 `paper_cost_model` 派生（单一源）；attest CN 30bps / HK 90bps、回测成本==live、engine 用共享模型 | — |
 | OPT-173 | [x] 2026-09-12 · **回放黄金**：`tests/test_engine_golden.py` + `tests/golden/engine_summary.json` 冻结 `_summarize` 指标（`UPDATE_GOLDEN=1` 再生） | — |

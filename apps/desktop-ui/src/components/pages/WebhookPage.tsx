@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 
 const EVENT_TYPES = [
-  'twin_star_reminder',
   'job_failed',
   'paper_chain_issue',
   'execution_card',
@@ -22,11 +21,10 @@ const EVENT_TYPES = [
 ];
 
 const EVENT_LABELS: Record<string, string> = {
-  twin_star_reminder: '双子星14:30提醒',
   job_failed: 'cron 失败',
   paper_chain_issue: 'paper 链断链',
-  execution_card: '执行卡（单轨）',
-  audit_issues: '行为对账（单轨）',
+  execution_card: '执行卡（港湾）',
+  audit_issues: '行为对账（港湾）',
   near_stop: '接近止损',
   oos_warning: 'OOS 预警',
   recon_missing: '对账缺票',
@@ -50,7 +48,7 @@ const INPUT_CLS =
 export function WebhookPage() {
   const qc = useQueryClient();
   const [url, setUrl] = React.useState('');
-  const [selected, setSelected] = React.useState<string[]>(['twin_star_reminder', 'job_failed']);
+  const [selected, setSelected] = React.useState<string[]>(['job_failed']);
   const [newSecret, setNewSecret] = React.useState<string | null>(null);
 
   const listQ = useQuery({

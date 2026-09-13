@@ -97,18 +97,6 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
             if parts:
                 lines.append(f"{m}（回测应持 {v.get('expected')} / 实持 {v.get('actual')}）")
                 lines.extend(parts)
-            sat = v.get("sat") or {}
-            sat_bits = []
-            if sat.get("extra"):
-                sat_bits.append(f"账外 {len(sat['extra'])} 只")
-            if sat.get("missing"):
-                sat_bits.append(f"缺 {len(sat['missing'])} 只")
-            if sat_bits or sat.get("expected") or sat.get("actual"):
-                lines.append(
-                    f"  🛰 卫星腿（引擎应持 {sat.get('expected', 0)} / 实持 {sat.get('actual', 0)}"
-                    + (f"：{'、'.join(sat_bits)}" if sat_bits else "：一致")
-                    + "）"
-                )
         return {
             "title": f"⚠️ 行为对账 {p.get('day', '')}".strip(),
             "body": _lines(*lines) or "无明细",
@@ -169,17 +157,6 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
 
     if event_type == "test":
         return {"title": "✅ Karios 连通测试", "body": "Webhook 链路正常"}
-
-    if event_type == "twin_star_reminder":
-        # 14:20 satellite reminder — detail is already a phone-readable
-        # one-liner (sells + core + buys + skips + holdings). Split on
-        # " · " so Bark shows one fact per line.
-        detail = str(p.get("detail") or "").strip()
-        lines = [s.strip() for s in detail.split(" · ") if s.strip()]
-        return {
-            "title": f"🛰 {p.get('title') or '双子星 · 14:30 操作'}".strip(),
-            "body": _lines(*lines) or "名单不可用",
-        }
 
     # Generic fallback: keep it readable.
     return {

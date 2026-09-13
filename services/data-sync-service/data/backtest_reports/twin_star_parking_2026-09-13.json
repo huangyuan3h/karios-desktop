@@ -1,0 +1,191 @@
+{
+  "tag": "twin-star-parking-2026-09-13",
+  "prereg": "docs/designs/twin-star-parking-refit-prereg-2026-09-13.md",
+  "results": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 55.9,
+        "cagr": 55.61,
+        "max_dd": -15.4,
+        "sharpe": 1.31
+      },
+      "satellite": {
+        "n_days": 254,
+        "total_pct": 94.9,
+        "cagr": 94.37,
+        "max_dd": -12.3,
+        "sharpe": 3.2
+      },
+      "twin": {
+        "0.4": {
+          "n_days": 254,
+          "total_pct": 85.0,
+          "cagr": 84.51,
+          "max_dd": -11.7,
+          "sharpe": 2.2
+        },
+        "0.5": {
+          "n_days": 254,
+          "total_pct": 92.4,
+          "cagr": 91.9,
+          "max_dd": -11.0,
+          "sharpe": 2.45
+        },
+        "0.6": {
+          "n_days": 254,
+          "total_pct": 99.9,
+          "cagr": 99.33,
+          "max_dd": -10.3,
+          "sharpe": 2.7
+        }
+      },
+      "delta_core_total": 36.5,
+      "delta_core_cagr": 36.29,
+      "delta_core_mdd": 4.4,
+      "delta_core_sharpe": 1.14,
+      "pct_active": 65.7,
+      "fills": 289,
+      "avg_held_days": 3.0
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 40.4,
+        "cagr": 96.12,
+        "max_dd": -10.0,
+        "sharpe": 2.28
+      },
+      "satellite": {
+        "n_days": 128,
+        "total_pct": 21.0,
+        "cagr": 45.98,
+        "max_dd": -8.7,
+        "sharpe": 1.78
+      },
+      "twin": {
+        "0.4": {
+          "n_days": 128,
+          "total_pct": 31.0,
+          "cagr": 70.97,
+          "max_dd": -8.4,
+          "sharpe": 2.23
+        },
+        "0.5": {
+          "n_days": 128,
+          "total_pct": 28.6,
+          "cagr": 64.74,
+          "max_dd": -8.4,
+          "sharpe": 2.12
+        },
+        "0.6": {
+          "n_days": 128,
+          "total_pct": 26.2,
+          "cagr": 58.56,
+          "max_dd": -8.4,
+          "sharpe": 1.98
+        }
+      },
+      "delta_core_total": -11.8,
+      "delta_core_cagr": -31.38,
+      "delta_core_mdd": 1.6,
+      "delta_core_sharpe": -0.16,
+      "pct_active": 56.2,
+      "fills": 132,
+      "avg_held_days": 3.0
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 47.8,
+        "cagr": 142.85,
+        "max_dd": -23.1,
+        "sharpe": 1.91
+      },
+      "satellite": {
+        "n_days": 112,
+        "total_pct": -2.5,
+        "cagr": -5.54,
+        "max_dd": -9.9,
+        "sharpe": -0.26
+      },
+      "twin": {
+        "0.4": {
+          "n_days": 112,
+          "total_pct": 24.4,
+          "cagr": 64.17,
+          "max_dd": -21.5,
+          "sharpe": 1.27
+        },
+        "0.5": {
+          "n_days": 112,
+          "total_pct": 19.0,
+          "cagr": 48.41,
+          "max_dd": -21.1,
+          "sharpe": 1.07
+        },
+        "0.6": {
+          "n_days": 112,
+          "total_pct": 13.8,
+          "cagr": 34.0,
+          "max_dd": -20.9,
+          "sharpe": 0.86
+        }
+      },
+      "delta_core_total": -28.8,
+      "delta_core_cagr": -94.44,
+      "delta_core_mdd": 2.0,
+      "delta_core_sharpe": -0.84,
+      "pct_active": 31.2,
+      "fills": 60,
+      "avg_held_days": 3.0
+    },
+    "long": {
+      "core": {
+        "n_days": 1270,
+        "total_pct": 184.5,
+        "cagr": 23.08,
+        "max_dd": -23.6,
+        "sharpe": 0.83
+      },
+      "satellite": {
+        "n_days": 1270,
+        "total_pct": 81.2,
+        "cagr": 12.52,
+        "max_dd": -80.6,
+        "sharpe": 0.5
+      },
+      "twin": {
+        "0.4": {
+          "n_days": 1270,
+          "total_pct": 143.7,
+          "cagr": 19.35,
+          "max_dd": -38.9,
+          "sharpe": 0.76
+        },
+        "0.5": {
+          "n_days": 1270,
+          "total_pct": 128.9,
+          "cagr": 17.87,
+          "max_dd": -48.3,
+          "sharpe": 0.7
+        },
+        "0.6": {
+          "n_days": 1270,
+          "total_pct": 112.9,
+          "cagr": 16.19,
+          "max_dd": -56.8,
+          "sharpe": 0.63
+        }
+      },
+      "delta_core_total": -55.6,
+      "delta_core_cagr": -5.21,
+      "delta_core_mdd": -24.7,
+      "delta_core_sharpe": -0.13,
+      "pct_active": 51.7,
+      "fills": 1139,
+      "avg_held_days": 3.0
+    }
+  },
+  "as_of": "2026-09-13T11:07:46+00:00"
+}

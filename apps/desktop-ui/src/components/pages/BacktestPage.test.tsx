@@ -171,10 +171,9 @@ beforeEach(() => {
     if (String(path).includes('/api/backtest/timeline')) {
       return {
         ok: true,
-        strategy: 'twin_star',
-        mode: 'opportunity_twin_star',
-        opportunity: true,
-        summary: { fusedPct: 12.5, corePct: 8.1, basePct: 3.2, maxDdFusedPct: 9.4 },
+        strategy: 'harbor',
+        mode: 'mom_compare',
+        summary: { fusedPct: 12.5, basePct: 3.2, maxDdFusedPct: 9.4 },
         rows: [
           {
             date: '2026-08-01',
@@ -195,56 +194,14 @@ beforeEach(() => {
             navBaseReturnPct: 1,
             navSingleReturnPct: 5,
             navMultiReturnPct: 5,
-            satNav: 1.02,
-            satNavReturnPct: 2,
-            coreNav: 1.08,
-            coreNavReturnPct: 8,
-            satPositions: 1,
-            satSlots: 1,
-            satActive: true,
-            gapCount: 3,
-            strictCount: 1,
-            skipT1Count: 1,
-            filledToday: 1,
-            idleSlots: 3,
-            gateOpen: true,
+            navSimReturnPct: 6,
             exits: [],
-          },
-        ],
-        blotter: [
-          {
-            kind: 'skip_t1',
-            date: '2026-08-01',
-            ts: '000001.SZ',
-            amp: 1.2,
-            ampRank: 1,
-            skipT1: true,
-            contribPct: 0,
-            closeReason: 'skip_t1_limit',
-          },
-          {
-            kind: 'fill',
-            date: '2026-08-04',
-            ts: '000002.SZ',
-            amp: 0.8,
-            ampRank: 2,
-            skipT1: false,
-            entryDate: '2026-08-01',
-            exitDate: '2026-08-04',
-            exitDue: '2026-08-04',
-            pnlPct: -1.5,
-            contribPct: -0.38,
-            closeReason: 'body_exit',
-            heldDays: 3,
           },
         ],
       };
     }
     if (String(path).includes('/api/backtest/return-attribution')) {
       return { ok: true, rows: [], summary: {} };
-    }
-    if (String(path).includes('/api/backtest/twin-star')) {
-      return { ok: true, core: {}, sat: {} };
     }
     if (String(path).includes('/api/backtest/exit-attribution')) {
       return {
@@ -286,27 +243,20 @@ beforeEach(() => {
 });
 
 describe('BacktestPage', () => {
-  it('shows opportunity twin-star habit timeline on compare tab', async () => {
+  it('shows the harbor timeline on compare tab', async () => {
     renderPage();
-    expect(await screen.findByText(/机会双子星 · 习惯C1\+14:30卖（Live）/)).toBeDefined();
-    expect(await screen.findByText(/核心目标%/)).toBeDefined();
-    expect(screen.getByText(/择强单轨累计/)).toBeDefined();
+    expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
+    expect(await screen.findByText('港湾NAV%')).toBeDefined();
     expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/产品过去一年/)).toBeDefined();
     expect(screen.getByText(/三窗 · OOS2/)).toBeDefined();
     expect(screen.getByText(/NAV 叠加/)).toBeDefined();
-    expect(screen.getByText(/开闸占用/)).toBeDefined();
-    expect(screen.getByText('核心NAV%')).toBeDefined();
-    expect(screen.getByText('空槽回核')).toBeDefined();
-    expect(screen.getByText('卫星 blotter')).toBeDefined();
-    expect(screen.getAllByText(/涨停跳过/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('000001.SZ')).toBeDefined();
-    expect(screen.getByText('000002.SZ')).toBeDefined();
+    expect(screen.getByTestId('harbor-nav-chart')).toBeDefined();
   });
 
   it('switches timeline query to the OOS2 gate window', async () => {
     renderPage();
-    expect(await screen.findByText(/机会双子星 · 习惯C1\+14:30卖（Live）/)).toBeDefined();
+    expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /三窗 · OOS2/ }));
     expect(
       apiGetJson.mock.calls.some((c: unknown[]) => String(c[0]).includes('start=2024-08-01')),

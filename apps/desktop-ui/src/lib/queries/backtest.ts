@@ -2,9 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { apiGetJson, apiPostJson } from '@/lib/api/client';
-import { getShanghaiMinutes, isWeekdayShanghai } from '@/lib/market-hours';
-import { parseTwinStarAction, type TwinStarAction } from '@karios/shared';
+import { apiGetJson } from '@/lib/api/client';
 
 export type BacktestSummary = {
   config: {
@@ -436,7 +434,7 @@ export type CoreAuditOp = {
 export type CoreAuditHolding = {
   symbol?: string | null;
   name?: string | null;
-  /** OPT-149: strategy book — 's3' (S-3 core rules) | 'sat' (twin-star body=3). */
+  /** OPT-149: strategy book — 's3' (S-3 core rules) | 'parking' (ETF parking). */
   leg?: string | null;
   positionPct?: number | null;
   costPrice?: number | null;
@@ -492,20 +490,11 @@ export type TimelineRow = {
   navBaseReturnPct: number;
   navSingleReturnPct: number;
   navMultiReturnPct: number;
-  /** Core pick-strong NAV (twin_star blend keeps this; navSingle is fused). */
-  coreNav?: number | null;
-  coreNavReturnPct?: number | null;
-  /** twin_star / state_bucket satellite leg */
-  satNav?: number | null;
-  satNavReturnPct?: number | null;
-  satPositions?: number | null;
   /** OPT-152 实盘口径 product curve (S-3 actual NAV; null when sim curves absent). */
   navSim?: number | null;
   navSimReturnPct?: number | null;
   navSimMulti?: number | null;
   navSimMultiReturnPct?: number | null;
-  /** Overnight + body-exit occupancy (opportunity blend gate). */
-  satActive?: boolean | null;
   /** TIP-016 posture annotation: line-level realized circuit + CN sentiment. */
   cnCircuit?: boolean | null;
   hkCircuit?: boolean | null;
@@ -517,55 +506,13 @@ export type TimelineRow = {
     northD20: number | null;
     smNetPct: number | null;
   } | null;
-  /** Slots used that day including exits (may exceed satPositions). */
-  satSlots?: number | null;
   exits?: string[];
-  gapCount?: number | null;
-  strictCount?: number | null;
-  skipT1Count?: number | null;
-  skipC1Count?: number | null;
-  skipC2Count?: number | null;
-  skipC3Count?: number | null;
-  skipChurnCount?: number | null;
-  filledToday?: number | null;
-  idleSlots?: number | null;
-  gateOpen?: boolean | null;
-};
-
-export type SatBlotterKind =
-  | 'fill'
-  | 'skip_t1'
-  | 'skip_c1'
-  | 'skip_c2'
-  | 'skip_c3'
-  | 'skip_churn'
-  | 'skip_entry'
-  | 'open';
-
-export type SatBlotterRow = {
-  kind: SatBlotterKind | string;
-  date: string;
-  ts: string;
-  amp?: number | null;
-  ampRank?: number | null;
-  skipT1?: boolean | null;
-  entryDate?: string | null;
-  exitDate?: string | null;
-  exitDue?: string | null;
-  pnlPct?: number | null;
-  contribPct?: number | null;
-  closeReason?: string | null;
-  heldDays?: number | null;
 };
 
 export type TimelineSummary = {
   fusedPct?: number;
-  corePct?: number;
   basePct?: number;
   maxDdFusedPct?: number;
-  satActiveDays?: number;
-  skipT1Count?: number;
-  fillCount?: number;
 };
 
 export type TimelineResponse = {
@@ -575,44 +522,26 @@ export type TimelineResponse = {
   strategy?: string;
   mode?: string;
   opportunity?: boolean;
-  satFill?: string;
-  satExit?: string | null;
-  c1Pct?: number | null;
   trailPct?: number;
-  coreWeight?: number;
-  satWeight?: number;
   summary?: TimelineSummary;
   rows: TimelineRow[];
-  blotter?: SatBlotterRow[];
 };
 
-export type TimelineStrategy = 'pick_strong' | 'twin_star' | 'state_bucket';
+export type TimelineStrategy = 'harbor';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
-  pick_strong: '单轨择强',
-  twin_star: '机会双子星',
-  state_bucket: '状态分桶 S-gap',
+  harbor: '港湾',
 };
 
 export function useTimelineQuery(
   start: string,
   end: string,
-  strategy: TimelineStrategy = 'pick_strong',
+  strategy: TimelineStrategy = 'harbor',
   enabled = true,
-  satOpts?: { satFill?: string; satExit?: string | null; c1Pct?: number | null },
 ) {
   const q = new URLSearchParams({ start, end, strategy });
-  if (strategy === 'twin_star' && satOpts) {
-    if (satOpts.satFill) q.set('sat_fill', satOpts.satFill);
-    if (satOpts.satExit) q.set('sat_exit', satOpts.satExit);
-    if (satOpts.c1Pct != null) q.set('c1_pct', String(satOpts.c1Pct));
-  }
-  const keySuffix =
-    strategy === 'twin_star' && satOpts
-      ? [satOpts.satFill ?? '', satOpts.satExit ?? '', satOpts.c1Pct ?? '']
-      : [];
   return useQuery({
-    queryKey: ['backtest', 'timeline', start, end, strategy, ...keySuffix],
+    queryKey: ['backtest', 'timeline', start, end, strategy],
     queryFn: () =>
       apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, {
         timeoutMs: 300_000,
@@ -620,38 +549,6 @@ export function useTimelineQuery(
     staleTime: 5 * 60_000,
     enabled,
   });
-}
-
-export type { TwinStarAction, TwinStarSatCandidate, TwinStarSatHolding } from '@karios/shared';
-
-/** 双子星 (Twin-Star) 今日操作信号: 核心择强目标 + S-gap 卫星闸/候选. */
-export function twinStarRefetchIntervalMs(now: Date = new Date()): number {
-  const mins = getShanghaiMinutes(now);
-  const live = isWeekdayShanghai(now) && mins >= 9 * 60 + 30 && mins <= 15 * 60;
-  if (live) return 60_000;
-  if (mins < 9 * 60 || mins >= 15 * 60) return 5 * 60_000;
-  return 30 * 60_000;
-}
-
-export function useTwinStarActionQuery(enabled = true) {
-  return useQuery({
-    queryKey: ['backtest', 'twin-star', 'action'],
-    queryFn: async () =>
-      parseTwinStarAction(
-        await apiGetJson<unknown>('/api/backtest/twin-star/action', { timeoutMs: 60_000 }),
-      ),
-    staleTime: 15_000,
-    refetchInterval: () => twinStarRefetchIntervalMs(),
-    enabled,
-  });
-}
-
-export async function refreshTwinStarAction(): Promise<TwinStarAction> {
-  return parseTwinStarAction(
-    await apiPostJson<unknown>('/api/backtest/twin-star/refresh', undefined, {
-      timeoutMs: 300_000,
-    }),
-  );
 }
 
 export type PickAttrStat = {
@@ -702,7 +599,7 @@ export function useReturnAttributionQuery(start: string, end: string, enabled = 
   });
 }
 
-export type PaperVsBacktestTwin = {
+export type PaperVsBacktestMatch = {
   entryDate?: string | null;
   closeDate?: string | null;
   entryPrice?: number | null;
@@ -724,7 +621,7 @@ export type PaperVsBacktestRow = {
     holdingDays?: number | null;
     closeReason?: string | null;
   };
-  backtest?: PaperVsBacktestTwin | null;
+  backtest?: PaperVsBacktestMatch | null;
   diff?: {
     entryPriceDiffPct?: number | null;
     pnlDiffPct?: number | null;
@@ -751,7 +648,7 @@ export type PaperVsBacktestResponse = { ok: boolean; report: PaperVsBacktestRepo
 
 /**
  * C4 paper-vs-backtest report (2026-08-12): every closed S-3 paper trade
- * reconciled against the backtest engine's twin trade. Generated by
+ * reconciled against the backtest engine's matching trade. Generated by
  * scripts/paper_vs_backtest_report.py; the verdict flags <20 samples as
  * "not yet conclusive".
  */

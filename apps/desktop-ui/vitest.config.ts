@@ -14,6 +14,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Markdown export suites run heavy CPU work; 5s default times out under
+    // full-suite parallel load even though each file passes in isolation.
+    testTimeout: 15_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

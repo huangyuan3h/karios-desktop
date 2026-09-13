@@ -8,13 +8,13 @@ describe('notification lanes', () => {
     expect(notificationLane({ type: 'oos_warning' })).toBe('research');
     expect(notificationLane({ type: 'pyramid_trigger' })).toBe('trade');
     expect(notificationLane({ type: 'cron_failed' })).toBe('system');
-    expect(notificationLane({ type: 'sat_exit', lane: 'trade' })).toBe('trade');
+    expect(notificationLane({ type: 'exit_alert', lane: 'trade' })).toBe('trade');
   });
 
   it('groups a mixed list in trade → system → research order', () => {
     const groups = groupNotifications([
       { type: 'oos_warning', lane: 'research' },
-      { type: 'sat_exit', lane: 'trade' },
+      { type: 'exit_alert', lane: 'trade' },
       { type: 'cron_failed', lane: 'system' },
       { type: 'recon_missing' },
     ]);

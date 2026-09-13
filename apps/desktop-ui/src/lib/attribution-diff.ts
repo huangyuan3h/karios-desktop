@@ -188,7 +188,7 @@ function buildInsights(
       out.push({
         id: 'engine_under',
         priority: 100,
-        title: `单轨主贡献是 ${trackEngine}（加法 ${fmt(eng.trackAddPct)}），你仓位仅 ${eng.openWeightPct}%`,
+        title: `港湾主贡献是 ${trackEngine}（加法 ${fmt(eng.trackAddPct)}），你仓位仅 ${eng.openWeightPct}%`,
         detail: `归因份额约 ${eng.trackSharePct}% 的「发动机」腿，实盘明显欠配。今天是否 OIL/纳指满仓是战术问题；长期跑不赢曲线，优先看有没有吃到这条腿的涨跌。退出机制管的是单票风险，补不齐「没坐上主引擎」的缺口。`,
       });
     } else if (eng.openWeightPct >= 40) {
@@ -196,7 +196,7 @@ function buildInsights(
         id: 'engine_ok',
         priority: 40,
         title: `主贡献腿 ${trackEngine} 你有在场（仓 ${eng.openWeightPct}% · 浮盈点 ${fmt(eng.openPnlPoints)}）`,
-        detail: `已实现 ${eng.realizedCount} 笔合计 ${fmt(eng.realizedSumPct)}。若仍低于单轨几何，差额更多来自时点/仓位比例，而不是「完全没碰对的资产」。`,
+        detail: `已实现 ${eng.realizedCount} 笔合计 ${fmt(eng.realizedSumPct)}。若仍低于港湾几何，差额更多来自时点/仓位比例，而不是「完全没碰对的资产」。`,
       });
     }
   }
@@ -206,7 +206,7 @@ function buildInsights(
     out.push({
       id: `over_${r.pick}`,
       priority: 80,
-      title: `超配 ${r.pick}（仓 ${r.openWeightPct}%），单轨加法仅 ${fmt(r.trackAddPct)}（份额 ${r.trackSharePct}%）`,
+      title: `超配 ${r.pick}（仓 ${r.openWeightPct}%），港湾加法仅 ${fmt(r.trackAddPct)}（份额 ${r.trackSharePct}%）`,
       detail: `实盘 beta 压在这条腿上，但区间归因显示它不是主发动机。条件单/止损可以改善单票结局，改变不了「权重押在次要贡献腿」的结构差。`,
     });
   }
@@ -217,9 +217,9 @@ function buildInsights(
     out.push({
       id: 'stock_exit',
       priority: 55,
-      title: `股票腿：单轨加法 ${fmt(stock.trackAddPct)} · 你已实现 ${fmt(stock.realizedSumPct)}（${stock.realizedCount} 笔）· 浮盈点 ${fmt(stock.openPnlPoints)}`,
+      title: `股票腿：港湾加法 ${fmt(stock.trackAddPct)} · 你已实现 ${fmt(stock.realizedSumPct)}（${stock.realizedCount} 笔）· 浮盈点 ${fmt(stock.openPnlPoints)}`,
       detail: exitHelp
-        ? '退出机制可能已经兑现过一部分股票收益；若开仓权重长期偏低，仍会相对单轨 STOCK 袖欠捕获。'
+        ? '退出机制可能已经兑现过一部分股票收益；若开仓权重长期偏低，仍会相对港湾 STOCK 袖欠捕获。'
         : '把已实现与浮盈放在一起看股票腿，不要用「今天 OIL 不够 100%」代替股票引擎是否在账上。',
     });
   }
@@ -228,7 +228,7 @@ function buildInsights(
     out.push({
       id: 'engine_mismatch',
       priority: 90,
-      title: `结构错位：单轨发动机 ${trackEngine} ≠ 你最重仓 ${userTopWeight}`,
+      title: `结构错位：港湾发动机 ${trackEngine} ≠ 你最重仓 ${userTopWeight}`,
       detail:
         '这是归因对照的核心结论——不是「今日 pick 提示你没满仓」，而是区间收益来源与实盘风险预算不一致。',
     });
@@ -239,7 +239,7 @@ function buildInsights(
     out.push({
       id: `drag_${r.pick}`,
       priority: 70,
-      title: `单轨在 ${r.pick} 上加法为负（${fmt(r.trackAddPct)}），你仍持有 ${r.openWeightPct}%`,
+      title: `港湾在 ${r.pick} 上加法为负（${fmt(r.trackAddPct)}），你仍持有 ${r.openWeightPct}%`,
       detail:
         '若浮盈/已实现也为负，说明共担了拖累腿；若你已通过退出做成正已实现，说明纪律在这条腿上优于「死扛硬切日」。',
     });
@@ -250,7 +250,7 @@ function buildInsights(
     priority: 1,
     title: '口径（必读）',
     detail:
-      '单轨列 = 100% 硬切日收益归因。你的列 = 现仓权重/浮盈点 + 区间已实现毛盈亏。两者不是同一 NAV，但足够回答「钱主要从哪条腿来、你有没有接到」。14:30/条件单是残差，排在结构错位之后。',
+      '港湾列 = 核心 100% 硬切日收益归因。你的列 = 现仓权重/浮盈点 + 区间已实现毛盈亏。两者不是同一 NAV，但足够回答「钱主要从哪条腿来、你有没有接到」。时点/条件单是残差，排在结构错位之后。',
   });
 
   return out.sort((a, b) => b.priority - a.priority);

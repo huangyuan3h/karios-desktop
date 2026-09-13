@@ -125,7 +125,8 @@ class TestExtraClosesHelpers:
             {"date": "2026-08-31", "close": 9.0},
         ]
         monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days=260: bars)
-        assert mas._signal_closes("518880.SH") == [5.0]
+        # Harbor clock: today's completed close is included (signal T close -> T+1 open).
+        assert mas._signal_closes("518880.SH") == [5.0, 9.0]
 
 
 class TestExtraPick:
@@ -165,43 +166,6 @@ class TestExtraPick:
             mas, "_signal_closes", lambda ts, days=260: _linear_closes(195, 100.0, 120.0)
         )
         assert mas._pick() is None
-
-
-class TestExtraStockBasket:
-    def test_extra_stock_basket_hk_five_digit(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            mas, "_signal_closes", lambda ts, days=260: _linear_closes(70, 100.0, 110.0)
-        )
-        out = mas._stock_basket_mom_from_holdings([{"symbol": "HK:12345", "ts_code": ""}])
-        assert out is not None
-        assert out["key"] == "STOCK"
-        assert out["n"] == 1
-
-    def test_extra_stock_basket_cn_sh_sz_and_skip(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            mas, "_signal_closes", lambda ts, days=260: _linear_closes(70, 100.0, 110.0)
-        )
-        holdings = [
-            {"symbol": "CN:600000", "ts_code": ""},
-            {"symbol": "CN:000001", "ts_code": ""},
-            {"symbol": "ETF:518880", "ts_code": "518880.SH"},
-            {"symbol": "CN:BOGUS", "ts_code": ""},
-        ]
-        out = mas._stock_basket_mom_from_holdings(holdings)
-        assert out is not None
-        assert out["n"] == 2
-
-    def test_extra_stock_basket_zero_ago_skipped(self, monkeypatch) -> None:
-        closes = _linear_closes(70, 100.0, 110.0)
-        closes[-mas.LOOKBACK] = 0.0
-        monkeypatch.setattr(mas, "_signal_closes", lambda ts, days=260: list(closes))
-        out = mas._stock_basket_mom_from_holdings([{"symbol": "CN:600000", "ts_code": "600000.SH"}])
-        assert out is None
-
-    def test_extra_stock_basket_short_series_skipped(self, monkeypatch) -> None:
-        monkeypatch.setattr(mas, "_signal_closes", lambda ts, days=260: [1.0] * 10)
-        out = mas._stock_basket_mom_from_holdings([{"symbol": "CN:600000", "ts_code": "600000.SH"}])
-        assert out is None
 
 
 class TestExtraRsiPulse:
@@ -250,65 +214,27 @@ class TestExtraRsiPulse:
 
 
 class TestExtraSleeveBuild:
-    def _patch_pair(self, monkeypatch, etf_pick, stock_pick, trail=None) -> None:
-        monkeypatch.setattr(mas, "_pick", lambda: etf_pick)
-        monkeypatch.setattr(mas, "_stock_basket_mom_from_holdings", lambda holdings: stock_pick)
-        if trail is not None or True:
-            monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: trail)
+    """Harbor (P1, B11): park idle in the mom60+MA200 argmax ETF; no STOCK gate."""
 
-    def test_extra_sleeve_no_pool(self, monkeypatch) -> None:
-        self._patch_pair(monkeypatch, None, None, None)
+    def _patch(self, monkeypatch, etf_pick, trail=None) -> None:
+        monkeypatch.setattr(mas, "_pick", lambda: etf_pick)
+        monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: trail)
+
+    def test_extra_sleeve_no_candidate_no_hold(self, monkeypatch) -> None:
+        self._patch(monkeypatch, None)
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=[]
         )
-        assert out["action"] == "NONE"
-        assert "候选数据不足" in out["note"]
+        assert out["action"] == "DONT_BUY"
+        assert "无 ETF" in out["message"]
 
-    def test_extra_sleeve_stock_wins_with_held(self, monkeypatch) -> None:
-        etf = {
-            "key": "GOLD",
-            "symbol": "ETF:518880",
-            "name": "gold",
-            "mom60": 1.0,
-            "above_ma200": True,
-        }
-        stock = {
-            "key": "STOCK",
-            "symbol": "STOCK",
-            "name": "basket",
-            "mom60": 5.0,
-            "above_ma200": True,
-            "n": 2,
-        }
-        self._patch_pair(monkeypatch, etf, stock, None)
+    def test_extra_sleeve_no_candidate_with_hold_sells(self, monkeypatch) -> None:
+        self._patch(monkeypatch, None)
         held = [{"symbol": "ETF:518880", "ts_code": "518880.SH", "positionPct": 30.0}]
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
         )
-        assert out["action"] == "SELL_TO_A_SHARE"
-
-    def test_extra_sleeve_stock_wins_no_held(self, monkeypatch) -> None:
-        etf = {
-            "key": "GOLD",
-            "symbol": "ETF:518880",
-            "name": "gold",
-            "mom60": 1.0,
-            "above_ma200": True,
-        }
-        stock = {
-            "key": "STOCK",
-            "symbol": "STOCK",
-            "name": "basket",
-            "mom60": 5.0,
-            "above_ma200": True,
-            "n": 2,
-        }
-        self._patch_pair(monkeypatch, etf, stock, None)
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=[]
-        )
-        assert out["action"] == "HOLD"
-        assert out["label"] == "持有股票篮"
+        assert out["action"] == "SELL_TO_REPO"
 
     def test_extra_sleeve_rotate_to_new_etf(self, monkeypatch) -> None:
         pick = {
@@ -318,94 +244,12 @@ class TestExtraSleeveBuild:
             "mom60": 12.0,
             "above_ma200": True,
         }
-        self._patch_pair(monkeypatch, pick, None, None)
-        held = [
-            {
-                "symbol": "ETF:518880",
-                "ts_code": "518880.SH",
-                "entryDate": "2026-01-01",
-                "positionPct": 30.0,
-            }
-        ]
+        self._patch(monkeypatch, pick)
+        held = [{"symbol": "ETF:518880", "ts_code": "518880.SH", "positionPct": 30.0}]
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
         )
         assert out["action"] == "ROTATE"
-        assert "轮动" in out["label"] or "轮动" in out["message"]
-
-    def test_extra_sleeve_min_hold_keeps(self, monkeypatch) -> None:
-        monkeypatch.setattr(mas, "MIN_HOLD_DAYS", 5)
-        pick = {
-            "key": "NASDAQ",
-            "symbol": "ETF:513100",
-            "name": "nas",
-            "mom60": 12.0,
-            "above_ma200": True,
-        }
-        monkeypatch.setattr(mas, "_pick", lambda: pick)
-        monkeypatch.setattr(mas, "_stock_basket_mom_from_holdings", lambda holdings: None)
-        monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: None)
-        monkeypatch.setattr(mas, "_etf_market_data", lambda ts: {"ok": True, "above": True})
-        held = [
-            {
-                "symbol": "ETF:518880",
-                "ts_code": "518880.SH",
-                "entryDate": "2026-02-28",
-                "positionPct": 30.0,
-            }
-        ]
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
-        )
-        assert out["action"] == "HOLD"
-        assert "防抖" in out["message"]
-
-    def test_extra_sleeve_min_hold_bad_entry_falls_through(self, monkeypatch) -> None:
-        monkeypatch.setattr(mas, "MIN_HOLD_DAYS", 5)
-        pick = {
-            "key": "NASDAQ",
-            "symbol": "ETF:513100",
-            "name": "nas",
-            "mom60": 12.0,
-            "above_ma200": True,
-        }
-        monkeypatch.setattr(mas, "_pick", lambda: pick)
-        monkeypatch.setattr(mas, "_stock_basket_mom_from_holdings", lambda holdings: None)
-        monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: None)
-        held = [
-            {
-                "symbol": "ETF:518880",
-                "ts_code": "518880.SH",
-                "entryDate": "bad-date",
-                "positionPct": 30.0,
-            }
-        ]
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
-        )
-        assert out["action"] == "ROTATE"
-
-    def test_extra_sleeve_held_below_ma_sells_to_repo(self, monkeypatch) -> None:
-        pick = {
-            "key": "GOLD",
-            "symbol": "ETF:518880",
-            "name": "gold",
-            "mom60": 3.0,
-            "above_ma200": False,
-        }
-        self._patch_pair(monkeypatch, pick, None, None)
-        held = [
-            {
-                "symbol": "ETF:518880",
-                "ts_code": "518880.SH",
-                "entryDate": "2026-01-01",
-                "positionPct": 30.0,
-            }
-        ]
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
-        )
-        assert out["action"] == "SELL_TO_REPO"
 
     def test_extra_sleeve_held_above_ma_holds(self, monkeypatch) -> None:
         pick = {
@@ -415,35 +259,14 @@ class TestExtraSleeveBuild:
             "mom60": 3.0,
             "above_ma200": True,
         }
-        self._patch_pair(monkeypatch, pick, None, None)
-        held = [
-            {
-                "symbol": "ETF:518880",
-                "ts_code": "518880.SH",
-                "entryDate": "2026-01-01",
-                "positionPct": 30.0,
-            }
-        ]
+        self._patch(monkeypatch, pick)
+        held = [{"symbol": "ETF:518880", "ts_code": "518880.SH", "positionPct": 30.0}]
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
         )
         assert out["action"] == "HOLD"
 
-    def test_extra_sleeve_no_holding_below_ma_dont_buy(self, monkeypatch) -> None:
-        pick = {
-            "key": "GOLD",
-            "symbol": "ETF:518880",
-            "name": "gold",
-            "mom60": 3.0,
-            "above_ma200": False,
-        }
-        self._patch_pair(monkeypatch, pick, None, None)
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=[]
-        )
-        assert out["action"] == "DONT_BUY"
-
-    def test_extra_sleeve_has_stock_rotates(self, monkeypatch) -> None:
+    def test_extra_sleeve_trail_exit_wins(self, monkeypatch) -> None:
         pick = {
             "key": "GOLD",
             "symbol": "ETF:518880",
@@ -451,28 +274,35 @@ class TestExtraSleeveBuild:
             "mom60": 3.0,
             "above_ma200": True,
         }
-        self._patch_pair(monkeypatch, pick, None, None)
+        self._patch(
+            monkeypatch,
+            pick,
+            trail={"active": True, "action": "SELL_TO_REPO", "message": "trail", "label": "x"},
+        )
+        held = [{"symbol": "ETF:518880", "ts_code": "518880.SH", "positionPct": 30.0}]
+        out = mas.build_multi_asset_sleeve(
+            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
+        )
+        assert out["action"] == "SELL_TO_REPO"
+
+    def test_extra_sleeve_parks_with_stock_holdings(self, monkeypatch) -> None:
+        """No STOCK gate: idle parks even when stocks are held (B11)."""
+        pick = {
+            "key": "GOLD",
+            "symbol": "ETF:518880",
+            "name": "gold",
+            "mom60": 3.0,
+            "above_ma200": True,
+        }
+        self._patch(monkeypatch, pick)
         holdings = [{"symbol": "CN:600000", "ts_code": "600000.SH", "positionPct": 10.0}]
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=holdings
         )
-        assert out["action"] == "ROTATE"
-
-    def test_extra_sleeve_idle_buys(self, monkeypatch) -> None:
-        pick = {
-            "key": "GOLD",
-            "symbol": "ETF:518880",
-            "name": "gold",
-            "mom60": 3.0,
-            "above_ma200": True,
-        }
-        self._patch_pair(monkeypatch, pick, None, None)
-        out = mas.build_multi_asset_sleeve(
-            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=[]
-        )
         assert out["action"] == "BUY"
+        assert out["strategy"] == "港湾"
 
-    def test_extra_sleeve_idle_short_dont_buy(self, monkeypatch) -> None:
+    def test_extra_sleeve_no_idle_no_buy(self, monkeypatch) -> None:
         pick = {
             "key": "GOLD",
             "symbol": "ETF:518880",
@@ -480,12 +310,13 @@ class TestExtraSleeveBuild:
             "mom60": 3.0,
             "above_ma200": True,
         }
-        self._patch_pair(monkeypatch, pick, None, None)
-        holdings = [{"symbol": "ETF:999999", "positionPct": 90.0}]
+        self._patch(monkeypatch, pick)
+        holdings = [{"symbol": "CN:600000", "ts_code": "600000.SH", "positionPct": 100.0}]
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=holdings
         )
         assert out["action"] == "DONT_BUY"
+        assert "无闲置" in out["message"]
 
 
 def _extra_x_dates(n: int, start: str = "2026-01-05") -> list[str]:

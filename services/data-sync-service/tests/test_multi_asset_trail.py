@@ -74,7 +74,6 @@ def test_trail_beats_rotate_when_holding_etf():
     }
     with (
         patch.object(mas, "_pick", return_value=pick),
-        patch.object(mas, "_stock_basket_mom_from_holdings", return_value=None),
         patch("data_sync_service.service.multi_asset_sleeve.fetch_last_bars", return_value=bars),
     ):
         out = mas.build_multi_asset_sleeve(day="2026-03-01", cn_block=cn, holdings_override=[held])

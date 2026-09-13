@@ -17,9 +17,8 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
 @router.get("")
-def notifications_list(mode: str = Query("twin_star")) -> dict[str, Any]:
-    """Actionable notifications (high first). Live default is ``twin_star``.
-    Pass ``mode=single_track`` when Settings is 单轨择强 so S-3 pyramid/recon
-    appear. Each item: id/type/severity/title/detail/anchor/lane/book/createdAt."""
-    live = "twin_star" if mode == "twin_star" else "single_track"
-    return {"ok": True, "items": build_notifications(live)}
+def notifications_list(mode: str = Query("single_track")) -> dict[str, Any]:
+    """Actionable notifications (high first). Live default is ``single_track``
+    so S-3 pyramid/recon appear. ``mode`` is accepted for client compatibility.
+    Each item: id/type/severity/title/detail/anchor/lane/book/createdAt."""
+    return {"ok": True, "items": build_notifications()}

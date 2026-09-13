@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { scoreExplainZhLines } from './trendok-display';
+
 /**
  * Watchlist table column metadata — bilingual headers + hover tooltips.
  *
@@ -27,6 +29,8 @@ export type WatchlistColumnHelp = {
   short: string;
   detail: ReactNode;
   unit?: string;
+  /** Long-form explanation merged into the header hover (native title + portal). */
+  explain?: string[];
 };
 
 // Note: detail ReactNode will be inlined at runtime in the portal. The literal
@@ -235,6 +239,7 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     detail:
       '点 cell 看公式：EMA + MACD + NearHigh + RSI + Volume + VR hardcap 加权。' +
       'scoreParts 在 TrendOkResult.scoreParts 中按贡献度绝对值排序展示。',
+    explain: scoreExplainZhLines(),
   },
   trendOk: {
     id: 'trendOk',
@@ -293,6 +298,13 @@ export function buildWatchlistColumnTooltipBody(
       </div>
       <div className="text-[var(--k-muted)]">{h.short}</div>
       <div className="mt-2 whitespace-pre-line text-[var(--k-text)]">{h.detail}</div>
+      {h.explain?.length ? (
+        <div className="mt-2 max-h-72 space-y-1 overflow-y-auto border-t border-[var(--k-border)]/60 pt-2 text-[11px] leading-relaxed text-[var(--k-text)]">
+          {h.explain.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      ) : null}
       {options.hint ? (
         <div className="mt-2 text-[10px] text-[var(--k-muted)]">{options.hint}</div>
       ) : null}

@@ -1,9 +1,8 @@
-"""multi_asset_sleeve decision-signal freshness (t-1 close semantics).
+"""multi_asset_sleeve decision-signal freshness (Harbor T-close semantics).
 
-2026-08-31 audit: _pick() used closes[:-1] assuming the last bar is today's
-intraday bar — but nothing writes the daily table intraday, so during a
-session (e.g. 14:30) the signal silently fell back to t-2. _signal_closes
-now excludes today's bar explicitly.
+Harbor clock: the 18:20 job signals on the latest COMPLETED close (today
+included after the daily sync) and executes at T+1 open. During a session the
+daily table has no today bar, so the signal naturally stays on t-1.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from data_sync_service.service import multi_asset_sleeve as mas
 
 
 class TestSignalCloses:
-    def test_excludes_today_bar(self, monkeypatch) -> None:
+    def test_includes_today_close(self, monkeypatch) -> None:
         bars = [
             {"date": "2026-08-26", "close": 4.7},
             {"date": "2026-08-27", "close": 4.8},
@@ -27,8 +26,8 @@ class TestSignalCloses:
             lambda: __import__("datetime").date(2026, 8, 31),
         )
         out = mas._signal_closes("518880.SH", 260)
-        assert out == [4.7, 4.8, 4.9]
-        assert out[-1] == 4.9  # t-1 close, not today's 5.0
+        assert out == [4.7, 4.8, 4.9, 5.0]
+        assert out[-1] == 5.0  # today's completed close is the signal
 
     def test_no_today_bar_keeps_last(self, monkeypatch) -> None:
         bars = [

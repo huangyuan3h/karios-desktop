@@ -69,9 +69,9 @@ describe('SystemHealthBanner', () => {
           lastSyncedAt: null,
         },
         {
-          source: 'twin_star_intraday',
-          label: '双子星 · 盘中快照',
-          group: 'twin_star',
+          source: 'stock_close_sync',
+          label: 'A股收盘同步',
+          group: 'coreClose',
           stale: true,
           ageMinutes: null,
           thresholdMinutes: 20,
@@ -93,7 +93,7 @@ describe('SystemHealthBanner', () => {
     expect(await screen.findByText(/0 项异常 · 3 项告警/)).toBeDefined();
     screen.getByText(/0 项异常 · 3 项告警/).click();
     expect(await screen.findByText(/行情 数据陈旧/)).toBeDefined();
-    expect(screen.getByText(/双子星 · 盘中快照 数据陈旧（无记录 ≥ 阈值 20 分钟）/)).toBeDefined();
+    expect(screen.getByText(/A股收盘同步 数据陈旧（无记录 ≥ 阈值 20 分钟）/)).toBeDefined();
     expect(screen.getByText(/同步失败 cn_industry_post_close_sync ×3/)).toBeDefined();
   });
 

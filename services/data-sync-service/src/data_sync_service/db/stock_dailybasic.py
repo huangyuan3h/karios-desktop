@@ -75,7 +75,7 @@ def sync_daily_basic_gap(end_date: str | None = None) -> dict[str, object]:
     """Incrementally sync stock_dailybasic from the table's last date to end_date.
 
     ``stock_dailybasic`` was orphaned after 2026-08-07 (no scheduler wrote it);
-    the Twin-Star satellite now depends on daily total_mv, so this is the
+    market-cap readers depend on daily total_mv, so this is the
     dedicated chain step (daily_basic_job, weekdays 17:20 Asia/Shanghai).
     Idempotent: per-(ts_code, trade_date) upsert, per-date tushare call.
     """

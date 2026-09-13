@@ -19,7 +19,7 @@ export type TimelineWindow = {
   note: string;
 };
 
-/** Frozen product past-year used in clip4 vs core compare (not a rejector). */
+/** Frozen product past-year used in harbor vs baseline compare (not a rejector). */
 export const PRODUCT_YEAR = { start: '2025-08-28', end: '2026-08-28' } as const;
 
 /** Walk-forward rejector — AGENTS.md / run_walk_forward.py. */

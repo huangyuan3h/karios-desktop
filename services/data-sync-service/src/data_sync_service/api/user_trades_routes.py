@@ -49,7 +49,7 @@ class TradeLegRequest(BaseModel):
     source: str | None = None
     market: str | None = None
     note: str | None = None
-    leg: str | None = None  # OPT-149: 's3' (S-3 core) | 'sat' (twin-star satellite)
+    leg: str | None = None  # OPT-149: 's3' (S-3 core) | 'parking' (idle-cash ETF)
 
 
 def _validate_leg(req: TradeLegRequest) -> dict:

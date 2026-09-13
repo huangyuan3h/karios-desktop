@@ -38,7 +38,7 @@ _COL_TIME = "时间"
 
 
 def filename_to_ts_code(name: str) -> str | None:
-    """sz000001_2025.csv → 000001.SZ. Skip BJ (S-gap universe excludes it)."""
+    """sz000001_2025.csv → 000001.SZ. Skip BJ (gap-screen universe excludes it)."""
     stem = Path(name).name
     m = _FILE_RE.match(stem)
     if not m:

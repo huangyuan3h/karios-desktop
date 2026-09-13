@@ -23,9 +23,9 @@
 | Alpha Incubator（V4 双核捕猎） | [`modules/alpha-incubator.md`](./modules/alpha-incubator.md) |
 | 下游 AI Prompt（V7.6） | [`modules/downstream-ai-prompt.md`](./modules/downstream-ai-prompt.md) |
 | S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
-| **择强单轨（产品策略真值 · 全资产同权 100% 硬切）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
+| **港湾 Harbor（产品策略真值 · S-3 核心 + 闲置现金 ETF 停车场）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
 | 回测结论 / 实验记录（2026-08-09 归档 · 现行真值见 strategy-params.md） | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) → [`archive/modules-legacy/backtest-strategy-legacy.md`](./archive/modules-legacy/backtest-strategy-legacy.md) |
-| **回测实验记录（最终指向择强单轨 / 机会双子星）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 调策略先看 [`clip4-ops-decisions-2026-09-03.md`](./backtests/clip4-ops-decisions-2026-09-03.md) · **新想法先自查** [`first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md) |
+| **回测实验记录（最终指向港湾 Harbor）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 调策略先看 [B11 停车场基线](./backtests/stable/etf-parking-baseline-2026-09-13.md)（卫星 REJECT 见 [B12](./backtests/stable/twin-star-parking-refit-2026-09-13.md)） · **新想法先自查** [`first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md) |
 | **因子库（所有已验证因子 · 无论成败 · 定义/数据/结果/判定）** | [`factor-library/README.md`](./factor-library/README.md) |
 | 交易系统总纲（含 S-3 生命周期） | [`modules/trading-system.md`](./modules/trading-system.md) |
 | 行业资金流（已归档，只读） | [`archive/modules-legacy/industry-flow.md`](./archive/modules-legacy/industry-flow.md) |

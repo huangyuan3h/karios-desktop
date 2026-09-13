@@ -75,8 +75,6 @@ def test_behavior_audit_insert_and_latest():
         extra=1,
         missing=3,
         extra_list=[{"symbol": SYM}],
-        sat_expected=4,
-        sat_actual=4,
     )
     assert res["id"] is not None
     rows = latest_audit(limit=50)
@@ -84,7 +82,6 @@ def test_behavior_audit_insert_and_latest():
     assert len(mine) == 1
     assert (mine[0]["expected"], mine[0]["actual"]) == (10, 8)
     assert mine[0]["extraList"] == [{"symbol": SYM}]
-    assert mine[0]["satExpected"] == 4
     # Re-run updates the same day+market row.
     insert_audit(audit_date=WEEK, market="TEST99", expected=11, actual=9, extra=0, missing=2)
     rows = latest_audit(limit=50)

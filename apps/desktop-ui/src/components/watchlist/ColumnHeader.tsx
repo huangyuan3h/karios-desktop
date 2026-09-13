@@ -40,6 +40,7 @@ export function ColumnHeader({
     return <span className={className}>{columnId}</span>;
   }
   const interactive = Boolean(showTooltip && hideTooltip);
+  const nativeTitle = [h.short, ...(h.explain ?? [])].join('\n');
   const body = (
     <div className="flex flex-col items-start gap-0.5 leading-tight">
       <span className="whitespace-nowrap">{h.label}</span>
@@ -52,7 +53,7 @@ export function ColumnHeader({
   );
   if (!interactive) {
     return (
-      <span className={className} title={h.short}>
+      <span className={className} title={nativeTitle}>
         {body}
       </span>
     );
@@ -62,7 +63,7 @@ export function ColumnHeader({
       role="button"
       tabIndex={0}
       className={`inline-flex cursor-help items-center rounded px-1 py-0.5 hover:text-[var(--k-text)] ${className ?? ''}`}
-      title={h.short}
+      title={nativeTitle}
       onMouseEnter={(e) => {
         if (showTooltip) showTooltip(e.currentTarget, buildWatchlistColumnTooltipBody(h), width);
       }}

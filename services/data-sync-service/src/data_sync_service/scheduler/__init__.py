@@ -48,7 +48,6 @@ from data_sync_service.scheduler import (
     paper_s3_intake_job,
     paper_trading_intake_job,
     paper_trading_update_job,
-    paper_twin_star_job,
     research_report_job,
     risk_state_sync_job,
     rolling_oos_job,
@@ -56,11 +55,10 @@ from data_sync_service.scheduler import (
     stock_basic_job,
     timeline_warmup_job,
     trading_brief_job,
-    twin_star_intraday_job,
-    twin_star_reminder_job,
     watchlist_automation_job,
     webhook_delivery_job,
     weekly_review_job,
+    xq_follow_job,
 )
 
 
@@ -218,7 +216,7 @@ def create_scheduler() -> BackgroundScheduler:
         id=index_basic_job.JOB_ID,
         replace_existing=True,
     )
-    # stock_dailybasic (total_mv) — Twin-Star satellite dependency (17:20).
+    # stock_dailybasic (total_mv / circ_mv) — market-cap refresh (17:20).
     scheduler.add_job(
         daily_basic_job.run,
         daily_basic_job.build_trigger(),
@@ -326,6 +324,14 @@ def create_scheduler() -> BackgroundScheduler:
         id=weekly_review_job.JOB_ID,
         replace_existing=True,
     )
+    # Snowball follow-count daily snapshot (15:40 weekdays — attention panel,
+    # no history API, forward-only accumulation).
+    scheduler.add_job(
+        xq_follow_job.run,
+        xq_follow_job.build_trigger(),
+        id=xq_follow_job.JOB_ID,
+        replace_existing=True,
+    )
     # Trading-session briefs (10:00 / 12:00 / 14:30 weekdays — user's rhythm).
     for _bt in ("open", "midday", "action"):
         scheduler.add_job(
@@ -346,12 +352,6 @@ def create_scheduler() -> BackgroundScheduler:
         paper_s3_intake_job.run,
         paper_s3_intake_job.build_trigger(),
         id=paper_s3_intake_job.JOB_ID,
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        paper_twin_star_job.run,
-        paper_twin_star_job.build_trigger(),
-        id=paper_twin_star_job.JOB_ID,
         replace_existing=True,
     )
     # Backtest mirror (2026-08-14): replay the engine trajectory into the
@@ -397,20 +397,6 @@ def create_scheduler() -> BackgroundScheduler:
         timeline_warmup_job.run,
         timeline_warmup_job.build_trigger(),
         id=timeline_warmup_job.JOB_ID,
-        replace_existing=True,
-    )
-    # Twin-Star 14:30-before reminder (14:20 weekdays) -> webhook + notifications hub
-    scheduler.add_job(
-        twin_star_reminder_job.run,
-        twin_star_reminder_job.build_trigger(),
-        id=twin_star_reminder_job.JOB_ID,
-        replace_existing=True,
-    )
-    # Twin-Star intraday approximate signal (12:30 weekdays) -> snapshot + cache
-    scheduler.add_job(
-        twin_star_intraday_job.run,
-        twin_star_intraday_job.build_trigger(),
-        id=twin_star_intraday_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

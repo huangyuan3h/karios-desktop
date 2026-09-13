@@ -158,12 +158,12 @@ RS 过滤=0.5 · Diverging 仓位=1.0 · 仓位 10% · 持仓上限 20 · gates=
 
 ### 6.3 paper 实盘（已固化 2026-08-21 · 三窗 + past_year 验证）
 
-- **paper 书**：`paper_trades` 表（`source S3/S3HK` 股票篮；`source=twin_star` 机会双子星卫星 4 槽 × 12.5%，body=3、第 3 日 14:30 卖、无 −5%，`cron 17:43 paper_twin_star`，S-3 update 跳过这些行；`sleeve_pct` 闲置套筒，`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update` + `18:20 sleeve_paper_auto`（`service/sleeve_paper_auto.py`）
-- **闲置套筒**：`T6` 单纳指 `513100>MA200` 三窗 `OOS2+3.9/train+15.3/valid+21.8/past+51.1`；**多资产轮动** `GOLD/OIL/NASDAQ/BOND10 mom60>0 top2 Nasdaq-first` 三窗 `OOS2+19.3/train+17.9/valid+14.4/past+38.1` 全过（`service/multi_asset_sleeve.py:52`），`portfolio_health multiAssetSleeve` + `GET /commodities/sleeve` 已上线，`watchlist` 与 `paper` 同码
+- **paper 书**：`paper_trades` 表（`source S3/S3HK` 股票核心；~~`source=twin_star`~~ **已退役**——卫星 4 槽 × 12.5% / body=3 / 第 3 日 14:30 卖的口径随 B12 **REJECT** 下线，`cron 17:43 paper_twin_star` 与 `service/paper_twin_star.py` **已随 OPT-178 删除**；`sleeve_pct` 闲置停车场（旧套筒），`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update`。
+- **闲置停车场（目标口径 = 港湾 P1）**：S-3 空仓期闲置现金按 **14:30** 在 `mom60+MA200` 的金/油/纳指/国债间 `argmax` 停一只（因果 trail8、无候选回现金）；三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt**（[B11 档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**已于 2026-09-13 上线**：`service/multi_asset_sleeve.py` = 港湾 P1（闲置即停、无 floor/STOCK gate、无候选→REPO、因果 trail8）；`sleeve_paper_auto` 统一 **T 收盘信号 → T+1 开盘成交**；`/timeline?strategy=harbor` 新增。残余 T6 展示收敛见 **OPT-179**。
 - **脉冲高置信** `OIL RSI<25 90% n30 +3.92%/10d`（`commodity_pattern_scan.py`）`valid +28.5` 三窗全过，已进 `impulseSleeve`（`2×` 杠杆），`NASDAQ RSI>75 78%` 等 `R1-R5` 按 [`todo.md`](../todo.md) P0-1 分批固化
 - **对账**：`C4 paper_vs_backtest_report.py` + `BehavioAudit` + `BacktestPage Timeline`（`GET /api/backtest/timeline?start=2025-08-01` 日级 `pick/navBase/navMulti/deployedPct` 分布，`TimelineCard` 色条 `GOLD/OIL/NASDAQ/BOND`），`paper ≥20 笔` 后出统计定论
 
-**文档真值**：`strategy-params.md §1` 参数表 + `service/paper_trading.py:60` + `service/paper_s3.py` + `service/paper_twin_star.py` + `service/sleeve_paper_auto.py` + `service/multi_asset_sleeve.py` + `service/commodity_signals.py`
+**文档真值**：`strategy-params.md §1` 参数表 + `service/paper_trading.py:60` + `service/paper_s3.py` + `service/sleeve_paper_auto.py` + `service/multi_asset_sleeve.py` + `service/commodity_signals.py`（~~`service/paper_twin_star.py`~~ 已随双子星下线移除 · OPT-178 ✅）
 
 ---
 

@@ -43,7 +43,6 @@ from data_sync_service.db.market_sentiment import CREATE_SQL as MARKET_SENTIMENT
 from data_sync_service.db.news import CREATE_ITEMS_SQL
 from data_sync_service.db.news import CREATE_SOURCES_SQL as NEWS_SOURCES_SQL
 from data_sync_service.db.research import CREATE_TABLE_SQL as RESEARCH_CREATE_SQL
-from data_sync_service.db.sat_push_log import CREATE_SQL as SAT_PUSH_LOG_CREATE_SQL
 from data_sync_service.db.stock_basic import CREATE_SQL as STOCK_BASIC_CREATE_SQL
 from data_sync_service.db.stock_eastmoney_industry import CREATE_SQL as EM_INDUSTRY_CREATE_SQL
 from data_sync_service.db.stock_forecast import CREATE_SQL as STOCK_FORECAST_CREATE_SQL
@@ -57,6 +56,7 @@ from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_
 from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
 from data_sync_service.db.webhook import CREATE_SQL as WEBHOOK_CREATE_SQL
+from data_sync_service.db.xq_follow import CREATE_SQL as CN_XQ_FOLLOW_CREATE_SQL
 
 BASELINE_REVISION = "0001_baseline"
 
@@ -182,10 +182,10 @@ def baseline_ddl_statements() -> list[str]:
         CN_MARGIN_CREATE_SQL,
         CN_MONEYFLOW_CREATE_SQL,
         CN_HK_HOLD_CREATE_SQL,
+        CN_XQ_FOLLOW_CREATE_SQL,
         FACTOR_SIGNALS_CREATE_SQL,
         DECISION_CREATE_SQL,
         USER_TRADES_CREATE_SQL,
-        SAT_PUSH_LOG_CREATE_SQL,
         TV_LEGACY_CREATE_SQL,
         WEBHOOK_CREATE_SQL,
     ]

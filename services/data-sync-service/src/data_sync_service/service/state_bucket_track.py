@@ -37,6 +37,7 @@ BUCKET_Q = 3
 MAX_POS = 4
 BODY = 3
 R_WIDE_THRESHOLD = 0.5
+MIN_GAP_PCT = 0.03
 WARMUP_CAL_DAYS = 120
 FILL_NEXT_OPEN = "next_open"
 FILL_SAME_CLOSE = "same_close"
@@ -151,7 +152,7 @@ def _day_features(
             "amp": amp,
             "turn": turn,
             "gap": gap,
-            "is_gap": bool(gap == gap and gap > 0.03),
+            "is_gap": bool(gap == gap and gap > MIN_GAP_PCT),
         }
     breadth = 0.0
     tot = 0
@@ -332,6 +333,24 @@ def _intraday_px(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> float | N
         px = (ctx.get("px_1430") or {}).get(ts, {}).get(day)
         return None if px is None else float(px)
     return None
+
+
+def _stage_labels_at(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> dict[str, str] | None:
+    """Zero-lookahead stage_1430 labels at an entry/decision day.
+
+    Prior-session closes plus the decision-day ``hhmm`` print (habit 14:30) — the
+    same definition as the H-SAT-RANK ``stage_1430`` rank key. None when history
+    < 61 sessions.
+    """
+    di = ctx["date_idx"].get(ts, {}).get(day, -1)
+    series = ctx["per_ts"].get(ts)
+    closes: list[float] = []
+    if series and di >= 0:
+        closes = [float(r["close"]) for r in series[:di] if r.get("close")]
+    px = _intraday_px(ctx, ts, day, hhmm)
+    if px and px > 0:
+        closes.append(float(px))
+    return stage_labels(closes) if len(closes) >= 61 else None
 
 
 def _d3_trail_px(ctx: dict[str, Any], ts: str, day: str, pct: float) -> float | None:
@@ -564,6 +583,8 @@ def replay_sgap_from_context(
     r_wide: float | None = None,
     min_open_to_1430_pct: float | None = None,
     max_t1_turnover_mult: float | None = None,
+    body_by_stage_tier: dict[int, int] | None = None,
+    min_gap_pct: float = MIN_GAP_PCT,
 ) -> dict[str, Any]:
     """Replay S-gap on a preloaded context. Positions start empty at ``start``.
 
@@ -594,6 +615,16 @@ def replay_sgap_from_context(
       Names missing the fill print rank last.
 
     r_wide: experiment-only R-wide breadth gate (H4). None = frozen 0.5.
+
+    body_by_stage_tier: experiment-only conditional hold. Maps a stage_1430 tier
+      (0 S2&climax / 1 either / 2 neither / 3 unlabeled) to a hold length; tiers
+      absent from the map fall back to ``body``. The tier is computed at entry
+      with zero lookahead (previous sessions + entry-day 14:30 print). None =
+      frozen uniform body. Research only (diag-sat-hold-days-2026-09-12).
+
+    min_gap_pct: overnight-gap threshold defining the S-gap pool (default
+      MIN_GAP_PCT=0.03 = the frozen definition). Research-only knob for the
+      structural sensitivity scan (twin-residual-2026-09-12).
     """
     if fill_mode not in VALID_FILL_MODES:
         raise ValueError(f"fill_mode must be one of {VALID_FILL_MODES}, got {fill_mode!r}")
@@ -672,7 +703,11 @@ def replay_sgap_from_context(
                 p["peak"] = peak
             reason = sat_exit_decision(
                 held=held,
-                body=body,
+                body=(
+                    int(body_by_stage_tier.get(int(p.get("stage_tier", 3)), body))
+                    if body_by_stage_tier is not None
+                    else body
+                ),
                 close=cc,
                 entry=entry,
                 peak=peak,
@@ -741,7 +776,11 @@ def replay_sgap_from_context(
                 prev_day = cal[idx_by_day[day] - 1]
                 feat_all, _ = _cached_day_features(ctx, prev_day)
                 lock_day = prev_day
-            gap_stocks = [ts for ts, d in feat_all.items() if d["is_gap"]]
+            gap_stocks = [
+                ts
+                for ts, d in feat_all.items()
+                if d.get("gap") is not None and d["gap"] == d["gap"] and d["gap"] > min_gap_pct
+            ]
             if rank_key is None:
                 ranked = sorted(gap_stocks, key=lambda ts: feat_all[ts]["amp"])
             elif rank_key == "gap_asc":
@@ -878,11 +917,6 @@ def replay_sgap_from_context(
                 ranked, qn, skip_t1_limit=skip_t1_limit, pool_mode=pool_mode, locked=locked
             )
             ei_today = idx_by_day.get(day, -1)
-            exit_due = (
-                cal[ei_today + body - 1]
-                if ei_today >= 0 and ei_today + body - 1 < len(cal)
-                else end
-            )
             for ts in pool:
                 if ts in positions or len(positions) >= max_pos:
                     continue
@@ -920,6 +954,16 @@ def replay_sgap_from_context(
                         if pc and pc > 0 and (one_word or px >= pc * (1 + lim - 0.004)):
                             continue
                     feat = feat_all.get(ts) or {}
+                    tier: int | None = None
+                    eff_body = body
+                    if body_by_stage_tier is not None:
+                        tier = stage_tier(_stage_labels_at(ctx, ts, day, fill_hhmm))
+                        eff_body = int(body_by_stage_tier.get(tier, body))
+                    exit_due = (
+                        cal[ei_today + eff_body - 1]
+                        if ei_today >= 0 and ei_today + eff_body - 1 < len(cal)
+                        else end
+                    )
                     positions[ts] = {
                         "entry_date": day,
                         "entry_price": px,
@@ -928,6 +972,8 @@ def replay_sgap_from_context(
                         "amp": feat.get("amp"),
                         "amp_rank": ranked.index(ts) + 1,
                         "exit_due": exit_due,
+                        "stage_tier": tier,
+                        "body": eff_body,
                     }
                     filled_today += 1
                     if debug_fills is not None:
@@ -972,8 +1018,9 @@ def replay_sgap_from_context(
         ei = idx_by_day.get(p["entry_date"], -1)
         ci = idx_by_day.get(last_day, -1)
         held = ci - ei + 1 if ei >= 0 and ci >= 0 else 0
-        days_left = max(0, body - held)
-        exit_due = cal[ei + body - 1] if ei >= 0 and ei + body - 1 < len(cal) else last_day
+        p_body = int(p.get("body", body))
+        days_left = max(0, p_body - held)
+        exit_due = cal[ei + p_body - 1] if ei >= 0 and ei + p_body - 1 < len(cal) else last_day
         open_positions.append(
             {
                 "ts": ts,
@@ -1102,6 +1149,8 @@ def build_sgap_timeline(
     max_open_to_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
+    body_by_stage_tier: dict[int, int] | None = None,
+    min_gap_pct: float = MIN_GAP_PCT,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -1136,6 +1185,8 @@ def build_sgap_timeline(
         max_open_to_1430_pct=max_open_to_1430_pct,
         near_limit_buffer_pct=near_limit_buffer_pct,
         rank_key=rank_key,
+        body_by_stage_tier=body_by_stage_tier,
+        min_gap_pct=min_gap_pct,
     )
 
 

@@ -176,7 +176,7 @@ function SectionHeader({
 
 /** TIP-017 资金流全景: 三路叠加(20日累计·亿元) / 国家队(宽基份额+B闸红带) / 两融 / 北向 / 散户 — 显示层.
  *
- * 默认窗口与双子星 Timeline 同步（props start/end），十字线跨组件联动
+ * 默认窗口与港湾 Timeline 同步（props start/end），十字线跨组件联动
  * （recharts 按 index 同步 → 同窗口才对齐）；切换 6M/1Y/3Y 后用自身窗口.
  */
 export function FundFlowPanel({
@@ -205,7 +205,7 @@ export function FundFlowPanel({
   const runs = React.useMemo(() => gateOnRuns(rows), [rows]);
   const last = flowLatest(rows);
   // recharts sync works by data index — same window → link with the NAV chart.
-  const syncId = mode === 'sync' ? 'twin-star-nav' : 'fund-flow';
+  const syncId = mode === 'sync' ? 'harbor-nav' : 'fund-flow';
 
   if (q.isLoading) {
     return (

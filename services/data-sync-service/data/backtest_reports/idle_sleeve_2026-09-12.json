@@ -1,0 +1,100 @@
+{
+  "tag": "idle-sleeve-2026-09-12",
+  "prereg": "docs/designs/idle-sleeve-prereg-2026-09-12.md",
+  "results": {
+    "OOS2": {
+      "V0": {
+        "total": 46.5,
+        "delta": 0.0
+      },
+      "V1": {
+        "total": 51.0,
+        "delta": 4.5
+      },
+      "V2": {
+        "total": 57.7,
+        "delta": 11.2
+      },
+      "V3": {
+        "total": 57.7,
+        "delta": 11.2
+      },
+      "V4": {
+        "total": 57.7,
+        "delta": 11.2
+      }
+    },
+    "train": {
+      "V0": {
+        "total": 34.4,
+        "delta": 0.0
+      },
+      "V1": {
+        "total": 47.9,
+        "delta": 13.5
+      },
+      "V2": {
+        "total": 47.5,
+        "delta": 13.2
+      },
+      "V3": {
+        "total": 47.5,
+        "delta": 13.2
+      },
+      "V4": {
+        "total": 46.2,
+        "delta": 11.8
+      }
+    },
+    "valid": {
+      "V0": {
+        "total": 38.7,
+        "delta": 0.0
+      },
+      "V1": {
+        "total": 35.1,
+        "delta": -3.7
+      },
+      "V2": {
+        "total": 41.4,
+        "delta": 2.7
+      },
+      "V3": {
+        "total": 41.4,
+        "delta": 2.7
+      },
+      "V4": {
+        "total": 50.1,
+        "delta": 11.4
+      }
+    },
+    "past_year": {
+      "V0": {
+        "total": 60.7,
+        "delta": 0.0
+      },
+      "V1": {
+        "total": 69.3,
+        "delta": 8.6
+      },
+      "V2": {
+        "total": 67.8,
+        "delta": 7.2
+      },
+      "V3": {
+        "total": 67.8,
+        "delta": 7.2
+      },
+      "V4": {
+        "total": 69.4,
+        "delta": 8.7
+      }
+    }
+  },
+  "usable": [
+    "V2",
+    "V3",
+    "V4"
+  ],
+  "as_of": "2026-09-13T09:58:14+00:00"
+}

@@ -25,7 +25,7 @@ export function ThirdAssetSleeveBanner() {
     () => (q.data as PortfolioHealthResponse | undefined)?.multiAssetSleeve ?? null,
     [q.data],
   );
-  // Prefer multi-asset 择强单轨 only — do not fall back to T6 thirdAsset as「择强」.
+  // Prefer the harbor multi-asset pick only — do not fall back to T6 thirdAsset.
   const sleeve = multi?.active && multi.action !== 'NONE' ? multi : null;
 
   if (!sleeve?.active || !sleeve.action || sleeve.action === 'NONE') {
@@ -77,7 +77,7 @@ export function ThirdAssetSleeveBanner() {
   };
 
   const etfLabel = pick?.symbol ?? (sleeve as unknown as { etf?: string }).etf ?? '择强';
-  const titlePrefix = '择强单轨';
+  const titlePrefix = '港湾';
 
   return (
     <div

@@ -32,8 +32,6 @@ import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import { shouldShowInWatchlistTable } from '@/lib/watchlist-table-filter';
-import { useStrategyMode } from '@/lib/strategy-settings';
-import { SAT_SLOT_NAV_PCT } from '@/lib/twin-star-trade-plan';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -218,8 +216,8 @@ export function WatchlistTable({
   catalystBySymbol = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
-  const [strategyMode] = useStrategyMode();
-  const tableBuySuggestPct = strategyMode === 'twin_star' ? SAT_SLOT_NAV_PCT : 5;
+  /** Core S-3 default sizing (10% per name). */
+  const tableBuySuggestPct = 10;
 
   const tradingTime = React.useMemo(() => isShanghaiTradingTime(), []);
   const todaySh = React.useMemo(() => getShanghaiTodayIso(), []);

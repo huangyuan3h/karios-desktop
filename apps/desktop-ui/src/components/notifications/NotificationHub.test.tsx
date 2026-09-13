@@ -51,7 +51,7 @@ describe('NotificationHub', () => {
   it('shows a toast for new high-severity items and jumps to watchlist on click', async () => {
     renderHub();
     await waitFor(() => expect(apiGetJson).toHaveBeenCalled());
-    expect(String(apiGetJson.mock.calls[0]?.[0])).toContain('mode=twin_star');
+    expect(String(apiGetJson.mock.calls[0]?.[0])).toContain('mode=single_track');
     expect(await screen.findByText(/接近止损线/)).toBeDefined();
     expect(screen.getByText(/点击查看/)).toBeDefined();
 

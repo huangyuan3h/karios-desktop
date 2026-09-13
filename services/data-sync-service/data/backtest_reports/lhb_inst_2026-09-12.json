@@ -1,0 +1,45 @@
+{
+  "tag": "lhb-inst-netbuy-2026-09-12",
+  "prereg": "docs/designs/lhb-inst-prereg-2026-09-12.md",
+  "excess_pct": {
+    "net_buy": {
+      "5": -0.88,
+      "10": -1.55,
+      "20": -2.46
+    },
+    "net_sell": {
+      "5": -0.78,
+      "10": -1.48,
+      "20": -2.47
+    }
+  },
+  "by_window": {
+    "OOS2": {
+      "net_buy": -1.42,
+      "net_sell": -2.51,
+      "diff": 1.09
+    },
+    "train": {
+      "net_buy": -2.46,
+      "net_sell": -2.6,
+      "diff": 0.14
+    },
+    "valid": {
+      "net_buy": -2.03,
+      "net_sell": -3.44,
+      "diff": 1.41
+    },
+    "long": {
+      "net_buy": -1.62,
+      "net_sell": -1.57,
+      "diff": -0.05
+    }
+  },
+  "unbuyable_pct": 4.67,
+  "verdict": {
+    "k1": false,
+    "k2": false,
+    "call": "REJECT / close line"
+  },
+  "as_of": "2026-09-12T23:25:32+00:00"
+}

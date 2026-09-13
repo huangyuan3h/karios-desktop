@@ -187,10 +187,10 @@ function buildSystemAppendix(overview: Awaited<ReturnType<typeof fetchBacktestOv
     );
   }
   lines.push(
-    '- 择强单轨定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline` mode=mom_compare）：STOCK篮 ∪ 金518880/油513350/纳指513100·513110/债511260 同权比 t-1 mom60（ETF须≥MA200），argmax 100%硬切，空档 GC001；LB60·MA200·hold1',
+    '- 港湾定案（`docs/modules/pick-strong-track.md` · `GET /api/backtest/timeline?strategy=harbor`）：S-3 核心＝STOCK篮 ∪ 金518880/油513350/纳指513100·513110/债511260 同权比 t-1 mom60（ETF须≥MA200），argmax 100%硬切；闲置现金停进核心 ETF（mom60+MA200 argmax），空档 GC001；LB60·MA200·hold1',
   );
   lines.push(
-    '- S-3 = 股票腿生成器（非终局产品）；多资产腿规则在 `multi_asset_sleeve.py`，live pick 同 mom_compare',
+    '- S-3 = 股票腿生成器；多资产腿规则在 `multi_asset_sleeve.py`，live pick 同 mom_compare',
   );
   lines.push(
     '- 形态因子（`ml_forecast/morphology.py strong_scoop_exhaustion`）：强股勺型耗尽顶≥80%（ret60>0.4+放量 89-92%胜率）· 方向判别层，不改S-3',

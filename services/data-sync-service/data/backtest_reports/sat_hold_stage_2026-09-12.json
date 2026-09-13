@@ -1,0 +1,387 @@
+{
+  "tag": "sat-hold-stage-2026-09-12",
+  "protocol": "frozen habit caliber C1 3% same_1430 amp_1430 rank clip4 4x25% day-3 14:30 exit; frozen pick-strong trail8; opp_50. Variants differ ONLY in body_by_stage_tier (stage_1430, zero lookahead). Bar: 3-window twin total within 5pt of base + fills not collapsing >30%. Exploratory; diag-sat-hold-days-2026-09-12.",
+  "variants": [
+    {
+      "id": "base",
+      "label": "body=3 frozen",
+      "body_by_stage_tier": null
+    },
+    {
+      "id": "extend_t0",
+      "label": "tier0(S2&climax) -> 4",
+      "body_by_stage_tier": {
+        "0": 4
+      }
+    },
+    {
+      "id": "extend_t0t1",
+      "label": "tier0/1(S2 or climax) -> 4",
+      "body_by_stage_tier": {
+        "0": 4,
+        "1": 4
+      }
+    },
+    {
+      "id": "cut_t2",
+      "label": "tier2(neither) -> 2",
+      "body_by_stage_tier": {
+        "2": 2
+      }
+    }
+  ],
+  "windows": {
+    "OOS2": {
+      "core": {
+        "n_days": 254,
+        "total_pct": 12.1,
+        "max_dd": 18.4,
+        "sharpe": 0.54
+      },
+      "variants": {
+        "base": {
+          "label": "body=3 frozen",
+          "body_by_stage_tier": null,
+          "sat": {
+            "n_days": 254,
+            "total_pct": 163.7,
+            "max_dd": 11.4,
+            "sharpe": 5.04
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 82.4,
+            "max_dd": 16.6,
+            "sharpe": 2.64
+          },
+          "fillCount": 264,
+          "avgHeldDays": 3.0,
+          "avg_pos": 2.11,
+          "pct_active": 64.6,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 70.3,
+          "fill_pct_of_base": 100.0
+        },
+        "extend_t0": {
+          "label": "tier0(S2&climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4
+          },
+          "sat": {
+            "n_days": 254,
+            "total_pct": 147.5,
+            "max_dd": 11.0,
+            "sharpe": 4.78
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 72.3,
+            "max_dd": 16.8,
+            "sharpe": 2.43
+          },
+          "fillCount": 236,
+          "avgHeldDays": 3.32,
+          "avg_pos": 2.19,
+          "pct_active": 66.9,
+          "delta_base_pt": -10.1,
+          "delta_base_sharpe": -0.21,
+          "delta_base_dd": 0.2,
+          "delta_core_pt": 60.2,
+          "fill_pct_of_base": 89.4
+        },
+        "extend_t0t1": {
+          "label": "tier0/1(S2 or climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4,
+            "1": 4
+          },
+          "sat": {
+            "n_days": 254,
+            "total_pct": 151.9,
+            "max_dd": 9.4,
+            "sharpe": 4.98
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 72.3,
+            "max_dd": 16.4,
+            "sharpe": 2.46
+          },
+          "fillCount": 214,
+          "avgHeldDays": 3.71,
+          "avg_pos": 2.32,
+          "pct_active": 68.5,
+          "delta_base_pt": -10.1,
+          "delta_base_sharpe": -0.18,
+          "delta_base_dd": -0.2,
+          "delta_core_pt": 60.2,
+          "fill_pct_of_base": 81.1
+        },
+        "cut_t2": {
+          "label": "tier2(neither) -> 2",
+          "body_by_stage_tier": {
+            "2": 2
+          },
+          "sat": {
+            "n_days": 254,
+            "total_pct": 169.7,
+            "max_dd": 11.0,
+            "sharpe": 5.19
+          },
+          "twin": {
+            "n_days": 254,
+            "total_pct": 83.0,
+            "max_dd": 17.0,
+            "sharpe": 2.66
+          },
+          "fillCount": 308,
+          "avgHeldDays": 2.69,
+          "avg_pos": 2.07,
+          "pct_active": 65.0,
+          "delta_base_pt": 0.6,
+          "delta_base_sharpe": 0.02,
+          "delta_base_dd": 0.4,
+          "delta_core_pt": 70.9,
+          "fill_pct_of_base": 116.7
+        }
+      }
+    },
+    "train": {
+      "core": {
+        "n_days": 128,
+        "total_pct": 36.3,
+        "max_dd": 7.2,
+        "sharpe": 2.65
+      },
+      "variants": {
+        "base": {
+          "label": "body=3 frozen",
+          "body_by_stage_tier": null,
+          "sat": {
+            "n_days": 128,
+            "total_pct": 65.4,
+            "max_dd": 5.7,
+            "sharpe": 4.67
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 58.3,
+            "max_dd": 6.3,
+            "sharpe": 4.36
+          },
+          "fillCount": 128,
+          "avgHeldDays": 3.0,
+          "avg_pos": 2.0,
+          "pct_active": 57.0,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 22.0,
+          "fill_pct_of_base": 100.0
+        },
+        "extend_t0": {
+          "label": "tier0(S2&climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4
+          },
+          "sat": {
+            "n_days": 128,
+            "total_pct": 58.1,
+            "max_dd": 7.9,
+            "sharpe": 4.22
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 55.7,
+            "max_dd": 6.3,
+            "sharpe": 4.23
+          },
+          "fillCount": 118,
+          "avgHeldDays": 3.28,
+          "avg_pos": 2.12,
+          "pct_active": 59.4,
+          "delta_base_pt": -2.6,
+          "delta_base_sharpe": -0.13,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 19.4,
+          "fill_pct_of_base": 92.2
+        },
+        "extend_t0t1": {
+          "label": "tier0/1(S2 or climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4,
+            "1": 4
+          },
+          "sat": {
+            "n_days": 128,
+            "total_pct": 65.6,
+            "max_dd": 4.3,
+            "sharpe": 5.19
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 59.3,
+            "max_dd": 6.3,
+            "sharpe": 4.63
+          },
+          "fillCount": 99,
+          "avgHeldDays": 3.69,
+          "avg_pos": 2.12,
+          "pct_active": 59.4,
+          "delta_base_pt": 1.0,
+          "delta_base_sharpe": 0.27,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 23.0,
+          "fill_pct_of_base": 77.3
+        },
+        "cut_t2": {
+          "label": "tier2(neither) -> 2",
+          "body_by_stage_tier": {
+            "2": 2
+          },
+          "sat": {
+            "n_days": 128,
+            "total_pct": 68.1,
+            "max_dd": 4.4,
+            "sharpe": 5.09
+          },
+          "twin": {
+            "n_days": 128,
+            "total_pct": 59.5,
+            "max_dd": 6.3,
+            "sharpe": 4.49
+          },
+          "fillCount": 150,
+          "avgHeldDays": 2.67,
+          "avg_pos": 1.96,
+          "pct_active": 57.0,
+          "delta_base_pt": 1.2,
+          "delta_base_sharpe": 0.13,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 23.2,
+          "fill_pct_of_base": 117.2
+        }
+      }
+    },
+    "valid": {
+      "core": {
+        "n_days": 112,
+        "total_pct": 86.0,
+        "max_dd": 17.8,
+        "sharpe": 2.84
+      },
+      "variants": {
+        "base": {
+          "label": "body=3 frozen",
+          "body_by_stage_tier": null,
+          "sat": {
+            "n_days": 112,
+            "total_pct": 10.4,
+            "max_dd": 6.8,
+            "sharpe": 1.39
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 84.1,
+            "max_dd": 17.8,
+            "sharpe": 3.05
+          },
+          "fillCount": 55,
+          "avgHeldDays": 3.0,
+          "avg_pos": 1.05,
+          "pct_active": 31.2,
+          "delta_base_pt": 0.0,
+          "delta_base_sharpe": 0.0,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": -1.9,
+          "fill_pct_of_base": 100.0
+        },
+        "extend_t0": {
+          "label": "tier0(S2&climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4
+          },
+          "sat": {
+            "n_days": 112,
+            "total_pct": 8.1,
+            "max_dd": 7.1,
+            "sharpe": 1.15
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 82.2,
+            "max_dd": 17.8,
+            "sharpe": 3.0
+          },
+          "fillCount": 52,
+          "avgHeldDays": 3.19,
+          "avg_pos": 1.09,
+          "pct_active": 31.2,
+          "delta_base_pt": -1.9,
+          "delta_base_sharpe": -0.05,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": -3.8,
+          "fill_pct_of_base": 94.5
+        },
+        "extend_t0t1": {
+          "label": "tier0/1(S2 or climax) -> 4",
+          "body_by_stage_tier": {
+            "0": 4,
+            "1": 4
+          },
+          "sat": {
+            "n_days": 112,
+            "total_pct": 20.5,
+            "max_dd": 5.5,
+            "sharpe": 3.05
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 92.1,
+            "max_dd": 17.8,
+            "sharpe": 3.24
+          },
+          "fillCount": 49,
+          "avgHeldDays": 3.49,
+          "avg_pos": 1.13,
+          "pct_active": 31.2,
+          "delta_base_pt": 8.0,
+          "delta_base_sharpe": 0.19,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": 6.1,
+          "fill_pct_of_base": 89.1
+        },
+        "cut_t2": {
+          "label": "tier2(neither) -> 2",
+          "body_by_stage_tier": {
+            "2": 2
+          },
+          "sat": {
+            "n_days": 112,
+            "total_pct": 15.9,
+            "max_dd": 5.4,
+            "sharpe": 2.26
+          },
+          "twin": {
+            "n_days": 112,
+            "total_pct": 85.5,
+            "max_dd": 17.8,
+            "sharpe": 3.06
+          },
+          "fillCount": 73,
+          "avgHeldDays": 2.42,
+          "avg_pos": 0.98,
+          "pct_active": 30.4,
+          "delta_base_pt": 1.4,
+          "delta_base_sharpe": 0.01,
+          "delta_base_dd": 0.0,
+          "delta_core_pt": -0.5,
+          "fill_pct_of_base": 132.7
+        }
+      }
+    }
+  },
+  "as_of": "2026-09-12T11:35:39+00:00"
+}

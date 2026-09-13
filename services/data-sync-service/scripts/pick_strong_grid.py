@@ -173,8 +173,15 @@ def build_nav_from_cache(
     stock_mom_gt0: bool = False,
     stock_ma_frac: float = 0.0,
     stock_cn_only: bool = False,
+    trail_causal: bool = True,
 ) -> dict:
-    """Pick loop only — matches fused_timeline_walk mom_compare (+ hold/cost/score/trail)."""
+    """Pick loop only — matches fused_timeline_walk mom_compare (+ hold/cost/score/trail).
+
+    ``trail_causal=True`` (default, correct): the ETF trail decides from the
+    PREVIOUS close, so a trigger takes effect today (no same-day look-ahead).
+    ``False`` reproduces the pre-OPT-177 buggy behavior (same-day close) — only
+    for archaeology, never for results.
+    """
     calendar = cache["calendar"]
     close_by_ts = cache["close_by_ts"]
     etf_close = cache["etf_close"]
@@ -327,7 +334,7 @@ def build_nav_from_cache(
             and not hold_pick.startswith("TOP2:")
         ):
             mp = etf_close.get(hold_pick) or {}
-            close = mp.get(day)
+            close = mp.get(prev) if trail_causal else mp.get(day)
             if close is not None:
                 if etf_peak <= 0 or switched or hold_days == 1:
                     etf_peak = close

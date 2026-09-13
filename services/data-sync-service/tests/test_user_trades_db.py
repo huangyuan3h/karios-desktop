@@ -61,7 +61,7 @@ def test_insert_rejects_invalid_side() -> None:
         )
 
 
-def test_leg_defaults_s3_and_accepts_sat() -> None:
+def test_leg_defaults_s3_and_accepts_parking() -> None:
     ut.ensure_tables()
     core = ut.insert_trade(
         symbol=TEST_SYMBOL,
@@ -71,17 +71,17 @@ def test_leg_defaults_s3_and_accepts_sat() -> None:
         position_pct=10.0,
     )
     assert core["leg"] == "s3"
-    sat = ut.insert_trade(
+    parking = ut.insert_trade(
         symbol=f"{TEST_PREFIX}sat1",
         side="BUY",
         trade_date="2026-09-07",
         price=221.28,
         position_pct=12.5,
-        leg="sat",
+        leg="parking",
     )
-    assert sat["leg"] == "sat"
+    assert parking["leg"] == "parking"
     rows = ut.list_trades(symbol=f"{TEST_PREFIX}sat1")
-    assert any(r["id"] == sat["id"] and r["leg"] == "sat" for r in rows)
+    assert any(r["id"] == parking["id"] and r["leg"] == "parking" for r in rows)
     with pytest.raises(ValueError):
         ut.insert_trade(
             symbol=TEST_SYMBOL,
@@ -103,9 +103,9 @@ def test_update_trade_leg_roundtrip() -> None:
         position_pct=12.5,
     )
     assert row["leg"] == "s3"
-    fixed = ut.update_trade(row["id"], leg="sat")
-    assert fixed is not None and fixed["leg"] == "sat"
-    assert ut.update_trade("no-such-id", leg="sat") is None
+    fixed = ut.update_trade(row["id"], leg="parking")
+    assert fixed is not None and fixed["leg"] == "parking"
+    assert ut.update_trade("no-such-id", leg="parking") is None
     with pytest.raises(ValueError):
         ut.update_trade(row["id"], leg="x")
     with pytest.raises(ValueError):

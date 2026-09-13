@@ -1,0 +1,127 @@
+{
+  "tag": "twin-idle-2026-09-12",
+  "protocol": "frozen habit sat (C1 3% same_1430 amp_1430 clip4 body=3 day-3 14:30) + frozen pick-strong trail8; post-hoc blend. opp50=frozen; idle_core=unfilled sat notional to core; idle_repo=unfilled sat notional at 0.7%/yr.",
+  "windows": {
+    "OOS2": {
+      "opp50": {
+        "stats": {
+          "n_days": 254,
+          "total_pct": 82.4,
+          "max_dd": 16.6,
+          "sharpe": 2.64
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "idle_core": {
+        "stats": {
+          "n_days": 254,
+          "total_pct": 73.1,
+          "max_dd": 16.8,
+          "sharpe": 2.37
+        },
+        "delta_base_pt": -9.3,
+        "delta_base_sharpe": -0.27,
+        "delta_base_dd": 0.2
+      },
+      "idle_repo": {
+        "stats": {
+          "n_days": 254,
+          "total_pct": 82.4,
+          "max_dd": 16.6,
+          "sharpe": 2.64
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "_occupancy": {
+        "avg_idle_active_sleeve": 0.043,
+        "active_days": 164,
+        "days": 254
+      }
+    },
+    "train": {
+      "opp50": {
+        "stats": {
+          "n_days": 128,
+          "total_pct": 58.3,
+          "max_dd": 6.3,
+          "sharpe": 4.36
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "idle_core": {
+        "stats": {
+          "n_days": 128,
+          "total_pct": 57.6,
+          "max_dd": 6.3,
+          "sharpe": 4.27
+        },
+        "delta_base_pt": -0.7,
+        "delta_base_sharpe": -0.09,
+        "delta_base_dd": 0.0
+      },
+      "idle_repo": {
+        "stats": {
+          "n_days": 128,
+          "total_pct": 58.3,
+          "max_dd": 6.3,
+          "sharpe": 4.36
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "_occupancy": {
+        "avg_idle_active_sleeve": 0.024,
+        "active_days": 73,
+        "days": 128
+      }
+    },
+    "valid": {
+      "opp50": {
+        "stats": {
+          "n_days": 112,
+          "total_pct": 84.1,
+          "max_dd": 17.8,
+          "sharpe": 3.05
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "idle_core": {
+        "stats": {
+          "n_days": 112,
+          "total_pct": 86.5,
+          "max_dd": 17.8,
+          "sharpe": 3.07
+        },
+        "delta_base_pt": 2.4,
+        "delta_base_sharpe": 0.02,
+        "delta_base_dd": 0.0
+      },
+      "idle_repo": {
+        "stats": {
+          "n_days": 112,
+          "total_pct": 84.1,
+          "max_dd": 17.8,
+          "sharpe": 3.05
+        },
+        "delta_base_pt": 0.0,
+        "delta_base_sharpe": 0.0,
+        "delta_base_dd": 0.0
+      },
+      "_occupancy": {
+        "avg_idle_active_sleeve": 0.057,
+        "active_days": 35,
+        "days": 112
+      }
+    }
+  },
+  "as_of": "2026-09-12T12:02:37+00:00"
+}

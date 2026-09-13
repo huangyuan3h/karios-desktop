@@ -157,11 +157,8 @@ class TestCreateScheduler:
             "paper_trading_intake",
             "paper_trading_update",
             "paper_s3_intake",
-            "paper_twin_star",
             "allocation_decide",
             "backtest_paper_recon",
-            "twin_star_reminder",
-            "twin_star_intraday",
             "timeline_warmup",
             "stock_daily_basic_sync",
             "sleeve_etf_daily_sync",
@@ -189,6 +186,7 @@ class TestCreateScheduler:
             "sleeve_paper_auto",
             "factor_signals_sync",
             "risk_state_sync",
+            "xq_follow_snapshot",
         }
         assert ids == expected
 

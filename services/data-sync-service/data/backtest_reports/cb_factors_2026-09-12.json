@@ -1,0 +1,224 @@
+{
+  "tag": "cb-factors-2026-09-12",
+  "protocol": "CB daily from purchased 1-min (data/cb/cb_daily.csv); weekly rebalance, bottom/top 20% by signal vs equal-weight, liquidity amount>=p40/day, 20bp round trip. H-CB1 = low_price; rest exploratory. Read-only.",
+  "variants": [
+    "low_price",
+    "high_price",
+    "mom20",
+    "rev5",
+    "low_vol20",
+    "high_vol20",
+    "ew"
+  ],
+  "windows": {
+    "OOS2": {
+      "low_price": {
+        "n_days": 243,
+        "total_pct": 28.3,
+        "max_dd": 6.8,
+        "sharpe": 1.89
+      },
+      "high_price": {
+        "n_days": 243,
+        "total_pct": 18.1,
+        "max_dd": 18.1,
+        "sharpe": 0.84
+      },
+      "mom20": {
+        "n_days": 243,
+        "total_pct": 17.1,
+        "max_dd": 12.7,
+        "sharpe": 0.88
+      },
+      "rev5": {
+        "n_days": 243,
+        "total_pct": 27.9,
+        "max_dd": 12.3,
+        "sharpe": 1.52
+      },
+      "low_vol20": {
+        "n_days": 243,
+        "total_pct": 3.1,
+        "max_dd": 5.4,
+        "sharpe": 0.46
+      },
+      "high_vol20": {
+        "n_days": 243,
+        "total_pct": 25.8,
+        "max_dd": 18.4,
+        "sharpe": 1.08
+      },
+      "ew": {
+        "n_days": 243,
+        "total_pct": 13.2,
+        "max_dd": 10.0,
+        "sharpe": 0.92
+      }
+    },
+    "train": {
+      "low_price": {
+        "n_days": 123,
+        "total_pct": 5.6,
+        "max_dd": 5.0,
+        "sharpe": 1.29
+      },
+      "high_price": {
+        "n_days": 123,
+        "total_pct": 29.0,
+        "max_dd": 13.0,
+        "sharpe": 1.98
+      },
+      "mom20": {
+        "n_days": 123,
+        "total_pct": 17.8,
+        "max_dd": 12.7,
+        "sharpe": 1.41
+      },
+      "rev5": {
+        "n_days": 123,
+        "total_pct": 17.0,
+        "max_dd": 7.8,
+        "sharpe": 1.73
+      },
+      "low_vol20": {
+        "n_days": 123,
+        "total_pct": 5.4,
+        "max_dd": 4.3,
+        "sharpe": 1.32
+      },
+      "high_vol20": {
+        "n_days": 123,
+        "total_pct": 16.4,
+        "max_dd": 12.2,
+        "sharpe": 1.24
+      },
+      "ew": {
+        "n_days": 123,
+        "total_pct": 12.8,
+        "max_dd": 6.9,
+        "sharpe": 1.63
+      }
+    },
+    "valid": {
+      "low_price": {
+        "n_days": 110,
+        "total_pct": -7.3,
+        "max_dd": 13.0,
+        "sharpe": -1.71
+      },
+      "high_price": {
+        "n_days": 110,
+        "total_pct": -6.4,
+        "max_dd": 22.5,
+        "sharpe": -0.16
+      },
+      "mom20": {
+        "n_days": 110,
+        "total_pct": -4.1,
+        "max_dd": 19.6,
+        "sharpe": -0.16
+      },
+      "rev5": {
+        "n_days": 110,
+        "total_pct": 0.0,
+        "max_dd": 17.2,
+        "sharpe": 0.17
+      },
+      "low_vol20": {
+        "n_days": 110,
+        "total_pct": -8.6,
+        "max_dd": 11.1,
+        "sharpe": -2.51
+      },
+      "high_vol20": {
+        "n_days": 110,
+        "total_pct": -8.6,
+        "max_dd": 22.6,
+        "sharpe": -0.3
+      },
+      "ew": {
+        "n_days": 110,
+        "total_pct": -5.4,
+        "max_dd": 10.9,
+        "sharpe": -0.52
+      }
+    },
+    "past_year": {
+      "low_price": {
+        "n_days": 247,
+        "total_pct": -5.7,
+        "max_dd": 15.4,
+        "sharpe": -0.57
+      },
+      "high_price": {
+        "n_days": 247,
+        "total_pct": 14.6,
+        "max_dd": 27.0,
+        "sharpe": 0.57
+      },
+      "mom20": {
+        "n_days": 247,
+        "total_pct": 16.4,
+        "max_dd": 18.4,
+        "sharpe": 0.67
+      },
+      "rev5": {
+        "n_days": 247,
+        "total_pct": -3.3,
+        "max_dd": 29.2,
+        "sharpe": 0.02
+      },
+      "low_vol20": {
+        "n_days": 247,
+        "total_pct": -3.9,
+        "max_dd": 12.1,
+        "sharpe": -0.43
+      },
+      "high_vol20": {
+        "n_days": 247,
+        "total_pct": 9.1,
+        "max_dd": 25.4,
+        "sharpe": 0.43
+      },
+      "ew": {
+        "n_days": 247,
+        "total_pct": 5.4,
+        "max_dd": 14.8,
+        "sharpe": 0.38
+      }
+    }
+  },
+  "verdict_vs_ew": {
+    "low_price": [
+      15.1,
+      -7.2,
+      -1.9
+    ],
+    "high_price": [
+      4.9,
+      16.2,
+      -1.0
+    ],
+    "mom20": [
+      3.9,
+      5.0,
+      1.3
+    ],
+    "rev5": [
+      14.7,
+      4.2,
+      5.4
+    ],
+    "low_vol20": [
+      -10.1,
+      -7.4,
+      -3.2
+    ],
+    "high_vol20": [
+      12.6,
+      3.6,
+      -3.2
+    ]
+  },
+  "as_of": "2026-09-12T12:28:26+00:00"
+}

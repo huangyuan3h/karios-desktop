@@ -1,0 +1,62 @@
+{
+  "tag": "twin-ipo-overlay-2026-09-12",
+  "windows": {
+    "OOS2": {
+      "stock_occupancy_pct": 57.5,
+      "avg_cn_nav_pct": 47.1,
+      "budget_sh_pct": 17.7,
+      "budget_sz_pct": 27.7
+    },
+    "train": {
+      "stock_occupancy_pct": 25.0,
+      "avg_cn_nav_pct": 36.3,
+      "budget_sh_pct": 17.1,
+      "budget_sz_pct": 16.4
+    },
+    "valid": {
+      "stock_occupancy_pct": 25.9,
+      "avg_cn_nav_pct": 16.2,
+      "budget_sh_pct": 7.1,
+      "budget_sz_pct": 6.9
+    },
+    "past_year": {
+      "stock_occupancy_pct": 41.6,
+      "avg_cn_nav_pct": 31.7,
+      "budget_sh_pct": 18.3,
+      "budget_sz_pct": 13.8
+    }
+  },
+  "portfolio_add_pct": {
+    "OOS2": {
+      "200000": 1.93,
+      "500000": 1.57,
+      "1000000": 1.06,
+      "3000000": 0.5
+    },
+    "train": {
+      "200000": 1.52,
+      "500000": 1.37,
+      "1000000": 0.99,
+      "3000000": 0.48
+    },
+    "valid": {
+      "200000": 0.64,
+      "500000": 0.63,
+      "1000000": 0.6,
+      "3000000": 0.36
+    },
+    "past_year": {
+      "200000": 1.5,
+      "500000": 1.35,
+      "1000000": 0.98,
+      "3000000": 0.48
+    }
+  },
+  "aum": [
+    200000,
+    500000,
+    1000000,
+    3000000
+  ],
+  "as_of": "2026-09-12T14:47:20+00:00"
+}

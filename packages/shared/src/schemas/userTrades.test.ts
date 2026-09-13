@@ -96,7 +96,7 @@ describe('UserTradeSchema', () => {
     expect(trade.alphaSnapshot).toBeNull();
   });
 
-  it('defaults leg to s3 and accepts sat (OPT-149)', () => {
+  it('defaults leg to s3 and accepts parking (OPT-149)', () => {
     const core = UserTradeSchema.parse({
       id: 'a',
       symbol: 'CN:600000',
@@ -106,29 +106,29 @@ describe('UserTradeSchema', () => {
       positionPct: 10,
     });
     expect(core.leg).toBe('s3');
-    const sat = UserTradeSchema.parse({
+    const parking = UserTradeSchema.parse({
       id: 'b',
-      symbol: 'CN:688525',
+      symbol: 'ETF:518880',
       side: 'BUY',
       tradeDate: '2026-09-07',
-      price: 221.28,
-      positionPct: 12.5,
-      leg: 'sat',
+      price: 7.2,
+      positionPct: 10,
+      leg: 'parking',
     });
-    expect(sat.leg).toBe('sat');
+    expect(parking.leg).toBe('parking');
     expect(() =>
       UserTradeRequestSchema.parse({
-        symbol: 'CN:688525',
+        symbol: 'ETF:518880',
         side: 'BUY',
-        price: 221.28,
-        positionPct: 12.5,
-        leg: 'x',
+        price: 7.2,
+        positionPct: 10,
+        leg: 'sat',
       }),
     ).toThrow();
   });
 
   it('validates patch bodies (OPT-150)', () => {
-    expect(UserTradePatchSchema.parse({ leg: 'sat' }).leg).toBe('sat');
+    expect(UserTradePatchSchema.parse({ leg: 'parking' }).leg).toBe('parking');
     expect(UserTradePatchSchema.parse({ positionPct: 12.5 }).positionPct).toBe(12.5);
     expect(() => UserTradePatchSchema.parse({ leg: 'x' })).toThrow();
     expect(() => UserTradePatchSchema.parse({ positionPct: -1 })).toThrow();

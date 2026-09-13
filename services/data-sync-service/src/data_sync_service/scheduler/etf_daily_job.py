@@ -1,6 +1,6 @@
 """Sync ETF daily bars after market close.
 
-- ``sleeve_etf_daily_sync``: the 5 Twin-Star core-leg ETFs (GOLD/OIL/NASDAQ×2/
+- ``sleeve_etf_daily_sync``: the 5 core-leg sleeve ETFs (GOLD/OIL/NASDAQ×2/
   BOND10) every weekday 17:25 Asia/Shanghai — the core-leg decision depends on
   fresh mom60/MA200 (GOLD/BOND10 went stale for 7+ days under the monthly cron).
 - ``etf_daily_full_sync``: full-market fund_daily stays on its monthly cron

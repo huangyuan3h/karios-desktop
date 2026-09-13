@@ -251,7 +251,7 @@ def analyze_exit_attribution(*, days: int = 5, limit: int = 500) -> dict[str, An
             "maxSimultaneous": max_sim,
             "singleStockWeightFloorPct": single_floor,
             "note": (
-                "单票权重下界 = 100% / 最多同时持仓数。与卫星仓红线对照："
+                "单票权重下界 = 100% / 最多同时持仓数。与集中度红线对照："
                 "单票 ≤15%、板块 ≤30%、sleeve 5%。暴露超标时优先减仓而非改参数。"
             ),
         },

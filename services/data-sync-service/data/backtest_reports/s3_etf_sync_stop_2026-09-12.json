@@ -1,0 +1,162 @@
+{
+  "tag": "s3-etf-sync-stop-2026-09-12",
+  "prereg": "docs/designs/s3-etf-sync-stop-prereg-2026-09-12.md",
+  "windows": {
+    "OOS2": {
+      "n": 91,
+      "mean_hold_days": 14.3,
+      "sector_trail8": {
+        "stopped": 7,
+        "coverage_pct": 7.7,
+        "whip_pct": 28.6,
+        "save_pct": 71.4,
+        "mean_delta_stopped_pct": -1.5,
+        "median_delta_stopped_pct": 1.85,
+        "mean_delta_all_pct": -0.12
+      },
+      "sector_ma20": {
+        "stopped": 35,
+        "coverage_pct": 38.5,
+        "whip_pct": 45.7,
+        "save_pct": 54.3,
+        "mean_delta_stopped_pct": -4.76,
+        "median_delta_stopped_pct": 1.42,
+        "mean_delta_all_pct": -1.83
+      },
+      "board_trail8": {
+        "stopped": 3,
+        "coverage_pct": 3.3,
+        "whip_pct": 0.0,
+        "save_pct": 100.0,
+        "mean_delta_stopped_pct": 5.28,
+        "median_delta_stopped_pct": 5.26,
+        "mean_delta_all_pct": 0.17
+      },
+      "board_ma20": {
+        "stopped": 31,
+        "coverage_pct": 34.1,
+        "whip_pct": 41.9,
+        "save_pct": 58.1,
+        "mean_delta_stopped_pct": -3.31,
+        "median_delta_stopped_pct": 3.44,
+        "mean_delta_all_pct": -1.13
+      }
+    },
+    "train": {
+      "n": 51,
+      "mean_hold_days": 13.2,
+      "sector_trail8": {
+        "stopped": 1,
+        "coverage_pct": 2.0,
+        "whip_pct": 0.0,
+        "save_pct": 100.0,
+        "mean_delta_stopped_pct": 1.69,
+        "median_delta_stopped_pct": 1.69,
+        "mean_delta_all_pct": 0.03
+      },
+      "sector_ma20": {
+        "stopped": 8,
+        "coverage_pct": 15.7,
+        "whip_pct": 37.5,
+        "save_pct": 62.5,
+        "mean_delta_stopped_pct": -1.9,
+        "median_delta_stopped_pct": 1.54,
+        "mean_delta_all_pct": -0.3
+      },
+      "board_trail8": {
+        "stopped": 3,
+        "coverage_pct": 5.9,
+        "whip_pct": 33.3,
+        "save_pct": 66.7,
+        "mean_delta_stopped_pct": -2.1,
+        "median_delta_stopped_pct": 4.47,
+        "mean_delta_all_pct": -0.12
+      },
+      "board_ma20": {
+        "stopped": 10,
+        "coverage_pct": 19.6,
+        "whip_pct": 30.0,
+        "save_pct": 60.0,
+        "mean_delta_stopped_pct": -6.28,
+        "median_delta_stopped_pct": 0.61,
+        "mean_delta_all_pct": -1.23
+      }
+    },
+    "valid": {
+      "n": 16,
+      "mean_hold_days": 18.7,
+      "sector_trail8": {
+        "stopped": 0,
+        "coverage_pct": 0.0,
+        "whip_pct": null
+      },
+      "sector_ma20": {
+        "stopped": 2,
+        "coverage_pct": 12.5,
+        "whip_pct": 0.0,
+        "save_pct": 100.0,
+        "mean_delta_stopped_pct": 1.89,
+        "median_delta_stopped_pct": 1.89,
+        "mean_delta_all_pct": 0.24
+      },
+      "board_trail8": {
+        "stopped": 0,
+        "coverage_pct": 0.0,
+        "whip_pct": null
+      },
+      "board_ma20": {
+        "stopped": 0,
+        "coverage_pct": 0.0,
+        "whip_pct": null
+      }
+    },
+    "long": {
+      "n": 410,
+      "mean_hold_days": 15.3,
+      "sector_trail8": {
+        "stopped": 51,
+        "coverage_pct": 12.4,
+        "whip_pct": 9.8,
+        "save_pct": 90.2,
+        "mean_delta_stopped_pct": 3.55,
+        "median_delta_stopped_pct": 3.39,
+        "mean_delta_all_pct": 0.44
+      },
+      "sector_ma20": {
+        "stopped": 184,
+        "coverage_pct": 44.9,
+        "whip_pct": 22.8,
+        "save_pct": 76.6,
+        "mean_delta_stopped_pct": 0.78,
+        "median_delta_stopped_pct": 3.32,
+        "mean_delta_all_pct": 0.35
+      },
+      "board_trail8": {
+        "stopped": 12,
+        "coverage_pct": 2.9,
+        "whip_pct": 25.0,
+        "save_pct": 75.0,
+        "mean_delta_stopped_pct": 2.87,
+        "median_delta_stopped_pct": 5.12,
+        "mean_delta_all_pct": 0.08
+      },
+      "board_ma20": {
+        "stopped": 212,
+        "coverage_pct": 51.7,
+        "whip_pct": 24.5,
+        "save_pct": 75.0,
+        "mean_delta_stopped_pct": 1.05,
+        "median_delta_stopped_pct": 3.86,
+        "mean_delta_all_pct": 0.54
+      }
+    }
+  },
+  "verdict": {
+    "k1": false,
+    "k2": true,
+    "k3": true,
+    "primary": "sector_trail8",
+    "call": "REJECT / close line"
+  },
+  "as_of": "2026-09-12T13:57:05+00:00"
+}

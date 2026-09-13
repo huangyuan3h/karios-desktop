@@ -1,0 +1,90 @@
+{
+  "tag": "etf-sector-momentum-2026-09-12",
+  "prereg": "docs/designs/etf-sector-momentum-prereg-2026-09-12.md",
+  "edge": {
+    "5": {
+      "long_mean_pct": 0.01,
+      "per_window": {
+        "OOS2": -0.28,
+        "train": 0.53,
+        "valid": 0.44,
+        "long": 0.01
+      }
+    },
+    "10": {
+      "long_mean_pct": 0.02,
+      "per_window": {
+        "OOS2": -0.22,
+        "train": 1.1,
+        "valid": 0.97,
+        "long": 0.02
+      }
+    },
+    "20": {
+      "long_mean_pct": 0.15,
+      "per_window": {
+        "OOS2": 0.11,
+        "train": 2.34,
+        "valid": 1.58,
+        "long": 0.15
+      }
+    }
+  },
+  "rotation": {
+    "OOS2": {
+      "top3": {
+        "total_pct": 7.5,
+        "sharpe": 0.39,
+        "max_dd": 25.8
+      },
+      "ew": {
+        "total_pct": 27.5,
+        "sharpe": 1.13,
+        "max_dd": 16.2
+      }
+    },
+    "train": {
+      "top3": {
+        "total_pct": 10.7,
+        "sharpe": 0.77,
+        "max_dd": 25.0
+      },
+      "ew": {
+        "total_pct": 23.8,
+        "sharpe": 2.66,
+        "max_dd": 7.2
+      }
+    },
+    "valid": {
+      "top3": {
+        "total_pct": -15.2,
+        "sharpe": -0.61,
+        "max_dd": 34.2
+      },
+      "ew": {
+        "total_pct": -6.3,
+        "sharpe": -0.6,
+        "max_dd": 13.0
+      }
+    },
+    "long": {
+      "top3": {
+        "total_pct": -44.1,
+        "sharpe": -0.21,
+        "max_dd": 69.2
+      },
+      "ew": {
+        "total_pct": 4.0,
+        "sharpe": 0.14,
+        "max_dd": 40.1
+      }
+    }
+  },
+  "verdict": {
+    "k1": true,
+    "k2": true,
+    "k3": false,
+    "call": "REJECT / close line"
+  },
+  "as_of": "2026-09-12T14:19:41+00:00"
+}

@@ -1,6 +1,6 @@
 """bar_5min — last-hour 5-minute OHLCV (14:30–15:00) for CN A-shares.
 
-Used to study 14:30 vs 15:00 satellite-list drift and last-5-minute
+Used to study 14:30 vs 15:00 gap-list drift and last-5-minute
 limit-lock paths. Not mixed with bar_minute (1-minute Tencent tape): a
 14:30 5-minute bar is not the same OHLC as the 14:30 1-minute print.
 

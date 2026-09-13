@@ -30,7 +30,7 @@ const PICK_TS: Record<string, string> = {
 /**
  * 最近操作 vs Timeline 定案逐日对比。
  *
- * 左/定案列：GET /api/backtest/timeline（可切 机会双子星 / 单轨择强）
+ * 左/定案列：GET /api/backtest/timeline?strategy=harbor
  * 右/操作列：portfolio-health 当前持仓 + bars 相对成本加权收益
  *            （当前快照套到每一行，非逐日账本回放）
  */
@@ -41,16 +41,7 @@ export function RecentDailyCompareCard() {
     d.setMonth(d.getMonth() - 2);
     return d.toISOString().slice(0, 10);
   });
-  const [strategy, setStrategy] = React.useState<'twin_star' | 'pick_strong'>('twin_star');
-  const isTwin = strategy === 'twin_star';
-  const [habit, setHabit] = React.useState(true);
-  const timelineQ = useTimelineQuery(
-    start,
-    today,
-    strategy,
-    true,
-    isTwin && habit ? { satFill: 'same_1430', satExit: '1430', c1Pct: 0.03 } : undefined,
-  );
+  const timelineQ = useTimelineQuery(start, today, 'harbor', true);
   const healthQ = useQuery({
     queryKey: ['portfolio-health', 'recent-ops-vs-pick-strong'],
     queryFn: () => fetchPortfolioHealth(),
@@ -164,46 +155,12 @@ export function RecentDailyCompareCard() {
         <span className="rounded bg-[var(--k-bg)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--k-muted)]">
           次级表 · 复刻差距见上方
         </span>
-        <span className="flex overflow-hidden rounded border border-[var(--k-border)] text-[10px] font-normal">
-          <button
-            type="button"
-            onClick={() => setStrategy('twin_star')}
-            className={cn(
-              'px-2 py-0.5',
-              isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
-            )}
-          >
-            机会双子星
-          </button>
-          <button
-            type="button"
-            onClick={() => setStrategy('pick_strong')}
-            className={cn(
-              'px-2 py-0.5',
-              !isTwin ? 'bg-[var(--k-accent)] text-white' : 'text-[var(--k-muted)]',
-            )}
-          >
-            单轨择强
-          </button>
+        <span className="rounded border border-[var(--k-border)] px-2 py-0.5 text-[10px] font-normal text-[var(--k-fg)]">
+          港湾
         </span>
         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-normal text-emerald-800 dark:text-emerald-200">
           {mode}
         </span>
-        {isTwin ? (
-          <button
-            type="button"
-            onClick={() => setHabit((v) => !v)}
-            title="习惯对照：same_1430 + C1 3% + 第3日14:30卖（Live配方）；关=冻结T开盘收盘卖"
-            className={cn(
-              'rounded border px-1.5 py-0.5 text-[10px] font-normal',
-              habit
-                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
-                : 'border-[var(--k-border)] text-[var(--k-muted)]',
-            )}
-          >
-            {habit ? '习惯C1+14:30卖·开' : '习惯对照·关'}
-          </button>
-        ) : null}
         <span className="ml-auto flex items-center gap-1 text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           <Popover>
             <PopoverTrigger asChild>
@@ -230,13 +187,12 @@ export function RecentDailyCompareCard() {
 
       <div className="mb-2 grid grid-cols-3 gap-2 text-[11px]">
         <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
-          <div className="text-[var(--k-muted)]">{isTwin ? '机会双子星累计' : '单轨择优累计'}</div>
+          <div className="text-[var(--k-muted)]">港湾累计</div>
           <div className={cn('font-semibold tabular-nums', tone(lastNav))}>
             {lastNav.toFixed(2)}%
           </div>
           <div className="text-[10px] text-[var(--k-muted)]">
-            Timeline pick={last.pick ?? '—'}
-            {isTwin ? ` · 目标${last.satActive ? 50 : 100}%` : ''} · live={livePick ?? '—'}
+            Timeline pick={last.pick ?? '—'} · live={livePick ?? '—'}
           </div>
         </div>
         <div className="rounded border border-[var(--k-border)] px-2 py-1.5">
@@ -261,9 +217,7 @@ export function RecentDailyCompareCard() {
           >
             {avgOpsPnl != null ? `${(lastNav - avgOpsPnl).toFixed(2)}%` : '—'}
           </div>
-          <div className="text-[10px] text-[var(--k-muted)]">
-            {isTwin ? '双子星' : '单轨'} − 最近操作
-          </div>
+          <div className="text-[10px] text-[var(--k-muted)]">港湾 − 最近操作</div>
         </div>
       </div>
 
@@ -272,10 +226,9 @@ export function RecentDailyCompareCard() {
           <thead className="sticky top-0 bg-[var(--k-surface)]">
             <tr className="text-[10px] text-[var(--k-muted)]">
               <th className="py-1 pl-2 pr-2">日期</th>
-              <th className="py-1 pr-2">{isTwin ? '核心该买' : '单轨应持（pick）'}</th>
-              {isTwin ? <th className="py-1 pr-2">核心目标%</th> : null}
+              <th className="py-1 pr-2">港湾应持（pick）</th>
               <th className="py-1 pr-2">最近操作（现仓快照）</th>
-              <th className="py-1 pr-2">{isTwin ? '双子星NAV%' : '单轨NAV%'}</th>
+              <th className="py-1 pr-2">港湾NAV%</th>
               <th className="py-1 pr-2">操作收益%</th>
             </tr>
           </thead>
@@ -298,11 +251,6 @@ export function RecentDailyCompareCard() {
                   >
                     {optimalHolding}
                   </td>
-                  {isTwin ? (
-                    <td className="py-1 pr-2 text-[10px] text-[var(--k-muted)]">
-                      {r.satActive ? '50' : '100'}%
-                    </td>
-                  ) : null}
                   <td
                     className="min-w-[220px] whitespace-normal break-words py-1 pr-2 text-[11px] text-[var(--k-muted)]"
                     title={`${actualHolding}（当前快照，非当日账本）`}
@@ -322,11 +270,8 @@ export function RecentDailyCompareCard() {
         </table>
       </div>
       <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
-        <strong>{isTwin ? '机会双子星' : '单轨择优'}</strong> ={' '}
-        <code>GET /api/backtest/timeline?strategy={strategy}</code>
-        {isTwin
-          ? `（opportunity v3 · satActive→50/50 · idle→核心100% · 与 Watchlist 同源${habit ? ' · 习惯C1+14:30卖（Live）' : ' · 冻结T开盘收盘卖'}）。`
-          : '（pick_strong_track · mom_compare · 100% 硬切）。'}
+        <strong>港湾</strong> = <code>GET /api/backtest/timeline?strategy=harbor</code>
+        （pick_strong 核心 mom_compare · 闲置现金停进核心 ETF · 与 Watchlist 同源）。
         <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产
         ETF）相对成本的加权收益（bars）。 「现仓快照」每日行相同——不是历史逐日持仓回放。
       </p>

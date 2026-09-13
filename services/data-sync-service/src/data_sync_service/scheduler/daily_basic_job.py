@@ -1,9 +1,8 @@
 """Incremental sync of stock_dailybasic (total_mv / circ_mv / turnover_rate).
 
-Weekdays 17:20 Asia/Shanghai — right after index_basic_sync (17:15). The
-Twin-Star (双子星) satellite reads stock_dailybasic.total_mv every day to pick
-S-gap low-volatility candidates; the table was orphaned (last write 2026-08-07)
-before this job existed. Idempotent per (ts_code, trade_date).
+Weekdays 17:20 Asia/Shanghai — right after index_basic_sync (17:15). Keeps
+market-cap coverage warm for market-breadth and stock-pool readers.
+Idempotent per (ts_code, trade_date).
 """
 
 from __future__ import annotations

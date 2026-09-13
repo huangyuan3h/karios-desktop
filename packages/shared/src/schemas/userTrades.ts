@@ -5,7 +5,7 @@ export const UserTradeSideSchema = z.enum(['BUY', 'ADD', 'SELL']);
 export type UserTradeSide = z.infer<typeof UserTradeSideSchema>;
 
 /** Which strategy book a manual leg belongs to (OPT-149). */
-export const UserTradeLegSchema = z.enum(['s3', 'sat']);
+export const UserTradeLegSchema = z.enum(['s3', 'parking']);
 export type UserTradeLeg = z.infer<typeof UserTradeLegSchema>;
 
 /** One alpha-radar event visible as-of the trade date (§19.3 snapshot). */

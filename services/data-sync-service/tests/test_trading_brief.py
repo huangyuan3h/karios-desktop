@@ -146,7 +146,6 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
         patch("data_sync_service.service.trading_brief._candidates", return_value=[]),
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
-        patch("data_sync_service.service.trading_brief._twin_star_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._sleeve_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._third_asset_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
@@ -246,7 +245,6 @@ def test_action_brief_emits_execution_card_webhook() -> None:
         ),
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
-        patch("data_sync_service.service.trading_brief._twin_star_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._sleeve_recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
         patch("data_sync_service.db.webhook.emit_event", emit),
@@ -268,76 +266,3 @@ def test_action_brief_emits_execution_card_webhook() -> None:
     exit_syms = [e["symbol"] for e in payload["exits"]]
     assert exit_syms == ["CN:300628"]
     assert payload["exits"][0]["pnlPct"] == -5.4
-
-
-def test_twin_star_recon_section_mismatch_emits() -> None:
-    """H5: habit paper mismatches push one high event per day + render."""
-    from unittest.mock import MagicMock
-
-    recon = {
-        "day": "2026-09-02",
-        "ok": False,
-        "gateOpen": True,
-        "snapshotBad": False,
-        "expectedBuys": ["000001.SZ"],
-        "insertedToday": [],
-        "missedBuys": ["000001.SZ"],
-        "extraOpens": [],
-        "exitsDue": [],
-        "closedToday": [],
-        "missedExits": [],
-    }
-    emit = MagicMock()
-    with (
-        patch(
-            "data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon
-        ),
-        patch("data_sync_service.db.webhook.emit_event", emit),
-    ):
-        sections = tb._twin_star_recon_section()
-    assert sections[0]["type"] == "twin_star_recon"
-    assert emit.call_count == 1
-    assert emit.call_args.args[0] == "twin_star_recon_mismatch"
-    assert emit.call_args.kwargs["dedupe_key"] == "twin_star_recon:2026-09-02"
-    md = tb.render_markdown(sections, "action")
-    assert "**卫星纸账对账 2026-09-02** 🔴有差异" in md
-    assert "应买 1 · 今已买 0" in md
-    assert "缺 000001.SZ" in md
-
-
-def test_twin_star_recon_section_clean_no_emit() -> None:
-    from unittest.mock import MagicMock
-
-    recon = {
-        "day": "2026-09-02",
-        "ok": True,
-        "expectedBuys": [],
-        "insertedToday": [],
-        "missedBuys": [],
-        "extraOpens": [],
-        "exitsDue": [],
-        "closedToday": [],
-        "missedExits": [],
-    }
-    emit = MagicMock()
-    with (
-        patch(
-            "data_sync_service.service.paper_twin_star.paper_twin_star_recon", return_value=recon
-        ),
-        patch("data_sync_service.db.webhook.emit_event", emit),
-    ):
-        sections = tb._twin_star_recon_section()
-    assert emit.call_count == 0
-    md = tb.render_markdown(sections, "action")
-    assert "✅一致" in md
-
-
-def test_twin_star_recon_section_failure_survives() -> None:
-    with patch(
-        "data_sync_service.service.paper_twin_star.paper_twin_star_recon",
-        side_effect=RuntimeError("down"),
-    ):
-        sections = tb._twin_star_recon_section()
-    assert sections[0]["ok"] is False
-    md = tb.render_markdown(sections, "action")
-    assert "失败" in md

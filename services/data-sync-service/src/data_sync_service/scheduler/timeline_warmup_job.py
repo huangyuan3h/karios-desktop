@@ -38,9 +38,6 @@ def run() -> dict:
             start=start,
             end=today,
             strategy="pick_strong",
-            sat_fill="next_open",
-            sat_exit=None,
-            c1_pct=None,
         )
         insert_record(
             job_type="timeline_warmup",

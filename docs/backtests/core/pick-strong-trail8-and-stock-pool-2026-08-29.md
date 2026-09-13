@@ -1,5 +1,7 @@
 # 择强单轨 · trail8 吸收判定 + STOCK 入池实验规划（2026-08-29）
 
+> ⚠️ **2026-09-12 作废（OPT-177）**：本文 trail8 的 NAV 增量是用**含 1 日前视**的实现（当日收盘触发、当日收益记 0）算出的，**数字作废**。因果修复后 trail8 真实增量仅 valid +8.5pt / long +7.5pt（非 +82/+75）。见 [`audit-trail8-2026-09-12`](../audit-trail8-2026-09-12.md)。
+
 > 澄清：此前 **live / Watchlist** 已有 ETF 峰值 −8%→REPO；**定案回测 `mom_compare` 绝对 NAV 未吸收**。  
 > 本轮在 fused NAV 上跑完 Q8，并启动 STOCK 入池单变量实验。
 

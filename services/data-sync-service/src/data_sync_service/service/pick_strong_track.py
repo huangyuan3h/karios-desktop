@@ -179,9 +179,11 @@ def build_mom_compare_timeline(
                 pick = "REPO"
 
         # ETF trail8: peak since consecutive hold of same ETF −trail% → REPO.
+        # OPT-177: decide from the PREVIOUS close (causal) — using today's close
+        # to zero out today's return was a 1-day look-ahead.
         if trail_pct > 0 and pick not in ("STOCK", "REPO"):
             mp = etf_close.get(pick) or {}
-            close = mp.get(day)
+            close = mp.get(prev)
             if held_etf != pick:
                 held_etf = pick
                 etf_peak = float(close) if close is not None else 0.0

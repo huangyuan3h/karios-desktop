@@ -3,13 +3,10 @@
 import * as React from 'react';
 
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
-import { TodayActionCard } from '@/components/watchlist/TodayActionCard';
-import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
+import { HarborDecisionCard } from '@/components/watchlist/HarborDecisionCard';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
-import { EtfExecutionLogCard } from '@/components/watchlist/EtfExecutionLogCard';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
-import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
@@ -21,7 +18,6 @@ import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { buildCatalystPurgeMap, DEFAULT_CATALYST_MAX_AGE_DAYS } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
-import { useStrategyMode } from '@/lib/strategy-settings';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
 import {
   buildSleeveExposurePct,
@@ -34,7 +30,6 @@ import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { useWatchlistRsRanksQuery, watchlistMarketKey } from '@/lib/queries/watchlist';
-import { scoreExplainZhLines } from '@/lib/trendok-display';
 import {
   fetchAutomationLatest,
   formatAutomationSummary,
@@ -113,9 +108,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     onManualRefreshTrend,
     queryClient,
   } = useWatchlistTrend(symbols, items, persist);
-
-  const [strategyMode] = useStrategyMode();
-  const showSingleTrack = strategyMode !== 'twin_star';
 
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -343,21 +335,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
-        {showSingleTrack ? <TodayActionCard /> : null}
+        <HarborDecisionCard />
         <PickStrongAlignBanner />
-        {showSingleTrack ? <EtfExecutionLogCard /> : null}
-        {showSingleTrack ? (
-          <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
-            <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
-              展开旧提醒（行为对账 / 轮动 / Gate 详情）
-            </summary>
-            <div className="mt-3">
-              <BehaviorAuditBanner />
-              {showSingleTrack ? <ThirdAssetSleeveBanner /> : null}
-            </div>
-          </details>
-        ) : null}
-        {executionGate && showSingleTrack ? (
+        <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
+          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
+            展开旧提醒（轮动 / Gate 详情）
+          </summary>
+          <div className="mt-3">
+            <ThirdAssetSleeveBanner />
+          </div>
+        </details>
+        {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
           >
@@ -420,9 +408,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <PortfolioHealthCard onOpenStock={onOpenStock} quotes={quotes} trend={trend} />
-
-        {showSingleTrack ? <TradingBriefCard /> : null}
+        <PortfolioHealthCard onOpenStock={onOpenStock} />
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />
@@ -462,21 +448,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             Supported inputs: CN 6-digit ticker, HK 4-5 digit ticker, or prefixed symbol (CN:/HK:).
           </div>
         </section>
-
-        {showSingleTrack ? (
-          <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-            <div className="text-sm font-medium">Score（0–100）计分说明</div>
-            <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
-              {scoreExplainZhLines().map((line, i) => (
-                <div key={i}>{line}</div>
-              ))}
-            </div>
-            <div className="mt-3 text-[11px] leading-relaxed text-[var(--k-muted)]">
-              鼠标悬停在列表「Score」数字上可查看该股各项得分（ema / macd / breakout / rsi / volume
-              及加扣分）。
-            </div>
-          </section>
-        ) : null}
 
         <WatchlistTable
           sortedItems={sortedItems}
