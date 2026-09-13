@@ -320,6 +320,12 @@ describe('BacktestPage', () => {
     expect(screen.getByTestId('harbor-nav-chart')).toBeDefined();
   });
 
+  it('switches the timeline strategy label to 母港', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '母港' }));
+    expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
+  });
+
   it('renders auto-segmented holding blocks and per-day hover details', async () => {
     renderPage();
     await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/);

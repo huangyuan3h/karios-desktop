@@ -513,6 +513,8 @@ export type TimelineSummary = {
   fusedPct?: number;
   basePct?: number;
   maxDdFusedPct?: number;
+  /** Homeport only: underlying Harbor NAV% (the fusedPct is the Homeport NAV). */
+  harborPct?: number;
 };
 
 export type TimelineResponse = {
@@ -527,10 +529,11 @@ export type TimelineResponse = {
   rows: TimelineRow[];
 };
 
-export type TimelineStrategy = 'harbor';
+export type TimelineStrategy = 'harbor' | 'homeport';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   harbor: '港湾',
+  homeport: '母港',
 };
 
 export function useTimelineQuery(

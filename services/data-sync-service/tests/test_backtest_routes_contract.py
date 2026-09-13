@@ -14,7 +14,7 @@ def test_timeline_rejects_removed_twin_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
         br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="twin_star")
     assert exc.value.status_code == 400
-    assert "harbor|pick_strong|state_bucket" in exc.value.detail
+    assert "harbor|homeport|pick_strong|state_bucket" in exc.value.detail
 
 
 def test_timeline_accepts_harbor(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -22,6 +22,13 @@ def test_timeline_accepts_harbor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(br, "_get_or_build_timeline", lambda s, e, **kw: (payload, None))
     out = br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="harbor")
     assert out["strategy"] == "港湾"
+
+
+def test_timeline_accepts_homeport(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"ok": True, "strategy": "母港", "rows": [], "summary": {"fusedPct": 0.0}}
+    monkeypatch.setattr(br, "_get_or_build_timeline", lambda s, e, **kw: (payload, None))
+    out = br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="homeport")
+    assert out["strategy"] == "母港"
 
 
 def test_recon_and_behavior_latest(monkeypatch: pytest.MonkeyPatch) -> None:

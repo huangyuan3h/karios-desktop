@@ -41,13 +41,17 @@
 4. **分散红利 regime 依赖**：相关 +0.64~−0.35 不稳（2021–26 是"股弱金债强"），但门槛全过；权重带 M40/M60 同向（M60 更稳、M40 更赚），M50 是预声明中值。
 5. **代价明码**：收益近半（valid +25.6 vs +50.3；long +122.5 vs +219.9）——这是买保险的产品选择，不是免费午餐。
 
-## 5. 结论 / 处置
+## 5. 系统集成（2026-09-13）
+
+母港已作为 **Timeline 策略选项**上线（展示口径，非 Live）：`GET /api/backtest/timeline?strategy=homeport`（前端 Timeline 卡「港湾/母港」切换）。实现 = 从 Harbor timeline 行推导（`service/homeport.py`，无第二次引擎回放）；valid 窗核对 **+25.61%** 与回测 M50 **一致**（harborPct 50.32 保留）；单测 8 个。Live 不接线（paper 3/20 + 产品层未拍板）。
+
+## 6. 结论 / 处置
 
 - **产品候选成立**：若用户拍板接受"收益减半换 Sharpe 全升 + 回撤腰斩"，可进入产品层设计（再平衡日、两腿资金划转、账本口径均未定义，属落地设计）。
 - **不自动进 Live**：paper 3/20 未达标 + 资本结构需拍板。
 - 同族扩展关闭：不再扫其他被动腿/其他配比（B13 已扫、M 带方向一致）。
 
-## 6. 关联
+## 7. 关联
 
 - 预注册：[`harbor-riskbudget-mix-prereg-2026-09-13.md`](../../designs/harbor-riskbudget-mix-prereg-2026-09-13.md)
 - 前作：B13 [`etf-benchmark-parking-2026-09-13.md`](etf-benchmark-parking-2026-09-13.md) · B3 [`stable-core-2026-09-12.md`](stable-core-2026-09-12.md) · 港湾 [`etf-parking-baseline-2026-09-13.md`](etf-parking-baseline-2026-09-13.md)

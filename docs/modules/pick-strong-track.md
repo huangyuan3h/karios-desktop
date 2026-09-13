@@ -41,7 +41,7 @@
 
 > **不是「100% argmax 择强」**：ETF 层只停闲置现金，不做"股票 vs ETF 谁最强"的仓位切换。  
 > **不是「纯 S-3」**：S-3 生成 STOCK 候选/持仓；闲置现金由停车场增强（三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt** vs 纯 S-3——绝对 +55.9/+40.4/+47.8/+184.5）。  
-> **股票核心**：来自 **S-3**；**状态分桶 S-gap** 是并列的独立 A 股腿（可 Timeline `strategy=state_bucket` 单独回测），**不是**港湾替换件。
+> **股票核心**：来自 **S-3**；**状态分桶 S-gap** 是并列的独立 A 股腿（可 Timeline `strategy=state_bucket` 单独回测），**不是**港湾替换件。**母港（Homeport）= 港湾 × B3 风险预算 50/50** 亦为 Timeline 选项（`strategy=homeport`，展示口径，非 Live；[B15](../backtests/stable/harbor-riskbudget-2026-09-13.md)）。
 
 ---
 

@@ -159,7 +159,7 @@ RS 过滤=0.5 · Diverging 仓位=1.0 · 仓位 10% · 持仓上限 20 · gates=
 ### 6.3 paper 实盘（已固化 2026-08-21 · 三窗 + past_year 验证）
 
 - **paper 书**：`paper_trades` 表（`source S3/S3HK` 股票核心；~~`source=twin_star`~~ **已退役**——卫星 4 槽 × 12.5% / body=3 / 第 3 日 14:30 卖的口径随 B12 **REJECT** 下线，`cron 17:43 paper_twin_star` 与 `service/paper_twin_star.py` **已随 OPT-178 删除**；`sleeve_pct` 闲置停车场（旧套筒），`CLOSE_REASON_SLEEVE_EXIT`），`cron 17:42 paper_s3_intake CN+HK` + `17:45 update`。
-- **闲置停车场（目标口径 = 港湾 P1）**：S-3 空仓期闲置现金按 **14:30** 在 `mom60+MA200` 的金/油/纳指/国债间 `argmax` 停一只（因果 trail8、无候选回现金）；三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt**（[B11 档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**已于 2026-09-13 上线**：`service/multi_asset_sleeve.py` = 港湾 P1（闲置即停、无 floor/STOCK gate、无候选→REPO、因果 trail8）；`sleeve_paper_auto` 统一 **T 收盘信号 → T+1 开盘成交**；`/timeline?strategy=harbor` 新增。残余 T6 展示收敛见 **OPT-179**。
+- **闲置停车场（目标口径 = 港湾 P1）**：S-3 空仓期闲置现金按 **14:30** 在 `mom60+MA200` 的金/油/纳指/国债间 `argmax` 停一只（因果 trail8、无候选回现金）；三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt**（[B11 档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**已于 2026-09-13 上线**：`service/multi_asset_sleeve.py` = 港湾 P1（闲置即停、无 floor/STOCK gate、无候选→REPO、因果 trail8）；`sleeve_paper_auto` 统一 **T 收盘信号 → T+1 开盘成交**；`/timeline?strategy=harbor` 新增（另有 `strategy=homeport` ＝ 港湾×B3 风险预算 50/50 展示口径，非 Live）。残余 T6 展示收敛见 **OPT-179**。
 - **脉冲高置信** `OIL RSI<25 90% n30 +3.92%/10d`（`commodity_pattern_scan.py`）`valid +28.5` 三窗全过，已进 `impulseSleeve`（`2×` 杠杆），`NASDAQ RSI>75 78%` 等 `R1-R5` 按 [`todo.md`](../todo.md) P0-1 分批固化
 - **对账**：`C4 paper_vs_backtest_report.py` + `BehavioAudit` + `BacktestPage Timeline`（`GET /api/backtest/timeline?start=2025-08-01` 日级 `pick/navBase/navMulti/deployedPct` 分布，`TimelineCard` 色条 `GOLD/OIL/NASDAQ/BOND`），`paper ≥20 笔` 后出统计定论
 

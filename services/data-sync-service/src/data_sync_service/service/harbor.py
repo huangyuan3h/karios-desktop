@@ -336,6 +336,7 @@ def build_harbor_timeline(
         rows.append(
             {
                 "date": day,
+                "prev": prev,
                 "deployedPct": round(min(1.0, deployed) * 100, 1),
                 "idlePct": round(idle * 100, 1),
                 "positions": len(stock_poses),

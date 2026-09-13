@@ -194,7 +194,13 @@ function FlowTooltip({
   );
 }
 
-export function HarborNavOverlay({ rows }: { rows: TimelineRow[] }) {
+export function HarborNavOverlay({
+  rows,
+  seriesLabel = '港湾',
+}: {
+  rows: TimelineRow[];
+  seriesLabel?: string;
+}) {
   const [showFlow, setShowFlow] = React.useState(false);
   const points = React.useMemo(() => buildHarborNavPoints(rows), [rows]);
   const circuits = React.useMemo(() => circuitRuns(points), [points]);
@@ -244,7 +250,7 @@ export function HarborNavOverlay({ rows }: { rows: TimelineRow[] }) {
         <span className="font-medium text-[var(--k-fg)]">NAV 叠加</span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-0.5 w-3 bg-emerald-600" />
-          港湾 {fmtPct(harborMain)}
+          {seriesLabel} {fmtPct(harborMain)}
         </span>
         {sim ? (
           <span className="flex items-center gap-1">
@@ -461,7 +467,7 @@ export function HarborNavOverlay({ rows }: { rows: TimelineRow[] }) {
       <div className={cn('text-[10px] text-[var(--k-muted)]')}>
         {sim
           ? '主曲线 = 实盘口径港湾（S-3 核心 + 闲置现金 ETF 停车场）· 灰虚线 = 冻结 Timeline 基准 · 红底 = 线熔断（30 天已实现 ≤ -25%）· 琥珀底 = 极端谨慎'
-          : '港湾曲线 = 窗口内累计% · 灰虚线仅在实盘口径数据可用时显示'}
+          : `${seriesLabel}曲线 = 窗口内累计% · 灰虚线仅在实盘口径数据可用时显示`}
       </div>
     </div>
   );

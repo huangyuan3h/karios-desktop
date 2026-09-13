@@ -28,10 +28,12 @@ import {
   useReturnAttributionQuery,
   useSensitivityQuery,
   useSleeveNavQuery,
+  TIMELINE_STRATEGY_LABEL,
   useTimelineQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
+  type TimelineStrategy,
 } from '@/lib/queries/backtest';
 
 const DEFAULT_PARAMS: BacktestParams = {
@@ -656,9 +658,15 @@ function TimelineCard() {
   const selected = windows.find((w) => w.id === windowId) ?? windows[0];
   const start = selected.start;
   const end = selected.end;
-  const q = useTimelineQuery(start, end, 'harbor', true);
+  const [strategy, setStrategy] = React.useState<TimelineStrategy>('harbor');
+  const q = useTimelineQuery(start, end, strategy, true);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
+  const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
+  const strategySubtitle =
+    strategy === 'homeport'
+      ? 'S-3 核心 + 停车场 × 风险预算 50/50'
+      : 'S-3 核心 + 闲置现金 ETF 停车场';
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
@@ -741,10 +749,13 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        Timeline（港湾 · S-3 核心 + 闲置现金 ETF 停车场）
+        Timeline（{strategyLabel} · {strategySubtitle}）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
-          {last ? ` · 港湾 ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%` : ''}
+          {last ? ` · ${strategyLabel} ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%` : ''}
+          {strategy === 'homeport' && summary?.harborPct != null
+            ? ` · 港湾 ${summary.harborPct}%`
+            : ''}
         </span>
       </div>
       <div className="mb-2 flex flex-wrap items-center gap-1">
@@ -763,6 +774,22 @@ function TimelineCard() {
           >
             {w.label}
             <span className="ml-1 opacity-70">{roleBadge(w.role)}</span>
+          </button>
+        ))}
+        <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
+        {(['harbor', 'homeport'] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStrategy(s)}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px]',
+              strategy === s
+                ? 'border-sky-500/50 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+                : 'border-[var(--k-border)] text-[var(--k-muted)]',
+            )}
+          >
+            {TIMELINE_STRATEGY_LABEL[s]}
           </button>
         ))}
         <span className="ml-1 text-[10px] text-[var(--k-muted)]">{selected.note}</span>
@@ -845,7 +872,7 @@ function TimelineCard() {
                       {hoverRow.date} · {harborHoldLine(hoverRow)}
                     </div>
                     <div className="text-[var(--k-muted)]">
-                      基线 {hoverRow.navBaseReturnPct.toFixed(2)}% · 港湾{' '}
+                      基线 {hoverRow.navBaseReturnPct.toFixed(2)}% · {strategyLabel}{' '}
                       {hoverSingle != null ? `${hoverSingle.toFixed(2)}%` : '—'} · 超额{' '}
                       {hoverExcess != null
                         ? `${hoverExcess >= 0 ? '+' : ''}${hoverExcess.toFixed(2)}%`
@@ -869,7 +896,7 @@ function TimelineCard() {
                 </>
               ) : null}
             </div>
-            <HarborNavOverlay rows={rows} />
+            <HarborNavOverlay rows={rows} seriesLabel={strategyLabel} />
             <FundFlowPanel className="mt-1.5" start={start} end={end} />
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
               <span>
@@ -892,12 +919,13 @@ function TimelineCard() {
               );
             })}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
-              {`港湾累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}% · 基线累计 ${last?.navBaseReturnPct ?? '—'}%`}
+              {`${strategyLabel}累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}% · 基线累计 ${last?.navBaseReturnPct ?? '—'}%`}
             </span>
           </div>
           <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
-            港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·
-            与 Watchlist「今日下单」同一冻结配方
+            {strategy === 'homeport'
+              ? '母港 = 港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）· 展示口径 · B16/B17 已 REJECT'
+              : '港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·\n            与 Watchlist「今日下单」同一冻结配方'}
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
@@ -909,7 +937,7 @@ function TimelineCard() {
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
-                  <th className="py-1 pr-2">港湾NAV%</th>
+                  <th className="py-1 pr-2">{strategyLabel}NAV%</th>
                   <th className="py-1 pr-2">超额</th>
                 </tr>
               </thead>

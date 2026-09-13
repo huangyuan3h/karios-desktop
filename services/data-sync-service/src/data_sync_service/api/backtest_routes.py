@@ -53,6 +53,7 @@ def warm_default_timelines() -> None:
         start = date(d0.year - 1, 2, 28).isoformat()
     plans: list[dict[str, Any]] = [
         {"strategy": "harbor", "need_engine": True},
+        {"strategy": "homeport", "need_engine": True},
         {"strategy": "pick_strong", "need_engine": True},
     ]
     for kwargs in plans:
@@ -448,7 +449,7 @@ def backtest_timeline(
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "harbor",
-        description="harbor | pick_strong | state_bucket",
+        description="harbor | homeport | pick_strong | state_bucket",
     ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
@@ -457,6 +458,7 @@ def backtest_timeline(
     past-year vs OOS2/train/valid (gate) vs holdout (read-only).
 
     - strategy=harbor: 港湾 baseline (S-3 core + idle-cash ETF parking).
+    - strategy=homeport: 母港 = 港湾 x B3 risk-budget 50/50 (display only).
     - strategy=pick_strong: legacy 择强单轨 ``mom_compare`` (research only).
     - strategy=state_bucket: 状态分桶 research timeline (独立腿).
     """
@@ -468,10 +470,10 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    if strategy not in ("harbor", "pick_strong", "state_bucket"):
+    if strategy not in ("harbor", "homeport", "pick_strong", "state_bucket"):
         raise HTTPException(
             status_code=400,
-            detail=f"unknown strategy={strategy!r}; use harbor|pick_strong|state_bucket",
+            detail=f"unknown strategy={strategy!r}; use harbor|homeport|pick_strong|state_bucket",
         )
     result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
@@ -737,6 +739,22 @@ def _get_or_build_timeline(
             ) from exc
         _timeline_cache[cache_key] = result
         return result, None
+
+    # Homeport derives from the cached Harbor timeline (no second engine run).
+    if strategy == "homeport":
+        from data_sync_service.service.homeport import blend_homeport_timeline
+
+        harbor_result, engine_ctx = _get_or_build_timeline(
+            start, end, strategy="harbor", need_engine=need_engine
+        )
+        try:
+            result = blend_homeport_timeline(harbor_result)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline homeport failed: {exc}"
+            ) from exc
+        _timeline_cache[cache_key] = result
+        return result, engine_ctx
 
     import sys
 
