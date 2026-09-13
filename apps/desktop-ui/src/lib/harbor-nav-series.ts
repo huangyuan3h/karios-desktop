@@ -1,3 +1,4 @@
+import { harborHoldLine } from '@/lib/harbor-segments';
 import type { TimelineRow } from '@/lib/queries/backtest';
 
 export type HarborNavPoint = {
@@ -11,6 +12,8 @@ export type HarborNavPoint = {
   cnCircuit: boolean;
   hkCircuit: boolean;
   sentiment: string | null;
+  /** What the portfolio held that day (stock basket / parking ETF). */
+  hold: string;
   /** TIP-017 flow layer (display only). */
   flow: {
     etfShareD20Pct: number | null;
@@ -40,6 +43,7 @@ export function buildHarborNavPoints(rows: TimelineRow[]): HarborNavPoint[] {
     cnCircuit: Boolean(r.cnCircuit),
     hkCircuit: Boolean(r.hkCircuit),
     sentiment: r.sentiment ?? null,
+    hold: harborHoldLine(r),
     flow: r.flow ?? null,
   }));
 }

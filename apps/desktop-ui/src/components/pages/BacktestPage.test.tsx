@@ -179,14 +179,14 @@ beforeEach(() => {
             date: '2026-08-01',
             deployedPct: 100,
             idlePct: 0,
-            positions: 0,
-            cnPositions: 0,
+            positions: 10,
+            cnPositions: 10,
             hkPositions: 0,
-            stockMarket: '',
-            stockSymbols: [],
+            stockMarket: 'A股',
+            stockSymbols: ['600519', '000858'],
             stockMom: null,
-            pick: 'GOLD',
-            pickTs: '518880.SH',
+            pick: 'NASDAQ',
+            pickTs: '513100.SH',
             navBase: 1.01,
             navSleeve: null,
             navSingle: 1.05,
@@ -195,6 +195,72 @@ beforeEach(() => {
             navSingleReturnPct: 5,
             navMultiReturnPct: 5,
             navSimReturnPct: 6,
+            exits: [],
+          },
+          {
+            date: '2026-08-04',
+            deployedPct: 100,
+            idlePct: 0,
+            positions: 10,
+            cnPositions: 10,
+            hkPositions: 0,
+            stockMarket: 'A股',
+            stockSymbols: ['600519', '300750'],
+            stockMom: null,
+            pick: 'NASDAQ',
+            pickTs: '513100.SH',
+            navBase: 1.02,
+            navSleeve: null,
+            navSingle: 1.08,
+            navMulti: 1.08,
+            navBaseReturnPct: 2,
+            navSingleReturnPct: 8,
+            navMultiReturnPct: 8,
+            navSimReturnPct: 9,
+            exits: ['000858'],
+          },
+          {
+            date: '2026-08-05',
+            deployedPct: 0,
+            idlePct: 100,
+            positions: 0,
+            cnPositions: 0,
+            hkPositions: 0,
+            stockMarket: '空仓',
+            stockSymbols: [],
+            stockMom: null,
+            pick: 'OIL',
+            pickTs: '513350.SH',
+            navBase: 1.02,
+            navSleeve: null,
+            navSingle: 1.08,
+            navMulti: 1.08,
+            navBaseReturnPct: 2,
+            navSingleReturnPct: 8,
+            navMultiReturnPct: 8,
+            navSimReturnPct: 9,
+            exits: [],
+          },
+          {
+            date: '2026-08-06',
+            deployedPct: 0,
+            idlePct: 100,
+            positions: 0,
+            cnPositions: 0,
+            hkPositions: 0,
+            stockMarket: '空仓',
+            stockSymbols: [],
+            stockMom: null,
+            pick: 'REPO',
+            pickTs: null,
+            navBase: 1.02,
+            navSleeve: null,
+            navSingle: 1.08,
+            navMulti: 1.08,
+            navBaseReturnPct: 2,
+            navSingleReturnPct: 8,
+            navMultiReturnPct: 8,
+            navSimReturnPct: 9,
             exits: [],
           },
         ],
@@ -252,6 +318,29 @@ describe('BacktestPage', () => {
     expect(screen.getByText(/三窗 · OOS2/)).toBeDefined();
     expect(screen.getByText(/NAV 叠加/)).toBeDefined();
     expect(screen.getByTestId('harbor-nav-chart')).toBeDefined();
+  });
+
+  it('renders auto-segmented holding blocks and per-day hover details', async () => {
+    renderPage();
+    await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/);
+    expect(await screen.findByTestId('harbor-seg-2026-08-01')).toBeDefined();
+    expect(screen.getByTestId('harbor-seg-2026-08-05')).toBeDefined();
+    expect(screen.getAllByText(/股票 2天/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/港股 \d+天/)).toBeNull();
+    expect(screen.queryByText(/A\+H \d+天/)).toBeNull();
+
+    const bar = screen.getByTestId('harbor-hold-bar');
+    fireEvent.mouseMove(bar, { clientX: 0 });
+    const tip = await screen.findByTestId('harbor-day-tip');
+    expect(tip.textContent).toContain('2026-08-01');
+    expect(tip.textContent).toContain('股票 10票');
+    expect(tip.textContent).toContain('600519');
+    expect(tip.textContent).toContain('港湾 5.00%');
+
+    fireEvent.mouseMove(bar, { clientX: 0.3 });
+    expect((await screen.findByTestId('harbor-day-tip')).textContent).toContain('2026-08-04');
+    fireEvent.mouseLeave(bar);
+    expect(screen.queryByTestId('harbor-day-tip')).toBeNull();
   });
 
   it('switches timeline query to the OOS2 gate window', async () => {

@@ -12,6 +12,7 @@ import { HarborNavOverlay } from '@/components/pages/HarborNavOverlay';
 import { FundFlowPanel } from '@/components/pages/FundFlowPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { patchUserTrade } from '@/lib/queries/userTrades';
+import { buildHarborSegments, fitSegmentLabel, harborHoldLine } from '@/lib/harbor-segments';
 import { cn } from '@/lib/utils';
 import { resolveTimelineWindows, roleBadge, type TimelineWindowId } from '@/lib/timeline-windows';
 
@@ -31,7 +32,6 @@ import {
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
-  type TimelineRow,
 } from '@/lib/queries/backtest';
 
 const DEFAULT_PARAMS: BacktestParams = {
@@ -241,8 +241,8 @@ function ConclusionBoard({
         />
       </div>
       <p className="mt-2 text-[10px] text-[var(--k-muted)]">
-        产品真值 = 港湾（S-3 核心 + 闲置现金 ETF 停车场）。本卡仅为 S-3 股票腿基线；
-        paper/watchlist 股票规则同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
+        产品真值 = 港湾（S-3 核心 + 闲置现金 ETF 停车场）。本卡仅为 S-3 股票腿基线； paper/watchlist
+        股票规则同参（10%×10、恐慌冷却 2、CN 熔断 -25%）。
       </p>
     </div>
   );
@@ -657,19 +657,12 @@ function TimelineCard() {
   const start = selected.start;
   const end = selected.end;
   const q = useTimelineQuery(start, end, 'harbor', true);
-  const rows = q.data?.rows ?? [];
+  const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
-    const k = r.pick ?? 'REPO';
+    const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
     acc[k] = (acc[k] ?? 0) + 1;
-    return acc;
-  }, {});
-  const distMarket = rows.reduce<Record<string, number>>((acc, r) => {
-    const sm = r.stockMarket ?? '—';
-    if ((r.pick ?? 'REPO') === 'STOCK') {
-      acc[sm] = (acc[sm] ?? 0) + 1;
-    }
     return acc;
   }, {});
   const [showAll, setShowAll] = React.useState(false);
@@ -682,14 +675,59 @@ function TimelineCard() {
     BOND10: 'bg-emerald-600',
     REPO: 'bg-zinc-300 dark:bg-zinc-700',
   };
-  const stockBarColor = (r: TimelineRow): string => {
-    if ((r.pick ?? 'REPO') !== 'STOCK') return pickColor[r.pick ?? 'REPO'] ?? 'bg-gray-300';
-    const m = r.stockMarket ?? '';
-    if (m === 'A股') return 'bg-red-500';
-    if (m === 'HK') return 'bg-cyan-600';
-    if (m === 'A+H') return 'bg-fuchsia-600';
-    return pickColor.STOCK;
+  const blockText: Record<string, string> = {
+    STOCK: 'text-white',
+    GOLD: 'text-white',
+    OIL: 'text-white dark:text-zinc-900',
+    NASDAQ: 'text-white',
+    BOND10: 'text-white',
+    REPO: 'text-zinc-700 dark:text-zinc-100',
   };
+  const blockColor = (mode: string, pick: string): string =>
+    mode === 'STOCK' || mode === 'MIXED' ? 'bg-red-500' : (pickColor[pick] ?? 'bg-gray-300');
+  const blockStyle = (mode: string): React.CSSProperties =>
+    mode === 'MIXED'
+      ? {
+          backgroundImage:
+            'repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,0.32) 4px 8px)',
+        }
+      : {};
+  const segments = React.useMemo(() => buildHarborSegments(rows), [rows]);
+  const barRef = React.useRef<HTMLDivElement | null>(null);
+  const [barWidth, setBarWidth] = React.useState(0);
+  React.useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    setBarWidth(el.clientWidth);
+    const ro = new ResizeObserver((entries) => {
+      setBarWidth(entries[0]?.contentRect.width ?? 0);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows.length]);
+  const pxPerDay = barWidth > 0 && rows.length ? barWidth / rows.length : 0;
+  const [hoverDay, setHoverDay] = React.useState<{ idx: number; x: number } | null>(null);
+  const onBarMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = barRef.current;
+    if (!el || !rows.length) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / Math.max(1, rect.width);
+    const idx = Math.min(rows.length - 1, Math.max(0, Math.floor(ratio * rows.length)));
+    setHoverDay({ idx, x: e.clientX - rect.left });
+  };
+  const hoverRow = hoverDay ? rows[hoverDay.idx] : null;
+  const hoverSeg = (() => {
+    if (!hoverDay) return null;
+    let acc = 0;
+    for (const s of segments) {
+      acc += s.days;
+      if (hoverDay.idx < acc) return s;
+    }
+    return segments[segments.length - 1] ?? null;
+  })();
+  const hoverSingle = hoverRow ? (hoverRow.navSingleReturnPct ?? hoverRow.navMultiReturnPct) : null;
+  const hoverExcess =
+    hoverRow && hoverSingle != null ? hoverSingle - hoverRow.navBaseReturnPct : null;
   const pickLabel: Record<string, string> = {
     STOCK: '股票',
     GOLD: '黄金',
@@ -706,9 +744,7 @@ function TimelineCard() {
         Timeline（港湾 · S-3 核心 + 闲置现金 ETF 停车场）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
-          {last
-            ? ` · 港湾 ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%`
-            : ''}
+          {last ? ` · 港湾 ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%` : ''}
         </span>
       </div>
       <div className="mb-2 flex flex-wrap items-center gap-1">
@@ -753,25 +789,92 @@ function TimelineCard() {
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <div className="flex h-4 w-full overflow-hidden rounded border border-[var(--k-border)]/30">
-              {rows.map((r) => {
-                const syms = (r.stockSymbols ?? []).join(',');
-                const exits = (r.exits ?? []).join(',');
-                return (
+            <div className="relative">
+              <div
+                ref={barRef}
+                onMouseMove={onBarMove}
+                onMouseLeave={() => setHoverDay(null)}
+                className="flex h-5 w-full cursor-crosshair gap-px overflow-hidden rounded border border-[var(--k-border)]/30"
+                data-testid="harbor-hold-bar"
+              >
+                {segments.map((seg) => {
+                  const width = pxPerDay * seg.days;
+                  const text = fitSegmentLabel(seg.labels, width);
+                  return (
+                    <div
+                      key={`harbor-${seg.start}-${seg.ident}`}
+                      style={{ flexGrow: seg.days, flexBasis: 0, ...blockStyle(seg.mode) }}
+                      className={cn(
+                        'flex min-w-0 items-center justify-center overflow-hidden',
+                        blockColor(seg.mode, seg.pick),
+                      )}
+                      data-testid={`harbor-seg-${seg.start}`}
+                    >
+                      {text ? (
+                        <span
+                          className={cn(
+                            'truncate px-0.5 text-[9px] font-medium leading-5',
+                            seg.mode === 'STOCK' || seg.mode === 'MIXED'
+                              ? 'text-white'
+                              : (blockText[seg.pick] ?? 'text-white'),
+                          )}
+                        >
+                          {text}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              {hoverDay && hoverRow ? (
+                <>
                   <div
-                    key={`harbor-${r.date}`}
-                    className={cn('h-full flex-1', stockBarColor(r))}
-                    title={`${r.date} 核心该买:${r.pick ?? 'REPO'}${r.stockMom != null ? ` 股票mom${r.stockMom}%` : ''} 持仓:${r.stockMarket ?? ''} ${r.deployedPct}% ${syms}${exits ? ` 卖出:${exits}` : ''} 基线${r.navBaseReturnPct}% 港湾${r.navSingleReturnPct ?? r.navMultiReturnPct}%`}
+                    className="pointer-events-none absolute top-0 bottom-0 w-px bg-sky-500/80"
+                    style={{ left: hoverDay.x }}
                   />
-                );
-              })}
+                  <div
+                    className="pointer-events-none absolute z-20 w-max max-w-[320px] rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-[10px] leading-4 shadow-sm"
+                    style={{
+                      left: Math.min(Math.max(hoverDay.x, 120), Math.max(120, barWidth - 120)),
+                      top: 'calc(100% + 4px)',
+                      transform: 'translateX(-50%)',
+                    }}
+                    data-testid="harbor-day-tip"
+                  >
+                    <div className="font-medium text-[var(--k-fg)]">
+                      {hoverRow.date} · {harborHoldLine(hoverRow)}
+                    </div>
+                    <div className="text-[var(--k-muted)]">
+                      基线 {hoverRow.navBaseReturnPct.toFixed(2)}% · 港湾{' '}
+                      {hoverSingle != null ? `${hoverSingle.toFixed(2)}%` : '—'} · 超额{' '}
+                      {hoverExcess != null
+                        ? `${hoverExcess >= 0 ? '+' : ''}${hoverExcess.toFixed(2)}%`
+                        : '—'}
+                    </div>
+                    {hoverSeg ? (
+                      <div className="text-[var(--k-muted)]">
+                        段 {hoverSeg.start}~{hoverSeg.end}（{hoverSeg.days}天
+                        {hoverSeg.retPct != null
+                          ? ` · ${hoverSeg.retPct >= 0 ? '+' : ''}${hoverSeg.retPct.toFixed(1)}%`
+                          : ''}
+                        ）
+                      </div>
+                    ) : null}
+                    {(hoverRow.exits ?? []).length ? (
+                      <div className="text-amber-700 dark:text-amber-300">
+                        卖出 {(hoverRow.exits ?? []).join(' ')}
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </div>
             <HarborNavOverlay rows={rows} />
             <FundFlowPanel className="mt-1.5" start={start} end={end} />
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
               <span>
-                每天一格=当天该买（A股红 / 港股橙 / A+H紫 / 黄金amber / 原油slate / 纳指blue /
-                国债emerald / 逆回购锌）
+                连续相同持仓合并为一块（宽度=天数，块内标持有）· 股票红（斜纹=股票+停车）/ 黄金amber
+                / 原油slate / 纳指blue / 国债emerald / 逆回购锌
               </span>
             </div>
           </div>
@@ -788,29 +891,13 @@ function TimelineCard() {
                 </span>
               );
             })}
-            {dist['STOCK'] ? (
-              <>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-red-500" />
-                  A股 {distMarket['A股'] ?? 0}天
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-orange-500" />
-                  港股 {distMarket['HK'] ?? 0}天
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-sm bg-purple-600" />
-                  A+H {distMarket['A+H'] ?? 0}天
-                </span>
-              </>
-            ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
               {`港湾累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}% · 基线累计 ${last?.navBaseReturnPct ?? '—'}%`}
             </span>
           </div>
           <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
-            港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200
-            argmax）· 与 Watchlist「今日下单」同一冻结配方
+            港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·
+            与 Watchlist「今日下单」同一冻结配方
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">
@@ -818,7 +905,7 @@ function TimelineCard() {
                 <tr className="text-[10px] text-[var(--k-muted)]">
                   <th className="py-1 pr-2 pl-2">日期</th>
                   <th className="py-1 pr-2">该买</th>
-                  <th className="py-1 pr-2">持仓(A/H)</th>
+                  <th className="py-1 pr-2">持仓</th>
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
                   <th className="py-1 pr-2">基线NAV%</th>
@@ -830,9 +917,16 @@ function TimelineCard() {
                 {(showAll ? rows : rows.slice(-30)).map((r) => {
                   const single = r.navSingleReturnPct ?? r.navMultiReturnPct;
                   const exits = r.exits ?? [];
-                  const isStock = (r.pick ?? 'REPO') === 'STOCK';
+                  const holdsStock = (r.positions ?? 0) > 0;
+                  const isMixed = holdsStock && (r.idlePct ?? 0) >= 50;
+                  const badge = isMixed
+                    ? `STOCK+${r.pick ?? 'REPO'}`
+                    : holdsStock
+                      ? 'STOCK'
+                      : (r.pick ?? 'REPO');
                   const pickSym =
-                    r.pick === 'GOLD'
+                    r.pickTs?.split('.')[0] ??
+                    (r.pick === 'GOLD'
                       ? '518880'
                       : r.pick === 'OIL'
                         ? '513350'
@@ -842,10 +936,8 @@ function TimelineCard() {
                             ? '511260'
                             : r.pick === 'REPO'
                               ? 'GC001'
-                              : (r.pick ?? 'REPO');
-                  const syms = isStock
-                    ? (r.stockSymbols ?? []).join(' ') || '—'
-                    : `${pickSym} 1票`;
+                              : (r.pick ?? 'REPO'));
+                  const syms = holdsStock ? (r.stockSymbols ?? []).join(' ') || '—' : pickSym;
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
@@ -853,22 +945,23 @@ function TimelineCard() {
                         <span
                           className={cn(
                             'rounded px-1 py-px text-[10px] text-white',
-                            stockBarColor(r),
+                            blockColor(
+                              isMixed ? 'MIXED' : holdsStock ? 'STOCK' : 'PARK',
+                              r.pick ?? 'REPO',
+                            ),
                           )}
                         >
-                          {r.pick ?? 'REPO'}
+                          {badge}
                         </span>
                       </td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">
-                        {isStock ? (
+                        {holdsStock ? (
                           <>
-                            {r.stockMarket ?? ''} {r.positions}票{' '}
-                            <span className="text-[10px]">
-                              A{r.cnPositions ?? 0}/H{r.hkPositions ?? 0}
-                            </span>
+                            {r.stockMarket ?? ''} {r.positions}票
+                            <span className="text-[10px]"> 闲{r.idlePct}%</span>
                           </>
                         ) : (
-                          <>{pickSym} 1票</>
+                          <>{pickSym}</>
                         )}
                       </td>
                       <td
@@ -900,8 +993,8 @@ function TimelineCard() {
           </div>
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-[var(--k-muted)]">
-              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·
-              港湾（S-3 核心 + 闲置现金 ETF 停车场）· 卖出=前日有今日无
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 港湾（S-3
+              核心 + 闲置现金 ETF 停车场）· 卖出=前日有今日无
             </p>
             <button
               type="button"

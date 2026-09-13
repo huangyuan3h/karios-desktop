@@ -40,7 +40,7 @@ describe('harbor-nav-series', () => {
       row({ date: '2026-08-01' }),
       row({ date: '2026-08-04', navSingleReturnPct: 12, navBaseReturnPct: 3 }),
     ]);
-    expect(pts[0]).toMatchObject({ harborPct: 10, basePct: 0 });
+    expect(pts[0]).toMatchObject({ harborPct: 10, basePct: 0, hold: '黄金 518880' });
     expect(pts[1]).toMatchObject({ harborPct: 12, basePct: 3 });
   });
 

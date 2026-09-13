@@ -44,6 +44,7 @@ type ChartDatum = {
   cnCircuit: boolean;
   hkCircuit: boolean;
   sentiment: string | null;
+  hold: string;
 };
 
 /** TIP-017 flow strip (20-session horizon; display only). */
@@ -131,6 +132,9 @@ function OverlayTooltip({
           </span>
         ) : null}
       </div>
+      {datum?.hold ? (
+        <div className="mb-1 text-[10px] text-[var(--k-muted)]">{datum.hold}</div>
+      ) : null}
       <div className="space-y-1">
         {rows.map((p) => (
           <div key={String(p.dataKey)} className="flex items-center justify-between gap-4">
@@ -207,6 +211,7 @@ export function HarborNavOverlay({ rows }: { rows: TimelineRow[] }) {
         cnCircuit: p.cnCircuit,
         hkCircuit: p.hkCircuit,
         sentiment: p.sentiment,
+        hold: p.hold,
       })),
     [points, sim],
   );
