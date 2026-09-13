@@ -76,6 +76,7 @@ def pick_parking(
     *,
     bond_ungated: bool = False,
     days_by_ts: dict[str, list[str]] | None = None,
+    exclude_keys: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Canonical Harbor pick as of the ``as_of`` close (single source).
 
@@ -83,6 +84,8 @@ def pick_parking(
     - momentum = close(as_of) / close(LOOKBACK sessions earlier) - 1
     - gate: close(as_of) >= MA200 (BOND10 may bypass with ``bond_ungated``)
     - coverage: at least 3 of the 4 keys need >= MA_WINDOW bars
+    - ``exclude_keys``: keys made ineligible (used by the cooldown timer);
+      ``all_mom``/``all_above`` still report their raw data.
     """
     days_by_ts = days_by_ts or {ts: sorted(mp.keys()) for ts, mp in etf_close.items()}
     all_mom: dict[str, float | None] = {}
@@ -116,8 +119,9 @@ def pick_parking(
             continue
         all_mom[key] = round(disp[0] * 100, 2)
         all_above[key] = disp[2]
-        if above_rows:
-            best = max(above_rows, key=lambda r: r[0])
+        eligible = [r for r in above_rows if not (exclude_keys and key in exclude_keys)]
+        if eligible:
+            best = max(eligible, key=lambda r: r[0])
             chosen[key] = (best[0], best[1])
 
     if covered < 3 or not chosen:
@@ -153,6 +157,7 @@ def parking_replay(
     stock_gate: bool = False,
     bond_ungated: bool = False,
     trail_pct: float = TRAIL_PCT,
+    cooldown_days: int = 0,
 ) -> list[dict[str, Any]]:
     """Canonical Harbor parking state machine (single source).
 
@@ -165,17 +170,31 @@ def parking_replay(
     Optional robustness gates (default off = canonical P1):
     ``min_idle_pct`` (fresh-entry floor), ``stock_gate`` (skip when the S-3
     stock basket mom >= ETF mom), ``bond_ungated`` (BOND10 eligible below MA).
+
+    ``cooldown_days`` (H-PARK-C candidate, default 0 = incumbent): after a
+    trail exit, the exited *key* is ineligible for ``cooldown_days`` sessions
+    (by key, so NASDAQ aliases share the cooldown); the parking sleeve then
+    rotates to the next eligible candidate or sits in REPO.
     """
     sessions = {d for mp in etf_close.values() for d in mp}
     cal = [d for d in calendar if d in sessions]
     days_by_ts = {ts: sorted(mp.keys()) for ts, mp in etf_close.items()}
+    cooldown_days = max(0, int(cooldown_days))
+    cooldown_until: dict[str, int] = {}
     out: list[dict[str, Any]] = []
     held_key: str | None = None
     held_ts: str | None = None
     peak = 0.0
     for i in range(1, len(cal)):
         day, prev = cal[i], cal[i - 1]
-        want = pick_parking(etf_close, prev, bond_ungated=bond_ungated, days_by_ts=days_by_ts)
+        active_exclude = {k for k, until in cooldown_until.items() if i <= until}
+        want = pick_parking(
+            etf_close,
+            prev,
+            bond_ungated=bond_ungated,
+            days_by_ts=days_by_ts,
+            exclude_keys=active_exclude or None,
+        )
         want_key = want["key"] if want else None
         want_ts = want["ts"] if want else None
         if want and stock_gate and stock_mom_by_day is not None:
@@ -195,6 +214,8 @@ def parking_replay(
             if c:
                 peak = max(peak, c)
                 if peak > 0 and c < peak * (1.0 - trail_pct / 100.0):
+                    if cooldown_days > 0 and held_key:
+                        cooldown_until[held_key] = i + cooldown_days
                     held_key = held_ts = None
                     peak = 0.0
                     sides += 1
@@ -220,6 +241,7 @@ def parking_replay(
                 "parking_ret": parking_ret,
                 "sides": sides,
                 "trail_exit": trail_exit,
+                "cooldown_active": bool(active_exclude),
             }
         )
     return out
