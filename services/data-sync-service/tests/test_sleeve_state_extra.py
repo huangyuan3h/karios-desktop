@@ -130,42 +130,49 @@ class TestExtraClosesHelpers:
 
 
 class TestExtraPick:
-    def test_extra_pick_insufficient_one_candidate(self, monkeypatch) -> None:
-        def _fake(ts, days=260):
-            if ts == "518880.SH":
-                return [1.0] * 10
-            return _linear_closes(260, 100.0, 120.0)
+    """_pick delegates to the shared harbor.pick_parking rule."""
 
-        monkeypatch.setattr(mas, "_signal_closes", _fake)
+    def _series(self, n: int, start: float, end: float) -> dict[str, float]:
+        import datetime as _dt
+
+        d0 = _dt.date(2024, 1, 1)
+        return {
+            (_dt.date.fromordinal(d0.toordinal() + i)).isoformat(): start
+            + (end - start) * i / max(1, n - 1)
+            for i in range(n)
+        }
+
+    def test_pick_none_when_fewer_than_three_keys(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            mas,
+            "_signal_series",
+            lambda ts, days=260: self._series(210, 100.0, 120.0) if ts == "518880.SH" else {},
+        )
+        assert mas._pick() is None
+
+    def test_pick_none_when_all_below_ma(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            mas, "_signal_series", lambda ts, days=260: self._series(210, 120.0, 100.0)
+        )
+        assert mas._pick() is None
+
+    def test_pick_returns_above_ma_argmax(self, monkeypatch) -> None:
+        def _fake(ts: str, days: int = 260) -> dict[str, float]:
+            if ts == "518880.SH":
+                return self._series(210, 100.0, 130.0)  # strongest
+            if ts == "511260.SH":
+                return self._series(210, 100.0, 101.0)
+            if ts in ("513110.SH", "513100.SH"):
+                return self._series(210, 100.0, 110.0)
+            if ts == "513350.SH":
+                return self._series(210, 100.0, 105.0)
+            return {}
+
+        monkeypatch.setattr(mas, "_signal_series", _fake)
         out = mas._pick()
         assert out is not None
-        assert out["key"] in ("OIL", "NASDAQ", "BOND10")
-
-    def test_extra_pick_returns_none_when_fewer_than_three(self, monkeypatch) -> None:
-        def _fake(ts, days=260):
-            if ts in ("513350.SH", "513100.SH"):
-                return _linear_closes(260, 100.0, 120.0)
-            return [1.0] * 10
-
-        monkeypatch.setattr(mas, "_signal_closes", _fake)
-        assert mas._pick() is None
-
-    def test_extra_pick_returns_none_when_all_below_ma(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            mas, "_signal_closes", lambda ts, days=260: _linear_closes(260, 120.0, 100.0)
-        )
-        assert mas._pick() is None
-
-    def test_extra_pick_mid_window_continue(self, monkeypatch) -> None:
-        # Second length guard (len < MA_WINDOW) is unreachable with sane
-        # constants since the first guard requires >= MA+LOOKBACK. Drive it
-        # with a negative LOOKBACK so a 195-bar series passes the first
-        # guard but fails the second.
-        monkeypatch.setattr(mas, "LOOKBACK", -5)
-        monkeypatch.setattr(
-            mas, "_signal_closes", lambda ts, days=260: _linear_closes(195, 100.0, 120.0)
-        )
-        assert mas._pick() is None
+        assert out["key"] == "GOLD"
+        assert out["ts"] == "518880.SH"
 
 
 class TestExtraRsiPulse:

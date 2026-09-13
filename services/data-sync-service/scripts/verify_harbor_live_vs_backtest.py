@@ -113,7 +113,8 @@ def replay_window(
     skipped_non_session = 0
     checks: list[tuple[str, str, str]] = []  # (day, live_pick, bt_pick)
     mismatches: list[dict[str, str]] = []
-    for i in range(1, len(cal)):
+    for i in range(0, len(cal) - 1):
+        # Include the first decision (flat state) so window-start drift is caught.
         day = cal[i]
         cut = _bars_cut(series, day)
 

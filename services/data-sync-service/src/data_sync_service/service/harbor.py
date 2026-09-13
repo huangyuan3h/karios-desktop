@@ -62,6 +62,169 @@ def load_etf_closes() -> dict[str, dict[str, float]]:
     return out
 
 
+NAMES: dict[str, str] = {
+    "GOLD": "华安黄金ETF",
+    "OIL": "富国油气QDII",
+    "NASDAQ": "纳指100QDII",
+    "BOND10": "10年国债ETF",
+}
+
+
+def pick_parking(
+    etf_close: dict[str, dict[str, float]],
+    as_of: str,
+    *,
+    bond_ungated: bool = False,
+    days_by_ts: dict[str, list[str]] | None = None,
+) -> dict[str, Any] | None:
+    """Canonical Harbor pick as of the ``as_of`` close (single source).
+
+    - NASDAQ: best alias among 513110/513100; the returned ``ts`` IS that alias
+    - momentum = close(as_of) / close(LOOKBACK sessions earlier) - 1
+    - gate: close(as_of) >= MA200 (BOND10 may bypass with ``bond_ungated``)
+    - coverage: at least 3 of the 4 keys need >= MA_WINDOW bars
+    """
+    days_by_ts = days_by_ts or {ts: sorted(mp.keys()) for ts, mp in etf_close.items()}
+    all_mom: dict[str, float | None] = {}
+    all_above: dict[str, bool] = {}
+    chosen: dict[str, tuple[float, str]] = {}
+    covered = 0
+    for key, ts in MULTI_TS.items():
+        aliases = NASDAQ_ALIASES if key == "NASDAQ" else (ts,)
+        rows_alias: list[tuple[float, str, bool]] = []
+        for a in aliases:
+            mp = etf_close.get(a) or {}
+            ds = days_by_ts.get(a) or []
+            i = bisect.bisect_right(ds, as_of) - 1
+            if i < MA_WINDOW - 1:
+                continue
+            ago_i = i - LOOKBACK
+            if ago_i < 0 or not mp[ds[ago_i]]:
+                continue
+            close = mp[ds[i]]
+            ma200 = sum(mp[ds[j]] for j in range(i - MA_WINDOW + 1, i + 1)) / MA_WINDOW
+            mom = close / mp[ds[ago_i]] - 1.0
+            above = close >= ma200 or (bond_ungated and key == "BOND10")
+            rows_alias.append((mom, a, above))
+        if rows_alias:
+            covered += 1
+        above_rows = [r for r in rows_alias if r[2]]
+        disp = max(above_rows or rows_alias, key=lambda r: r[0]) if rows_alias else None
+        if disp is None:
+            all_mom[key] = None
+            all_above[key] = False
+            continue
+        all_mom[key] = round(disp[0] * 100, 2)
+        all_above[key] = disp[2]
+        if above_rows:
+            best = max(above_rows, key=lambda r: r[0])
+            chosen[key] = (best[0], best[1])
+
+    if covered < 3 or not chosen:
+        return None
+    pick_key = max(chosen, key=lambda k: chosen[k][0])
+    mom, pick_ts = chosen[pick_key]
+    mp = etf_close.get(pick_ts) or {}
+    ds = days_by_ts.get(pick_ts) or []
+    i = bisect.bisect_right(ds, as_of) - 1
+    close = mp[ds[i]]
+    ma200 = sum(mp[ds[j]] for j in range(i - MA_WINDOW + 1, i + 1)) / MA_WINDOW
+    return {
+        "key": pick_key,
+        "ts": pick_ts,
+        "symbol": f"ETF:{pick_ts.split('.')[0]}",
+        "name": NAMES.get(pick_key, pick_key),
+        "mom60": round(mom * 100, 2),
+        "close": round(close, 3),
+        "ma200": round(ma200, 3),
+        "above_ma200": True,
+        "all_mom": all_mom,
+        "all_above": all_above,
+    }
+
+
+def parking_replay(
+    etf_close: dict[str, dict[str, float]],
+    calendar: list[str],
+    *,
+    idle_by_day: dict[str, float] | None = None,
+    stock_mom_by_day: dict[str, float | None] | None = None,
+    min_idle_pct: float = 0.0,
+    stock_gate: bool = False,
+    bond_ungated: bool = False,
+    trail_pct: float = TRAIL_PCT,
+) -> list[dict[str, Any]]:
+    """Canonical Harbor parking state machine (single source).
+
+    Live order: trail the held leg first (a trail day goes to REPO, no same-day
+    re-entry), then rotate on a TS change (an alias switch is a different fund
+    -> fresh peak). Non-session days (holidays in the engine calendar) are
+    dropped. ``parking_ret`` is the held leg's close-to-close return, NOT
+    idle-scaled (callers multiply by the idle fraction).
+
+    Optional robustness gates (default off = canonical P1):
+    ``min_idle_pct`` (fresh-entry floor), ``stock_gate`` (skip when the S-3
+    stock basket mom >= ETF mom), ``bond_ungated`` (BOND10 eligible below MA).
+    """
+    sessions = {d for mp in etf_close.values() for d in mp}
+    cal = [d for d in calendar if d in sessions]
+    days_by_ts = {ts: sorted(mp.keys()) for ts, mp in etf_close.items()}
+    out: list[dict[str, Any]] = []
+    held_key: str | None = None
+    held_ts: str | None = None
+    peak = 0.0
+    for i in range(1, len(cal)):
+        day, prev = cal[i], cal[i - 1]
+        want = pick_parking(etf_close, prev, bond_ungated=bond_ungated, days_by_ts=days_by_ts)
+        want_key = want["key"] if want else None
+        want_ts = want["ts"] if want else None
+        if want and stock_gate and stock_mom_by_day is not None:
+            sm = stock_mom_by_day.get(prev)
+            if sm is not None and want["mom60"] / 100.0 <= sm:
+                want_key = want_ts = None
+        if want_ts and held_ts is None and min_idle_pct > 0:
+            if (idle_by_day or {}).get(prev, 1.0) < min_idle_pct:
+                want_key = want_ts = None
+
+        sides = 0
+        parking_ret = 0.0
+        trail_exit = False
+        # 1) trail the held leg at the prev close (exit -> REPO that day)
+        if held_ts is not None:
+            c = (etf_close.get(held_ts) or {}).get(prev)
+            if c:
+                peak = max(peak, c)
+                if peak > 0 and c < peak * (1.0 - trail_pct / 100.0):
+                    held_key = held_ts = None
+                    peak = 0.0
+                    sides += 1
+                    trail_exit = True
+        # 2) rotate on a TS change (alias switch = different fund -> fresh peak)
+        if not trail_exit and (held_key != want_key or held_ts != want_ts):
+            sides += int(held_ts is not None) + int(want_ts is not None)
+            held_key, held_ts = want_key, want_ts
+            peak = ((etf_close.get(held_ts) or {}).get(prev) or 0.0) if held_ts else 0.0
+        # 3) day return of the (possibly new) held leg
+        if held_ts is not None:
+            c0 = (etf_close.get(held_ts) or {}).get(prev)
+            c1 = (etf_close.get(held_ts) or {}).get(day)
+            parking_ret = c1 / c0 - 1.0 if c0 and c1 else 0.0
+        out.append(
+            {
+                "date": day,
+                "prev": prev,
+                "pick_key": held_key or "REPO",
+                "pick_ts": held_ts or "GC001",
+                "want_key": want_key,
+                "want_ts": want_ts,
+                "parking_ret": parking_ret,
+                "sides": sides,
+                "trail_exit": trail_exit,
+            }
+        )
+    return out
+
+
 def build_harbor_timeline(
     *,
     calendar: list[str],
@@ -71,56 +234,21 @@ def build_harbor_timeline(
 ) -> dict[str, Any]:
     """Replay Harbor NAV (engine + idle parking) with UI rows."""
     etf_close = etf_close or load_etf_closes()
-    # Engine calendar can carry phantom sessions (holidays) where no ETF bar
-    # exists; a decision there would spuriously exit to REPO. Trade only real
-    # sessions present in the ETF series (Live has no decision on holidays).
-    session_days = {d for mp in etf_close.values() for d in mp}
-    calendar = [d for d in calendar if d in session_days]
     snap_by_day = {str(s.get("date")): s for s in positions_by_day}
-    days_by_ts = {ts: sorted(mp.keys()) for ts, mp in etf_close.items()}
-
-    def c_at(ts: str, d: str) -> float | None:
-        return etf_close.get(ts, {}).get(d)
-
-    def idx_of(ts: str, d: str) -> int | None:
-        ds = days_by_ts.get(ts) or []
-        i = bisect.bisect_left(ds, d)
-        return i if i < len(ds) and ds[i] == d else None
-
-    def ma(ts: str, d: str) -> float | None:
-        i = idx_of(ts, d)
-        if i is None or i < MA_WINDOW - 1:
-            return None
-        return sum(etf_close[ts][days_by_ts[ts][j]] for j in range(i - MA_WINDOW + 1, i + 1)) / MA_WINDOW
-
-    def mom(ts: str, d: str) -> float | None:
-        i = idx_of(ts, d)
-        if i is None or i < LOOKBACK:
-            return None
-        a = etf_close[ts][days_by_ts[ts][i - LOOKBACK]]
-        return etf_close[ts][d] / a - 1.0 if a else None
-
-    def ret(ts: str, d: str, prev: str) -> float:
-        c, p = c_at(ts, d), c_at(ts, prev)
-        return c / p - 1.0 if c and p else 0.0
+    records = parking_replay(etf_close, calendar)
 
     nav_base = 1.0
     nav_harbor = 1.0
     peak = 1.0
     max_dd = 0.0
-    held_key: str | None = None
-    held_ts: str | None = None
-    etf_peak = 0.0
     trail_exits = 0
     trades = 0
     rows: list[dict[str, Any]] = []
     prev_syms: set[str] = set()
     prev_map: dict[str, str] = {}
 
-    for i, day in enumerate(calendar):
-        if i == 0:
-            continue
-        prev = calendar[i - 1]
+    for rec in records:
+        day, prev = str(rec["date"]), str(rec["prev"])
         snap_prev = snap_by_day.get(prev) or {}
         stock_poses: list[dict[str, Any]] = []
         for pos in snap_prev.get("positions") or []:
@@ -144,40 +272,12 @@ def build_harbor_timeline(
             else:
                 cn_cnt += 1
 
-        pool: dict[str, tuple[float, str]] = {}
-        for key, ts in MULTI_TS.items():
-            aliases = NASDAQ_ALIASES if key == "NASDAQ" else (ts,)
-            best_ts, best_mom = None, -1e9
-            for a in aliases:
-                m, mm = mom(a, prev), ma(a, prev)
-                c = c_at(a, prev)
-                if m is None or mm is None or c is None:
-                    continue
-                if c >= mm and m > best_mom:
-                    best_ts, best_mom = a, m
-            if best_ts is not None:
-                pool[key] = (best_mom, best_ts)
-        pick_key = max(pool, key=lambda k: pool[k][0]) if pool else None
-
-        sides = 0
-        if held_key != pick_key:
-            sides += int(held_key is not None) + int(pick_key is not None)
-            held_key = pick_key
-            held_ts = pool[pick_key][1] if pick_key is not None else None
-            etf_peak = (c_at(held_ts, prev) or 0.0) if held_ts else 0.0
-        parking_ret = 0.0
-        if held_ts is not None:
-            c = c_at(held_ts, prev) or 0.0
-            etf_peak = max(etf_peak, c)
-            if etf_peak > 0 and c and c < etf_peak * (1.0 - TRAIL_PCT / 100.0):
-                held_key = held_ts = None
-                etf_peak = 0.0
-                trail_exits += 1
-                sides += 1
-            else:
-                parking_ret = ret(held_ts, day, prev)
+        parking_ret = float(rec["parking_ret"])
+        sides = int(rec["sides"])
         if sides:
             trades += 1
+        if rec["trail_exit"]:
+            trail_exits += 1
 
         eng_prev = engine_nav_by_day.get(prev)
         eng_day = engine_nav_by_day.get(day)
@@ -187,16 +287,17 @@ def build_harbor_timeline(
         peak = max(peak, nav_harbor)
         max_dd = max(max_dd, (peak - nav_harbor) / peak if peak > 0 else 0.0)
 
+        cur_snapshot = snap_by_day.get(day) or snap_prev
         cur_syms = {
             str(p.get("ts_code") or p.get("symbol") or "")
-            for p in ((snap_by_day.get(day) or snap_prev).get("positions") or [])
+            for p in (cur_snapshot.get("positions") or [])
         }
         cur_syms = {s for s in cur_syms if s}
         sold = sorted(prev_syms - cur_syms)
         sold_labels = [prev_map.get(ts, ts) for ts in sold]
         prev_syms = cur_syms
         prev_map = {}
-        for pos in (snap_by_day.get(day) or snap_prev).get("positions") or []:
+        for pos in cur_snapshot.get("positions") or []:
             ts = str(pos.get("ts_code") or pos.get("symbol") or "")
             if ts:
                 prev_map[ts] = str(pos.get("symbol") or ts)
@@ -222,8 +323,8 @@ def build_harbor_timeline(
                 "stockSymbols": stock_syms,
                 "exits": sold_labels,
                 "exitsCount": len(sold_labels),
-                "pick": held_key or "REPO",
-                "pickTs": held_ts or "GC001",
+                "pick": rec["pick_key"],
+                "pickTs": rec["pick_ts"],
                 "stockMom": None,
                 "parkingPct": round(idle * parking_ret * 100, 2),
                 "navBase": round(nav_base, 6),

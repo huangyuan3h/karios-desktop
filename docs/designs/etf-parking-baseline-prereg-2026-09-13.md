@@ -54,6 +54,6 @@ S-3 常留 ~40–60% 闲置现金；把闲置部分按 **mom60+MA200 择强**停
 5. **测试污染**：`tests/test_sleeve_paper_auto.py` 会关真实候选腿 → 测试只准动带前缀 symbol。
 6. **overlay 对齐**：`MIN_IDLE_PCT=20`、ETF>STOCK gate 的去留按 P1/R1/R2 结果决定。
 
-**结果（跑后补）**：**P1 PASS（K1/K2/K3 全过）→ 新基线 = S-3 + 停车场**。三窗增量 **+9.6/+13.7/+9.0**、long **+119.6**（幻影日修正后）；V0 三窗 = 官方基线 ✅。Live overlay：R1（20% 地板）≈0（long −1.7）；**R2（ETF>STOCK）long +20.8 vs +90.0 → 应去掉**；R3 ≈ P1。风险：valid MDD −9.4→**−23.1**、Sharpe 2.44→1.91（空仓期满仓 ETF + trail 无冷却再进）；long MDD −23.6/Sharpe 0.83（均优于 V0）。见 [`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)。
+**结果（跑后补）**：**P1 PASS（K1/K2/K3 全过）→ 新基线 = S-3 + 停车场**。三窗增量 **+15.5/+11.0/+11.6**、long **+125.4**（单源统一后，对账 100%）；V0 三窗 = 官方基线 ✅。Live overlay：R1（20% 地板）≈0（long −1.7）；**R2（ETF>STOCK）long +20.8 vs +90.0 → 应去掉**；R3 ≈ P1。风险：valid MDD −9.4→**−23.1**、Sharpe 2.44→1.91（空仓期满仓 ETF + trail 无冷却再进）；long MDD −23.6/Sharpe 0.83（均优于 V0）。见 [`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)。
 
 *冻结于 2026-09-13，跑数前。*

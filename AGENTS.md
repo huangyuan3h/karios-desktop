@@ -166,7 +166,7 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 0. 新想法先过 [`first-principles-2026-09-05.md`](docs/backtests/first-principles-2026-09-05.md) 自查：撞上已杀直觉（§一不变量 / §三死因）的不开诊断；撞上不变量的直接用；只有档里没有的才开预注册。
 
-1. **现行产品基线 = 「港湾」（Harbor）= S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；真值 [`docs/modules/pick-strong-track.md`](docs/modules/pick-strong-track.md)）。三窗增量 **+9.6/+13.7/+9.0pt**、long **+119.6pt**（幻影日修正）；停车场只作用于 S-3 闲置现金（14:30、`mom60+MA200` argmax、因果 trail8）。
+1. **现行产品基线 = 「港湾」（Harbor）= S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；真值 [`docs/modules/pick-strong-track.md`](docs/modules/pick-strong-track.md)）。三窗增量 **+15.5/+11.0/+11.6pt**、long **+125.4pt**（2026-09-13 修正后）；停车场只作用于 S-3 闲置现金（14:30、`mom60+MA200` argmax、因果 trail8）。
    - 停车场真值 → [`etf-parking-baseline-2026-09-13.md`](docs/backtests/stable/etf-parking-baseline-2026-09-13.md)（B11）
    - ETF 基准 / 最佳拟合 → [`etf-benchmark-parking-2026-09-13.md`](docs/backtests/stable/etf-benchmark-parking-2026-09-13.md)（B13；港湾×风险预算 50/50，落地需另起预注册）
    - S-3 参数真值 → [`docs/modules/strategy-params.md`](docs/modules/strategy-params.md) §1；拒收总表 → [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)

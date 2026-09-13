@@ -1,37 +1,41 @@
-# Live 执行层 vs 回测一致性验证（round 1）· 2026-09-13
+# Live 执行层 vs 回测一致性验证 · 2026-09-13
 
 > 工具：`scripts/verify_harbor_live_vs_backtest.py`（PIT 逐日重放：Live 决策链 vs 港湾回测行）
 > 口径：两边同一价格源（DB `daily`）、同一日历；映射 = Live 在 T 收盘的决策 ↔ 回测行 (T+1) 的持有 pick。
+> **最终结论：决策单源统一后，三窗对账 100%（473/473）。**
 
 ## 方法
-1. `build_multi_asset_sleeve`（Live）用 `fetch_last_bars` PIT 截断（只喂 ≤T 的 bar）逐日重放，维护 held/entryDate 状态（与 `sleeve_paper_auto` 一致）。
-2. `service.harbor.build_harbor_timeline`（回测）同一 ETF 序列生成每日 pick。
-3. 对比三窗每个交易日的 pick（GOLD/OIL/NASDAQ/BOND10/REPO），输出 mismatch 表。
+1. `multi_asset_sleeve.build_multi_asset_sleeve`（Live）用 `fetch_last_bars` PIT 截断（只喂 ≤T 的 bar）逐日重放，维护 held/entryDate 状态（与 `sleeve_paper_auto` 一致）。
+2. `service.harbor.build_harbor_timeline`（回测页/Timeline）同一 ETF 序列生成每日 pick。
+3. 对比三窗每个交易日（含窗口首日）的 pick（GOLD/OIL/NASDAQ/BOND10/REPO），输出 mismatch 表。
 
-## 结果
-| 阶段 | 匹配率 | 说明 |
+## 过程与修复
+| 阶段 | 匹配率 | 修复 |
 |---|---|---|
 | 初测 | 90.1% | — |
-| **修复 ①** Live mom60 索引 off-by-one + 历史门槛 | 94.9% | `_pick` 原来 `closes[-LOOKBACK]`（=第 59 根）≠ 回测 `i-LOOKBACK`（第 60 根）；且门槛 260 根 vs 回测 200 根（MA200）→ 已改齐 |
-| **修复 ②** 回测幻影交易日 | **98.7%**（464/470） | 引擎日历含假期（2025-10-02/03/06/08 等）；无 bar 的日子回测强制清仓（pick→REPO），节后首日与 Live 分叉。已在 `harbor.build_harbor_timeline` + B11 eval 过滤到真实交易日 |
+| 修 ① | 94.9% | Live mom60 索引 off-by-one（`closes[-60]`=第 59 根 vs 回测第 60 根）+ 历史门槛 260 vs 200 根 |
+| 修 ② | 98.7% | **回测幻影交易日**：引擎日历含假期（2025-10-02/03/06/08 等）→ 无 bar 的日子强制清仓、节后追回；Timeline/Eval 过滤到真实交易日 |
+| 修 ③ | 98.9% | 回测 NASDAQ 别名换仓 peak 语义（513110≈2.4 vs 513100≈1.4 价格量级不同，跨别名续 peak 会造出假 −8% 触发） |
+| 修 ④ | 99.1% | **Live `_pick` 真 bug**：选别名用 A 的 mom、返回却是 `CANDIDATES` 里第一个同 key 标的（永远 513110）→ Live 永不换别名 |
+| **单源统一** | **100.0%（473/473）** | `harbor.pick_parking`（mom60/MA200/别名/覆盖）+ `harbor.parking_replay`（trail 优先、TS 级换仓、幻影日过滤）成为 Timeline / Live / `eval_etf_parking_baseline` 的**唯一实现**；对账含窗口首日决策 |
 
-残余 **6/470（1.3%）**：全部在 trail/换仓边界（NASDAQ 别名切换时 Live 重置 peak、回测按 key 连续；peak 起点对齐差异）。需要"决策单源 + 可执行时钟"重构后归零（OPT-180）。
+## 连带修正：港湾基线（最终）
+统一后重跑 `eval_etf_parking_baseline.py`（V0 引擎不变 +46.5/+34.4/+38.7/+94.5）：
+| 窗口 | P1 total | Δ vs V0 | trades | CAGR / MDD / Sharpe |
+|---|---|---|---|---|
+| OOS2 | +62.0 | **+15.5** | 30 | 65.3 / −14.3 / 1.84 |
+| train | +45.3 | **+11.0** | 23 | 116.5 / −8.4 / 2.76 |
+| valid | +50.3 | **+11.6** | 21 | 156.6 / −21.8 / 2.14 |
+| long | +219.9 | **+125.4** | 127 | 27.3 / −23.4 / 1.05 |
 
-## 连带修正：B11 港湾基线数字（更强）
-幻影日修复后重跑 `eval_etf_parking_baseline.py`：
-| 窗口 | P1 total | Δ vs V0 | 旧（含幻影日） |
-|---|---|---|---|
-| OOS2 | +56.1 | **+9.6** | +9.4 |
-| train | +48.0 | **+13.7** | +6.0 |
-| valid | +47.7 | **+9.0** | +9.1 |
-| long | +214.1 | **+119.6** | +90.0 |
+- 判定不变（K1/K2/K3 全过）；R1 +14.7/+11.0/+10.2/+121.1、R2 +11.0/+4.2/+9.3/+39.6、R3=P1。
+- API `/timeline?strategy=harbor` 与评估完全一致：OOS2 61.99/46.52、train 45.34/34.38、valid 50.32/38.74。
+- 数字演进：+9.4/+6.0/+9.1/+90.0（旧）→ +9.6/+13.7/+9.0/+119.6（幻影日修正）→ **+15.5/+11.0/+11.6/+125.4（单源统一）**；旧数字仅存于历史记录。
 
-- 逻辑：假期日回测被迫卖出、节后追回 → 旧数字**低估**停车场收益（train −7.7pt、long −29.6pt）。
-- P1 指标（修正后）：OOS2 59.0%CAGR/−14.6MDD/1.70sr · train 124.9/−8.4/2.88 · valid 146.4/−23.1/2.06 · long 26.8/−23.6/1.04；交易 21/20/16/101。
-- 判定不变：K1/K2/K3 全过（+9.6/+13.7/+9.0，合计 +32.3，long +119.6）。
-- API `/timeline?strategy=harbor` valid 已同步：fused 47.72 / base 38.74 / dd 23.1（Δ +9.0）。
+## 残余（已文档化）
+- 回测 NAV 以 prev 收盘成交代理（14:30 语义），Live 实际 **T 收盘信号 → T+1 开盘成交**；隔夜差未建模 → **决策级一致**，NAV 级如需可另开 OPT（可执行时钟变体）。
+- 研究脚本（`eval_twin_star_parking.py` 等）保留旧循环，仅作历史证据，不在运行路径。
 
-## 结论与后续
-- **决策级一致性已验证**：修复两个实现/数据问题后 **98.7%**；残余 1.3% 均为已定位的 trail 边界语义差，非随机漂移。
-- 待办：**OPT-180**（决策单源 + 可执行时钟 T+1 open + 别名 peak 对齐 → 目标 100%）；残余清零后再对外宣称"执行=回测"。
-- 本档发布后，B11 相关数字以本档修正值为准（旧 +9.4/+6.0/+9.1/+90.0 仅存于历史记录）。
+## 关联
+- 基线档：[`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md) · 预注册：[`designs/etf-parking-baseline-prereg-2026-09-13.md`](../designs/etf-parking-baseline-prereg-2026-09-13.md)
+- 单源实现：[`service/harbor.py`](../../services/data-sync-service/src/data_sync_service/service/harbor.py)（`pick_parking` / `parking_replay` / `build_harbor_timeline`）· OPT-180 ✅

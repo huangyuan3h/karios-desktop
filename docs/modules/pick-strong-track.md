@@ -30,7 +30,7 @@
 
 > ⚠️ **2026-09-12 审计（OPT-177）**：trail8 的回测实现曾用**当日收盘**触发 trail、却把**当日收益记 0**（1 日前视）。实测 long 窗 `fusedPct 40.2%(含前视) → 0.8%(因果)`、valid `56.9% → 20.0%`——**文档中 trail8 的 `+75/+82pt` 增量几乎全为前视幻觉**。已把 `build_nav_from_cache`/`build_mom_compare_timeline` 改为 **t-1 收盘触发（因果）**；trail8 的**真实**增量仅 valid +8.5pt / long +7.5pt（见 [`audit-trail8-2026-09-12.md`](../backtests/audit-trail8-2026-09-12.md)）。**双子星相关过往前视口径数字作废、待重验**。
 >
-> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗 **+9.6/+13.7/+9.0**、long **+119.6**（幻影日修正）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；卫星腿重拟合 REJECT（B12：long −55.6/回撤 −48.3）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）；旧 T6 展示收敛 **OPT-179**。
+> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗 **+15.5/+11.0/+11.6**、long **+125.4**（幻影日 + 决策单源）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；卫星腿重拟合 REJECT（B12：long −55.6/回撤 −48.3）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）；旧 T6 展示收敛 **OPT-179**。
 
 历史拒收（旧择强层，保留备查）：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`pick-strong-hardening-2026-08-29.md`](../backtests/core/pick-strong-hardening-2026-08-29.md)；trail8 旧绝对 NAV 证据 [`pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/core/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；**已因 OPT-177 作废**）。
 

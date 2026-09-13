@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 
 from data_sync_service.db.daily import fetch_last_bars
+from data_sync_service.service.harbor import pick_parking
 
 logger = logging.getLogger(__name__)
 
@@ -155,68 +156,45 @@ def _signal_closes(ts: str, days: int = 260) -> list[float]:
     return out
 
 
-def _pick() -> dict[str, Any] | None:
-    """Return today's ETF-leg pick: pure argmax mom60 among above-MA200.
+def _signal_series(ts: str, days: int = 260) -> dict[str, float]:
+    """{date: close} through the latest COMPLETED bar (Harbor T-close signal).
 
-    Aligns with product 择强单轨 ``mom_compare`` (no Nasdaq-first bias).
-    STOCK is merged later in ``build_multi_asset_sleeve`` when holdings exist.
+    Same source/cut as ``_signal_closes``; the series form lets the shared
+    ``harbor.pick_parking`` rule run on the exact same data as the timeline.
     """
-    # Group closes by key (NASDAQ has two aliases, keep best liquidity/mom)
-    raw_map: dict[str, list[list[float]]] = {}
-    for c in CANDIDATES:
-        closes = _signal_closes(c["ts"], 260)
-        # Eligibility matches the frozen backtest: MA200 needs 200 bars; mom60
-        # uses the close LOOKBACK+1 bars back (index i-LOOKBACK).
-        if len(closes) < MA_WINDOW:
-            logger.warning(
-                "multi-sleeve %s %s insufficient bars %s", c["key"], c["ts"], len(closes)
-            )
+    from data_sync_service.service.trade_calendar_utils import shanghai_today
+
+    today = shanghai_today().isoformat()
+    try:
+        bars = fetch_last_bars(ts, days=days + 5)
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for b in bars:
+        d = str(b.get("date") or b.get("trade_date") or "")
+        if d > today:
             continue
-        raw_map.setdefault(c["key"], []).append(closes)
-    closes_map: dict[str, list[float]] = {}
-    for key, lists in raw_map.items():
-        if not lists:
-            return None
-        best = max(
-            lists,
-            key=lambda lst: lst[-1] / lst[-(LOOKBACK + 1)]
-            if lst[-(LOOKBACK + 1)] != 0
-            else -1,
-        )
-        closes_map[key] = best
-    if any(k not in closes_map for k in ["GOLD", "OIL", "NASDAQ", "BOND10"]):
-        if len(closes_map) < 3:
-            return None
-    mom: dict[str, float] = {}
-    above: dict[str, bool] = {}
-    for key, closes in closes_map.items():
-        closes_t1 = closes
-        if len(closes_t1) < MA_WINDOW:
+        try:
+            c = float(b.get("close"))
+        except (TypeError, ValueError):
             continue
-        ma200 = sum(closes_t1[-MA_WINDOW:]) / MA_WINDOW
-        close_t1 = closes_t1[-1]
-        ago = closes_t1[-(LOOKBACK + 1)] if len(closes_t1) >= LOOKBACK + 1 else 0.0
-        mom60 = close_t1 / ago - 1 if ago else -1e9
-        mom[key] = mom60
-        above[key] = close_t1 >= ma200
-    filtered = {k: v for k, v in mom.items() if above.get(k)}
-    if not filtered:
+        if c > 0:
+            out[d] = c
+    return out
+
+
+def _pick() -> dict[str, Any] | None:
+    """Today's ETF-leg pick via the shared Harbor rule (single source).
+
+    Delegates to ``harbor.pick_parking`` so the Live decision, the frozen
+    backtest (`build_harbor_timeline`) and the evaluation scripts all use ONE
+    implementation (mom60 index, MA200 gate, NASDAQ alias selection, coverage).
+    """
+    etf_close = {c["ts"]: _signal_series(c["ts"], 260) for c in CANDIDATES}
+    as_of = max((max(mp) for mp in etf_close.values() if mp), default="")
+    if not as_of:
         return None
-    pick_key = max(filtered, key=lambda k: filtered[k])
-    pick = next(x for x in CANDIDATES if x["key"] == pick_key)
-    closes_pick = closes_map[pick_key]
-    return {
-        "key": pick_key,
-        "ts": pick["ts"],
-        "symbol": pick["symbol"],
-        "name": pick["name"],
-        "mom60": round(filtered[pick_key] * 100, 2),
-        "close": round(closes_pick[-1], 3),
-        "ma200": round(sum(closes_pick[-MA_WINDOW:]) / MA_WINDOW, 3),
-        "above_ma200": above[pick_key],
-        "all_mom": {k: round(v * 100, 2) for k, v in mom.items()},
-        "all_above": above,
-    }
+    return pick_parking(etf_close, as_of)
 
 
 def _rsi(closes: list[float], period: int = 14) -> float | None:
