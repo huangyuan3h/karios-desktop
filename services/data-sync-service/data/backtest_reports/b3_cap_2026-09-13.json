@@ -1,0 +1,210 @@
+{
+  "tag": "b3-cap-2026-09-13",
+  "prereg": "docs/designs/b3-cap-prereg-2026-09-13.md",
+  "caps": [
+    0.5,
+    0.6
+  ],
+  "results": {
+    "OOS2": {
+      "b3_base": {
+        "total": 18.8,
+        "cagr": 19.61,
+        "mdd": -3.9,
+        "sharpe": 1.95
+      },
+      "m50_base": {
+        "total": 39.5,
+        "cagr": 41.42,
+        "mdd": -9.0,
+        "sharpe": 1.99
+      },
+      "b3_cap50": {
+        "total": 20.7,
+        "cagr": 21.64,
+        "mdd": -4.0,
+        "sharpe": 2.04
+      },
+      "m50_cap50": {
+        "total": 40.6,
+        "cagr": 42.6,
+        "mdd": -9.0,
+        "sharpe": 2.01
+      },
+      "b3_cap60": {
+        "total": 19.5,
+        "cagr": 20.38,
+        "mdd": -3.9,
+        "sharpe": 2.01
+      },
+      "m50_cap60": {
+        "total": 39.9,
+        "cagr": 41.88,
+        "mdd": -9.0,
+        "sharpe": 2.0
+      }
+    },
+    "train": {
+      "b3_base": {
+        "total": 16.8,
+        "cagr": 37.79,
+        "mdd": -1.7,
+        "sharpe": 4.36
+      },
+      "m50_base": {
+        "total": 31.5,
+        "cagr": 76.17,
+        "mdd": -5.2,
+        "sharpe": 3.32
+      },
+      "b3_cap50": {
+        "total": 18.7,
+        "cagr": 42.41,
+        "mdd": -3.2,
+        "sharpe": 4.11
+      },
+      "m50_cap50": {
+        "total": 32.5,
+        "cagr": 78.87,
+        "mdd": -5.4,
+        "sharpe": 3.29
+      },
+      "b3_cap60": {
+        "total": 17.9,
+        "cagr": 40.41,
+        "mdd": -2.8,
+        "sharpe": 4.21
+      },
+      "m50_cap60": {
+        "total": 32.1,
+        "cagr": 77.71,
+        "mdd": -5.3,
+        "sharpe": 3.3
+      }
+    },
+    "valid": {
+      "b3_base": {
+        "total": 1.5,
+        "cagr": 3.54,
+        "mdd": -10.1,
+        "sharpe": 0.33
+      },
+      "m50_base": {
+        "total": 25.6,
+        "cagr": 69.41,
+        "mdd": -11.4,
+        "sharpe": 2.26
+      },
+      "b3_cap50": {
+        "total": 0.7,
+        "cagr": 1.74,
+        "mdd": -10.1,
+        "sharpe": 0.19
+      },
+      "m50_cap50": {
+        "total": 25.1,
+        "cagr": 67.75,
+        "mdd": -12.8,
+        "sharpe": 2.13
+      },
+      "b3_cap60": {
+        "total": 1.1,
+        "cagr": 2.45,
+        "mdd": -10.1,
+        "sharpe": 0.24
+      },
+      "m50_cap60": {
+        "total": 25.3,
+        "cagr": 68.38,
+        "mdd": -12.4,
+        "sharpe": 2.18
+      }
+    },
+    "long": {
+      "b3_base": {
+        "total": 46.2,
+        "cagr": 8.2,
+        "mdd": -4.7,
+        "sharpe": 1.76
+      },
+      "m50_base": {
+        "total": 122.5,
+        "cagr": 18.04,
+        "mdd": -12.2,
+        "sharpe": 1.23
+      },
+      "b3_cap50": {
+        "total": 56.3,
+        "cagr": 9.7,
+        "mdd": -7.1,
+        "sharpe": 1.41
+      },
+      "m50_cap50": {
+        "total": 129.6,
+        "cagr": 18.81,
+        "mdd": -12.6,
+        "sharpe": 1.23
+      },
+      "b3_cap60": {
+        "total": 49.7,
+        "cagr": 8.72,
+        "mdd": -5.5,
+        "sharpe": 1.55
+      },
+      "m50_cap60": {
+        "total": 124.9,
+        "cagr": 18.31,
+        "mdd": -12.3,
+        "sharpe": 1.22
+      }
+    }
+  },
+  "stress": {
+    "base": {
+      "total": 11.4,
+      "cagr": 6.05,
+      "mdd": -8.3,
+      "sharpe": 0.62
+    },
+    "cap50": {
+      "total": 10.3,
+      "cagr": 5.5,
+      "mdd": -9.0,
+      "sharpe": 0.55
+    },
+    "cap60": {
+      "total": 10.8,
+      "cagr": 5.78,
+      "mdd": -8.7,
+      "sharpe": 0.59
+    }
+  },
+  "verdicts": {
+    "cap50": {
+      "standalone": false,
+      "mix": true,
+      "stress": true,
+      "stress_row": {
+        "total": 10.3,
+        "cagr": 5.5,
+        "mdd": -9.0,
+        "sharpe": 0.55
+      },
+      "pass": false
+    },
+    "cap60": {
+      "standalone": false,
+      "mix": false,
+      "stress": true,
+      "stress_row": {
+        "total": 10.8,
+        "cagr": 5.78,
+        "mdd": -8.7,
+        "sharpe": 0.59
+      },
+      "pass": false
+    }
+  },
+  "chosen": null,
+  "as_of": "2026-09-13T15:15:14+00:00"
+}

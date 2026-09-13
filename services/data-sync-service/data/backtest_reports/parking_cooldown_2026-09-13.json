@@ -1,0 +1,269 @@
+{
+  "tag": "parking-cooldown-2026-09-13",
+  "prereg": "docs/designs/parking-cooldown-prereg-2026-09-13.md",
+  "grid": [
+    0,
+    1,
+    2,
+    3,
+    5
+  ],
+  "results": {
+    "OOS2": {
+      "0": {
+        "total": 62.0,
+        "delta": 0.0,
+        "trades": 30,
+        "cooldown_days_active": 0,
+        "cagr": 65.25,
+        "mdd": -14.3,
+        "sharpe": 1.84
+      },
+      "1": {
+        "total": 61.8,
+        "delta": -0.2,
+        "trades": 32,
+        "cooldown_days_active": 3,
+        "cagr": 65.07,
+        "mdd": -14.3,
+        "sharpe": 1.84
+      },
+      "2": {
+        "total": 61.5,
+        "delta": -0.4,
+        "trades": 32,
+        "cooldown_days_active": 6,
+        "cagr": 64.78,
+        "mdd": -14.3,
+        "sharpe": 1.83
+      },
+      "3": {
+        "total": 61.4,
+        "delta": -0.6,
+        "trades": 31,
+        "cooldown_days_active": 9,
+        "cagr": 64.66,
+        "mdd": -14.3,
+        "sharpe": 1.83
+      },
+      "5": {
+        "total": 61.1,
+        "delta": -0.8,
+        "trades": 29,
+        "cooldown_days_active": 15,
+        "cagr": 64.36,
+        "mdd": -14.3,
+        "sharpe": 1.83
+      }
+    },
+    "train": {
+      "0": {
+        "total": 45.3,
+        "delta": 0.0,
+        "trades": 23,
+        "cooldown_days_active": 0,
+        "cagr": 116.48,
+        "mdd": -8.4,
+        "sharpe": 2.76
+      },
+      "1": {
+        "total": 45.3,
+        "delta": 0.0,
+        "trades": 23,
+        "cooldown_days_active": 1,
+        "cagr": 116.48,
+        "mdd": -8.4,
+        "sharpe": 2.76
+      },
+      "2": {
+        "total": 45.3,
+        "delta": 0.0,
+        "trades": 23,
+        "cooldown_days_active": 2,
+        "cagr": 116.48,
+        "mdd": -8.4,
+        "sharpe": 2.76
+      },
+      "3": {
+        "total": 44.9,
+        "delta": -0.5,
+        "trades": 23,
+        "cooldown_days_active": 3,
+        "cagr": 115.09,
+        "mdd": -8.4,
+        "sharpe": 2.74
+      },
+      "5": {
+        "total": 43.6,
+        "delta": -1.7,
+        "trades": 21,
+        "cooldown_days_active": 5,
+        "cagr": 111.22,
+        "mdd": -9.1,
+        "sharpe": 2.67
+      }
+    },
+    "valid": {
+      "0": {
+        "total": 50.3,
+        "delta": 0.0,
+        "trades": 21,
+        "cooldown_days_active": 0,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
+      },
+      "1": {
+        "total": 42.4,
+        "delta": -7.9,
+        "trades": 26,
+        "cooldown_days_active": 6,
+        "cagr": 126.5,
+        "mdd": -21.2,
+        "sharpe": 1.92
+      },
+      "2": {
+        "total": 43.5,
+        "delta": -6.8,
+        "trades": 27,
+        "cooldown_days_active": 12,
+        "cagr": 130.49,
+        "mdd": -19.4,
+        "sharpe": 1.96
+      },
+      "3": {
+        "total": 36.9,
+        "delta": -13.4,
+        "trades": 27,
+        "cooldown_days_active": 18,
+        "cagr": 106.66,
+        "mdd": -20.6,
+        "sharpe": 1.73
+      },
+      "5": {
+        "total": 40.8,
+        "delta": -9.5,
+        "trades": 25,
+        "cooldown_days_active": 25,
+        "cagr": 120.6,
+        "mdd": -24.5,
+        "sharpe": 1.95
+      }
+    },
+    "long": {
+      "0": {
+        "total": 219.9,
+        "delta": 0.0,
+        "trades": 127,
+        "cooldown_days_active": 0,
+        "cagr": 27.27,
+        "mdd": -23.4,
+        "sharpe": 1.05
+      },
+      "1": {
+        "total": 197.0,
+        "delta": -22.9,
+        "trades": 136,
+        "cooldown_days_active": 12,
+        "cagr": 25.33,
+        "mdd": -24.9,
+        "sharpe": 1.0
+      },
+      "2": {
+        "total": 219.4,
+        "delta": -0.5,
+        "trades": 137,
+        "cooldown_days_active": 24,
+        "cagr": 27.23,
+        "mdd": -24.0,
+        "sharpe": 1.06
+      },
+      "3": {
+        "total": 209.8,
+        "delta": -10.1,
+        "trades": 137,
+        "cooldown_days_active": 36,
+        "cagr": 26.43,
+        "mdd": -24.0,
+        "sharpe": 1.04
+      },
+      "5": {
+        "total": 224.9,
+        "delta": 5.0,
+        "trades": 130,
+        "cooldown_days_active": 50,
+        "cagr": 27.69,
+        "mdd": -23.4,
+        "sharpe": 1.09
+      }
+    }
+  },
+  "verdicts": {
+    "1": {
+      "deltas": {
+        "OOS2": -0.2,
+        "train": 0.0,
+        "valid": -7.9,
+        "long": -22.9
+      },
+      "k1": false,
+      "k2": false,
+      "k3": false,
+      "k4": false,
+      "valid_mdd_delta": 0.6,
+      "valid_sharpe_delta": -0.22,
+      "k5": false,
+      "pass": false
+    },
+    "2": {
+      "deltas": {
+        "OOS2": -0.4,
+        "train": 0.0,
+        "valid": -6.8,
+        "long": -0.5
+      },
+      "k1": false,
+      "k2": false,
+      "k3": false,
+      "k4": false,
+      "valid_mdd_delta": 2.4,
+      "valid_sharpe_delta": -0.18,
+      "k5": false,
+      "pass": false
+    },
+    "3": {
+      "deltas": {
+        "OOS2": -0.6,
+        "train": -0.5,
+        "valid": -13.4,
+        "long": -10.1
+      },
+      "k1": false,
+      "k2": false,
+      "k3": false,
+      "k4": false,
+      "valid_mdd_delta": 1.2,
+      "valid_sharpe_delta": -0.41,
+      "k5": false,
+      "pass": false
+    },
+    "5": {
+      "deltas": {
+        "OOS2": -0.8,
+        "train": -1.7,
+        "valid": -9.5,
+        "long": 5.0
+      },
+      "k1": false,
+      "k2": false,
+      "k3": true,
+      "k4": false,
+      "valid_mdd_delta": -2.7,
+      "valid_sharpe_delta": -0.19,
+      "k5": false,
+      "pass": false
+    }
+  },
+  "adopted": null,
+  "as_of": "2026-09-13T14:21:11+00:00"
+}

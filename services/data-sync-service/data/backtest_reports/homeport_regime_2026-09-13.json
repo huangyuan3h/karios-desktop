@@ -1,0 +1,123 @@
+{
+  "tag": "homeport-regime-2026-09-13",
+  "prereg": "docs/designs/homeport-regime-prereg-2026-09-13.md",
+  "signal": "510300.SH close(t-1) > MA200(t-1)",
+  "stress": {
+    "m50": {
+      "total": 11.4,
+      "cagr": 6.05,
+      "mdd": -8.3,
+      "sharpe": 0.62
+    },
+    "dyn": {
+      "total": 3.6,
+      "cagr": 1.73,
+      "mdd": -10.5,
+      "sharpe": 0.2
+    }
+  },
+  "results": {
+    "OOS2": {
+      "harbor": {
+        "total": 62.0,
+        "cagr": 65.25,
+        "mdd": -14.3,
+        "sharpe": 1.84
+      },
+      "m50": {
+        "total": 39.5,
+        "cagr": 41.42,
+        "mdd": -9.0,
+        "sharpe": 1.99
+      },
+      "dyn": {
+        "total": 69.8,
+        "cagr": 73.54,
+        "mdd": -11.1,
+        "sharpe": 2.09
+      },
+      "switches": 3,
+      "days_strong": 202,
+      "days": 243
+    },
+    "train": {
+      "harbor": {
+        "total": 45.3,
+        "cagr": 116.48,
+        "mdd": -8.4,
+        "sharpe": 2.76
+      },
+      "m50": {
+        "total": 31.5,
+        "cagr": 76.17,
+        "mdd": -5.2,
+        "sharpe": 3.32
+      },
+      "dyn": {
+        "total": 45.3,
+        "cagr": 116.48,
+        "mdd": -8.4,
+        "sharpe": 2.76
+      },
+      "switches": 1,
+      "days_strong": 122,
+      "days": 123
+    },
+    "valid": {
+      "harbor": {
+        "total": 50.3,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
+      },
+      "m50": {
+        "total": 25.6,
+        "cagr": 69.41,
+        "mdd": -11.4,
+        "sharpe": 2.26
+      },
+      "dyn": {
+        "total": 42.8,
+        "cagr": 127.98,
+        "mdd": -21.7,
+        "sharpe": 1.92
+      },
+      "switches": 8,
+      "days_strong": 99,
+      "days": 110
+    },
+    "long": {
+      "harbor": {
+        "total": 219.9,
+        "cagr": 27.27,
+        "mdd": -23.4,
+        "sharpe": 1.05
+      },
+      "m50": {
+        "total": 122.5,
+        "cagr": 18.04,
+        "mdd": -12.2,
+        "sharpe": 1.23
+      },
+      "dyn": {
+        "total": 190.0,
+        "cagr": 24.71,
+        "mdd": -20.6,
+        "sharpe": 1.08
+      },
+      "switches": 36,
+      "days_strong": 565,
+      "days": 1216
+    }
+  },
+  "verdict": {
+    "k1": true,
+    "k2": false,
+    "k3": false,
+    "k4": true,
+    "k5": true,
+    "k6": false,
+    "pass": false
+  },
+  "as_of": "2026-09-13T15:18:17+00:00"
+}

@@ -105,13 +105,14 @@
 
 ## 3. 优化纪律（只动港湾的停车场层）
 
-1. **冻结**：S-3 定案参数（[`strategy-params.md`](./strategy-params.md) §1）——除非审计级 bug；停车场 **P1 冻结**（tag `harbor-p1-20260913`）——再入场冷却/上限等候选改进须另起预注册。  
+1. **冻结**：S-3 定案参数（[`strategy-params.md`](./strategy-params.md) §1）——除非审计级 bug；停车场 **P1 冻结**（tag `harbor-p1-20260913`）——再入场冷却/上限等候选改进须另起预注册。**trail 后冷却已测并 REJECT（B14，2026-09-13：k∈{1,2,3,5} 四档全挂、方向关闭，见 [`parking-cooldown-2026-09-13.md`](../backtests/stable/parking-cooldown-2026-09-13.md)）**；同族机制（全局冷却/上限/自适应冷却）不重开。  
 2. **可调**：停车场入池代理（mom60 / MA200 / trail）、切换成本、再入场规则。  
 3. **验收**：三窗 walk-forward（OOS2/train/valid）+ long；`>5pt` 劣化拒收；`n<100` 标 underpowered。  
 4. **工具**：  
    - 停车场基线复现：`PYTHONPATH=src:scripts python3 scripts/eval_etf_parking_baseline.py`  
    - 卫星重拟合（REJECT）复现：`python3 scripts/eval_twin_star_parking.py`  
    - ETF 基准对照：`python3 scripts/eval_etf_benchmark_parking.py`  
+   - 停车冷却复现（REJECT）：`python3 scripts/eval_parking_cooldown.py`  
    - 历史择强回放：`PYTHONPATH=src:scripts python3 scripts/fused_timeline_walk.py --windows past_year --mode mom_compare`  
 5. **实验记录**：一律写回 `docs/backtests/`；新基线见 [`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)、基准对照见 [`etf-benchmark-parking-2026-09-13.md`](../backtests/stable/etf-benchmark-parking-2026-09-13.md)。
 
