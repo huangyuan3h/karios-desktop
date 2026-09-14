@@ -52,22 +52,18 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
 
   const actionable = report.reasons.filter((r) => r.severity !== 'info');
   const infos = report.reasons.filter((r) => r.severity === 'info');
-  const verdictLabel =
-    report.verdict === 'aligned'
-      ? '对齐'
-      : report.verdict === 'partial'
-        ? '部分偏离'
-        : `偏离${strategyName}`;
+  // Aligned days stay silent; the banner surfaces only when the live book
+  // diverges from the core recipe (rendered above the strategy decision card).
+  if (report.verdict === 'aligned') return null;
+  const verdictLabel = report.verdict === 'partial' ? '部分偏离' : `偏离${strategyName}`;
 
   return (
     <div
       className={cn(
         'mb-4 rounded-lg border px-4 py-3 text-sm',
-        report.verdict === 'aligned'
-          ? 'border-emerald-500/35 bg-emerald-500/5'
-          : report.verdict === 'partial'
-            ? 'border-amber-500/40 bg-amber-500/5'
-            : 'border-red-500/40 bg-red-500/5',
+        report.verdict === 'partial'
+          ? 'border-amber-500/40 bg-amber-500/5'
+          : 'border-red-500/40 bg-red-500/5',
       )}
     >
       <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium">

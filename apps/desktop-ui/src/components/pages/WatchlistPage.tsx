@@ -8,8 +8,6 @@ import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBan
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { SatelliteDecisionCard } from '@/components/watchlist/SatelliteDecisionCard';
 import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
-import { StrategyStatusCard } from '@/components/watchlist/StrategyStatusCard';
-import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
@@ -21,13 +19,7 @@ import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { buildCatalystPurgeMap, DEFAULT_CATALYST_MAX_AGE_DAYS } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
-import { executionGateBadgeClass } from '@/lib/dashboard-format';
-import {
-  buildSleeveExposurePct,
-  countHeldMissingPositionPct,
-  formatSleeveBudgetLabel,
-  parseExecutionGate,
-} from '@/lib/execution-action';
+import { parseExecutionGate } from '@/lib/execution-action';
 import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
 import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
@@ -341,63 +333,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         <StrategyModeBar />
+        <PickStrongAlignBanner mode={strategyMode} />
         {strategyMode === 'starship' ? (
-          <>
-            <SatelliteDecisionCard />
-            <StrategyStatusCard mode={strategyMode} />
-          </>
+          <SatelliteDecisionCard />
         ) : (
-          <>
-            <HarborDecisionCard mode={strategyMode} />
-            <PickStrongAlignBanner mode={strategyMode} />
-            {strategyMode !== 'harbor' ? <StrategyStatusCard mode={strategyMode} /> : null}
-            <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
-              <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
-                展开旧提醒（轮动 / Gate 详情）
-              </summary>
-              <div className="mt-3">
-                <ThirdAssetSleeveBanner />
-              </div>
-            </details>
-          </>
+          <HarborDecisionCard mode={strategyMode} />
         )}
-        {executionGate ? (
-          <div
-            className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
-          >
-            <div className="font-medium">
-              Execution Gate: {executionGate.mode}
-              <span className="ml-2 text-xs font-normal opacity-90">
-                allowNewEntries={String(executionGate.allowNewEntries)} ·{' '}
-                {executionGate.marketRegime}
-              </span>
-            </div>
-            <div className="mt-1 text-xs opacity-90">
-              {formatSleeveBudgetLabel(
-                buildSleeveExposurePct(items),
-                executionGate.positionRangeHint,
-              )}
-            </div>
-            <div className="mt-1 text-xs opacity-90">
-              S-2 操作口径：
-              {['Strong', 'Diverging'].includes(String(executionGate.marketRegime ?? ''))
-                ? '✅ 非 Weak 可开仓'
-                : '⏸ Weak 空仓等待'}{' '}
-              · score≥70 · RS 前 50% · 移动止损 -8%
-            </div>
-            {(() => {
-              const missingSize = countHeldMissingPositionPct(items);
-              return missingSize > 0 ? (
-                <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                  {missingSize} held missing size
-                </div>
-              ) : null;
-            })()}
-            {executionGate.satelliteNote ? (
-              <div className="mt-1 text-xs opacity-90">{executionGate.satelliteNote}</div>
-            ) : null}
-          </div>
-        ) : null}
         <WatchlistToolbar
           trendUpdatedAt={trendUpdatedAt}
           latestAutomation={latestAutomation}

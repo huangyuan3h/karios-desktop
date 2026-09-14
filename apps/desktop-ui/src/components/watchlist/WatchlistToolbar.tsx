@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ExternalLink, Play, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { formatAutomationSummary, type AutomationRun } from '@/lib/watchlist-automation';
+import type { AutomationRun } from '@/lib/watchlist-automation';
 
 export type WatchlistToolbarProps = {
   trendUpdatedAt: string | null;
@@ -33,8 +33,6 @@ export type WatchlistToolbarProps = {
 };
 
 export function WatchlistToolbar({
-  trendUpdatedAt,
-  latestAutomation,
   syncBusy,
   syncStage,
   syncProgress,
@@ -61,23 +59,6 @@ export function WatchlistToolbar({
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-lg font-semibold">Watchlist</div>
-        <div className="mt-1 text-sm text-[var(--k-muted)]">
-          Manage the stocks you are watching.
-        </div>
-        <div className="mt-1 text-xs text-[var(--k-muted)]">
-          Names are resolved from Market cache. If names are missing, go to Market and click Sync
-          once.
-        </div>
-        <div className="mt-1 text-xs text-[var(--k-muted)]">
-          {trendUpdatedAt
-            ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
-            : 'Scores not loaded yet.'}
-        </div>
-        <div className="mt-1 text-xs text-[var(--k-muted)]">
-          {formatAutomationSummary(latestAutomation) ?? 'Last automation: —'}
-          {' · '}
-          Next scheduled: weekdays 17:30 (Asia/Shanghai)
-        </div>
         {syncBusy && syncStage ? (
           <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
             <div className="flex items-center justify-between gap-2">

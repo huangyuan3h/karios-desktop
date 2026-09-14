@@ -31,16 +31,6 @@ const base = (over: Partial<WatchlistToolbarProps> = {}): WatchlistToolbarProps 
 });
 
 describe('WatchlistToolbar', () => {
-  it('shows scores update time from trendUpdatedAt', () => {
-    render(<WatchlistToolbar {...base()} />);
-    expect(screen.getByText(/Scores updated at/)).toBeInTheDocument();
-  });
-
-  it('shows "Scores not loaded yet." when trendUpdatedAt is null', () => {
-    render(<WatchlistToolbar {...base({ trendUpdatedAt: null })} />);
-    expect(screen.getByText('Scores not loaded yet.')).toBeInTheDocument();
-  });
-
   it('disables Refresh when trendBusy or no items', () => {
     render(<WatchlistToolbar {...base({ trendBusy: true })} />);
     expect(screen.getByLabelText('Refresh watchlist scores')).toBeDisabled();
