@@ -1,13 +1,13 @@
-"""「星港」(Starport) = Homeport x habit-satellite overlay — Timeline research option.
+"""「星港」(Starport) / 「双子星」(Twin Star) overlay blends — Timeline research options.
 
-Validated in H-B3-SAT (docs/backtests/stable/harbor-b3-sat-2026-09-14.md):
-on satellite-active days the portfolio return is ``homeport + w * (satellite -
-homeport)``; idle days stay 100% Homeport. Frozen w = 1/3 (chosen by the
-pre-registered K1-K3 rule; robust band 0.15-0.25).
+Both are the same opportunity blend on a different base leg:
+- Starport (H-B3-SAT, 2026-09-14): base = Homeport (Harbor x B3 50/50), w = 1/3.
+- Twin Star (kept as a parallel comparison entry, 2026-09-14 user decision):
+  base = Harbor, w = 1/2.
 
-Display only: ``GET /api/backtest/timeline?strategy=starport`` derives the rows
-from the cached Homeport timeline + the standalone state-bucket satellite
-timeline (no engine re-run, no Live wiring; Live stays 港湾).
+Blend rule: on satellite-active days ``base + w * (satellite - base)``; idle days
+stay 100% base. Display only — no Live wiring; the default data-collection view
+is 星港, Live stays 港湾.
 """
 
 from __future__ import annotations
@@ -18,24 +18,31 @@ MODE = "starport"
 STRATEGY_LABEL = "星港"
 SAT_WEIGHT = 1.0 / 3.0
 
+TWIN_STAR_MODE = "twin_star"
+TWIN_STAR_LABEL = "双子星"
+TWIN_STAR_WEIGHT = 0.5
 
-def blend_starport_timeline(
-    homeport_result: dict[str, Any],
+
+def blend_overlay_timeline(
+    base_result: dict[str, Any],
     satellite_result: dict[str, Any],
     *,
-    sat_weight: float = SAT_WEIGHT,
+    sat_weight: float,
+    mode: str,
+    strategy_label: str,
+    base_key: str,
 ) -> dict[str, Any]:
-    """Derive the Starport timeline from Homeport + satellite timeline rows.
+    """Derive an overlay timeline from base + satellite timeline rows.
 
-    Satellite NAV is aligned to the Homeport date axis (forward-filled) and
+    Satellite NAV is aligned to the base date axis (forward-filled) and
     normalized to its first available value; missing satellite days count as
     inactive. Pure function — synthetic rows are enough to unit-test it.
     """
-    out = dict(homeport_result)
-    rows = [dict(r) for r in (homeport_result.get("rows") or [])]
-    src_summary = dict(homeport_result.get("summary") or {})
-    out["mode"] = MODE
-    out["strategy"] = STRATEGY_LABEL
+    out = dict(base_result)
+    rows = [dict(r) for r in (base_result.get("rows") or [])]
+    src_summary = dict(base_result.get("summary") or {})
+    out["mode"] = mode
+    out["strategy"] = strategy_label
     out["rows"] = rows
     if not rows:
         out["summary"] = {**src_summary}
@@ -86,9 +93,43 @@ def blend_starport_timeline(
     out["summary"] = {
         **src_summary,
         "fusedPct": round((navs[-1] - 1.0) * 100, 2),
-        "homeportPct": round(float(src_summary.get("fusedPct") or 0.0), 2),
+        base_key: round(float(src_summary.get("fusedPct") or 0.0), 2),
         "satPct": round(float((satellite_result.get("summary") or {}).get("satPct") or 0.0), 2),
         "maxDdFusedPct": round(mdd * 100, 1),
         "activeDays": active_count,
     }
     return out
+
+
+def blend_starport_timeline(
+    homeport_result: dict[str, Any],
+    satellite_result: dict[str, Any],
+    *,
+    sat_weight: float = SAT_WEIGHT,
+) -> dict[str, Any]:
+    """Starport = Homeport x satellite overlay (w=1/3, H-B3-SAT chosen)."""
+    return blend_overlay_timeline(
+        homeport_result,
+        satellite_result,
+        sat_weight=sat_weight,
+        mode=MODE,
+        strategy_label=STRATEGY_LABEL,
+        base_key="homeportPct",
+    )
+
+
+def blend_twin_star_timeline(
+    harbor_result: dict[str, Any],
+    satellite_result: dict[str, Any],
+    *,
+    sat_weight: float = TWIN_STAR_WEIGHT,
+) -> dict[str, Any]:
+    """Twin Star = Harbor x satellite overlay (w=1/2, parallel comparison entry)."""
+    return blend_overlay_timeline(
+        harbor_result,
+        satellite_result,
+        sat_weight=sat_weight,
+        mode=TWIN_STAR_MODE,
+        strategy_label=TWIN_STAR_LABEL,
+        base_key="harborPct",
+    )

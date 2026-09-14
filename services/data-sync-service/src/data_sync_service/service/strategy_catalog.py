@@ -99,10 +99,10 @@ _STRATEGIES: list[dict[str, Any]] = [
     {
         "key": "twin_star",
         "name": "双子星",
-        "structure": "港湾核心 × 卫星 50/50（无仓日 100% 核心；历史口径，已退役）",
-        "status": "rejected",
-        "statusLabel": "REJECT",
-        "timelineStrategy": None,
+        "structure": "港湾核心 × 卫星 50/50（无仓日 100% 核心；并行对照档，保留不退役）",
+        "status": "parallel_candidate",
+        "statusLabel": "并行对照",
+        "timelineStrategy": "twin_star",
         "doc": "docs/backtests/stable/twin-star-parking-refit-2026-09-13.md",
         "tag": "b12",
         "windows": {
@@ -113,8 +113,8 @@ _STRATEGIES: list[dict[str, Any]] = [
         },
         "pros": ["（历史）OOS2 +149.7/long +291.9，低相关卫星叠加显著"],
         "cons": [
-            "valid Δ−21.2 / Δsr−0.65 挂 K1/K2 → REJECT（clean 口径）",
-            "两腿叠加港湾任何权重无解（H-SAT-W 死区）",
+            "valid 窗相对港湾核心 Δ−21.2 / Δsr−0.65（未过 K1/K2，clean 口径）",
+            "两腿叠加港湾任何权重都无解（H-SAT-W 死区）——三腿版为星港",
         ],
     },
 ]

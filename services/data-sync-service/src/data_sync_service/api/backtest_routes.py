@@ -450,7 +450,7 @@ def backtest_timeline(
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "harbor",
-        description="harbor | homeport | starport | starship | pick_strong | state_bucket",
+        description="harbor | homeport | starport | starship | twin_star | pick_strong | state_bucket",
     ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
@@ -462,6 +462,8 @@ def backtest_timeline(
     - strategy=homeport: 母港 = 港湾 x B3 risk-budget 50/50 (display only).
     - strategy=starport: 星港 = 母港 x satellite overlay w=1/3 (H-B3-SAT, display only).
     - strategy=starship: 星舰 = satellite standalone (research display; not audited).
+    - strategy=twin_star: 双子星 = 港湾 x satellite overlay w=1/2 (parallel
+      comparison entry, kept 2026-09-14; not Live).
     - strategy=pick_strong: legacy 择强单轨 ``mom_compare`` (research only).
     - strategy=state_bucket: 状态分桶 research timeline (独立腿).
     """
@@ -473,7 +475,15 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    allowed = ("harbor", "homeport", "starport", "starship", "pick_strong", "state_bucket")
+    allowed = (
+        "harbor",
+        "homeport",
+        "starport",
+        "starship",
+        "twin_star",
+        "pick_strong",
+        "state_bucket",
+    )
     if strategy not in allowed:
         raise HTTPException(
             status_code=400,
@@ -805,6 +815,24 @@ def _get_or_build_timeline(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=500, detail=f"timeline starport failed: {exc}"
+            ) from exc
+        _timeline_cache[cache_key] = result
+        return result, engine_ctx
+
+    # Twin Star (parallel comparison entry) derives from Harbor + satellite w=1/2.
+    if strategy == "twin_star":
+        from data_sync_service.service.starport import blend_twin_star_timeline
+        from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
+
+        harbor_result, engine_ctx = _get_or_build_timeline(
+            start, end, strategy="harbor", need_engine=need_engine
+        )
+        try:
+            sat_result = build_state_bucket_timeline(start=start, end=end, recipe="habit")
+            result = blend_twin_star_timeline(harbor_result, sat_result)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline twin_star failed: {exc}"
             ) from exc
         _timeline_cache[cache_key] = result
         return result, engine_ctx

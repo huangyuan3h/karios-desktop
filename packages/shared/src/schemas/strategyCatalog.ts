@@ -21,6 +21,7 @@ export const StrategyCatalogStatusSchema = z.enum([
   'live',
   'product_candidate',
   'product_candidate_increment',
+  'parallel_candidate',
   'aggressive_unaudited',
   'rejected',
 ]);
@@ -32,8 +33,8 @@ export const StrategyCatalogEntrySchema = z.object({
   structure: z.string(),
   status: StrategyCatalogStatusSchema,
   statusLabel: z.string(),
-  /** Timeline API strategy when one exists; null for retired strategies. */
-  timelineStrategy: z.enum(['harbor', 'homeport', 'starport', 'starship']).nullable(),
+  /** Timeline API strategy when one exists; null only for legacy rows. */
+  timelineStrategy: z.enum(['harbor', 'homeport', 'starport', 'starship', 'twin_star']).nullable(),
   doc: z.string(),
   tag: z.string(),
   updated: z.string(),

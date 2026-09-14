@@ -37,7 +37,9 @@ export function StrategyStatusCard({ mode }: { mode: StrategyMode }) {
               ? 'bg-red-500/10 text-red-700 dark:text-red-300'
               : entry.status === 'aggressive_unaudited'
                 ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+                : entry.status === 'parallel_candidate'
+                  ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
           )}
         >
           {entry.statusLabel}

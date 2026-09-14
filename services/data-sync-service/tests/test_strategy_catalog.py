@@ -46,5 +46,5 @@ def test_catalog_route_contract() -> None:
     assert out["ok"] is True
     assert len(out["strategies"]) == 5
     assert out["strategies"][0]["timelineStrategy"] == "harbor"
-    assert out["strategies"][4]["status"] == "rejected"
-    assert out["strategies"][4]["timelineStrategy"] is None
+    assert out["strategies"][4]["status"] == "parallel_candidate"
+    assert out["strategies"][4]["timelineStrategy"] == "twin_star"

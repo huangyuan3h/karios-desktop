@@ -28,12 +28,23 @@ describe('StrategyCatalogSchema', () => {
     expect(out.strategies[0]?.name).toBe('港湾');
   });
 
-  it('accepts a null timelineStrategy for retired strategies', () => {
+  it('accepts a null timelineStrategy for legacy rows', () => {
     const out = StrategyCatalogSchema.parse({
       ok: true,
       strategies: [{ ...entry, key: 'twin_star', status: 'rejected', timelineStrategy: null }],
     });
     expect(out.strategies[0]?.timelineStrategy).toBeNull();
+  });
+
+  it('accepts the parallel twin_star entry with its timeline', () => {
+    const out = StrategyCatalogSchema.parse({
+      ok: true,
+      strategies: [
+        { ...entry, key: 'twin_star', status: 'parallel_candidate', timelineStrategy: 'twin_star' },
+      ],
+    });
+    expect(out.strategies[0]?.timelineStrategy).toBe('twin_star');
+    expect(out.strategies[0]?.status).toBe('parallel_candidate');
   });
 
   it('rejects unknown statuses and missing windows', () => {

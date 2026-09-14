@@ -5,7 +5,12 @@ No DB, no network: synthetic rows only.
 
 from __future__ import annotations
 
-from data_sync_service.service.starport import SAT_WEIGHT, blend_starport_timeline
+from data_sync_service.service.starport import (
+    SAT_WEIGHT,
+    TWIN_STAR_WEIGHT,
+    blend_starport_timeline,
+    blend_twin_star_timeline,
+)
 
 
 def _homeport(navs: list[float]) -> dict:
@@ -66,3 +71,16 @@ class TestStarportTimeline:
         out = blend_starport_timeline(hp, _sat([(1.0, False), (1.2, False), (0.9, False)]))
         assert out["summary"]["maxDdFusedPct"] == -25.0
         assert out["summary"]["homeportPct"] == -10.0
+
+
+class TestTwinStarTimeline:
+    def test_half_weight_overlay_on_harbor_base(self) -> None:
+        hp = _homeport([1.0, 1.10])
+        out = blend_twin_star_timeline(hp, _sat([(1.0, False), (1.20, True)]))
+        expected = 1.0 * (1.0 + 0.10 + TWIN_STAR_WEIGHT * (0.20 - 0.10))
+        assert abs(out["rows"][1]["navSingle"] - round(expected, 6)) < 1e-9
+        assert out["mode"] == "twin_star" and out["strategy"] == "双子星"
+        assert out["summary"]["harborPct"] == 10.0
+
+    def test_default_weight_is_half(self) -> None:
+        assert TWIN_STAR_WEIGHT == 0.5

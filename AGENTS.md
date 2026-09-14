@@ -176,7 +176,7 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
    - Live 现状：旧 `twin_star`/择强路径仍在且有前视/账本 bug → **OPT-178**（修完前不按旧卫星指令下单）。
 2. **历史（REJECT / 已下线，不要再当实盘方案提出）**：
    - 择强单轨「全资产同权 100% argmax」被 **OPT-177** 证伪（long ≈ +0.8% / MDD −58%）；
-   - 机会双子星 / 卫星腿（14:30 名单 + C1 3% + 第 3 日 14:30 卖 + 4×12.5%）**仍 REJECT**：2026-09-14 审计 clean 重跑后死因只剩 valid 单窗（Δ−21.2；旧 boom-bust/long 数字全部作废，卫星 standalone clean long +463.6%）；两腿叠加港湾任何权重也无解（H-SAT-W）→ 只有三腿（母港×卫星）产品候选成立。见 [`twin-star-parking-refit-2026-09-13.md`](docs/backtests/stable/twin-star-parking-refit-2026-09-13.md) · [`audit-three-strategy-lookahead-2026-09-14.md`](docs/backtests/audit-three-strategy-lookahead-2026-09-14.md)。
+   - 机会双子星 / 卫星腿（14:30 名单 + C1 3% + 第 3 日 14:30 卖 + 4×12.5%）审计后死因只剩 valid 单窗（Δ−21.2；旧 boom-bust/long 数字全部作废，卫星 standalone clean long +463.6%）；两腿叠加港湾任何权重也无解（H-SAT-W）→ 只有三腿（母港×卫星）产品候选成立。**2026-09-14 用户决策：双子星保留为「并行对照档」（不退役、catalog 徽章改「并行对照」、Timeline `strategy=twin_star` 已接线），default 数据收集档 = 星港；5 套并行对比，均不进 Live。** 见 [`twin-star-parking-refit-2026-09-13.md`](docs/backtests/stable/twin-star-parking-refit-2026-09-13.md) · [`audit-three-strategy-lookahead-2026-09-14.md`](docs/backtests/audit-three-strategy-lookahead-2026-09-14.md)。
    - 旧卫星 / 14:30 / C1 各专题档（`sat-*`、`clip4-ops-decisions`、`state-bucket-algo` 等）仅作历史参考，索引见 [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)。
 3. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
 4. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。

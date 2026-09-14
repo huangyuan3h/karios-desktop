@@ -84,16 +84,16 @@ const CATALOG = {
     {
       key: 'twin_star',
       name: '双子星',
-      structure: '港湾核心 × 卫星 50/50（历史口径）',
-      status: 'rejected',
-      statusLabel: 'REJECT',
-      timelineStrategy: null,
+      structure: '港湾核心 × 卫星 50/50（并行对照档）',
+      status: 'parallel_candidate',
+      statusLabel: '并行对照',
+      timelineStrategy: 'twin_star',
       doc: 'docs/backtests/stable/twin-star-parking-refit-2026-09-13.md',
       tag: 'b12',
       updated: '2026-09-14',
       windows: WINDOWS,
       pros: ['（历史）OOS2 +149.7'],
-      cons: ['valid 挂 K1/K2 → REJECT'],
+      cons: ['valid 窗相对港湾核心 Δ−21.2（未过 K1/K2）'],
     },
   ],
 };
@@ -133,9 +133,12 @@ describe('StrategyCatalogPanel', () => {
     expect(screen.getByText('valid 窗相对母港 −4.9pt、踩线')).toBeDefined();
   });
 
-  it('shows the retired note for the rejected strategy', async () => {
+  it('shows the twin_star parallel entry with its timeline hint', async () => {
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /双子星/ }));
-    expect(await screen.findByText(/已退役，无 Timeline 曲线/)).toBeDefined();
+    expect((await screen.findAllByText(/并行对照/)).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText(/可在「对比」页将 Timeline 切到「双子星」查看逐日曲线/),
+    ).toBeDefined();
   });
 });

@@ -545,13 +545,14 @@ export type TimelineResponse = {
   rows: TimelineRow[];
 };
 
-export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship';
+export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship' | 'twin_star';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   harbor: '港湾',
   homeport: '母港',
   starport: '星港',
   starship: '星舰',
+  twin_star: '双子星',
 };
 
 export function useTimelineQuery(

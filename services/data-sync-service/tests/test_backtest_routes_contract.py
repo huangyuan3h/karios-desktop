@@ -10,11 +10,18 @@ from fastapi import HTTPException
 from data_sync_service.api import backtest_routes as br
 
 
-def test_timeline_rejects_removed_twin_strategy() -> None:
+def test_timeline_rejects_unknown_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
-        br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="twin_star")
+        br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="no_such_strategy")
     assert exc.value.status_code == 400
-    assert "harbor|homeport|starport|starship|pick_strong|state_bucket" in exc.value.detail
+    assert "harbor|homeport|starport|starship|twin_star|pick_strong|state_bucket" in exc.value.detail
+
+
+def test_timeline_accepts_twin_star(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"ok": True, "strategy": "双子星", "rows": [], "summary": {"fusedPct": 0.0}}
+    monkeypatch.setattr(br, "_get_or_build_timeline", lambda s, e, **kw: (payload, None))
+    out = br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="twin_star")
+    assert out["strategy"] == "双子星"
 
 
 def test_timeline_accepts_harbor(monkeypatch: pytest.MonkeyPatch) -> None:

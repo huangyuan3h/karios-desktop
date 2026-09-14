@@ -26,6 +26,8 @@ function statusTone(status: StrategyCatalogEntry['status']): string {
   if (status === 'live') return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
   if (status === 'rejected') return 'bg-red-500/10 text-red-700 dark:text-red-300';
   if (status === 'aggressive_unaudited') return 'bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  if (status === 'parallel_candidate')
+    return 'bg-violet-500/10 text-violet-700 dark:text-violet-300';
   return 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
 }
 

@@ -196,6 +196,7 @@ beforeEach(() => {
         strategies: [
           entry('harbor', '港湾', 'live', 'Live'),
           entry('starport', '星港', 'product_candidate_increment', '产品候选增量'),
+          entry('twin_star', '双子星', 'parallel_candidate', '并行对照'),
         ],
       };
     }
@@ -346,6 +347,8 @@ describe('BacktestPage', () => {
     expect(screen.queryByText(/资金流全景/)).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
     expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: /并行对照/ }));
+    expect(await screen.findByText(/Timeline（双子星/)).toBeDefined();
   });
 
   it('shows the harbor timeline on compare tab', async () => {

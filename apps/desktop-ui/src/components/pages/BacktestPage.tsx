@@ -686,6 +686,7 @@ function TimelineCard({
     homeport: 'S-3 核心 + 停车场 × 风险预算 50/50',
     starport: '母港 × 卫星 1/3 曝露',
     starship: '卫星 standalone（未审计）',
+    twin_star: '港湾核心 × 卫星 50/50',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
     harbor:
@@ -696,6 +697,8 @@ function TimelineCard({
       '星港 = 母港 × 卫星 1/3 曝露（有仓日 core + w×(sat−core)）· 展示口径 · H-B3-SAT PASS（K1 余量薄，稳健 0.15–0.25）· 不进 Live',
     starship:
       '星舰 = 卫星 standalone 100%（amp_1430 + gate_1430 + 14:30 买卖）· 研究展示 · 未过执行审计，不进 Live',
+    twin_star:
+      '双子星 = 港湾 × 卫星 50/50（无仓日 100% 港湾）· 并行对照档（保留不退役）· valid 窗弱于港湾（K1/K2 未过）· 不进 Live',
   };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
@@ -786,6 +789,9 @@ function TimelineCard({
           {strategy === 'homeport' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
             : ''}
+          {strategy === 'twin_star' && summary?.harborPct != null
+            ? ` · 港湾 ${summary.harborPct}%`
+            : ''}
           {strategy === 'starport' && summary?.homeportPct != null
             ? ` · 母港 ${summary.homeportPct}%`
             : ''}
@@ -810,7 +816,7 @@ function TimelineCard({
           </button>
         ))}
         <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
-        {(['harbor', 'homeport', 'starport', 'starship'] as const).map((s) => (
+        {(['harbor', 'homeport', 'starport', 'starship', 'twin_star'] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -1401,17 +1407,11 @@ export function BacktestPage() {
         </TabsList>
         <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
           <StrategyCatalogPanel selectedKey={catalogKey} onSelect={setCatalogKey} />
-          {catalogKey === 'twin_star' ? (
-            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-muted)]">
-              双子星已退役，无 Timeline 曲线；曲线数据见上方「优 / 劣」与真值档。
-            </div>
-          ) : (
-            <TimelineCard
-              strategy={catalogKey}
-              onStrategyChange={setCatalogKey}
-              showFundFlow={false}
-            />
-          )}
+          <TimelineCard
+            strategy={catalogKey}
+            onStrategyChange={setCatalogKey}
+            showFundFlow={false}
+          />
         </TabsContent>
         <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
           <CoreAuditCard q={coreQ} />
