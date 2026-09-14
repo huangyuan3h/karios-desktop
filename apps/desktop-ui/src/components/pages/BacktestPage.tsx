@@ -36,6 +36,8 @@ import {
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
   type BacktestParams,
+  type TimelineBlotterRow,
+  type TimelineOpenPosition,
   type TimelineStrategy,
 } from '@/lib/queries/backtest';
 
@@ -680,6 +682,16 @@ function TimelineCard({
   const q = useTimelineQuery(start, end, strategy, true);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
+  const blotter = q.data?.blotter ?? [];
+  const openPositions = q.data?.openPositions ?? [];
+  const satelliteFills = React.useMemo(() => {
+    const byDay = new Map<string, string[]>();
+    for (const b of blotter) {
+      if (b.kind !== 'fill' || !b.exitDate) continue;
+      byDay.set(b.exitDate, [...(byDay.get(b.exitDate) ?? []), b.ts]);
+    }
+    return byDay;
+  }, [blotter]);
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
   const strategySubtitle: Record<TimelineStrategy, string> = {
     harbor: 'S-3 核心 + 闲置现金 ETF 停车场',
@@ -991,12 +1003,16 @@ function TimelineCard({
                   const single = r.navSingleReturnPct ?? r.navMultiReturnPct;
                   const exits = r.exits ?? [];
                   const holdsStock = (r.positions ?? 0) > 0;
+                  const sat = r.satPositions != null || r.pick === 'S-GAP';
+                  const satSells = sat ? (satelliteFills.get(r.date) ?? []) : [];
                   const isMixed = holdsStock && (r.idlePct ?? 0) >= 50;
-                  const badge = isMixed
-                    ? `STOCK+${r.pick ?? 'REPO'}`
-                    : holdsStock
-                      ? 'STOCK'
-                      : (r.pick ?? 'REPO');
+                  const badge = sat
+                    ? '卫星S-GAP'
+                    : isMixed
+                      ? `STOCK+${r.pick ?? 'REPO'}`
+                      : holdsStock
+                        ? 'STOCK'
+                        : (r.pick ?? 'REPO');
                   const pickSym =
                     r.pickTs?.split('.')[0] ??
                     (r.pick === 'GOLD'
@@ -1018,17 +1034,25 @@ function TimelineCard({
                         <span
                           className={cn(
                             'rounded px-1 py-px text-[10px] text-white',
-                            blockColor(
-                              isMixed ? 'MIXED' : holdsStock ? 'STOCK' : 'PARK',
-                              r.pick ?? 'REPO',
-                            ),
+                            sat
+                              ? 'bg-violet-500'
+                              : blockColor(
+                                  isMixed ? 'MIXED' : holdsStock ? 'STOCK' : 'PARK',
+                                  r.pick ?? 'REPO',
+                                ),
                           )}
                         >
                           {badge}
                         </span>
                       </td>
                       <td className="py-1 pr-2 text-[var(--k-muted)]">
-                        {holdsStock ? (
+                        {sat ? (
+                          <>
+                            卫星 {r.satPositions ?? 0}仓
+                            {r.idleSlots ? ` · 空${r.idleSlots}槽` : ''}
+                            {r.gateOpen === false ? ' · 闸关' : ''}
+                          </>
+                        ) : holdsStock ? (
                           <>
                             {r.stockMarket ?? ''} {r.positions}票
                             <span className="text-[10px]"> 闲{r.idlePct}%</span>
@@ -1039,24 +1063,32 @@ function TimelineCard({
                       </td>
                       <td
                         className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]"
-                        title={syms}
+                        title={sat ? satSells.join(' ') : syms}
                       >
-                        {syms}
+                        {sat
+                          ? `成交 ${r.filledToday ?? 0}${satSells.length ? ` · 卖 ${satSells.join(' ')}` : ''}`
+                          : syms}
                       </td>
                       <td
                         className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300"
-                        title={exits.join(' ')}
+                        title={sat ? satSells.join(' ') : exits.join(' ')}
                       >
-                        {exits.length ? exits.join(' ') : '—'}
+                        {sat
+                          ? satSells.length
+                            ? satSells.join(' ')
+                            : '—'
+                          : exits.length
+                            ? exits.join(' ')
+                            : '—'}
                       </td>
                       <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct ?? 0))}>
-                        {(r.navBaseReturnPct ?? 0).toFixed(2)}%
+                        {sat ? '—' : `${(r.navBaseReturnPct ?? 0).toFixed(2)}%`}
                       </td>
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>
                         {single.toFixed(2)}%
                       </td>
                       <td className={cn('py-1 pr-2', tone(single - (r.navBaseReturnPct ?? 0)))}>
-                        {(single - (r.navBaseReturnPct ?? 0)).toFixed(2)}%
+                        {sat ? '—' : `${(single - (r.navBaseReturnPct ?? 0)).toFixed(2)}%`}
                       </td>
                     </tr>
                   );
@@ -1077,6 +1109,13 @@ function TimelineCard({
               {showAll ? '收起只看30日' : `加载全部 ${rows.length} 天`}
             </button>
           </div>
+          {openPositions.length > 0 || blotter.length > 0 ? (
+            <SatelliteLegDetail
+              blotter={blotter}
+              openPositions={openPositions}
+              showAll={showAll}
+            />
+          ) : null}
         </div>
       )}
     </div>
@@ -2057,6 +2096,145 @@ export function BacktestPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+const CLOSE_REASON_LABEL: Record<string, string> = {
+  body_exit: '3 日到期',
+  open: '持有中',
+  skip_t1_limit: 'T+1 涨停跳过',
+  skip_1430_run: '14:30 涨停跳过',
+  stop_loss: '止损',
+  trail_exit: '回撤出场',
+};
+
+const BLOTTER_KIND: Record<string, { label: string; cls: string }> = {
+  open: { label: '买入', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
+  fill: { label: '卖出', cls: 'bg-red-500/10 text-red-700 dark:text-red-300' },
+  skip_t1: { label: 'T+1 跳过', cls: 'bg-[var(--k-border)] text-[var(--k-muted)]' },
+  skip_c1: { label: '14:30 跳过', cls: 'bg-[var(--k-border)] text-[var(--k-muted)]' },
+};
+
+/** Satellite-leg detail: current legs + buy/sell blotter (starport/starship). */
+function SatelliteLegDetail({
+  blotter,
+  openPositions,
+  showAll,
+}: {
+  blotter: TimelineBlotterRow[];
+  openPositions: TimelineOpenPosition[];
+  showAll: boolean;
+}) {
+  const opens = blotter.filter((b) => b.kind === 'open');
+  const fills = blotter.filter((b) => b.kind === 'fill');
+  const skipT1 = blotter.filter((b) => b.kind === 'skip_t1').length;
+  const skipC1 = blotter.filter((b) => b.kind === 'skip_c1').length;
+  const flow = [...opens, ...fills].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const visible = showAll ? flow : flow.slice(-30);
+  const pct = (v: number | null | undefined) =>
+    v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+
+  return (
+    <div className="rounded border border-violet-500/30 bg-violet-500/5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-violet-500/20 px-2 py-1.5 text-[11px] font-medium">
+        卫星腿明细
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          14:30 名单 · amp_1430 排名 · 3 日持有 · 4×25% 槽
+        </span>
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          当前持仓 {openPositions.length} · 买 {opens.length} / 卖 {fills.length} · 跳过{' '}
+          {skipT1 + skipC1}
+        </span>
+      </div>
+      {openPositions.length > 0 ? (
+        <div className="px-2 pt-1.5">
+          <div className="mb-1 text-[10px] font-medium text-[var(--k-muted)]">当前持仓</div>
+          <table className="w-full text-left text-[11px] tabular-nums">
+            <thead>
+              <tr className="text-[10px] text-[var(--k-muted)]">
+                <th className="py-0.5 pr-2">代码</th>
+                <th className="py-0.5 pr-2">入场日</th>
+                <th className="py-0.5 pr-2">入场价</th>
+                <th className="py-0.5 pr-2">现价</th>
+                <th className="py-0.5 pr-2">已持</th>
+                <th className="py-0.5 pr-2">到期</th>
+                <th className="py-0.5 pr-2">盈亏%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openPositions.map((p) => (
+                <tr key={`${p.ts}-${p.entryDate}`} className="border-t border-violet-500/10">
+                  <td className="py-0.5 pr-2 font-mono">{p.ts}</td>
+                  <td className="py-0.5 pr-2">{p.entryDate}</td>
+                  <td className="py-0.5 pr-2">{p.entryPrice}</td>
+                  <td className="py-0.5 pr-2">{p.close ?? '—'}</td>
+                  <td className="py-0.5 pr-2">
+                    {p.heldDays ?? '—'}d
+                    {p.daysLeft != null ? `（余 ${p.daysLeft}）` : ''}
+                  </td>
+                  <td className="py-0.5 pr-2">{p.exitDue ?? '—'}</td>
+                  <td className={cn('py-0.5 pr-2 font-semibold', tone(p.pnlPct ?? null))}>
+                    {pct(p.pnlPct)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <div className="max-h-[260px] overflow-auto px-2 py-1.5">
+        <div className="mb-1 text-[10px] font-medium text-[var(--k-muted)]">
+          成交流水（{showAll ? `全部 ${flow.length}` : `近 ${visible.length}`}）
+        </div>
+        <table className="w-full text-left text-[11px] tabular-nums">
+          <thead className="sticky top-0 bg-[var(--k-surface)]">
+            <tr className="text-[10px] text-[var(--k-muted)]">
+              <th className="py-0.5 pr-2">日期</th>
+              <th className="py-0.5 pr-2">类型</th>
+              <th className="py-0.5 pr-2">代码</th>
+              <th className="py-0.5 pr-2">amp%</th>
+              <th className="py-0.5 pr-2">排名</th>
+              <th className="py-0.5 pr-2">入场→出场</th>
+              <th className="py-0.5 pr-2">盈亏%</th>
+              <th className="py-0.5 pr-2">贡献%</th>
+              <th className="py-0.5 pr-2">原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((b, i) => {
+              const meta = BLOTTER_KIND[b.kind] ?? {
+                label: b.kind,
+                cls: 'bg-[var(--k-border)] text-[var(--k-muted)]',
+              };
+              return (
+                <tr key={`${b.kind}-${b.date}-${b.ts}-${i}`} className="border-t border-violet-500/10">
+                  <td className="py-0.5 pr-2 font-mono">{b.date}</td>
+                  <td className="py-0.5 pr-2">
+                    <span className={cn('rounded px-1 py-px text-[10px]', meta.cls)}>
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td className="py-0.5 pr-2 font-mono">{b.ts}</td>
+                  <td className="py-0.5 pr-2">{b.amp != null ? b.amp.toFixed(1) : '—'}</td>
+                  <td className="py-0.5 pr-2">{b.ampRank ?? '—'}</td>
+                  <td className="py-0.5 pr-2">
+                    {b.entryDate ?? '—'}
+                    {b.exitDate ? ` → ${b.exitDate}` : ''}
+                  </td>
+                  <td className={cn('py-0.5 pr-2', tone(b.pnlPct ?? null))}>{pct(b.pnlPct)}</td>
+                  <td className={cn('py-0.5 pr-2', tone(b.contribPct ?? null))}>
+                    {pct(b.contribPct)}
+                  </td>
+                  <td className="py-0.5 pr-2 text-[10px] text-[var(--k-muted)]">
+                    {CLOSE_REASON_LABEL[b.closeReason ?? ''] ?? b.closeReason ?? '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

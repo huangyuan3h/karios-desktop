@@ -293,12 +293,75 @@ beforeEach(() => {
             exits: [],
           },
         ];
+      const satRows = rows.map((r, i) => ({
+        ...r,
+        navBaseReturnPct: undefined,
+        pick: 'S-GAP',
+        pickTs: '',
+        satNav: r.navSingle,
+        satNavReturnPct: r.navSingleReturnPct,
+        satActive: true,
+        satPositions: i % 2 === 0 ? 4 : 2,
+        satSlots: 4,
+        filledToday: i % 2 === 0 ? 2 : 0,
+        idleSlots: i % 2 === 0 ? 0 : 2,
+        gateOpen: true,
+      }));
       return {
         ok: true,
-        strategy: 'harbor',
+        strategy: satelliteOnly ? 'starship' : 'harbor',
         mode: 'mom_compare',
         summary: { fusedPct: 12.5, basePct: 3.2, maxDdFusedPct: 9.4 },
-        rows: satelliteOnly ? rows.map((r) => ({ ...r, navBaseReturnPct: undefined })) : rows,
+        rows: satelliteOnly ? satRows : rows,
+        ...(satelliteOnly
+          ? {
+              openPositions: [
+                {
+                  ts: '300906.SZ',
+                  entryDate: '2026-08-01',
+                  entryPrice: 28.12,
+                  close: 28.51,
+                  heldDays: 2,
+                  daysLeft: 1,
+                  exitDue: '2026-08-04',
+                  pnlPct: 1.39,
+                },
+              ],
+              blotter: [
+                {
+                  kind: 'open',
+                  date: '2026-08-01',
+                  ts: '300906.SZ',
+                  amp: 13.8,
+                  ampRank: 5,
+                  entryDate: '2026-08-01',
+                  pnlPct: 1.39,
+                  contribPct: 0.35,
+                  closeReason: 'open',
+                },
+                {
+                  kind: 'fill',
+                  date: '2026-08-04',
+                  ts: '688155.SH',
+                  amp: 2.8,
+                  ampRank: 6,
+                  entryDate: '2026-08-01',
+                  exitDate: '2026-08-04',
+                  pnlPct: 3.44,
+                  contribPct: 0.86,
+                  closeReason: 'body_exit',
+                },
+                {
+                  kind: 'skip_t1',
+                  date: '2026-08-04',
+                  ts: '000593.SZ',
+                  amp: 0,
+                  ampRank: 1,
+                  closeReason: 'skip_t1_limit',
+                },
+              ],
+            }
+          : {}),
       };
     }
     if (String(path).includes('/api/backtest/return-attribution')) {
@@ -361,6 +424,16 @@ describe('BacktestPage', () => {
     fireEvent.mouseMove(bar, { clientX: 0 });
     const tip = await screen.findByTestId('harbor-day-tip');
     expect(tip.textContent).toContain('基线 —');
+  });
+
+  it('shows satellite leg details (positions + blotter) for 星舰', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    expect(await screen.findByText('卫星腿明细')).toBeDefined();
+    expect((await screen.findAllByText('300906.SZ')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('3 日到期')).toBeDefined();
+    expect((await screen.findAllByText('688155.SH')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('当前持仓 1 · 买 1 / 卖 1 · 跳过 1')).toBeDefined();
   });
 
   it('shows the harbor timeline on compare tab', async () => {

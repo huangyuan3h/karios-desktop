@@ -534,6 +534,35 @@ export type TimelineSummary = {
   activeDays?: number;
 };
 
+export type TimelineBlotterRow = {
+  kind: string;
+  date: string;
+  ts: string;
+  amp?: number | null;
+  ampRank?: number | null;
+  skipT1?: boolean | null;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  exitDue?: string | null;
+  pnlPct?: number | null;
+  contribPct?: number | null;
+  closeReason?: string | null;
+  heldDays?: number | null;
+  entryPxSrc?: string | null;
+  exitPxSrc?: string | null;
+};
+
+export type TimelineOpenPosition = {
+  ts: string;
+  entryDate: string;
+  entryPrice: number;
+  close?: number | null;
+  heldDays?: number | null;
+  daysLeft?: number | null;
+  exitDue?: string | null;
+  pnlPct?: number | null;
+};
+
 export type TimelineResponse = {
   ok: boolean;
   start: string;
@@ -544,6 +573,10 @@ export type TimelineResponse = {
   trailPct?: number;
   summary?: TimelineSummary;
   rows: TimelineRow[];
+  /** Satellite strategies (星舰 standalone / state_bucket): fills & skips. */
+  blotter?: TimelineBlotterRow[];
+  /** Satellite strategies: open legs as of the window end. */
+  openPositions?: TimelineOpenPosition[];
 };
 
 export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship' | 'twin_star';
