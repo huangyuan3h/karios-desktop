@@ -1,0 +1,156 @@
+{
+  "tag": "sat-execution-audit-2026-09-14",
+  "window": {
+    "start": "2021-08-01",
+    "end": "2026-08-07"
+  },
+  "fills": 1040,
+  "baseline30bps": {
+    "n_days": 1216,
+    "total_pct": 463.6,
+    "cagr": 43.14,
+    "max_dd": -8.4,
+    "sharpe": 3.5
+  },
+  "costSensitivity": [
+    {
+      "bps": 30,
+      "n_days": 1216,
+      "total_pct": 463.6,
+      "cagr": 43.14,
+      "max_dd": -8.4,
+      "sharpe": 3.5
+    },
+    {
+      "bps": 45,
+      "n_days": 1216,
+      "total_pct": 425.2,
+      "cagr": 41.06,
+      "max_dd": -10.7,
+      "sharpe": 3.25
+    },
+    {
+      "bps": 60,
+      "n_days": 1216,
+      "total_pct": 386.9,
+      "cagr": 38.86,
+      "max_dd": -13.4,
+      "sharpe": 3.0
+    },
+    {
+      "bps": 90,
+      "n_days": 1216,
+      "total_pct": 310.3,
+      "cagr": 34.02,
+      "max_dd": -19.8,
+      "sharpe": 2.45
+    }
+  ],
+  "entryScreen": {
+    "fillsChecked": 1040,
+    "premiumPct": {
+      "median": 4.88,
+      "p90": 5.13,
+      "max": 19.36
+    },
+    "nearLimit2pct": 4,
+    "sealed0p5pct": 0,
+    "flatProxyAmp0": 536,
+    "sampledBarsLe1430": {
+      "median": 4,
+      "zero": 0
+    },
+    "rangeBad": 0,
+    "nearLimitExamples": [
+      {
+        "date": "2022-08-22",
+        "ts": "605507.SH",
+        "premiumPct": 8.93
+      },
+      {
+        "date": "2024-02-28",
+        "ts": "300239.SZ",
+        "premiumPct": 19.36
+      },
+      {
+        "date": "2024-02-28",
+        "ts": "002673.SZ",
+        "premiumPct": 8.56
+      },
+      {
+        "date": "2024-03-07",
+        "ts": "603717.SH",
+        "premiumPct": 8.4
+      }
+    ],
+    "sealedExamples": [],
+    "flatProxyExamples": [
+      {
+        "date": "2021-08-09",
+        "ts": "000707.SZ",
+        "premiumPct": 5.06
+      },
+      {
+        "date": "2021-08-11",
+        "ts": "000571.SZ",
+        "premiumPct": 5.15
+      },
+      {
+        "date": "2021-08-11",
+        "ts": "300795.SZ",
+        "premiumPct": -1.21
+      },
+      {
+        "date": "2021-08-11",
+        "ts": "603032.SH",
+        "premiumPct": 5.0
+      },
+      {
+        "date": "2021-08-13",
+        "ts": "000980.SZ",
+        "premiumPct": 4.97
+      }
+    ]
+  },
+  "capacity": {
+    "entriesWithAmount": 1040,
+    "advYi": {
+      "p10": 0.046,
+      "median": 0.76,
+      "p90": 5.611
+    },
+    "participationSlotPct": {
+      "100万": {
+        "median": 0.329,
+        "p90adv": 0.045
+      },
+      "500万": {
+        "median": 1.645,
+        "p90adv": 0.223
+      },
+      "2000万": {
+        "median": 6.581,
+        "p90adv": 0.891
+      }
+    }
+  },
+  "recipe": {
+    "skip_t1_limit": true,
+    "pool_mode": "strict",
+    "max_pos": 4,
+    "position_pct": 0.25,
+    "body": 3,
+    "fill_mode": "same_1430",
+    "fill_hhmm": "1430",
+    "exit_hhmm": "1430",
+    "max_open_to_1430_pct": 0.03,
+    "rank_key": "amp_1430",
+    "gate_1430": true
+  },
+  "roundTripCostSource": "paper_cost_model.round_trip_cost_pct('CN')",
+  "priorAudits": [
+    "OPT-182/183: amp_1430 rank / same_1430 fills / gate_1430 / raw basis / calendar",
+    "fills 1036/1036 within daily [low, high] (2026-09-14 audit)"
+  ],
+  "asOf": "2026-09-14T11:46:03+00:00"
+}
