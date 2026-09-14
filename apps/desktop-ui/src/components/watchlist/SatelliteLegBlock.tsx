@@ -9,7 +9,7 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
     return (
       <div
         data-testid="satellite-leg-block"
-        className="mt-2 rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]"
+        className="rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]"
       >
         卫星腿：最近交易日状态不可用
       </div>
@@ -26,10 +26,10 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
   return (
     <div
       data-testid="satellite-leg-block"
-      className="mt-2 rounded-md border border-violet-500/30 bg-violet-500/5 px-2.5 py-1.5 text-[10px]"
+      className="rounded-md border border-violet-500/30 bg-violet-500/5 px-2.5 py-1.5 text-[10px]"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">卫星腿</span>
+        <span className="font-semibold">卫星腿</span>
         <span
           className={cn(
             'rounded px-1.5 py-0.5',

@@ -47,6 +47,13 @@ export function MultiAssetHealthBlock({
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
+        <span className="h-3 w-[3px] rounded-full bg-sky-500" />
+        停车体检
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          闲置现金 ETF 停车场
+        </span>
+      </div>
+      <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
           港湾
         </span>

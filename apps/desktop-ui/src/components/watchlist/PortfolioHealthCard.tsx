@@ -136,6 +136,13 @@ function PickStrongOpsPanel({
 
   return (
     <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/5 px-3 py-2.5">
+      <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold">
+        <span className="h-3 w-[3px] rounded-full bg-emerald-500" />
+        操作引导
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          港湾核心 · 目标 100% 硬切
+        </span>
+      </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="rounded bg-emerald-600/15 px-1.5 py-0.5 font-semibold text-emerald-800 dark:text-emerald-200">
           今日 pick · {pickKey}
@@ -603,7 +610,7 @@ function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
         >
           {hasGap ? '🔴' : '✓'}
         </span>
-        <span className="font-medium">核心腿对账 · {recon.day}</span>
+        <span className="font-semibold">核心腿对账 · {recon.day}</span>
         <span className="tabular-nums text-[var(--k-muted)]">
           {recon.decisionAvailable
             ? `应做 ${recon.label ?? recon.action ?? '—'}`
@@ -1108,12 +1115,9 @@ export function PortfolioHealthCard({
         </div>
       )}
 
-      {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
-      {mode === 'starport' || mode === 'starship' || mode === 'twin_star' ? (
-        <SatelliteLegBlock row={satLast} />
-      ) : null}
-      {coreView ? (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
+        {coreView ? (
+          <>
         {sleeve ? (
           <PickStrongOpsPanel
             sleeve={sleeve}
@@ -1186,8 +1190,13 @@ export function PortfolioHealthCard({
             </div>
           ) : null}
         </div>
+          </>
+        ) : null}
+        {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
+        {mode === 'starport' || mode === 'starship' || mode === 'twin_star' ? (
+          <SatelliteLegBlock row={satLast} />
+        ) : null}
       </div>
-      ) : null}
 
       {reminderTarget && (
         <BuyReminderDialog

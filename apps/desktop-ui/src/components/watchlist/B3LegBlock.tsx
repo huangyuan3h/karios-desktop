@@ -12,7 +12,7 @@ export function B3LegBlock() {
     return (
       <div
         data-testid="b3-leg-block"
-        className="mt-2 rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]"
+        className="rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]"
       >
         B3 腿：{state.error ?? '状态不可用'}
       </div>
@@ -21,10 +21,10 @@ export function B3LegBlock() {
   return (
     <div
       data-testid="b3-leg-block"
-      className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-bg)]/40 px-2.5 py-1.5 text-[10px]"
+      className="rounded-md border border-[var(--k-border)] bg-[var(--k-bg)]/40 px-2.5 py-1.5 text-[10px]"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">B3 月再平衡</span>
+        <span className="font-semibold">B3 月再平衡</span>
         <span className="text-[var(--k-muted)]">
           本月基准 {state.rebalanceDate} · 截至 {state.asOf}
         </span>
