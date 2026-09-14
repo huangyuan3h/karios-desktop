@@ -14,10 +14,10 @@
         "sharpe": 1.95
       },
       "m50_base": {
-        "total": 39.5,
-        "cagr": 41.42,
+        "total": 36.5,
+        "cagr": 38.28,
         "mdd": -9.0,
-        "sharpe": 1.99
+        "sharpe": 1.9
       },
       "b3_cap50": {
         "total": 20.7,
@@ -26,10 +26,10 @@
         "sharpe": 2.04
       },
       "m50_cap50": {
-        "total": 40.6,
-        "cagr": 42.6,
+        "total": 37.6,
+        "cagr": 39.44,
         "mdd": -9.0,
-        "sharpe": 2.01
+        "sharpe": 1.93
       },
       "b3_cap60": {
         "total": 19.5,
@@ -38,48 +38,48 @@
         "sharpe": 2.01
       },
       "m50_cap60": {
-        "total": 39.9,
-        "cagr": 41.88,
+        "total": 36.9,
+        "cagr": 38.72,
         "mdd": -9.0,
-        "sharpe": 2.0
+        "sharpe": 1.92
       }
     },
     "train": {
       "b3_base": {
         "total": 16.8,
-        "cagr": 37.79,
-        "mdd": -1.7,
-        "sharpe": 4.36
+        "cagr": 37.78,
+        "mdd": -2.2,
+        "sharpe": 4.27
       },
       "m50_base": {
-        "total": 31.5,
-        "cagr": 76.17,
-        "mdd": -5.2,
-        "sharpe": 3.32
+        "total": 35.0,
+        "cagr": 85.87,
+        "mdd": -5.0,
+        "sharpe": 3.52
       },
       "b3_cap50": {
-        "total": 18.7,
-        "cagr": 42.41,
-        "mdd": -3.2,
-        "sharpe": 4.11
+        "total": 18.9,
+        "cagr": 42.88,
+        "mdd": -3.1,
+        "sharpe": 4.19
       },
       "m50_cap50": {
-        "total": 32.5,
-        "cagr": 78.87,
-        "mdd": -5.4,
-        "sharpe": 3.29
+        "total": 36.1,
+        "cagr": 88.99,
+        "mdd": -5.2,
+        "sharpe": 3.51
       },
       "b3_cap60": {
-        "total": 17.9,
-        "cagr": 40.41,
-        "mdd": -2.8,
-        "sharpe": 4.21
+        "total": 18.0,
+        "cagr": 40.78,
+        "mdd": -2.6,
+        "sharpe": 4.27
       },
       "m50_cap60": {
-        "total": 32.1,
-        "cagr": 77.71,
-        "mdd": -5.3,
-        "sharpe": 3.3
+        "total": 35.6,
+        "cagr": 87.72,
+        "mdd": -5.1,
+        "sharpe": 3.51
       }
     },
     "valid": {
@@ -128,10 +128,10 @@
         "sharpe": 1.76
       },
       "m50_base": {
-        "total": 122.5,
-        "cagr": 18.04,
-        "mdd": -12.2,
-        "sharpe": 1.23
+        "total": 116.3,
+        "cagr": 17.36,
+        "mdd": -11.6,
+        "sharpe": 1.18
       },
       "b3_cap50": {
         "total": 56.3,
@@ -140,10 +140,10 @@
         "sharpe": 1.41
       },
       "m50_cap50": {
-        "total": 129.6,
-        "cagr": 18.81,
-        "mdd": -12.6,
-        "sharpe": 1.23
+        "total": 123.2,
+        "cagr": 18.12,
+        "mdd": -12.3,
+        "sharpe": 1.18
       },
       "b3_cap60": {
         "total": 49.7,
@@ -152,31 +152,31 @@
         "sharpe": 1.55
       },
       "m50_cap60": {
-        "total": 124.9,
-        "cagr": 18.31,
-        "mdd": -12.3,
-        "sharpe": 1.22
+        "total": 118.7,
+        "cagr": 17.62,
+        "mdd": -12.0,
+        "sharpe": 1.17
       }
     }
   },
   "stress": {
     "base": {
-      "total": 11.4,
-      "cagr": 6.05,
+      "total": 6.3,
+      "cagr": 3.51,
       "mdd": -8.3,
-      "sharpe": 0.62
+      "sharpe": 0.39
     },
     "cap50": {
-      "total": 10.3,
-      "cagr": 5.5,
+      "total": 5.3,
+      "cagr": 2.98,
       "mdd": -9.0,
-      "sharpe": 0.55
+      "sharpe": 0.33
     },
     "cap60": {
-      "total": 10.8,
-      "cagr": 5.78,
+      "total": 5.8,
+      "cagr": 3.25,
       "mdd": -8.7,
-      "sharpe": 0.59
+      "sharpe": 0.36
     }
   },
   "verdicts": {
@@ -185,10 +185,10 @@
       "mix": true,
       "stress": true,
       "stress_row": {
-        "total": 10.3,
-        "cagr": 5.5,
+        "total": 5.3,
+        "cagr": 2.98,
         "mdd": -9.0,
-        "sharpe": 0.55
+        "sharpe": 0.33
       },
       "pass": false
     },
@@ -197,14 +197,14 @@
       "mix": false,
       "stress": true,
       "stress_row": {
-        "total": 10.8,
-        "cagr": 5.78,
+        "total": 5.8,
+        "cagr": 3.25,
         "mdd": -8.7,
-        "sharpe": 0.59
+        "sharpe": 0.36
       },
       "pass": false
     }
   },
   "chosen": null,
-  "as_of": "2026-09-13T15:15:14+00:00"
+  "as_of": "2026-09-14T05:38:38+00:00"
 }

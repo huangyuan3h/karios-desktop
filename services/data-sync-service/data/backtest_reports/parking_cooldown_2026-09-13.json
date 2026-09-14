@@ -11,96 +11,96 @@
   "results": {
     "OOS2": {
       "0": {
-        "total": 62.0,
+        "total": 55.2,
         "delta": 0.0,
         "trades": 30,
         "cooldown_days_active": 0,
-        "cagr": 65.25,
+        "cagr": 58.04,
         "mdd": -14.3,
-        "sharpe": 1.84
+        "sharpe": 1.73
       },
       "1": {
-        "total": 61.8,
-        "delta": -0.2,
+        "total": 54.9,
+        "delta": -0.3,
         "trades": 32,
         "cooldown_days_active": 3,
-        "cagr": 65.07,
+        "cagr": 57.69,
         "mdd": -14.3,
-        "sharpe": 1.84
+        "sharpe": 1.72
       },
       "2": {
-        "total": 61.5,
-        "delta": -0.4,
+        "total": 57.0,
+        "delta": 1.8,
         "trades": 32,
         "cooldown_days_active": 6,
-        "cagr": 64.78,
+        "cagr": 59.96,
         "mdd": -14.3,
-        "sharpe": 1.83
+        "sharpe": 1.78
       },
       "3": {
-        "total": 61.4,
-        "delta": -0.6,
+        "total": 56.9,
+        "delta": 1.7,
         "trades": 31,
         "cooldown_days_active": 9,
-        "cagr": 64.66,
+        "cagr": 59.85,
         "mdd": -14.3,
-        "sharpe": 1.83
+        "sharpe": 1.78
       },
       "5": {
-        "total": 61.1,
-        "delta": -0.8,
+        "total": 56.6,
+        "delta": 1.4,
         "trades": 29,
         "cooldown_days_active": 15,
-        "cagr": 64.36,
+        "cagr": 59.55,
         "mdd": -14.3,
-        "sharpe": 1.83
+        "sharpe": 1.77
       }
     },
     "train": {
       "0": {
-        "total": 45.3,
+        "total": 52.2,
         "delta": 0.0,
         "trades": 23,
         "cooldown_days_active": 0,
-        "cagr": 116.48,
-        "mdd": -8.4,
-        "sharpe": 2.76
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "1": {
-        "total": 45.3,
+        "total": 52.2,
         "delta": 0.0,
         "trades": 23,
         "cooldown_days_active": 1,
-        "cagr": 116.48,
-        "mdd": -8.4,
-        "sharpe": 2.76
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "2": {
-        "total": 45.3,
+        "total": 52.2,
         "delta": 0.0,
         "trades": 23,
         "cooldown_days_active": 2,
-        "cagr": 116.48,
-        "mdd": -8.4,
-        "sharpe": 2.76
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "3": {
-        "total": 44.9,
+        "total": 51.7,
         "delta": -0.5,
         "trades": 23,
         "cooldown_days_active": 3,
-        "cagr": 115.09,
-        "mdd": -8.4,
-        "sharpe": 2.74
+        "cagr": 136.63,
+        "mdd": -8.3,
+        "sharpe": 2.98
       },
       "5": {
-        "total": 43.6,
-        "delta": -1.7,
+        "total": 50.4,
+        "delta": -1.8,
         "trades": 21,
         "cooldown_days_active": 5,
-        "cagr": 111.22,
+        "cagr": 132.38,
         "mdd": -9.1,
-        "sharpe": 2.67
+        "sharpe": 2.92
       }
     },
     "valid": {
@@ -152,59 +152,59 @@
     },
     "long": {
       "0": {
-        "total": 219.9,
+        "total": 201.5,
         "delta": 0.0,
         "trades": 127,
         "cooldown_days_active": 0,
-        "cagr": 27.27,
-        "mdd": -23.4,
-        "sharpe": 1.05
-      },
-      "1": {
-        "total": 197.0,
-        "delta": -22.9,
-        "trades": 136,
-        "cooldown_days_active": 12,
-        "cagr": 25.33,
-        "mdd": -24.9,
+        "cagr": 25.72,
+        "mdd": -22.8,
         "sharpe": 1.0
       },
+      "1": {
+        "total": 179.8,
+        "delta": -21.7,
+        "trades": 136,
+        "cooldown_days_active": 12,
+        "cagr": 23.79,
+        "mdd": -24.4,
+        "sharpe": 0.94
+      },
       "2": {
-        "total": 219.4,
-        "delta": -0.5,
+        "total": 205.5,
+        "delta": 4.0,
         "trades": 137,
         "cooldown_days_active": 24,
-        "cagr": 27.23,
-        "mdd": -24.0,
-        "sharpe": 1.06
+        "cagr": 26.07,
+        "mdd": -23.4,
+        "sharpe": 1.02
       },
       "3": {
-        "total": 209.8,
-        "delta": -10.1,
+        "total": 196.3,
+        "delta": -5.2,
         "trades": 137,
         "cooldown_days_active": 36,
-        "cagr": 26.43,
-        "mdd": -24.0,
-        "sharpe": 1.04
+        "cagr": 25.27,
+        "mdd": -23.4,
+        "sharpe": 0.99
       },
       "5": {
-        "total": 224.9,
-        "delta": 5.0,
+        "total": 210.8,
+        "delta": 9.3,
         "trades": 130,
         "cooldown_days_active": 50,
-        "cagr": 27.69,
-        "mdd": -23.4,
-        "sharpe": 1.09
+        "cagr": 26.51,
+        "mdd": -23.6,
+        "sharpe": 1.05
       }
     }
   },
   "verdicts": {
     "1": {
       "deltas": {
-        "OOS2": -0.2,
+        "OOS2": -0.3,
         "train": 0.0,
         "valid": -7.9,
-        "long": -22.9
+        "long": -21.7
       },
       "k1": false,
       "k2": false,
@@ -217,14 +217,14 @@
     },
     "2": {
       "deltas": {
-        "OOS2": -0.4,
+        "OOS2": 1.8,
         "train": 0.0,
         "valid": -6.8,
-        "long": -0.5
+        "long": 4.0
       },
       "k1": false,
       "k2": false,
-      "k3": false,
+      "k3": true,
       "k4": false,
       "valid_mdd_delta": 2.4,
       "valid_sharpe_delta": -0.18,
@@ -233,10 +233,10 @@
     },
     "3": {
       "deltas": {
-        "OOS2": -0.6,
+        "OOS2": 1.7,
         "train": -0.5,
         "valid": -13.4,
-        "long": -10.1
+        "long": -5.2
       },
       "k1": false,
       "k2": false,
@@ -249,10 +249,10 @@
     },
     "5": {
       "deltas": {
-        "OOS2": -0.8,
-        "train": -1.7,
+        "OOS2": 1.4,
+        "train": -1.8,
         "valid": -9.5,
-        "long": 5.0
+        "long": 9.3
       },
       "k1": false,
       "k2": false,
@@ -265,5 +265,5 @@
     }
   },
   "adopted": null,
-  "as_of": "2026-09-13T14:21:11+00:00"
+  "as_of": "2026-09-14T05:41:33+00:00"
 }

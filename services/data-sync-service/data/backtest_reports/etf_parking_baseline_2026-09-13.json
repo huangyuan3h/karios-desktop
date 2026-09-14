@@ -4,86 +4,86 @@
   "results": {
     "OOS2": {
       "V0": {
-        "total": 46.5,
+        "total": 38.0,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 46.3,
-        "mdd": -15.4,
-        "sharpe": 1.27
+        "cagr": 39.8,
+        "mdd": -11.6,
+        "sharpe": 1.67
       },
       "P1": {
-        "total": 55.9,
-        "delta": 9.4,
-        "trades": 29,
-        "cagr": 55.61,
-        "mdd": -15.4,
-        "sharpe": 1.31
+        "total": 55.2,
+        "delta": 17.2,
+        "trades": 30,
+        "cagr": 58.04,
+        "mdd": -14.3,
+        "sharpe": 1.73
       },
       "R1": {
-        "total": 55.9,
-        "delta": 9.3,
-        "trades": 29,
-        "cagr": 55.59,
-        "mdd": -15.4,
-        "sharpe": 1.31
+        "total": 54.5,
+        "delta": 16.5,
+        "trades": 30,
+        "cagr": 57.29,
+        "mdd": -14.3,
+        "sharpe": 1.72
       },
       "R2": {
-        "total": 52.8,
-        "delta": 6.2,
-        "trades": 40,
-        "cagr": 52.5,
-        "mdd": -15.4,
-        "sharpe": 1.27
+        "total": 48.8,
+        "delta": 10.9,
+        "trades": 34,
+        "cagr": 51.31,
+        "mdd": -14.3,
+        "sharpe": 1.59
       },
       "R3": {
-        "total": 55.9,
-        "delta": 9.4,
-        "trades": 29,
-        "cagr": 55.61,
-        "mdd": -15.4,
-        "sharpe": 1.31
+        "total": 55.2,
+        "delta": 17.2,
+        "trades": 30,
+        "cagr": 58.04,
+        "mdd": -14.3,
+        "sharpe": 1.73
       }
     },
     "train": {
       "V0": {
-        "total": 34.4,
+        "total": 39.2,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 79.74,
+        "cagr": 97.93,
         "mdd": -9.7,
-        "sharpe": 2.27
+        "sharpe": 2.86
       },
       "P1": {
-        "total": 40.4,
-        "delta": 6.0,
-        "trades": 24,
-        "cagr": 96.12,
-        "mdd": -10.0,
-        "sharpe": 2.28
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "R1": {
-        "total": 40.5,
-        "delta": 6.1,
-        "trades": 20,
-        "cagr": 96.34,
-        "mdd": -10.0,
-        "sharpe": 2.29
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "R2": {
-        "total": 38.6,
-        "delta": 4.2,
-        "trades": 14,
-        "cagr": 91.11,
+        "total": 43.5,
+        "delta": 4.3,
+        "trades": 16,
+        "cagr": 110.89,
         "mdd": -9.5,
-        "sharpe": 2.36
+        "sharpe": 2.9
       },
       "R3": {
-        "total": 40.4,
-        "delta": 6.0,
-        "trades": 24,
-        "cagr": 96.12,
-        "mdd": -10.0,
-        "sharpe": 2.28
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       }
     },
     "valid": {
@@ -91,86 +91,86 @@
         "total": 38.7,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 110.29,
-        "mdd": -9.4,
-        "sharpe": 2.44
+        "cagr": 113.18,
+        "mdd": -6.1,
+        "sharpe": 3.27
       },
       "P1": {
-        "total": 47.8,
-        "delta": 9.1,
-        "trades": 18,
-        "cagr": 142.85,
-        "mdd": -23.1,
-        "sharpe": 1.91
+        "total": 50.3,
+        "delta": 11.6,
+        "trades": 21,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
       },
       "R1": {
-        "total": 46.4,
-        "delta": 7.6,
-        "trades": 14,
-        "cagr": 137.53,
-        "mdd": -23.1,
-        "sharpe": 1.87
+        "total": 49.0,
+        "delta": 10.2,
+        "trades": 19,
+        "cagr": 151.26,
+        "mdd": -21.8,
+        "sharpe": 2.1
       },
       "R2": {
-        "total": 47.6,
-        "delta": 8.9,
-        "trades": 19,
-        "cagr": 142.11,
-        "mdd": -20.3,
-        "sharpe": 1.92
+        "total": 48.0,
+        "delta": 9.3,
+        "trades": 21,
+        "cagr": 147.49,
+        "mdd": -20.0,
+        "sharpe": 2.09
       },
       "R3": {
-        "total": 47.8,
-        "delta": 9.1,
-        "trades": 18,
-        "cagr": 142.85,
-        "mdd": -23.1,
-        "sharpe": 1.91
+        "total": 50.3,
+        "delta": 11.6,
+        "trades": 21,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
       }
     },
     "long": {
       "V0": {
-        "total": 94.5,
+        "total": 82.7,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 14.12,
-        "mdd": -28.1,
-        "sharpe": 0.64
+        "cagr": 13.31,
+        "mdd": -32.0,
+        "sharpe": 0.72
       },
       "P1": {
-        "total": 184.5,
-        "delta": 90.0,
-        "trades": 140,
-        "cagr": 23.08,
-        "mdd": -23.6,
-        "sharpe": 0.83
+        "total": 201.5,
+        "delta": 118.8,
+        "trades": 127,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
       },
       "R1": {
-        "total": 182.8,
-        "delta": 88.3,
-        "trades": 128,
-        "cagr": 22.93,
-        "mdd": -23.3,
-        "sharpe": 0.83
+        "total": 197.5,
+        "delta": 114.8,
+        "trades": 125,
+        "cagr": 25.37,
+        "mdd": -22.8,
+        "sharpe": 0.99
       },
       "R2": {
-        "total": 115.3,
-        "delta": 20.8,
-        "trades": 165,
-        "cagr": 16.45,
-        "mdd": -29.8,
-        "sharpe": 0.66
+        "total": 119.6,
+        "delta": 37.0,
+        "trades": 145,
+        "cagr": 17.73,
+        "mdd": -35.0,
+        "sharpe": 0.77
       },
       "R3": {
-        "total": 185.6,
-        "delta": 91.1,
-        "trades": 145,
-        "cagr": 23.17,
-        "mdd": -23.6,
-        "sharpe": 0.83
+        "total": 201.5,
+        "delta": 118.8,
+        "trades": 127,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
       }
     }
   },
   "P1_pass": true,
-  "as_of": "2026-09-13T10:27:56+00:00"
+  "as_of": "2026-09-14T05:22:02+00:00"
 }

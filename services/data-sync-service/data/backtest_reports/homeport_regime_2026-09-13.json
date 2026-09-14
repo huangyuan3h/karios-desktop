@@ -4,37 +4,37 @@
   "signal": "510300.SH close(t-1) > MA200(t-1)",
   "stress": {
     "m50": {
-      "total": 11.4,
-      "cagr": 6.05,
+      "total": 6.3,
+      "cagr": 3.51,
       "mdd": -8.3,
-      "sharpe": 0.62
+      "sharpe": 0.39
     },
     "dyn": {
-      "total": 3.6,
-      "cagr": 1.73,
-      "mdd": -10.5,
-      "sharpe": 0.2
+      "total": 0.4,
+      "cagr": 0.1,
+      "mdd": -16.8,
+      "sharpe": 0.07
     }
   },
   "results": {
     "OOS2": {
       "harbor": {
-        "total": 62.0,
-        "cagr": 65.25,
+        "total": 55.2,
+        "cagr": 58.04,
         "mdd": -14.3,
-        "sharpe": 1.84
+        "sharpe": 1.73
       },
       "m50": {
-        "total": 39.5,
-        "cagr": 41.42,
+        "total": 36.5,
+        "cagr": 38.28,
         "mdd": -9.0,
-        "sharpe": 1.99
+        "sharpe": 1.9
       },
       "dyn": {
-        "total": 69.8,
-        "cagr": 73.54,
+        "total": 62.0,
+        "cagr": 65.21,
         "mdd": -11.1,
-        "sharpe": 2.09
+        "sharpe": 1.96
       },
       "switches": 3,
       "days_strong": 202,
@@ -42,22 +42,22 @@
     },
     "train": {
       "harbor": {
-        "total": 45.3,
-        "cagr": 116.48,
-        "mdd": -8.4,
-        "sharpe": 2.76
+        "total": 52.2,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "m50": {
-        "total": 31.5,
-        "cagr": 76.17,
-        "mdd": -5.2,
-        "sharpe": 3.32
+        "total": 35.0,
+        "cagr": 85.87,
+        "mdd": -5.0,
+        "sharpe": 3.52
       },
       "dyn": {
-        "total": 45.3,
-        "cagr": 116.48,
-        "mdd": -8.4,
-        "sharpe": 2.76
+        "total": 52.2,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
       },
       "switches": 1,
       "days_strong": 122,
@@ -88,22 +88,22 @@
     },
     "long": {
       "harbor": {
-        "total": 219.9,
-        "cagr": 27.27,
-        "mdd": -23.4,
-        "sharpe": 1.05
+        "total": 201.5,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
       },
       "m50": {
-        "total": 122.5,
-        "cagr": 18.04,
-        "mdd": -12.2,
-        "sharpe": 1.23
+        "total": 116.3,
+        "cagr": 17.36,
+        "mdd": -11.6,
+        "sharpe": 1.18
       },
       "dyn": {
-        "total": 190.0,
-        "cagr": 24.71,
-        "mdd": -20.6,
-        "sharpe": 1.08
+        "total": 188.8,
+        "cagr": 24.6,
+        "mdd": -20.8,
+        "sharpe": 1.06
       },
       "switches": 36,
       "days_strong": 565,
@@ -119,5 +119,5 @@
     "k6": false,
     "pass": false
   },
-  "as_of": "2026-09-13T15:18:17+00:00"
+  "as_of": "2026-09-14T05:44:20+00:00"
 }
