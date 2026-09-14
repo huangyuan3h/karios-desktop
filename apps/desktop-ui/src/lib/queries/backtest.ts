@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import type { StrategyCatalog } from '@karios/shared';
 
 import { apiGetJson } from '@/lib/api/client';
 
@@ -559,6 +560,14 @@ export function useTimelineQuery(
       }),
     staleTime: 5 * 60_000,
     enabled,
+  });
+}
+
+export function useStrategyCatalogQuery() {
+  return useQuery({
+    queryKey: ['backtest', 'strategy-catalog'],
+    queryFn: () => apiGetJson<StrategyCatalog>('/api/backtest/strategy-catalog'),
+    staleTime: 10 * 60_000,
   });
 }
 

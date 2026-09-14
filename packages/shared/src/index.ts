@@ -8,5 +8,6 @@ export * from './schemas/tvCapture';
 export * from './schemas/executionGate';
 export * from './schemas/executionJournal';
 export * from './schemas/scheduler';
+export * from './schemas/strategyCatalog';
 export * from './schemas/userTrades';
 export * from './schemas/factors';

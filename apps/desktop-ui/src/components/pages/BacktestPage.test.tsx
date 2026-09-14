@@ -313,6 +313,7 @@ beforeEach(() => {
 describe('BacktestPage', () => {
   it('shows the harbor timeline on compare tab', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
     expect(await screen.findByText('港湾NAV%')).toBeDefined();
     expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
@@ -324,6 +325,7 @@ describe('BacktestPage', () => {
 
   it('switches the timeline strategy label to 母港', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     fireEvent.click(await screen.findByRole('button', { name: '母港' }));
     expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
   });
@@ -331,11 +333,13 @@ describe('BacktestPage', () => {
   it('defaults the timeline to the configured strategy (星港)', async () => {
     window.localStorage.removeItem('karios.strategyMode.v2');
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
   });
 
   it('renders auto-segmented holding blocks and per-day hover details', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/);
     expect(await screen.findByTestId('harbor-seg-2026-08-01')).toBeDefined();
     expect(screen.getByTestId('harbor-seg-2026-08-05')).toBeDefined();
@@ -359,6 +363,7 @@ describe('BacktestPage', () => {
 
   it('switches timeline query to the OOS2 gate window', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /三窗 · OOS2/ }));
     expect(
@@ -383,6 +388,7 @@ describe('BacktestPage', () => {
 
   it('shows rolling OOS warning and recon strip', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/回测 vs Paper 对账/)).toBeDefined();
     expect(screen.getByText('缺 19 · 多 0')).toBeDefined();
     fireEvent.click(screen.getByText('回测基线'));
@@ -393,6 +399,7 @@ describe('BacktestPage', () => {
 
   it('shows the C4 paper-vs-backtest comparison with verdict banner', async () => {
     renderPage();
+    fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/C4 · paper vs 回测逐笔对照/)).toBeDefined();
     expect(await screen.findByText(/样本 <20 笔：结论待积累（C4 未定案）/)).toBeDefined();
     expect(screen.getByText('50.0%')).toBeDefined();

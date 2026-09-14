@@ -7,6 +7,7 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
+import { StrategyCatalogPanel } from '@/components/pages/StrategyCatalogPanel';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
 import { HarborNavOverlay } from '@/components/pages/HarborNavOverlay';
 import { FundFlowPanel } from '@/components/pages/FundFlowPanel';
@@ -1344,7 +1345,7 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
-  const [tab, setTab] = React.useState<'compare' | 'baseline'>('compare');
+  const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline'>('catalog');
   const attrEnd = new Date().toISOString().slice(0, 10);
   const attrStartDefault = (() => {
     const d = new Date();
@@ -1375,11 +1376,15 @@ export function BacktestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'compare' | 'baseline')}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'catalog' | 'compare' | 'baseline')}>
         <TabsList>
+          <TabsTrigger value="catalog">策略总览</TabsTrigger>
           <TabsTrigger value="compare">对比</TabsTrigger>
           <TabsTrigger value="baseline">回测基线</TabsTrigger>
         </TabsList>
+        <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
+          <StrategyCatalogPanel />
+        </TabsContent>
         <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
           <CoreAuditCard q={coreQ} />
           <ReplicaGapCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />

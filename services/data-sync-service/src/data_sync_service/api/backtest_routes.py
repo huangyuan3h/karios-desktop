@@ -483,6 +483,18 @@ def backtest_timeline(
     return result
 
 
+@router.get("/strategy-catalog")
+def backtest_strategy_catalog() -> dict[str, Any]:
+    """Frozen strategy-family catalog for the Backtest page 策略总览 tab.
+
+    Display only (2026-09-14 clean caliber, costs included); every row cites its
+    authoritative doc. Live stays 港湾.
+    """
+    from data_sync_service.service.strategy_catalog import strategy_catalog
+
+    return {"ok": True, "strategies": strategy_catalog()}
+
+
 def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
     """TIP-017 资金流全景 rows (display only, fail-open): one per trading day.
 
