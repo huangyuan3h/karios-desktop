@@ -8,8 +8,11 @@ import type { TimelineRow } from '@/lib/queries/backtest';
  */
 export type HarborSegment = {
   ident: string;
-  /** Effective portfolio state: stock core, stock+parking, or parking only. */
-  mode: 'STOCK' | 'MIXED' | 'PARK';
+  /**
+   * Effective portfolio state: stock core, stock+parking, parking only, or the
+   * satellite leg (S-GAP slot book: holdings vs idle slots).
+   */
+  mode: 'STOCK' | 'MIXED' | 'PARK' | 'SAT';
   pick: string;
   start: string;
   end: string;
@@ -28,8 +31,24 @@ export type HarborSegment = {
   /** Segment return vs the previous segment end; null for the first segment. */
   retPct: number | null;
   labels: { full: string; short: string; medium: string; tiny: string };
+  /** Satellite slot state at the segment end (SAT phases only). */
+  sat: {
+    positions: number;
+    capacity: number;
+    idleSlots: number;
+    gateOpen: boolean;
+    filledToday: number;
+  } | null;
   title: string;
 };
+
+/** Satellite slot count (mirrors `MAX_POS` in state_bucket_track.py). */
+export const SAT_CAPACITY = 4;
+
+/** True for 星舰/state_bucket rows (S-GAP slot book, no harbor core columns). */
+export function isSatelliteRow(r: TimelineRow): boolean {
+  return r.satPositions != null || r.pick === 'S-GAP';
+}
 
 const PICK_META: Record<string, { name: string; tiny: string; code: string | null }> = {
   STOCK: { name: '股票', tiny: '股', code: null },
@@ -47,6 +66,13 @@ function shortCode(ts: string | null | undefined): string | null {
 
 /** One-line "what the portfolio held that day" for tooltips. */
 export function harborHoldLine(r: TimelineRow): string {
+  if (isSatelliteRow(r)) {
+    const pos = r.satPositions ?? 0;
+    const idle = r.idleSlots ?? Math.max(0, SAT_CAPACITY - pos);
+    const gate = r.gateOpen === false ? ' · 闸关' : '';
+    const filled = r.filledToday ? ` · 成交${r.filledToday}` : '';
+    return `卫星 ${pos}/${SAT_CAPACITY}仓 · 空${idle}槽${gate}${filled}`;
+  }
   const pick = r.pick ?? 'REPO';
   const meta = PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };
   const code = shortCode(r.pickTs) ?? meta.code;
@@ -85,10 +111,31 @@ function buildLabels(
   positions: number,
   code: string | null,
   retPct: number | null,
+  sat: HarborSegment['sat'],
 ): HarborSegment['labels'] {
   const meta = PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };
   const sym = code ?? meta.code;
   const ret = retPct != null ? ` ${fmtSignedPct(retPct)}` : '';
+  if (mode === 'SAT') {
+    const pos = sat?.positions ?? 0;
+    const cap = sat?.capacity ?? SAT_CAPACITY;
+    const idle = sat?.idleSlots ?? Math.max(0, cap - pos);
+    const gate = sat?.gateOpen === false ? ' · 闸关' : '';
+    if (pos <= 0) {
+      return {
+        full: `卫星空仓 · ${days}天${ret}${gate}`,
+        short: '卫星空仓',
+        medium: '空仓',
+        tiny: '空',
+      };
+    }
+    return {
+      full: `卫星 ${pos}/${cap}仓（空${idle}槽）· ${days}天${ret}${gate}`,
+      short: `卫星 ${pos}/${cap}仓`,
+      medium: `${pos}/${cap}`,
+      tiny: `${pos}`,
+    };
+  }
   if (mode === 'PARK') {
     return {
       full: `${meta.name}${sym ? ` ${sym}` : ''} · ${days}天${ret}`,
@@ -127,19 +174,28 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
 
   const flush = () => {
     if (!current) return;
+    const satState = current.sat
+      ? current.sat.positions > 0
+        ? `卫星 ${current.sat.positions}/${current.sat.capacity}仓 · 空${current.sat.idleSlots}槽${
+            current.sat.gateOpen ? '' : ' · 闸关'
+          }`
+        : `卫星空仓（${current.sat.capacity}槽空闲）${current.sat.gateOpen ? '' : ' · 闸关'}`
+      : null;
     current.title = [
       `${current.start}~${current.end} · ${current.days}天`,
-      current.mode === 'PARK'
-        ? `${PICK_META[current.pick]?.name ?? current.pick}${current.code ? ` ${current.code}` : ''}`
-        : `股票 ${current.positions}票${counts.size ? ` · 持有(${stockHoldLine(counts)})` : ''}${
-            current.mode === 'MIXED'
-              ? ` · 闲置${current.idlePct}%停 ${PICK_META[current.pick]?.name ?? current.pick}${
-                  current.code ? ` ${current.code}` : ''
-                }`
-              : ''
-          }`,
+      current.mode === 'SAT'
+        ? satState
+        : current.mode === 'PARK'
+          ? `${PICK_META[current.pick]?.name ?? current.pick}${current.code ? ` ${current.code}` : ''}`
+          : `股票 ${current.positions}票${counts.size ? ` · 持有(${stockHoldLine(counts)})` : ''}${
+              current.mode === 'MIXED'
+                ? ` · 闲置${current.idlePct}%停 ${PICK_META[current.pick]?.name ?? current.pick}${
+                    current.code ? ` ${current.code}` : ''
+                  }`
+                : ''
+            }`,
       current.retPct != null ? `段收益 ${fmtSignedPct(current.retPct)}` : null,
-      `港湾 ${current.navPct.toFixed(2)}%`,
+      `${current.mode === 'SAT' ? '卫星' : '港湾'} ${current.navPct.toFixed(2)}%`,
       current.exits.length ? `卖出 ${current.exits.join(' ')}` : null,
     ]
       .filter(Boolean)
@@ -150,10 +206,26 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
   };
 
   for (const r of rows) {
-    const pick = r.pick ?? 'REPO';
-    const mode = segmentMode(r);
-    const code = mode === 'STOCK' ? null : (shortCode(r.pickTs) ?? PICK_META[pick]?.code ?? null);
-    const ident = mode === 'STOCK' ? 'STOCK' : `${mode}:${pick}:${code ?? ''}`;
+    const satRow = isSatelliteRow(r);
+    const pick = satRow ? 'S-GAP' : (r.pick ?? 'REPO');
+    const mode: HarborSegment['mode'] = satRow ? 'SAT' : segmentMode(r);
+    const code = satRow || mode === 'STOCK'
+      ? null
+      : (shortCode(r.pickTs) ?? PICK_META[pick]?.code ?? null);
+    const sat: HarborSegment['sat'] = satRow
+      ? {
+          positions: r.satPositions ?? 0,
+          capacity: SAT_CAPACITY,
+          idleSlots: r.idleSlots ?? Math.max(0, SAT_CAPACITY - (r.satPositions ?? 0)),
+          gateOpen: r.gateOpen !== false,
+          filledToday: r.filledToday ?? 0,
+        }
+      : null;
+    const ident = satRow
+      ? `SAT:${sat!.positions}:${sat!.gateOpen ? 'g' : 'x'}`
+      : mode === 'STOCK'
+        ? 'STOCK'
+        : `${mode}:${pick}:${code ?? ''}`;
     const nav = pickNav(r);
     if (!current || current.ident !== ident) {
       flush();
@@ -172,7 +244,8 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
         exits: [...(r.exits ?? [])],
         navPct: nav,
         retPct,
-        labels: buildLabels(mode, pick, 1, r.positions ?? 0, code, retPct),
+        sat,
+        labels: buildLabels(mode, pick, 1, r.positions ?? 0, code, retPct, sat),
         title: '',
       };
       counts = new Map();
@@ -182,6 +255,7 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
       current.positions = r.positions ?? current.positions;
       current.idlePct = r.idlePct ?? current.idlePct;
       current.navPct = nav;
+      current.sat = sat;
       current.stockSymbols = [...(r.stockSymbols ?? [])];
       if (r.exits?.length) current.exits.push(...r.exits);
       current.labels = buildLabels(
@@ -191,9 +265,10 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
         current.positions,
         code,
         current.retPct,
+        sat,
       );
     }
-    if (mode !== 'PARK') {
+    if (mode === 'STOCK' || mode === 'MIXED') {
       for (const s of r.stockSymbols ?? []) counts.set(s, (counts.get(s) ?? 0) + 1);
     }
   }

@@ -424,6 +424,19 @@ describe('BacktestPage', () => {
     fireEvent.mouseMove(bar, { clientX: 0 });
     const tip = await screen.findByTestId('harbor-day-tip');
     expect(tip.textContent).toContain('基线 —');
+    expect(tip.textContent).toContain('卫星 4/4仓 · 空0槽');
+  });
+
+  it('paints satellite timeline blocks by slot occupancy, not as gray parking', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    const held = await screen.findByTestId('harbor-seg-2026-08-01');
+    expect(held.getAttribute('style') ?? '').toContain('linear-gradient');
+    expect(held.className).not.toContain('bg-gray-300');
+    const half = screen.getByTestId('harbor-seg-2026-08-04');
+    expect(half.getAttribute('style') ?? '').toContain('50%');
+    expect(await screen.findByText(/卫星 4\/4仓 2天/)).toBeDefined();
+    expect(await screen.findByText(/卫星 2\/4仓 2天/)).toBeDefined();
   });
 
   it('shows satellite leg details (positions + blotter) for 星舰', async () => {

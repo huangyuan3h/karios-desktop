@@ -14,7 +14,14 @@ import { HarborNavOverlay } from '@/components/pages/HarborNavOverlay';
 import { FundFlowPanel } from '@/components/pages/FundFlowPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { patchUserTrade } from '@/lib/queries/userTrades';
-import { buildHarborSegments, fitSegmentLabel, harborHoldLine } from '@/lib/harbor-segments';
+import {
+  buildHarborSegments,
+  fitSegmentLabel,
+  harborHoldLine,
+  isSatelliteRow,
+  SAT_CAPACITY,
+  type HarborSegment,
+} from '@/lib/harbor-segments';
 import { cn } from '@/lib/utils';
 import { resolveTimelineWindows, roleBadge, type TimelineWindowId } from '@/lib/timeline-windows';
 import { getStrategyMode } from '@/lib/strategy-settings';
@@ -686,12 +693,12 @@ function TimelineCard({
   const openPositions = q.data?.openPositions ?? [];
   const satelliteFills = React.useMemo(() => {
     const byDay = new Map<string, string[]>();
-    for (const b of blotter) {
+    for (const b of q.data?.blotter ?? []) {
       if (b.kind !== 'fill' || !b.exitDate) continue;
       byDay.set(b.exitDate, [...(byDay.get(b.exitDate) ?? []), b.ts]);
     }
     return byDay;
-  }, [blotter]);
+  }, [q.data]);
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
   const strategySubtitle: Record<TimelineStrategy, string> = {
     harbor: 'S-3 核心 + 闲置现金 ETF 停车场',
@@ -713,11 +720,18 @@ function TimelineCard({
       '双子星 = 港湾 × 卫星 50/50（无仓日 100% 港湾）· 并行对照档（保留不退役）· valid 窗弱于港湾（K1/K2 未过）· 不进 Live',
   };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
+  const satMode = rows.some((r) => isSatelliteRow(r));
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
+  const satDist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = `SAT:${r.satPositions ?? 0}`;
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const satGateClosed = rows.filter((r) => r.gateOpen === false).length;
   const [showAll, setShowAll] = React.useState(false);
   const last = rows[rows.length - 1];
   const pickColor: Record<string, string> = {
@@ -738,6 +752,8 @@ function TimelineCard({
   };
   const blockColor = (mode: string, pick: string): string =>
     mode === 'STOCK' || mode === 'MIXED' ? 'bg-red-500' : (pickColor[pick] ?? 'bg-gray-300');
+  const SAT_HATCH =
+    'repeating-linear-gradient(135deg, rgba(24,24,27,0.32) 0 3px, transparent 3px 6px)';
   const blockStyle = (mode: string): React.CSSProperties =>
     mode === 'MIXED'
       ? {
@@ -745,6 +761,16 @@ function TimelineCard({
             'repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,0.32) 4px 8px)',
         }
       : {};
+  const satColor = (seg: HarborSegment): string =>
+    (seg.sat?.positions ?? 0) > 0 ? '' : 'bg-zinc-300 dark:bg-zinc-700';
+  const satStyle = (seg: HarborSegment): React.CSSProperties => {
+    const sat = seg.sat;
+    if (!sat) return {};
+    if (sat.positions <= 0) return sat.gateOpen ? {} : { backgroundImage: SAT_HATCH };
+    const held = Math.round((sat.positions / Math.max(1, sat.capacity)) * 100);
+    const fill = `linear-gradient(to right, #8b5cf6 0 ${held}%, rgba(139,92,246,0.22) ${held}% 100%)`;
+    return { backgroundImage: sat.gateOpen ? fill : `${SAT_HATCH}, ${fill}` };
+  };
   const segments = React.useMemo(() => buildHarborSegments(rows), [rows]);
   const barRef = React.useRef<HTMLDivElement | null>(null);
   const [barWidth, setBarWidth] = React.useState(0);
@@ -800,7 +826,9 @@ function TimelineCard({
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last
-            ? ` · ${strategyLabel} ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct ?? '—'}%`
+            ? ` · ${strategyLabel} ${harborLast ?? '—'}%${
+                last.navBaseReturnPct != null ? ` · 基线 ${last.navBaseReturnPct}%` : ''
+              }`
             : ''}
           {strategy === 'homeport' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
@@ -882,13 +910,19 @@ function TimelineCard({
                 {segments.map((seg) => {
                   const width = pxPerDay * seg.days;
                   const text = fitSegmentLabel(seg.labels, width);
+                  const sat = seg.mode === 'SAT';
                   return (
                     <div
                       key={`harbor-${seg.start}-${seg.ident}`}
-                      style={{ flexGrow: seg.days, flexBasis: 0, ...blockStyle(seg.mode) }}
+                      style={{
+                        flexGrow: seg.days,
+                        flexBasis: 0,
+                        ...blockStyle(seg.mode),
+                        ...(sat ? satStyle(seg) : {}),
+                      }}
                       className={cn(
                         'flex min-w-0 items-center justify-center overflow-hidden',
-                        blockColor(seg.mode, seg.pick),
+                        sat ? satColor(seg) : blockColor(seg.mode, seg.pick),
                       )}
                       data-testid={`harbor-seg-${seg.start}`}
                     >
@@ -896,9 +930,13 @@ function TimelineCard({
                         <span
                           className={cn(
                             'truncate px-0.5 text-[9px] font-medium leading-5',
-                            seg.mode === 'STOCK' || seg.mode === 'MIXED'
-                              ? 'text-white'
-                              : (blockText[seg.pick] ?? 'text-white'),
+                            sat
+                              ? (seg.sat?.positions ?? 0) > 0
+                                ? 'text-white'
+                                : 'text-zinc-600 dark:text-zinc-200'
+                              : seg.mode === 'STOCK' || seg.mode === 'MIXED'
+                                ? 'text-white'
+                                : (blockText[seg.pick] ?? 'text-white'),
                           )}
                         >
                           {text}
@@ -961,24 +999,51 @@ function TimelineCard({
               <span>
                 连续相同持仓合并为一块（宽度=天数，块内标持有）· 股票红（斜纹=股票+停车）/ 黄金amber
                 / 原油slate / 纳指blue / 国债emerald / 逆回购锌
+                {satMode ? ' · 卫星紫（实心=持仓/4槽，淡紫=空闲槽，斜纹=闸关，灰=空仓）' : ''}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
-            {ALL_PICKS.map((k) => {
-              const v = dist[k] ?? 0;
-              return (
-                <span key={k} className="flex items-center gap-1">
-                  <span
-                    className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
-                  />
-                  {pickLabel[k] ?? k} {v}天 (
-                  {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
-                </span>
-              );
-            })}
+            {satMode
+              ? [0, 1, 2, 3, 4].map((p) => {
+                  const v = satDist[`SAT:${p}`] ?? 0;
+                  return (
+                    <span key={`sat-${p}`} className="flex items-center gap-1">
+                      <span
+                        className={cn(
+                          'inline-block size-2 rounded-sm',
+                          p === 0 ? 'bg-zinc-300 dark:bg-zinc-700' : '',
+                        )}
+                        style={
+                          p === 0 ? undefined : { background: `rgba(139,92,246,${0.35 + 0.16 * p})` }
+                        }
+                      />
+                      {p === 0 ? '卫星空仓' : `卫星 ${p}/${SAT_CAPACITY}仓`} {v}天 (
+                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                    </span>
+                  );
+                })
+              : ALL_PICKS.map((k) => {
+                  const v = dist[k] ?? 0;
+                  return (
+                    <span key={k} className="flex items-center gap-1">
+                      <span
+                        className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
+                      />
+                      {pickLabel[k] ?? k} {v}天 (
+                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                    </span>
+                  );
+                })}
+            {satMode ? (
+              <span className="flex items-center gap-1 text-[var(--k-muted)]">
+                闸关 {satGateClosed}天
+              </span>
+            ) : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
-              {`${strategyLabel}累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}% · 基线累计 ${last?.navBaseReturnPct ?? '—'}%`}
+              {`${strategyLabel}累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}%${
+                last?.navBaseReturnPct != null ? ` · 基线累计 ${last.navBaseReturnPct}%` : ''
+              }`}
             </span>
           </div>
           <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">

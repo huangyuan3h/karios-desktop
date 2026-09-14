@@ -162,6 +162,83 @@ describe('harbor-segments', () => {
     expect(harborHoldLine(row({ pick: 'GOLD', pickTs: '518880.SH' }))).toBe('黄金 518880');
   });
 
+  it('renders satellite (S-GAP) rows as slot phases with gate state', () => {
+    const sat = (over: Partial<TimelineRow>) =>
+      row({
+        pick: 'S-GAP',
+        pickTs: '',
+        positions: 0,
+        idlePct: 0,
+        navSingle: 1,
+        navMulti: 1,
+        navSingleReturnPct: 0,
+        navMultiReturnPct: 0,
+        satNav: 1,
+        satNavReturnPct: 0,
+        ...over,
+      });
+    const rows = [
+      sat({
+        date: '2026-08-20',
+        satPositions: 0,
+        satSlots: 0,
+        idleSlots: 4,
+        satActive: false,
+        gateOpen: false,
+      }),
+      sat({
+        date: '2026-08-21',
+        satPositions: 1,
+        satSlots: 1,
+        idleSlots: 3,
+        satActive: true,
+        gateOpen: true,
+        filledToday: 1,
+      }),
+      sat({
+        date: '2026-08-24',
+        satPositions: 1,
+        satSlots: 1,
+        idleSlots: 3,
+        satActive: true,
+        gateOpen: false,
+        navSingleReturnPct: 0.4,
+        satNavReturnPct: 0.4,
+      }),
+      sat({
+        date: '2026-08-25',
+        satPositions: 4,
+        satSlots: 5,
+        idleSlots: 0,
+        satActive: true,
+        gateOpen: true,
+        filledToday: 4,
+        navSingleReturnPct: 0.9,
+        satNavReturnPct: 0.9,
+      }),
+    ];
+    const segs = buildHarborSegments(rows);
+    expect(segs.map((s) => s.ident)).toEqual(['SAT:0:x', 'SAT:1:g', 'SAT:1:x', 'SAT:4:g']);
+    expect(segs[0].mode).toBe('SAT');
+    expect(segs[0].labels.medium).toBe('空仓');
+    expect(segs[0].title).toContain('卫星空仓（4槽空闲） · 闸关');
+    expect(segs[1].sat).toMatchObject({
+      positions: 1,
+      capacity: 4,
+      idleSlots: 3,
+      gateOpen: true,
+    });
+    expect(segs[1].labels.short).toBe('卫星 1/4仓');
+    expect(segs[1].labels.medium).toBe('1/4');
+    expect(segs[1].labels.full).toBe('卫星 1/4仓（空3槽）· 1天 +0.0%');
+    expect(segs[1].title).toContain('卫星 1/4仓 · 空3槽');
+    expect(segs[2].labels.full).toBe('卫星 1/4仓（空3槽）· 1天 +0.4% · 闸关');
+    expect(segs[3].title).toContain('卫星 4/4仓 · 空0槽');
+    expect(segs[3].title).toContain('卫星 0.90%');
+    expect(harborHoldLine(rows[1])).toBe('卫星 1/4仓 · 空3槽 · 成交1');
+    expect(harborHoldLine(rows[0])).toBe('卫星 0/4仓 · 空4槽 · 闸关');
+  });
+
   it('fits the longest label variant into the block width', () => {
     const labels = {
       full: '黄金 518880 · 23天 +9.3%',
