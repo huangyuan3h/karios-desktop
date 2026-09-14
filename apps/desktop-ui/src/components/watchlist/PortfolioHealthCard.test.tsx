@@ -117,7 +117,7 @@ describe('PortfolioHealthCard (harbor)', () => {
       hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText('港湾 · 今日决策')).toBeDefined();
+    expect(await screen.findByText('核心腿状态（港湾配方）')).toBeDefined();
     expect(screen.queryByText(/机会双子星/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
     expect(await screen.findByText('Weak · 空仓观望')).toBeDefined();

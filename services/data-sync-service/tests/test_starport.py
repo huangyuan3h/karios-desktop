@@ -73,6 +73,18 @@ class TestStarportTimeline:
         assert out["summary"]["homeportPct"] == -10.0
 
 
+    def test_satellite_row_fields_copied(self) -> None:
+        hp = _homeport([1.0, 1.10])
+        sat = _sat([(1.0, False), (1.20, True)])
+        sat["rows"][1].update(
+            {"satPositions": 2, "satSlots": 4, "gateOpen": True, "filledToday": 1}
+        )
+        out = blend_starport_timeline(hp, sat)
+        row = out["rows"][1]
+        assert row["satPositions"] == 2 and row["satSlots"] == 4
+        assert row["gateOpen"] is True and row["filledToday"] == 1
+
+
 class TestTwinStarTimeline:
     def test_half_weight_overlay_on_harbor_base(self) -> None:
         hp = _homeport([1.0, 1.10])

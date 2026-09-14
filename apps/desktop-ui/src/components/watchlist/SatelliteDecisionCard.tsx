@@ -18,6 +18,13 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
     );
   }
   const active = row.satActive === true;
+  const pos = row.satPositions ?? 0;
+  const slots = row.satSlots ?? 0;
+  const holdingLabel = active
+    ? pos > 0
+      ? `有仓 ${pos}/${slots} 槽`
+      : `今日有成交（现持 0/${slots} 槽）`
+    : '空仓';
   return (
     <div
       data-testid="satellite-leg-block"
@@ -33,7 +40,7 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
               : 'bg-[var(--k-surface-2)] text-[var(--k-muted)]',
           )}
         >
-          {active ? `有仓 ${row.satPositions ?? 0}/${row.satSlots ?? 0} 槽` : '空仓'}
+          {holdingLabel}
         </span>
         <span className="text-[var(--k-muted)]">
           最近交易日 {row.date} · 闸 {row.gateOpen === false ? '关' : '开'}

@@ -1026,9 +1026,9 @@ export function PortfolioHealthCard({
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">港湾 · 今日决策</span>
+        <span className="text-[12px] font-semibold">核心腿状态（港湾配方）</span>
         <span className="text-[10px] text-[var(--k-muted)]">
-          S-3 核心 + 闲置现金 ETF 停车场 · 100% 硬切 · 与 Timeline 同源
+          S-3 核心 + 闲置现金 ETF 停车场 · 与 Timeline 同源 · 独立决策/记录成交见上方策略卡
         </span>
         <span
           className={cn(
