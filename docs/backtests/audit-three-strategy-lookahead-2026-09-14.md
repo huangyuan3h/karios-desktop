@@ -175,6 +175,7 @@ PYTHONPATH=src:scripts python3 scripts/eval_b3_cap.py --save-report             
 
 - 习惯 S-gap 卫星腿 standalone 记录：[`stable/sgap-habit-satellite-standalone-2026-09-14.md`](stable/sgap-habit-satellite-standalone-2026-09-14.md)
 - 卫星 valid 短板诊断（同日核心对照 + 闸门反证）：[`sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](sat/sat-valid-shortfall-diagnosis-2026-09-14.md)
+- 港湾×卫星 曝露曲线（H-SAT-W，预注册：7 档全 REJECT）：[`stable/harbor-sat-weight-2026-09-14.md`](stable/harbor-sat-weight-2026-09-14.md)
 - B12：[`stable/twin-star-parking-refit-2026-09-13.md`](stable/twin-star-parking-refit-2026-09-13.md)（顶部修正横幅）
 - B11：[`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md) · B13：[`stable/etf-benchmark-parking-2026-09-13.md`](stable/etf-benchmark-parking-2026-09-13.md)
 - B15：[`stable/harbor-riskbudget-2026-09-13.md`](stable/harbor-riskbudget-2026-09-13.md) · B16：[`stable/b3-cap-2026-09-13.md`](stable/b3-cap-2026-09-13.md)

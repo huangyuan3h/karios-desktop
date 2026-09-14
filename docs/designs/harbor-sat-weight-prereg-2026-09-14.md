@@ -38,6 +38,6 @@
 - 脚本：`scripts/eval_harbor_sat_weight.py` → `data/backtest_reports/harbor_sat_weight_2026-09-14.json`
 - 结论落 `docs/backtests/stable/harbor-sat-weight-2026-09-14.md` + SUMMARY + todo。
 
-**结果（跑后补）**：
+**结果（跑后补）**：**REJECT（chosen NONE）**。7 档全部不满足 K1–K3：valid 稀释 ∝ w（≈−42.4×w：−4.4/−6.6/−8.7/−10.9/−14.4/−17.1/−21.2），long Δsr ∝ w（+0.08~+0.45）；K1 要 w≤0.118、K2 要 w≥0.12（Δsr）/0.142（Δtot）→ **无交集**。K3 全档过（long MDD 每档 +2.0pt 改善、valid MDD 不动）。**勘误**：K3 的 long 条件在本文写成 `ΔMDD ≤ 0`（符号写反；`max_dd` 为负数，"不劣于"应为 `ΔMDD ≥ 0`），跑后修正；K3 不 binding，裁决不受影响。结论落 [`../backtests/stable/harbor-sat-weight-2026-09-14.md`](../backtests/stable/harbor-sat-weight-2026-09-14.md)。
 
 *冻结于 2026-09-14，跑数前。*
