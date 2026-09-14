@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Habit twin-star re-fit on the parking core (H-TWIN-PARK · 2026-09-13).
 
-Core  = S-3 CN engine + idle-cash ETF parking (P1, B11).
-Sat   = Live definition: strict S-gap, clip4 4x25% standalone, body=3,
-        same_1430 signal+fill, 30bps RT costs (COSTS_ROUNDTRIP).
+Core  = S-3 CN engine + idle-cash ETF parking (P1, B11) via the canonical
+        `service.harbor.parking_replay` (same NAV as eval_etf_parking_baseline).
+Sat   = Live habit definition: strict S-gap, clip4 4x25% standalone, body=3,
+        same_1430 signal/fill/exit, C1 3%, `rank_key="amp_1430"` (14:30-knowable
+        amplitude — NOT the full-day amp lookahead key), `gate_1430=True`
+        (R-wide breadth from the 14:30 panel, not the 15:00 close), 30bps RT.
 Blend = blend_nav_opportunity: 100% core when idle, else 50/50.
 See docs/designs/twin-star-parking-refit-prereg-2026-09-13.md
 
@@ -16,10 +19,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import bisect
 import csv
 import json
-import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,7 +33,14 @@ sys.path.insert(0, str(ROOT / "scripts"))
 REPORT_DIR = ROOT / "data" / "backtest_reports"
 ETF_CSV = ROOT / "data" / "etf" / "etf_daily.csv"
 
-from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate  # noqa: E402
+from run_walk_forward import S3_CONFIG, WINDOWS  # noqa: E402
+
+from data_sync_service.service.backtest_engine import (  # noqa: E402
+    BacktestConfig,
+    BacktestData,
+    simulate,
+)
+from data_sync_service.service.harbor import parking_replay  # noqa: E402
 from data_sync_service.service.portfolio_nav_sim import engine_nav_by_day_from_run  # noqa: E402
 from data_sync_service.service.ps_g50_blend import blend_nav_opportunity  # noqa: E402
 from data_sync_service.service.state_bucket_track import (  # noqa: E402
@@ -40,12 +48,10 @@ from data_sync_service.service.state_bucket_track import (  # noqa: E402
     load_sgap_context,
     replay_sgap_from_context,
 )
-from run_walk_forward import S3_CONFIG, WINDOWS  # noqa: E402
 
 GOLD, OIL, BOND10 = "518880.SH", "513350.SH", "511260.SH"
 NASDAQ_ALIAS = ("513110.SH", "513100.SH")
-CAND = {"GOLD": GOLD, "OIL": OIL, "NASDAQ": NASDAQ_ALIAS[0], "BOND10": BOND10}
-MA, LB, TRAIL, COST = 200, 60, 0.08, 0.0005
+COST = 0.0005
 WINS = ("OOS2", "train", "valid", "long")
 SAT_WEIGHTS = (0.4, 0.5, 0.6)
 
@@ -97,86 +103,37 @@ def _fmt(m: dict[str, float]) -> str:
 
 
 def _parking_core_by_day(px, start: str, end: str, stock_px: dict | None = None) -> dict[str, float]:
-    """S-3 engine NAV + idle parking P1, keyed by engine calendar day."""
+    """S-3 engine NAV + idle parking P1, keyed by engine calendar day.
+
+    Core leg = canonical Harbor parking state machine
+    (`service.harbor.parking_replay`, OPT-180 single source), identical to
+    `eval_etf_parking_baseline` / Timeline / Live — no local replay loop
+    (the old local loop re-liquidated the parking leg on phantom engine
+    calendar days and diverged from the frozen B11 NAV).
+    """
     cfg = BacktestConfig(start_date=start, end_date=end, **S3_CONFIG)
     data = BacktestData(cfg)
     run = simulate(cfg, data)
-    cal = list(data.calendar)
-    eng = engine_nav_by_day_from_run(cal, run.nav_curve)
+    etf_days = {d for mp in px.values() for d in mp}
+    cal = [d for d in data.calendar if d in etf_days]
+    eng = engine_nav_by_day_from_run(list(data.calendar), run.nav_curve)
     snap_by = {str(x.get("date")): x for x in run.positions_by_day}
 
-    days = {ts: sorted(m) for ts, m in px.items()}
-
-    def c_at(ts, d):
-        return px.get(ts, {}).get(d)
-
-    def idx_of(ts, d):
-        ds = days.get(ts) or []
-        i = bisect.bisect_left(ds, d)
-        return i if i < len(ds) and ds[i] == d else None
-
-    def ma(ts, d):
-        i = idx_of(ts, d)
-        if i is None or i < MA - 1:
-            return None
-        return float(np.mean([px[ts][days[ts][j]] for j in range(i - MA + 1, i + 1)]))
-
-    def mom(ts, d):
-        i = idx_of(ts, d)
-        if i is None or i < LB:
-            return None
-        a = px[ts][days[ts][i - LB]]
-        return px[ts][d] / a - 1.0 if a else None
-
-    def ret(ts, d, prev):
-        c, p = c_at(ts, d), c_at(ts, prev)
-        return c / p - 1.0 if c and p else 0.0
+    idle_by_day: dict[str, float] = {}
+    for idx in range(1, len(cal)):
+        prev = cal[idx - 1]
+        snap = snap_by.get(prev) or {}
+        dep = sum(float(p.get("position_pct") or 0.0) for p in (snap.get("positions") or []))
+        idle_by_day[prev] = max(0.0, 1.0 - min(1.0, dep))
 
     nav = 1.0
     out = {cal[0]: 1.0}
-    held_key = held_ts = None
-    peak = 0.0
-    for i in range(1, len(cal)):
-        day, prev = cal[i], cal[i - 1]
-        snap = snap_by.get(prev) or {}
-        dep = sum(float(p.get("position_pct") or 0.0) for p in (snap.get("positions") or []))
-        idle = max(0.0, 1.0 - min(1.0, dep))
-        r_eng = eng[day] / eng[prev] - 1.0 if eng.get(prev) else 0.0
-
-        etf_mom, etf_ts = {}, {}
-        for key, ts in CAND.items():
-            aliases = NASDAQ_ALIAS if key == "NASDAQ" else (ts,)
-            ba, bm = None, -1e9
-            for a in aliases:
-                m, mm = mom(a, prev), ma(a, prev)
-                if m is None or mm is None or c_at(a, prev) is None:
-                    continue
-                if c_at(a, prev) >= mm and m > bm:
-                    ba, bm = a, m
-            if ba:
-                etf_mom[key], etf_ts[key] = bm, ba
-        best = max(etf_mom, key=etf_mom.get) if etf_mom else None
-        best_ts = etf_ts.get(best) if best else None
-
-        sides = 0
-        if held_key != best:
-            if held_key is not None:
-                sides += 1
-            if best is not None:
-                sides += 1
-            held_key, held_ts = best, best_ts
-            peak = c_at(best_ts, prev) or 0.0 if best_ts else 0.0
-        sr = 0.0
-        if held_ts is not None:
-            c = c_at(held_ts, prev) or 0.0
-            peak = max(peak, c)
-            if peak > 0 and c and c < peak * (1 - TRAIL):
-                held_key = held_ts = None
-                peak = 0.0
-                sides += 1
-            else:
-                sr = ret(held_ts, day, prev)
-        nav *= 1.0 + r_eng + idle * (sr - COST * sides)
+    for rec in parking_replay(px, cal, idle_by_day=idle_by_day):
+        day, prev = str(rec["date"]), str(rec["prev"])
+        idle = idle_by_day.get(prev, 0.0)
+        r_eng = eng[day] / eng[prev] - 1.0 if eng.get(prev) and eng.get(day) else 0.0
+        sides = int(rec["sides"])
+        nav *= 1.0 + r_eng + idle * (float(rec["parking_ret"]) - COST * sides)
         out[day] = nav
     return out
 
@@ -206,12 +163,15 @@ def main() -> int:
             body=3,
             fill_mode=FILL_SAME_1430,
             fill_hhmm="1430",
+            exit_hhmm="1430",
+            max_open_to_1430_pct=0.03,
+            rank_key="amp_1430",
+            gate_1430=True,
         )
         rows = sat.get("rows") or []
         dates = [str(r["date"]) for r in rows]
         sat_nav = [float(r.get("satNav") or 1.0) for r in rows]
         active = [bool(r.get("satActive")) for r in rows]
-        slots = [int(r.get("satPositions") or 0) for r in rows]
         if sat_nav and sat_nav[0] > 0:
             base = sat_nav[0]
             sat_nav = [v / base for v in sat_nav]

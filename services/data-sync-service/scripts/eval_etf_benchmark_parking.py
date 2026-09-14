@@ -199,7 +199,7 @@ def main() -> int:
                 continue
             vol = {}
             for ts in RP_UNIVERSE:
-                r = [series[ts][j] / series[ts][j - 1] - 1 for j in range(i - 60, i) if series[ts][j - 1]]
+                r = [series[ts][j] / series[ts][j - 1] - 1 for j in range(max(1, i - 60), i) if series[ts][j - 1]]
                 vol[ts] = float(np.std(r)) or 1e-9
             inv = {ts: 1.0 / vol[ts] for ts in RP_UNIVERSE}
             tot = sum(inv.values())

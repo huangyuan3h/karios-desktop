@@ -38,6 +38,7 @@ from data_sync_service.service.multi_asset_sleeve import (
     build_multi_asset_sleeve,
 )
 from data_sync_service.service.portfolio_health import _health_block
+from data_sync_service.service.sleeve_paper_auto import normalize_sleeve_pct
 
 logger = logging.getLogger(__name__)
 
@@ -62,19 +63,18 @@ def _opened_by_sleeve_job_today(row: dict[str, Any], day: str) -> bool:
     """Rows the 18:20 job itself created on ``day`` (decision executions).
 
     These must not enter the pre-decision holdings — they ARE the decision.
+    Gate on the decision day (signal snapshot, else row creation day), NOT on
+    the why-text: a leg opened on an earlier day is still held today.
     """
     sym = str(row.get("symbol") or "").upper()
     if sym not in CANDIDATE_SYMBOLS:
         return False
-    why = str(row.get("whyAtEntry") or "")
-    if why.startswith("multi-sleeve"):
-        return True
     snap = row.get("signalSnapshot") or {}
-    return (
-        isinstance(snap, dict)
-        and snap.get("entryMode") == "next_open"
-        and _day_of(snap.get("signalDate")) == day
-    )
+    if isinstance(snap, dict) and snap.get("entryMode") == "next_open":
+        sig = _day_of(snap.get("signalDate"))
+        if sig:
+            return sig == day
+    return _day_of(row.get("createdAt")) == day
 
 
 def _pre_decision_holdings(
@@ -84,14 +84,14 @@ def _pre_decision_holdings(
     exec_day: str | None = None,
 ) -> list[dict[str, Any]]:
     """Paper-book holdings as the 18:20 job saw them (shape-identical to
-    ``_build_multi_for_paper``: symbol / ts_code / sleeve_pct, no entryDate —
-    so the reproduced decision matches the job's, including its trail blind
-    spot).
+    ``paper_sleeve_holdings``: symbol / ts_code / entryDate / percent
+    sleeve_pct), so the reproduced decision matches the job's.
 
     Harbor exits book at the next session (closeDate = exec_day); include those
-    as held at ``day`` close so the decision is reproduced.
+    as held at ``day`` close so the decision is reproduced. Legs closed at
+    ``day``'s own open (closeDate = day) are gone from the job's view → exclude.
     """
-    sold_days = {day, exec_day or day}
+    sold_days = {exec_day} if exec_day else {day}
     holdings: list[dict[str, Any]] = []
     for r in open_rows:
         sym = str(r.get("symbol") or "").upper()
@@ -103,7 +103,8 @@ def _pre_decision_holdings(
             {
                 "symbol": r.get("symbol"),
                 "ts_code": r.get("tsCode") or r.get("ts_code"),
-                "sleeve_pct": r.get("sleevePct") or 0,
+                "entryDate": r.get("entryDate") or r.get("entry_date"),
+                "sleeve_pct": normalize_sleeve_pct(r.get("sleevePct") or r.get("sleeve_pct")),
             }
         )
     for r in closed_rows:
@@ -116,7 +117,8 @@ def _pre_decision_holdings(
                 {
                     "symbol": r.get("symbol"),
                     "ts_code": r.get("tsCode") or r.get("ts_code"),
-                    "sleeve_pct": r.get("sleevePct") or 0,
+                    "entryDate": r.get("entryDate") or r.get("entry_date"),
+                    "sleeve_pct": normalize_sleeve_pct(r.get("sleevePct") or r.get("sleeve_pct")),
                 }
             )
     return holdings
@@ -226,17 +228,18 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         return {"day": day, "ok": False, "error": f"list paper failed: {exc}"}
 
+    held_closed_days = {exit_exec_date} if exit_exec_date else {day}
     pre_legs = [
         r
         for r in open_rows
         if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
-        and _day_of(r.get("createdAt")) != day
+        and not _opened_by_sleeve_job_today(r, day)
     ] + [
         r
         for r in closed_rows
         if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
         and str(r.get("closeReason") or "") == CLOSE_REASON_SLEEVE_EXIT
-        and _day_of(r.get("closeDate")) in {day, exit_exec_date or day}
+        and _day_of(r.get("closeDate")) in held_closed_days
     ]
     holdings = _pre_decision_holdings(open_rows, closed_rows, day, exit_exec_date)
     try:
@@ -258,7 +261,9 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
     # Harbor exits fill at the next session (signal T close -> T+1 open), so a
     # sell decided today is booked with closeDate = next session (placeholder
     # when the open is not printed yet).
-    sold_days = {day, exit_exec_date or day}
+    # A sell decided today is booked with closeDate = exit_exec_date; a leg
+    # closed at today's own open (closeDate = day) is NOT part of today's flow.
+    sold_days = held_closed_days
     sold_today = sorted(
         {
             str(r.get("symbol") or "").upper()

@@ -105,11 +105,19 @@ def _load_mv(start: str, end: str) -> dict[str, dict[str, float]]:
 
 
 def _load_calendar(start: str, end: str) -> list[str]:
+    """CN trading dates from ``daily`` (OPT-183: exclude the HK rows).
+
+    ``daily`` stores CN and HK rows in one table, so an unfiltered distinct
+    returns the UNION of both calendars. HK-only dates are CN holidays: the
+    replay would then treat them as sessions and force-close CN positions
+    with no mark (PnL zeroed). CN-only is the correct satellite calendar.
+    """
     s = get_settings()
     conn = psycopg.connect(s.database_url)
     cur = conn.cursor()
     cur.execute(
-        "SELECT DISTINCT trade_date FROM daily WHERE trade_date >= %s AND trade_date <= %s "
+        "SELECT DISTINCT trade_date FROM daily "
+        "WHERE trade_date >= %s AND trade_date <= %s AND ts_code NOT LIKE '%%.HK' "
         "ORDER BY trade_date",
         (start, end),
     )
@@ -333,6 +341,50 @@ def _intraday_px(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> float | N
         px = (ctx.get("px_1430") or {}).get(ts, {}).get(day)
         return None if px is None else float(px)
     return None
+
+
+def _breadth_at_1430(ctx: dict[str, Any], day: str) -> float | None:
+    """Market breadth as knowable at the 14:30 decision (H-SAT-1430 gate).
+
+    Same formula as ``_day_features``' breadth (last price > MA20) with the
+    decision-day input switched from the 15:00 close to the 14:30 print — the
+    Live habit gate read the 14:20 snapshot, so the backtest proxy must not use
+    the close. None when the 14:30 panel is unavailable (caller falls back).
+
+    Basis note: the 14:30 panel is RAW (`bar_5min`), while ``daily`` was reseeded
+    to qfq — the prior closes must therefore come from the raw 15:00 marks too
+    (fallback to the qfq close only when a raw mark is missing).
+    """
+    px1430 = ctx.get("px_1430") or {}
+    raw_close = (ctx.get("px_by_hhmm") or {}).get("1500") or {}
+    if not px1430:
+        return None
+    per_ts = ctx["per_ts"]
+    mv_map = ctx.get("mv_map") or {}
+    date_idx = ctx["date_idx"]
+    above = 0
+    tot = 0
+    for ts, series in per_ts.items():
+        idx = date_idx.get(ts, {}).get(day, -1)
+        if idx < 20 or ts not in (mv_map.get(day) or {}):
+            continue
+        px = (px1430.get(ts) or {}).get(day)
+        if not px or px <= 0:
+            continue
+        prior: list[float] = []
+        for r in series[idx - 19 : idx]:
+            p = (raw_close.get(ts) or {}).get(str(r.get("date")))
+            if p is None:
+                p = r.get("close")
+            if p:
+                prior.append(float(p))
+        if len(prior) < 19:
+            continue
+        tot += 1
+        ma20 = (sum(prior) + float(px)) / 20.0
+        if float(px) > ma20:
+            above += 1
+    return (above / tot) if tot else None
 
 
 def _stage_labels_at(ctx: dict[str, Any], ts: str, day: str, hhmm: str) -> dict[str, str] | None:
@@ -581,6 +633,7 @@ def replay_sgap_from_context(
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
     r_wide: float | None = None,
+    gate_1430: bool = False,
     min_open_to_1430_pct: float | None = None,
     max_t1_turnover_mult: float | None = None,
     body_by_stage_tier: dict[int, int] | None = None,
@@ -615,6 +668,10 @@ def replay_sgap_from_context(
       Names missing the fill print rank last.
 
     r_wide: experiment-only R-wide breadth gate (H4). None = frozen 0.5.
+    gate_1430: same_1430 only — compute the R-wide breadth from the 14:30
+      prints (`_breadth_at_1430`) instead of the day's 15:00 closes. The Live
+      habit gate read the ~14:20 snapshot, so this is the zero-lookahead
+      proxy; default False keeps the frozen engine numbers reproducible.
 
     body_by_stage_tier: experiment-only conditional hold. Maps a stage_1430 tier
       (0 S2&climax / 1 either / 2 neither / 3 unlabeled) to a hold length; tiers
@@ -671,6 +728,8 @@ def replay_sgap_from_context(
     r_wide_threshold = R_WIDE_THRESHOLD if r_wide is None else float(r_wide)
     if not 0.0 < r_wide_threshold < 1.0:
         raise ValueError(f"r_wide must be in (0, 1), got {r_wide!r}")
+    if gate_1430 and fill_mode != FILL_SAME_1430:
+        raise ValueError("gate_1430 requires fill_mode=same_1430")
     if pool_mode is None:
         pool_mode = "fallback" if limit_fallback else "strict"
     clip = float(position_pct)
@@ -681,6 +740,26 @@ def replay_sgap_from_context(
     date_idx = ctx["date_idx"]
     close_by_ts = ctx["close_by_ts"]
     idx_by_day = ctx["idx_by_day"]
+    # `daily` was reseeded to qfq while the 14:30 caliber fills on RAW bar_5min
+    # prices; marking raw entries with qfq closes would fabricate P&L. Use the
+    # raw 15:00 marks (same basis as the fills) for the same_1430 path.
+    raw_marks = (ctx.get("px_by_hhmm") or {}).get("1500") or {}
+
+    def _mark(ts: str, d: str) -> float | None:
+        if fill_mode == FILL_SAME_1430:
+            v = (raw_marks.get(ts) or {}).get(d)
+            if v:
+                return float(v)
+        return close_by_ts.get(ts, {}).get(d)
+
+    def _raw_ratio(ts: str, d: str) -> float | None:
+        """raw / qfq close ratio for the day (None when either side is missing)."""
+        v = (raw_marks.get(ts) or {}).get(d)
+        q = close_by_ts.get(ts, {}).get(d)
+        if v and q and float(q) > 0:
+            return float(v) / float(q)
+        return None
+
     positions: dict[str, dict[str, Any]] = {}
     realized = 0.0
     rows: list[dict[str, Any]] = []
@@ -689,13 +768,17 @@ def replay_sgap_from_context(
         if day < start or day > end:
             continue
         _day_all, breadth = _cached_day_features(ctx, day)
+        if gate_1430:
+            b1430 = _breadth_at_1430(ctx, day)
+            if b1430 is not None:
+                breadth = b1430
         r_wide = breadth > r_wide_threshold
         to_close: list[tuple[str, str]] = []
         for ts, p in list(positions.items()):
             ei = idx_by_day.get(p["entry_date"], -1)
             ci = idx_by_day.get(day, -1)
             held = ci - ei + 1 if ei >= 0 and ci >= 0 else 999
-            cc = close_by_ts.get(ts, {}).get(day)
+            cc = _mark(ts, day)
             entry = float(p.get("entry_price") or 0.0)
             peak = float(p.get("peak") or entry)
             if cc is not None and cc > peak:
@@ -719,7 +802,7 @@ def replay_sgap_from_context(
         closed_today = [ts for ts, _ in to_close]
         for ts, reason in to_close:
             p = positions.pop(ts)
-            cc = close_by_ts.get(ts, {}).get(day)
+            cc = _mark(ts, day)
             exit_src = "close"
             if reason == "body_exit" and exit_day_trail_pct is not None:
                 trail_px = _d3_trail_px(ctx, ts, day, float(exit_day_trail_pct))
@@ -864,11 +947,22 @@ def replay_sgap_from_context(
                             if len(amts) >= 15 and amts[-1]:
                                 avg = sum(amts[:-1]) / max(len(amts) - 1, 1)
                                 t1_turn = amts[-1] / avg if avg else None
+                        # The daily open/pre_close are qfq while px is raw —
+                        # scale them to the raw basis (same-day ratio) before
+                        # the C1 / limit checks, or the filters mis-fire.
+                        _k = _raw_ratio(ts, day)
+                        _raw_open = bar_l.get("open") if bar_l else None
+                        _raw_pre = bar_l.get("pre_close") if bar_l else None
+                        if _k:
+                            if _raw_open:
+                                _raw_open = float(_raw_open) * _k
+                            if _raw_pre:
+                                _raw_pre = float(_raw_pre) * _k
                         reason = _same_1430_skip_reason(
                             ts=ts,
                             px=_intraday_px(ctx, ts, day, fill_hhmm),
-                            open_px=bar_l.get("open") if bar_l else None,
-                            pre_close=bar_l.get("pre_close") if bar_l else None,
+                            open_px=_raw_open,
+                            pre_close=_raw_pre,
                             skip_t1_limit=skip_t1_limit,
                             max_open_to_1430_pct=max_open_to_1430_pct,
                             near_limit_buffer_pct=near_limit_buffer_pct,
@@ -947,6 +1041,11 @@ def replay_sgap_from_context(
                         lim = 0.20 if str(ts).startswith(("3", "68")) else 0.10
                         if fill_mode == FILL_SAME_1430:
                             one_word = False
+                            # px is raw; scale the qfq pre_close to the raw basis
+                            # before the limit-up guard (mixed basis = false skips).
+                            _kf = _raw_ratio(ts, day)
+                            if _kf and pc:
+                                pc = float(pc) * _kf
                         elif fill_mode == FILL_SAME_CLOSE:
                             one_word = bar["high"] == bar["low"] == bar["close"]
                         else:
@@ -980,7 +1079,7 @@ def replay_sgap_from_context(
                         debug_fills.append((day, ts))
         mtm = 0.0
         for ts, p in positions.items():
-            cc = close_by_ts.get(ts, {}).get(day)
+            cc = _mark(ts, day)
             mtm += clip * (cc / p["entry_price"]) if cc and p["entry_price"] else clip
         nav = 1.0 + realized + (mtm - len(positions) * clip)
         sat_active = len(positions) > 0 or len(closed_today) > 0
@@ -1014,7 +1113,7 @@ def replay_sgap_from_context(
             break
     open_positions: list[dict[str, Any]] = []
     for ts, p in positions.items():
-        cc = close_by_ts.get(ts, {}).get(last_day)
+        cc = _mark(ts, last_day)
         ei = idx_by_day.get(p["entry_date"], -1)
         ci = idx_by_day.get(last_day, -1)
         held = ci - ei + 1 if ei >= 0 and ci >= 0 else 0
@@ -1036,7 +1135,7 @@ def replay_sgap_from_context(
             }
         )
     for ts, p in list(positions.items()):
-        cc = close_by_ts.get(ts, {}).get(last_day)
+        cc = _mark(ts, last_day)
         if cc and p["entry_price"]:
             realized += ((cc / p["entry_price"] - 1) - COSTS_ROUNDTRIP) * clip
         ei = idx_by_day.get(p["entry_date"], -1)
@@ -1149,6 +1248,7 @@ def build_sgap_timeline(
     max_open_to_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
+    gate_1430: bool = False,
     body_by_stage_tier: dict[int, int] | None = None,
     min_gap_pct: float = MIN_GAP_PCT,
 ) -> dict[str, Any]:
@@ -1160,7 +1260,8 @@ def build_sgap_timeline(
     pool_mode: strict | replace | fallback (limit_fallback=True aliases fallback).
     Frozen baseline callers keep fill_mode=next_open and the rest None.
     Live habit callers pass fill_mode="same_1430", fill_hhmm="1430",
-    exit_hhmm="1430", max_open_to_1430_pct=0.03, rank_key="amp_1430".
+    exit_hhmm="1430", max_open_to_1430_pct=0.03, rank_key="amp_1430",
+    gate_1430=True.
     protect_stop_pct / trail_after_body_pct remain experiment-only.
     """
     ctx = load_sgap_context(start, end)
@@ -1185,6 +1286,7 @@ def build_sgap_timeline(
         max_open_to_1430_pct=max_open_to_1430_pct,
         near_limit_buffer_pct=near_limit_buffer_pct,
         rank_key=rank_key,
+        gate_1430=gate_1430,
         body_by_stage_tier=body_by_stage_tier,
         min_gap_pct=min_gap_pct,
     )

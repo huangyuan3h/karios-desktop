@@ -172,6 +172,22 @@ def test_loader_calendar_empty_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _load_calendar("2026-06-18", "2026-06-19") == []
 
 
+def test_loader_calendar_filters_market(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OPT-183: CN excludes .HK rows, HK keeps only them (daily is shared)."""
+    seen: list[str] = []
+
+    def handler(sql: str, _params: object) -> list:
+        seen.append(sql)
+        return [(_dt.date(2026, 6, 18),)]
+
+    monkeypatch.setattr(be, "get_connection", lambda: FakeConn(handler))
+    assert _load_calendar("2026-06-18", "2026-06-19", "CN") == ["2026-06-18"]
+    assert "NOT LIKE '%%.HK'" in seen[-1]
+    assert _load_calendar("2026-06-18", "2026-06-19", "HK") == ["2026-06-18"]
+    assert "LIKE '%%.HK'" in seen[-1]
+    assert "NOT LIKE" not in seen[-1]
+
+
 # ---------------------------------------------------------------------------
 # load_benchmarks: happy + <2 rows skip + start_px<=0 skip
 # ---------------------------------------------------------------------------

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from data_sync_service.service import state_bucket_track as sbt
 
 
@@ -64,6 +66,34 @@ def _patch_loaders(monkeypatch, dates, per_ts, mv):
     monkeypatch.setattr(sbt, "_load_mv", lambda w_start, end: mv)
     monkeypatch.setattr(sbt, "_load_bar5_closes", lambda *_a, **_k: {})
     monkeypatch.setattr(sbt, "_load_1430_closes", lambda w_start, end: {})
+
+
+class TestLoadCalendar:
+    def test_excludes_hk_rows(self, monkeypatch) -> None:
+        """OPT-183: daily is shared CN+HK; the satellite calendar is CN-only."""
+        from datetime import date
+        from types import SimpleNamespace
+
+        seen: list[str] = []
+
+        class _Cur:
+            def execute(self, sql, params=None):
+                seen.append(str(sql))
+
+            def fetchall(self):
+                return [(date(2026, 1, 5),)]
+
+        class _Conn:
+            def cursor(self):
+                return _Cur()
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(sbt, "get_settings", lambda: SimpleNamespace(database_url="x"))
+        monkeypatch.setattr(sbt.psycopg, "connect", lambda _url: _Conn())
+        assert sbt._load_calendar("2026-01-01", "2026-01-31") == ["2026-01-05"]
+        assert "NOT LIKE '%%.HK'" in seen[0]
 
 
 class TestDayFeatures:
@@ -300,6 +330,127 @@ class TestBuildSgapTimeline:
         )
         assert fills == []
         assert r["summary"]["fillCount"] == 0
+
+    def test_gate_1430_uses_1430_panel_not_close(self, monkeypatch) -> None:
+        """H-SAT-1430 gate: breadth from the 14:30 prints, not the 15:00 close."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        day = dates[20]
+        px_1430 = {ts: {day: 1.0} for ts in per_ts}  # everyone far below MA20
+        monkeypatch.setattr(sbt, "_load_bar5_closes", lambda *_a, **_k: {"1430": px_1430})
+        fills: list[tuple[str, str]] = []
+        sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            gate_1430=True,
+            debug_fills=fills,
+        )
+        assert fills == []  # 14:30 breadth 0.0 -> gate closed
+        # Control: without the honest gate the day-close breadth (>0.5) opens it.
+        fills2: list[tuple[str, str]] = []
+        sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            debug_fills=fills2,
+        )
+        assert fills2 == [(day, "A.SH")]
+
+    def test_same_1430_marks_use_raw_basis(self, monkeypatch) -> None:
+        """Regression: raw 14:30 entries must be marked with raw closes.
+
+        ``daily`` was reseeded to qfq; using it to mark raw entries fabricated a
+        ~(1 - qfq/raw) dip on the entry day (and recovery on exit).
+        """
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        day = dates[20]
+        k = 1.3  # raw prices ~1.3x the qfq daily closes (dividend-adjusted)
+        px_1500 = {
+            ts: {d: round(float(per_ts[ts][i]["close"]) * k, 4) for i, d in enumerate(dates)}
+            for ts in per_ts
+        }
+        px_1430 = {ts: {day: px_1500[ts][day]} for ts in per_ts}
+        monkeypatch.setattr(
+            sbt, "_load_bar5_closes", lambda *_a, **_k: {"1430": px_1430, "1500": px_1500}
+        )
+        r = sbt.build_sgap_timeline(start=dates[0], end=dates[-1], fill_mode=sbt.FILL_SAME_1430)
+        row = next(x for x in r["rows"] if x["date"] == day)
+        assert row["satPositions"] == 1
+        # Raw 15:00 mark == raw 14:30 fill -> flat entry day (no fake qfq dip).
+        assert row["satNav"] == pytest.approx(1.0, abs=1e-6)
+
+    def test_same_1430_c1_scales_open_to_raw_basis(self, monkeypatch) -> None:
+        """C1 / limit checks must compare like-for-like prices (raw vs raw)."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        day = dates[20]
+        k = 1.3
+        px_1500 = {
+            ts: {d: round(float(per_ts[ts][i]["close"]) * k, 4) for i, d in enumerate(dates)}
+            for ts in per_ts
+        }
+        px_1430 = {ts: {day: px_1500[ts][day]} for ts in per_ts}
+        monkeypatch.setattr(
+            sbt, "_load_bar5_closes", lambda *_a, **_k: {"1430": px_1430, "1500": px_1500}
+        )
+        fills: list[tuple[str, str]] = []
+        sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            skip_t1_limit=True,
+            pool_mode="strict",
+            fill_mode=sbt.FILL_SAME_1430,
+            max_open_to_1430_pct=0.03,
+            debug_fills=fills,
+        )
+        assert fills == [(day, "A.SH")]
+
+    def test_gate_1430_requires_same_1430(self) -> None:
+        ctx = {"per_ts": {}, "mv_map": {}, "date_idx": {}, "px_1430": {}}
+        try:
+            sbt.replay_sgap_from_context(ctx, start="2026-01-01", end="2026-01-02", gate_1430=True)
+        except ValueError as exc:
+            assert "gate_1430" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("gate_1430 should require fill_mode=same_1430")
+
+
+class TestBreadthAt1430:
+    def _ctx(self, day: str, px: dict[str, float]):
+        dates, per_ts, mv, _ = _mk_data()
+        date_idx = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts.items()}
+        return {
+            "per_ts": per_ts,
+            "mv_map": mv,
+            "date_idx": date_idx,
+            "px_1430": {ts: {day: p} for ts, p in px.items()},
+        }
+
+    def test_all_below_ma_is_zero(self) -> None:
+        dates, per_ts, _mv, _ = _mk_data()
+        ctx = self._ctx(dates[20], {ts: 1.0 for ts in per_ts})
+        assert sbt._breadth_at_1430(ctx, dates[20]) == 0.0
+
+    def test_mixed_panel(self) -> None:
+        dates, per_ts, _mv, _ = _mk_data()
+        ctx = self._ctx(dates[20], {"A.SH": 100.0, "B.SH": 1.0, "C.SH": 1.0, "D.SH": 1.0})
+        assert sbt._breadth_at_1430(ctx, dates[20]) == 0.25
+
+    def test_missing_panel_returns_none(self) -> None:
+        dates, per_ts, mv, _ = _mk_data()
+        date_idx = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts.items()}
+        ctx = {"per_ts": per_ts, "mv_map": mv, "date_idx": date_idx, "px_1430": {}}
+        assert sbt._breadth_at_1430(ctx, dates[20]) is None
+
+    def test_uses_raw_prior_closes(self) -> None:
+        """Basis regression: raw 14:30 px vs raw MA20 (not qfq)."""
+        dates, per_ts, _mv, _ = _mk_data()
+        ctx = self._ctx(dates[20], {ts: 99.0 for ts in per_ts})
+        ctx["px_by_hhmm"] = {"1500": {ts: {d: 100.0 for d in dates} for ts in per_ts}}
+        # 99 < raw MA20 ~100 -> 0.0 (with qfq prior ~10-13 it would be 1.0)
+        assert sbt._breadth_at_1430(ctx, dates[20]) == 0.0
 
     def test_same_1430_fill_hhmm_1500(self, monkeypatch) -> None:
         dates, per_ts, mv, _ = _mk_data()

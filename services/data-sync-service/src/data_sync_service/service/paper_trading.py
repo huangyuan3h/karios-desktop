@@ -74,6 +74,20 @@ def _resolve_ts_code(symbol: str) -> tuple[str, str] | None:
     return market, ts_code
 
 
+def _resolve_fill_ts_code(symbol: str) -> tuple[str, str] | None:
+    """Resolve CN/HK/ETF symbols for pending next_open fill patching only.
+
+    ETF rows stay out of the generic close-condition loop (``_resolve_ts_code``
+    still rejects them); this helper exists so their T+1 open placeholder gets
+    replaced once the bar lands.
+    """
+    parsed = _symbol_to_ts_code(symbol)
+    if parsed is None:
+        return None
+    market, _ticker, ts_code = parsed
+    return market, ts_code
+
+
 def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
     """One pass of the intake cron.
 
@@ -284,18 +298,63 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         return summary
     summary["scanned"] = len(open_trades)
 
+    from data_sync_service.service.paper_entry_fill import try_resolve_pending_open
+
+    # next_open exits (Harbor sleeve): the 18:20 job closes the leg with the
+    # signal-day close as placeholder and closeDate = T+1; once the T+1 open bar
+    # lands, replace the placeholder and rebook gross/net pnl. Runs even when the
+    # open book is empty (the exit is already closed).
+    pending_exit_fixed = 0
+    try:
+        pending_exits = pt_db.list_pending_exit_fills()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_trade pending exit scan failed: %s", exc)
+        pending_exits = []
+    for t in pending_exits:
+        snap = t.get("signalSnapshot") or {}
+        if not isinstance(snap, dict) or not snap.get("exitPendingOpenFill"):
+            continue
+        resolved = _resolve_fill_ts_code(str(t.get("symbol") or ""))
+        if not resolved:
+            continue
+        open_px = try_resolve_pending_open(
+            ts_code=resolved[1],
+            entry_date=str(t.get("closeDate") or t.get("close_date") or ""),
+            signal_snapshot={"entryMode": "next_open", "pendingOpenFill": True},
+        )
+        if open_px is None:
+            continue
+        entry_px = float(t.get("entryPrice") or 0.0)
+        costs = float(t.get("costsPct") or 0.0)
+        gross = (open_px / entry_px - 1.0) * 100.0 if entry_px > 0 else 0.0
+        new_snap = dict(snap)
+        new_snap["exitPendingOpenFill"] = False
+        new_snap["filledExitOpen"] = open_px
+        try:
+            patched = pt_db.patch_paper_exit_fill(
+                trade_id=str(t.get("id") or ""),
+                close_price=open_px,
+                pnl_pct=gross - costs,
+                gross_pnl_pct=gross,
+                signal_snapshot=new_snap,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_trade pending exit fill failed: %s", exc)
+            continue
+        if patched:
+            pending_exit_fixed += 1
+    summary["pendingExitFilled"] = pending_exit_fixed
+
     if not open_trades:
         return summary
 
     # next_open: patch placeholder entry_price once the fill bar's open lands.
-    from data_sync_service.service.paper_entry_fill import try_resolve_pending_open
-
     pending_fixed = 0
     for t in open_trades:
         snap = t.get("signalSnapshot") or t.get("signal_snapshot") or {}
         if not isinstance(snap, dict) or not snap.get("pendingOpenFill"):
             continue
-        resolved = _resolve_ts_code(str(t.get("symbol") or ""))
+        resolved = _resolve_fill_ts_code(str(t.get("symbol") or ""))
         if not resolved:
             continue
         open_px = try_resolve_pending_open(

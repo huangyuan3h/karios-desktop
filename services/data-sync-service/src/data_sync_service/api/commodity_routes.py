@@ -28,6 +28,7 @@ def get_sleeve(day: str | None = None):
             "symbol": str(r.get("symbol") or "").upper(),
             "positionPct": (r.get("payload") or {}).get("positionPct", r.get("positionPct")),
             "ts_code": r.get("ts_code"),
+            "entryDate": (r.get("payload") or {}).get("entryDate", r.get("entryDate")),
         }
         for r in list_registry()
         if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
@@ -37,20 +38,11 @@ def get_sleeve(day: str | None = None):
 
 @router.get("/sleeve/paper")
 def get_sleeve_paper(day: str | None = None):
-    from data_sync_service.db.paper_trading import list_paper_trades
+    from data_sync_service.service.sleeve_paper_auto import paper_sleeve_holdings
 
     d = day or date.today().isoformat()
     cn_block = _health_block(market="CN", day=d)
-    open_trades = list_paper_trades(status="open")
-    holdings = [
-        {
-            "symbol": t.get("symbol"),
-            "ts_code": t.get("ts_code"),
-            "sleeve_pct": t.get("sleeve_pct") or 0,
-        }
-        for t in open_trades
-        if str(t.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
-    ]
+    holdings = paper_sleeve_holdings()
     return build_multi_asset_sleeve(day=d, cn_block=cn_block, holdings_override=holdings)
 
 

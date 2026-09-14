@@ -91,13 +91,15 @@ def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
             d = str(b.get("trade_date") or b.get("date") or "")
             if d < entry[:10]:
                 continue
+            if d > day:
+                # As-of cutoff: closes after the decision day are not knowable
+                # at the 18:20 decision and must not enter the peak.
+                break
             c = float(b.get("close") or 0)
             if c > peak:
                 peak = c
             if d == day:
                 cur_close = c
-            elif not cur_close and d > day:
-                break
         if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT / 100):
             dd = (peak - cur_close) / peak * 100
             return {
@@ -128,16 +130,17 @@ def _closes(ts: str, days: int = 260) -> list[float]:
     return out
 
 
-def _signal_closes(ts: str, days: int = 260) -> list[float]:
-    """Closes through the latest COMPLETED bar (today's close after the daily sync).
+def _signal_closes(ts: str, days: int = 260, *, as_of: str | None = None) -> list[float]:
+    """Closes through the latest COMPLETED bar at ``as_of`` (default: today).
 
     Harbor clock: signal at T close (job runs 18:20) -> execute T+1 open.
     During the session the daily table has no today bar, so this naturally
-    falls back to the previous session.
+    falls back to the previous session. Historical callers (recon / past-day
+    views) must pass ``as_of`` or they would leak the latest closes.
     """
     from data_sync_service.service.trade_calendar_utils import shanghai_today
 
-    today = shanghai_today().isoformat()
+    cutoff = str(as_of or shanghai_today().isoformat())[:10]
     try:
         bars = fetch_last_bars(ts, days=days + 5)
     except Exception:
@@ -145,7 +148,7 @@ def _signal_closes(ts: str, days: int = 260) -> list[float]:
     out = []
     for b in bars:
         d = str(b.get("date") or b.get("trade_date") or "")
-        if d > today:
+        if d > cutoff:
             continue
         try:
             c = float(b.get("close"))
@@ -156,15 +159,15 @@ def _signal_closes(ts: str, days: int = 260) -> list[float]:
     return out
 
 
-def _signal_series(ts: str, days: int = 260) -> dict[str, float]:
-    """{date: close} through the latest COMPLETED bar (Harbor T-close signal).
+def _signal_series(ts: str, days: int = 260, *, as_of: str | None = None) -> dict[str, float]:
+    """{date: close} through the latest COMPLETED bar at ``as_of``.
 
     Same source/cut as ``_signal_closes``; the series form lets the shared
     ``harbor.pick_parking`` rule run on the exact same data as the timeline.
     """
     from data_sync_service.service.trade_calendar_utils import shanghai_today
 
-    today = shanghai_today().isoformat()
+    cutoff = str(as_of or shanghai_today().isoformat())[:10]
     try:
         bars = fetch_last_bars(ts, days=days + 5)
     except Exception:
@@ -172,7 +175,7 @@ def _signal_series(ts: str, days: int = 260) -> dict[str, float]:
     out: dict[str, float] = {}
     for b in bars:
         d = str(b.get("date") or b.get("trade_date") or "")
-        if d > today:
+        if d > cutoff:
             continue
         try:
             c = float(b.get("close"))
@@ -183,18 +186,18 @@ def _signal_series(ts: str, days: int = 260) -> dict[str, float]:
     return out
 
 
-def _pick() -> dict[str, Any] | None:
-    """Today's ETF-leg pick via the shared Harbor rule (single source).
+def _pick(*, as_of: str | None = None) -> dict[str, Any] | None:
+    """The ETF-leg pick as of ``as_of`` (default: today) via the shared rule.
 
     Delegates to ``harbor.pick_parking`` so the Live decision, the frozen
     backtest (`build_harbor_timeline`) and the evaluation scripts all use ONE
     implementation (mom60 index, MA200 gate, NASDAQ alias selection, coverage).
     """
-    etf_close = {c["ts"]: _signal_series(c["ts"], 260) for c in CANDIDATES}
-    as_of = max((max(mp) for mp in etf_close.values() if mp), default="")
-    if not as_of:
+    etf_close = {c["ts"]: _signal_series(c["ts"], 260, as_of=as_of) for c in CANDIDATES}
+    pick_as_of = max((max(mp) for mp in etf_close.values() if mp), default="")
+    if not pick_as_of:
         return None
-    return pick_parking(etf_close, as_of)
+    return pick_parking(etf_close, pick_as_of)
 
 
 def _rsi(closes: list[float], period: int = 14) -> float | None:
@@ -238,8 +241,8 @@ def build_pulse_hints(*, day: str | None = None) -> list[dict[str, Any]]:
     """
     hints: list[dict[str, Any]] = []
     try:
-        closes_oil = _signal_closes("513350.SH", 260)
-        closes_nas = _signal_closes("513100.SH", 260)
+        closes_oil = _signal_closes("513350.SH", 260, as_of=day)
+        closes_nas = _signal_closes("513100.SH", 260, as_of=day)
         # R4 oil RSI>80
         rsi_oil = _rsi(closes_oil) if len(closes_oil) >= 15 else None  # t-1 close
         active_rsi = rsi_oil is not None and rsi_oil > 80
@@ -321,6 +324,19 @@ def build_multi_asset_sleeve(
         holdings_override if holdings_override is not None else (cn_block.get("holdings") or [])
     )
     idle = _idle_pct(holdings)
+    parked = 0.0
+    for h in holdings:
+        sym = str(h.get("symbol") or "").upper()
+        ts = str(h.get("ts_code") or "").upper()
+        if any(sym == c["symbol"] or ts == c["ts"] for c in CANDIDATES):
+            try:
+                parked += float(h.get("positionPct", h.get("sleeve_pct") or 0))
+            except (TypeError, ValueError):
+                pass
+    # Parking target size = stock-idle + the previously parked fraction: on a
+    # ROTATE the held leg funds its successor, so the new leg must not be sized
+    # at `idle` alone (which is 0 when fully parked).
+    park_pct = max(0.0, min(100.0, idle + parked))
     regime = cn_block.get("regime")
     panic = bool((cn_block.get("panicCooldown") or {}).get("active"))
     circuit = bool(cn_block.get("circuitBlocked"))
@@ -337,11 +353,12 @@ def build_multi_asset_sleeve(
                 held = h
                 break
 
-    etf_pick = _pick()
+    etf_pick = _pick(as_of=day)
     out: dict[str, Any] = {
         "active": False,
         "action": "NONE",
         "idlePct": round(idle, 1),
+        "parkPct": round(park_pct, 1),
         "s3BuySetup": s3_buy_setup,
         "mode": "harbor",
         "strategy": "港湾",

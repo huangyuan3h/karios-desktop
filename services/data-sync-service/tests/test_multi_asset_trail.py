@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from unittest.mock import patch
 
+import pytest
+
 from data_sync_service.service import multi_asset_sleeve as mas
 
 
@@ -79,3 +81,59 @@ def test_trail_beats_rotate_when_holding_etf():
         out = mas.build_multi_asset_sleeve(day="2026-03-01", cn_block=cn, holdings_override=[held])
     assert out["action"] == "SELL_TO_REPO"
     assert "峰值回撤" in out["message"]
+
+
+def test_trail_ignores_bars_after_decision_day():
+    """Regression (look-ahead): closes after `day` must not enter the peak.
+
+    Bars 100 → 99 (day) → 200 (future). Without the as-of cut the fake peak
+    200 would trigger a phantom -50.5% trail exit.
+    """
+    held = {
+        "symbol": "ETF:513100",
+        "ts_code": "513100.SH",
+        "entryDate": "2026-01-01",
+    }
+    bars = [
+        {"date": "2026-01-10", "trade_date": "2026-01-10", "close": 100.0},
+        {"date": "2026-03-01", "trade_date": "2026-03-01", "close": 99.0},
+        {"date": "2026-04-01", "trade_date": "2026-04-01", "close": 200.0},
+    ]
+    with patch("data_sync_service.service.multi_asset_sleeve.fetch_last_bars", return_value=bars):
+        out = mas._etf_trail_exit(held, day="2026-03-01")
+    assert out is None
+
+
+def test_rotate_park_pct_includes_held_leg():
+    """ROTATE target size = idle + the leg being replaced (not 0% when parked)."""
+    held = {
+        "symbol": "ETF:518880",
+        "ts_code": "518880.SH",
+        "entryDate": "2026-01-01",
+        "sleeve_pct": 40.0,
+    }
+    stock = {"symbol": "CN:600000", "ts_code": "600000.SH", "sleeve_pct": 50.0}
+    pick = {
+        "key": "NASDAQ",
+        "symbol": "ETF:513100",
+        "name": "纳指",
+        "mom60": 12.0,
+        "above_ma200": True,
+    }
+    bars = _bars_peak_then_drop(entry="2026-01-01", day="2026-03-01", peak=100.0, last=95.0)
+    cn = {
+        "regime": "Weak",
+        "panicCooldown": {"active": False},
+        "circuitBlocked": False,
+        "s3Candidates": [],
+    }
+    with (
+        patch.object(mas, "_pick", return_value=pick),
+        patch("data_sync_service.service.multi_asset_sleeve.fetch_last_bars", return_value=bars),
+    ):
+        out = mas.build_multi_asset_sleeve(
+            day="2026-03-01", cn_block=cn, holdings_override=[held, stock]
+        )
+    assert out["action"] == "ROTATE"
+    assert out["idlePct"] == pytest.approx(10.0)
+    assert out["parkPct"] == pytest.approx(50.0)

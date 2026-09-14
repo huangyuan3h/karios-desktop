@@ -56,6 +56,31 @@ class TestSignalCloses:
         )
         assert mas._signal_closes("518880.SH", 260)[-1] == 4.9
 
+    def test_explicit_as_of_excludes_later_bars(self, monkeypatch) -> None:
+        """Historical callers (recon / past-day views) must not leak later closes."""
+        bars = [
+            {"date": "2026-08-26", "close": 4.7},
+            {"date": "2026-08-27", "close": 4.8},
+            {"date": "2026-09-10", "close": 9.9},  # future vs as_of
+        ]
+        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        assert mas._signal_closes("518880.SH", 260, as_of="2026-08-27") == [4.7, 4.8]
+        series = mas._signal_series("518880.SH", 260, as_of="2026-08-27")
+        assert max(series) == "2026-08-27"
+        assert series["2026-08-27"] == 4.8
+
+    def test_pick_passes_as_of_to_signal_series(self, monkeypatch) -> None:
+        seen: list[str | None] = []
+
+        def fake_series(ts, days=260, *, as_of=None):
+            seen.append(as_of)
+            return {"2026-08-01": 1.0}
+
+        monkeypatch.setattr(mas, "_signal_series", fake_series)
+        out = mas._pick(as_of="2026-08-01")
+        assert out is None  # coverage gate fails on a single point
+        assert seen and all(a == "2026-08-01" for a in seen)
+
 
 class TestSleeveEtfSync:
     def test_uses_fund_daily_and_records(self, monkeypatch) -> None:

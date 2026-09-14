@@ -157,7 +157,7 @@ def test_trade_and_summary_to_dict() -> None:
 
 
 def test_init_rejects_unknown_trendok_params(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(be, "_load_calendar", lambda s, e: ["2026-06-18"])
+    monkeypatch.setattr(be, "_load_calendar", lambda s, e, _m="CN": ["2026-06-18"])
     cfg = BacktestConfig(
         start_date="2026-06-18",
         end_date="2026-06-18",
@@ -169,7 +169,7 @@ def test_init_rejects_unknown_trendok_params(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_init_loads_all_optional_layers(monkeypatch: pytest.MonkeyPatch) -> None:
     """All gated loaders run; bad/negative bars are skipped, not crashed on."""
-    monkeypatch.setattr(be, "_load_calendar", lambda s, e: ["2026-06-18", "2026-06-19"])
+    monkeypatch.setattr(be, "_load_calendar", lambda s, e, _m="CN": ["2026-06-18", "2026-06-19"])
     monkeypatch.setattr(be, "_load_scores", lambda s, e, m: {"2026-06-18": {"CN:600001": 90.0}})
     monkeypatch.setattr(be, "_load_delist_dates", lambda ts: {})
     monkeypatch.setattr(

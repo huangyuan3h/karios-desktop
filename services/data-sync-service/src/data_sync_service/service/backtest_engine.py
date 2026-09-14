@@ -677,7 +677,7 @@ class BacktestData:
 
     def __init__(self, config: BacktestConfig) -> None:
         self.config = config
-        self.calendar = _load_calendar(config.start_date, config.end_date)
+        self.calendar = _load_calendar(config.start_date, config.end_date, config.market)
         if config.trendok_params:
             from data_sync_service.service.trendok_params import DEFAULT_TRENDOK_PARAMS
 
@@ -887,15 +887,24 @@ class BacktestData:
         return out if out else self.scores_by_day
 
 
-def _load_calendar(start_date: str, end_date: str) -> list[str]:
-    """CN trading calendar from the daily table (distinct trade dates)."""
+def _load_calendar(start_date: str, end_date: str, market: str = "CN") -> list[str]:
+    """Trading calendar for one market from the daily table (OPT-183).
+
+    ``daily`` stores CN and HK rows in one table, so an unfiltered distinct
+    returns the UNION of both calendars. The other market's sessions then
+    become phantom trading days (HK-only dates are CN holidays), which ages
+    positions (``_calendar_days_between``), settles T+N cash and advances
+    cooldowns — so filter by the strategy line's market.
+    """
+    market_filter = "LIKE '%%.HK'" if market == "HK" else "NOT LIKE '%%.HK'"
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT DISTINCT trade_date
                 FROM daily
                 WHERE trade_date >= %s AND trade_date <= %s
+                  AND ts_code {market_filter}
                 ORDER BY trade_date
                 """,
                 (start_date, end_date),

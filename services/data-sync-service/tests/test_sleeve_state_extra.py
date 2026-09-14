@@ -47,7 +47,7 @@ class TestExtraEtfMarketData:
         assert out == {"ok": False, "n": 10}
 
     def test_extra_market_data_closes_raises(self, monkeypatch) -> None:
-        def _boom(ts, days=260):
+        def _boom(ts, days=260, as_of=None):
             raise RuntimeError("net down")
 
         monkeypatch.setattr(mas, "_closes", _boom)
@@ -146,18 +146,20 @@ class TestExtraPick:
         monkeypatch.setattr(
             mas,
             "_signal_series",
-            lambda ts, days=260: self._series(210, 100.0, 120.0) if ts == "518880.SH" else {},
+            lambda ts, days=260, as_of=None: (
+                self._series(210, 100.0, 120.0) if ts == "518880.SH" else {}
+            ),
         )
         assert mas._pick() is None
 
     def test_pick_none_when_all_below_ma(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            mas, "_signal_series", lambda ts, days=260: self._series(210, 120.0, 100.0)
+            mas, "_signal_series", lambda ts, days=260, as_of=None: self._series(210, 120.0, 100.0)
         )
         assert mas._pick() is None
 
     def test_pick_returns_above_ma_argmax(self, monkeypatch) -> None:
-        def _fake(ts: str, days: int = 260) -> dict[str, float]:
+        def _fake(ts: str, days: int = 260, as_of: str | None = None) -> dict[str, float]:
             if ts == "518880.SH":
                 return self._series(210, 100.0, 130.0)  # strongest
             if ts == "511260.SH":
@@ -205,7 +207,7 @@ class TestExtraRsiPulse:
         assert 0.0 < out < 100.0
 
     def test_extra_pulse_hints_fetch_raises(self, monkeypatch) -> None:
-        def _boom(ts, days=260):
+        def _boom(ts, days=260, as_of=None):
             raise RuntimeError("net down")
 
         monkeypatch.setattr(mas, "_signal_closes", _boom)
@@ -213,7 +215,7 @@ class TestExtraRsiPulse:
 
     def test_extra_pulse_hints_happy(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            mas, "_signal_closes", lambda ts, days=260: _linear_closes(60, 100.0, 110.0)
+            mas, "_signal_closes", lambda ts, days=260, as_of=None: _linear_closes(60, 100.0, 110.0)
         )
         hints = mas.build_pulse_hints()
         assert len(hints) == 3
@@ -224,7 +226,7 @@ class TestExtraSleeveBuild:
     """Harbor (P1, B11): park idle in the mom60+MA200 argmax ETF; no STOCK gate."""
 
     def _patch(self, monkeypatch, etf_pick, trail=None) -> None:
-        monkeypatch.setattr(mas, "_pick", lambda: etf_pick)
+        monkeypatch.setattr(mas, "_pick", lambda **kw: etf_pick)
         monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: trail)
 
     def test_extra_sleeve_no_candidate_no_hold(self, monkeypatch) -> None:

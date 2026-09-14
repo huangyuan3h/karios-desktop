@@ -363,6 +363,67 @@ def patch_paper_entry_fill(
     return _row_to_dict(row) if row else None
 
 
+def list_pending_exit_fills(*, limit: int = 100) -> list[dict[str, Any]]:
+    """Closed sleeve rows whose next-open exit is still a signal-close placeholder.
+
+    The 18:20 job books the exit on signal day T with ``closeDate = T+1``; the
+    real T+1 open is patched by the update cron once the bar lands.
+    """
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM {PAPER_TRADES_TABLE}
+                WHERE status = 'closed'
+                  AND close_reason = %s
+                  AND signal_snapshot->>'exitPendingOpenFill' = 'true'
+                ORDER BY close_date DESC
+                LIMIT %s
+                """,
+                (CLOSE_REASON_SLEEVE_EXIT, int(limit)),
+            )
+            rows = cur.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def patch_paper_exit_fill(
+    *,
+    trade_id: str,
+    close_price: float,
+    pnl_pct: float,
+    gross_pnl_pct: float,
+    signal_snapshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Patch a closed sleeve exit with the realized T+1 open (next_open fill-in)."""
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                f"""
+                UPDATE {PAPER_TRADES_TABLE}
+                SET close_price = %s,
+                    pnl_pct = %s,
+                    gross_pnl_pct = %s,
+                    signal_snapshot = %s,
+                    updated_at = now()
+                WHERE id = %s AND status = 'closed' AND close_reason = %s
+                RETURNING *
+                """,
+                (
+                    float(close_price),
+                    float(pnl_pct),
+                    float(gross_pnl_pct),
+                    Json(signal_snapshot) if signal_snapshot is not None else None,
+                    trade_id,
+                    CLOSE_REASON_SLEEVE_EXIT,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _row_to_dict(row) if row else None
+
+
 def close_paper_trade(
     *,
     trade_id: str,

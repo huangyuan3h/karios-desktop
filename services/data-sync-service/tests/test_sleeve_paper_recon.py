@@ -31,6 +31,7 @@ def _open_row(*, symbol: str = TEST_SYMBOL, created: str | None = None) -> dict:
         "signalSnapshot": {"entryMode": "next_open", "signalDate": created},
         "createdAt": created,
         "sleevePct": 50.0,
+        "entryDate": "2026-08-01",
         "tsCode": None,
     }
 
@@ -80,6 +81,14 @@ def test_pre_decision_holdings_excludes_todays_decision_rows() -> None:
         _open_row(symbol="ETF:518880"),  # pre-existing sleeve leg — kept
         _open_row(symbol="CN:600000", created=DAY),  # S-3 intake today — kept
         {
+            "symbol": "CN:600001",
+            "whyAtEntry": "",
+            "signalSnapshot": {},
+            "createdAt": None,
+            "sleevePct": 0.1,
+            "entryDate": "2026-08-01",
+        },
+        {
             "symbol": "HK:00700",
             "whyAtEntry": "",
             "signalSnapshot": {},
@@ -95,6 +104,9 @@ def test_pre_decision_holdings_excludes_todays_decision_rows() -> None:
     assert "CN:600000" in syms
     assert "ETF:513350" in syms
     assert "HK:00700" not in syms
+    by_sym = {str(h["symbol"]).upper(): h for h in holdings}
+    assert by_sym["CN:600001"]["sleeve_pct"] == 10.0
+    assert by_sym["CN:600001"]["entryDate"] == "2026-08-01"
 
 
 def test_buy_recorded_ok_and_user_pending() -> None:
@@ -128,9 +140,10 @@ def test_extra_open_flagged() -> None:
 
 
 def test_sell_recorded_ok_from_closed_leg_prestate() -> None:
+    # The 18:20 job books today's exit at the NEXT session (closeDate=exec day).
     recon = _run_recon(
         open_rows=[],
-        closed_rows=[_closed_row()],
+        closed_rows=[_closed_row(day="2026-08-21")],
         multi=_multi(action="SELL_TO_REPO"),
     )
     assert recon["ok"] is True
@@ -139,10 +152,36 @@ def test_sell_recorded_ok_from_closed_leg_prestate() -> None:
     assert recon["userAlignment"] == "missing"  # engine sold today, user did not
 
 
+def test_leg_sold_at_today_open_is_not_prestate() -> None:
+    """A leg closed at DAY's own open (closeDate=DAY) is gone from the 18:20
+    job's view: it must not be re-held nor counted as today's sale."""
+    recon = _run_recon(
+        open_rows=[],
+        closed_rows=[_closed_row(day=DAY)],
+        multi=_multi(action="SELL_TO_REPO"),
+    )
+    assert recon["expectedSells"] == []
+    assert recon["paperSellsToday"] == []
+    assert recon["ok"] is True
+
+
+def test_held_leg_from_earlier_day_is_prestate() -> None:
+    """An open sleeve leg opened on an earlier day is held today (HOLD), not a
+    fresh job BUY row (regression: why-text date check)."""
+    recon = _run_recon(
+        open_rows=[_open_row(created="2026-08-01")],
+        closed_rows=[],
+        multi=_multi(action="HOLD"),
+    )
+    assert recon["ok"] is True
+    assert recon["expectedBuys"] == []
+    assert recon["extraOpens"] == []
+
+
 def test_rotate_expects_sell_old_buy_new() -> None:
     recon = _run_recon(
         open_rows=[_open_row(symbol="ETF:518880"), _open_row(symbol=TEST_SYMBOL, created=DAY)],
-        closed_rows=[_closed_row(symbol="ETF:518880")],
+        closed_rows=[_closed_row(symbol="ETF:518880", day="2026-08-21")],
         multi=_multi(action="ROTATE", pick_symbol=TEST_SYMBOL),
     )
     assert recon["expectedSells"] == ["ETF:518880"]
@@ -289,7 +328,11 @@ class TestSleeveReconEndToEnd:
             "entry_date": "2026-08-21",
             "entry_price": 2.30,
             "pending_open_fill": False,
-            "signal_snapshot": {"entryMode": "next_open", "signalDate": DAY, "pendingOpenFill": False},
+            "signal_snapshot": {
+                "entryMode": "next_open",
+                "signalDate": DAY,
+                "pendingOpenFill": False,
+            },
         }
         with (
             patch(

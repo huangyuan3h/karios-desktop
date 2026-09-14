@@ -1031,6 +1031,110 @@ def test_resolve_ts_code_accepts_cn_and_hk() -> None:
     assert _resolve_ts_code("unknown") is None
 
 
+def test_resolve_fill_ts_code_accepts_etf_but_strict_does_not() -> None:
+    from data_sync_service.service.paper_trading import (
+        _resolve_fill_ts_code,
+        _resolve_ts_code,
+    )
+
+    assert _resolve_fill_ts_code("ETF:518880") == ("ETF", "518880.SH")
+    assert _resolve_fill_ts_code("CN:600519") == ("CN", "600519.SH")
+    assert _resolve_fill_ts_code("unknown") is None
+    # The generic close-condition path must keep rejecting ETFs.
+    assert _resolve_ts_code("ETF:518880") is None
+
+
+def test_run_update_patches_etf_pending_open_fill() -> None:
+    """ETF sleeve rows must get the real T+1 open (previously never patched)."""
+    row = {
+        "id": "etf-1",
+        "symbol": "ETF:518880",
+        "entryDate": "2026-08-21",
+        "entryPrice": 1.0,
+        "sleevePct": 50.0,
+        "signalSnapshot": {
+            "entryMode": "next_open",
+            "signalDate": "2026-08-20",
+            "pendingOpenFill": True,
+        },
+    }
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.get_open_paper_trades",
+            return_value=[row],
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.try_resolve_pending_open",
+            return_value=1.25,
+        ) as mock_resolve,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.patch_paper_entry_fill",
+            return_value={**row, "entryPrice": 1.25},
+        ) as mock_patch,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[],
+        ),
+    ):
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-21")
+    assert summary["pendingOpenFilled"] == 1
+    assert mock_resolve.call_args.kwargs["ts_code"] == "518880.SH"
+    assert mock_patch.call_args.kwargs["entry_price"] == 1.25
+
+
+def test_run_update_patches_pending_etf_exit_fill() -> None:
+    """Closed sleeve exits must replace the signal-close placeholder with the
+    realized T+1 open once the bar lands (runs even with an empty open book)."""
+    row = {
+        "id": "etf-exit-1",
+        "symbol": "ETF:518880",
+        "entryDate": "2026-08-01",
+        "entryPrice": 1.0,
+        "closeDate": "2026-08-21",
+        "closePrice": 1.02,
+        "costsPct": 0.1,
+        "closeReason": "sleeve_exit",
+        "signalSnapshot": {
+            "exitPendingOpenFill": True,
+            "exitSignalDate": "2026-08-20",
+            "exitPlaceholderClose": 1.02,
+        },
+    }
+
+    def _patch_exit(**kwargs):
+        return {**row, "closePrice": kwargs["close_price"], "pnlPct": kwargs["pnl_pct"]}
+
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.get_open_paper_trades",
+            return_value=[],
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.list_pending_exit_fills",
+            return_value=[row],
+        ),
+        patch(
+            "data_sync_service.service.paper_entry_fill.try_resolve_pending_open",
+            return_value=1.10,
+        ) as mock_resolve,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.patch_paper_exit_fill",
+            side_effect=_patch_exit,
+        ) as mock_patch,
+    ):
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-21")
+    assert summary["pendingExitFilled"] == 1
+    assert mock_resolve.call_args.kwargs["ts_code"] == "518880.SH"
+    assert mock_resolve.call_args.kwargs["entry_date"] == "2026-08-21"
+    assert mock_patch.call_args.kwargs["close_price"] == pytest.approx(1.10)
+    assert mock_patch.call_args.kwargs["gross_pnl_pct"] == pytest.approx(10.0)
+    assert mock_patch.call_args.kwargs["pnl_pct"] == pytest.approx(9.9)
+
+
 def test_run_intake_insert_side_not_leaked_from_last_change() -> None:
     """Regression (H2 smoke 2026-08-08): `action` is function-scoped in the
     filter loop; a trailing WATCH/TRIM change used to leak into every insert
