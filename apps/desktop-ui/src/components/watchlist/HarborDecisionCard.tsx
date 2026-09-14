@@ -19,6 +19,8 @@ import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/be
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery } from '@/lib/queries/backtest';
 import { STRATEGY_MODE_LABELS, type StrategyMode } from '@/lib/strategy-settings';
+import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
+import { SatelliteLegBlock } from '@/components/watchlist/SatelliteDecisionCard';
 import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 import { invalidateUserTradesQueries, recordUserTrade } from '@/lib/queries/userTrades';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
@@ -234,7 +236,6 @@ export function HarborDecisionCard({ mode = 'harbor' }: { mode?: StrategyMode } 
   });
 
   const last = timelineQ.data?.rows?.[timelineQ.data.rows.length - 1];
-  const satActive = (last as unknown as { satActive?: boolean })?.satActive ?? null;
   const baseRet = last?.navBaseReturnPct;
   const singleRet =
     (last as unknown as { navSingleReturnPct?: number })?.navSingleReturnPct ??
@@ -283,19 +284,8 @@ export function HarborDecisionCard({ mode = 'harbor' }: { mode?: StrategyMode } 
         </div>
       )}
 
-      {mode !== 'harbor' ? (
-        <div className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]">
-          <span className="font-medium text-sky-700 dark:text-sky-300">组合腿</span>
-          {mode === 'homeport'
-            ? ' · B3 逆波动率 50/50（月初再平衡）——paper/实盘记账未接线（OPT-186）'
-            : null}
-          {mode === 'starport'
-            ? ` · B3 月初再平衡（未接线 OPT-186） · 卫星有仓日 1/3 overlay（最近交易日 ${
-                last ? (satActive ? '有仓' : '空仓') : '—'
-              }；信号/成交组件待 OPT-178/186）`
-            : null}
-        </div>
-      ) : null}
+      {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
+      {mode === 'starport' ? <SatelliteLegBlock row={last} /> : null}
 
       <div className="mt-2 flex flex-col gap-1.5 text-xs">
         <div className="flex flex-wrap items-center gap-1.5">

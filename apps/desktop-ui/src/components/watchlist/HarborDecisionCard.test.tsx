@@ -24,7 +24,11 @@ vi.mock('@/lib/queries/portfolioHealth', async (importOriginal) => {
 
 vi.mock('@/lib/queries/backtest', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/queries/backtest')>();
-  return { ...actual, useTimelineQuery: () => ({ data: { rows: [] } }) };
+  return {
+    ...actual,
+    useTimelineQuery: () => ({ data: { rows: [] } }),
+    useB3StateQuery: () => ({ data: undefined }),
+  };
 });
 
 vi.mock('@/lib/queries/userTrades', async (importOriginal) => {
@@ -81,7 +85,7 @@ describe('HarborDecisionCard', () => {
     expect(
       screen.getByText('母港底仓 × 卫星 1/3 曝露 · 核心腿买卖照常 · 与 Timeline 同源'),
     ).toBeTruthy();
-    expect(screen.getByText(/卫星有仓日 1\/3 overlay/)).toBeTruthy();
+    expect(screen.getByText('卫星腿：最近交易日状态不可用')).toBeTruthy();
     await waitFor(() => expect(mockHealth).toHaveBeenCalled());
   });
 

@@ -1,4 +1,5 @@
 export * from './schemas/artifact';
+export * from './schemas/b3State';
 export * from './schemas/health';
 export * from './schemas/orderRecipe';
 export * from './schemas/portfolio';

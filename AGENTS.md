@@ -148,6 +148,7 @@ Cross-layer JSON contracts live in [`packages/shared`](packages/shared) as **Zod
 | `schemas/trendok.ts` | `GET /market/stocks/trendok` |
 | `schemas/watchlist.ts` | `GET/POST /watchlist/registry` |
 | `schemas/strategyCatalog.ts` | `GET /api/backtest/strategy-catalog` |
+| `schemas/b3State.ts` | `GET /api/backtest/b3-state` |
 
 **Workflow for new API fields:**
 

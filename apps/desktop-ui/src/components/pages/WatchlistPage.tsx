@@ -6,6 +6,7 @@ import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { HarborDecisionCard } from '@/components/watchlist/HarborDecisionCard';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { SatelliteDecisionCard } from '@/components/watchlist/SatelliteDecisionCard';
 import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
 import { StrategyStatusCard } from '@/components/watchlist/StrategyStatusCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
@@ -341,7 +342,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         ) : null}
         <StrategyModeBar />
         {strategyMode === 'starship' ? (
-          <StrategyStatusCard mode={strategyMode} />
+          <>
+            <SatelliteDecisionCard />
+            <StrategyStatusCard mode={strategyMode} />
+          </>
         ) : (
           <>
             <HarborDecisionCard mode={strategyMode} />

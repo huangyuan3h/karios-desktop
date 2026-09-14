@@ -495,6 +495,17 @@ def backtest_strategy_catalog() -> dict[str, Any]:
     return {"ok": True, "strategies": strategy_catalog()}
 
 
+@router.get("/b3-state")
+def backtest_b3_state() -> dict[str, Any]:
+    """Current-month B3 target/drift/rebalance list (母港/星港 decision aid).
+
+    Display only; B3 paper/live accounting is pending OPT-186.
+    """
+    from data_sync_service.service.strategy_today import b3_state
+
+    return b3_state()
+
+
 def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
     """TIP-017 资金流全景 rows (display only, fail-open): one per trading day.
 

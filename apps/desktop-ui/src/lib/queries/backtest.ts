@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { StrategyCatalog } from '@karios/shared';
+import type { B3State, StrategyCatalog } from '@karios/shared';
 
 import { apiGetJson } from '@/lib/api/client';
 
@@ -508,6 +508,15 @@ export type TimelineRow = {
     smNetPct: number | null;
   } | null;
   exits?: string[];
+  /** State-bucket satellite rows (strategy=state_bucket|starship|starport). */
+  satNav?: number;
+  satNavReturnPct?: number;
+  satActive?: boolean | null;
+  satPositions?: number;
+  satSlots?: number;
+  filledToday?: number;
+  idleSlots?: number;
+  gateOpen?: boolean | null;
 };
 
 export type TimelineSummary = {
@@ -568,6 +577,15 @@ export function useStrategyCatalogQuery() {
     queryKey: ['backtest', 'strategy-catalog'],
     queryFn: () => apiGetJson<StrategyCatalog>('/api/backtest/strategy-catalog'),
     staleTime: 10 * 60_000,
+  });
+}
+
+export function useB3StateQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'b3-state'],
+    queryFn: () => apiGetJson<B3State>('/api/backtest/b3-state'),
+    staleTime: 10 * 60_000,
+    enabled,
   });
 }
 
