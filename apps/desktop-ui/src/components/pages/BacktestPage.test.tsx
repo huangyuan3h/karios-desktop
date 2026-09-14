@@ -170,6 +170,35 @@ beforeEach(() => {
       };
     }
     if (String(path).includes('/api/backtest/sleeve-nav')) return {};
+    if (String(path).includes('/api/backtest/strategy-catalog')) {
+      const windows = {
+        OOS2: { total: 55.2, cagr: 58, mdd: -14.3, sharpe: 1.73 },
+        train: { total: 52.2, cagr: 138.2, mdd: -8, sharpe: 3.01 },
+        valid: { total: 50.3, cagr: 156.6, mdd: -21.8, sharpe: 2.14 },
+        long: { total: 201.5, cagr: 25.7, mdd: -22.8, sharpe: 1 },
+      };
+      const entry = (key: string, name: string, status: string, statusLabel: string) => ({
+        key,
+        name,
+        structure: `${name} structure`,
+        status,
+        statusLabel,
+        timelineStrategy: key,
+        doc: `docs/${key}.md`,
+        tag: key,
+        updated: '2026-09-14',
+        windows,
+        pros: [`${name} pro`],
+        cons: [`${name} con`],
+      });
+      return {
+        ok: true,
+        strategies: [
+          entry('harbor', '港湾', 'live', 'Live'),
+          entry('starport', '星港', 'product_candidate_increment', '产品候选增量'),
+        ],
+      };
+    }
     if (String(path).includes('/api/backtest/timeline')) {
       return {
         ok: true,
@@ -311,6 +340,13 @@ beforeEach(() => {
 });
 
 describe('BacktestPage', () => {
+  it('shows the selected strategy timeline under the catalog panel', async () => {
+    renderPage();
+    expect(await screen.findByText(/Timeline（港湾/)).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
+    expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
+  });
+
   it('shows the harbor timeline on compare tab', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('对比'));

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import type { StrategyCatalogEntry } from '@karios/shared';
+import type { StrategyCatalogEntry, StrategyCatalogKey } from '@karios/shared';
 
 import { useStrategyCatalogQuery } from '@/lib/queries/backtest';
 import { cn } from '@/lib/utils';
@@ -29,10 +29,17 @@ function statusTone(status: StrategyCatalogEntry['status']): string {
   return 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
 }
 
-export function StrategyCatalogPanel() {
+export function StrategyCatalogPanel({
+  selectedKey,
+  onSelect,
+}: {
+  selectedKey?: string;
+  onSelect?: (key: StrategyCatalogKey) => void;
+} = {}) {
   const q = useStrategyCatalogQuery();
   const strategies = q.data?.strategies ?? [];
-  const [key, setKey] = React.useState<string | null>(null);
+  const [innerKey, setInnerKey] = React.useState<string | null>(null);
+  const key = selectedKey ?? innerKey;
   const selected = strategies.find((s) => s.key === key) ?? strategies[0];
 
   if (q.isLoading) {
@@ -64,7 +71,10 @@ export function StrategyCatalogPanel() {
             <button
               key={s.key}
               type="button"
-              onClick={() => setKey(s.key)}
+              onClick={() => {
+                setInnerKey(s.key);
+                onSelect?.(s.key);
+              }}
               className={cn(
                 'rounded border px-2 py-1 text-[11px]',
                 s.key === selected.key

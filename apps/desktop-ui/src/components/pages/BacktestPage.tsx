@@ -3,6 +3,7 @@
 import React from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
+import type { StrategyCatalogKey } from '@karios/shared';
 import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -653,14 +654,27 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
   );
 }
 
-function TimelineCard() {
+function TimelineCard({
+  strategy: controlledStrategy,
+  onStrategyChange,
+}: {
+  strategy?: TimelineStrategy;
+  onStrategyChange?: (strategy: TimelineStrategy) => void;
+} = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
   const [windowId, setWindowId] = React.useState<TimelineWindowId>('trailing');
   const selected = windows.find((w) => w.id === windowId) ?? windows[0];
   const start = selected.start;
   const end = selected.end;
-  const [strategy, setStrategy] = React.useState<TimelineStrategy>(() => getStrategyMode());
+  const [innerStrategy, setInnerStrategy] = React.useState<TimelineStrategy>(
+    () => getStrategyMode(),
+  );
+  const strategy = controlledStrategy ?? innerStrategy;
+  const setStrategy = (next: TimelineStrategy) => {
+    setInnerStrategy(next);
+    onStrategyChange?.(next);
+  };
   const q = useTimelineQuery(start, end, strategy, true);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
@@ -1346,6 +1360,7 @@ export function BacktestPage() {
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
   const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline'>('catalog');
+  const [catalogKey, setCatalogKey] = React.useState<StrategyCatalogKey>(() => getStrategyMode());
   const attrEnd = new Date().toISOString().slice(0, 10);
   const attrStartDefault = (() => {
     const d = new Date();
@@ -1383,7 +1398,14 @@ export function BacktestPage() {
           <TabsTrigger value="baseline">回测基线</TabsTrigger>
         </TabsList>
         <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
-          <StrategyCatalogPanel />
+          <StrategyCatalogPanel selectedKey={catalogKey} onSelect={setCatalogKey} />
+          {catalogKey === 'twin_star' ? (
+            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-muted)]">
+              双子星已退役，无 Timeline 曲线；曲线数据见上方「优 / 劣」与真值档。
+            </div>
+          ) : (
+            <TimelineCard strategy={catalogKey} onStrategyChange={setCatalogKey} />
+          )}
         </TabsContent>
         <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
           <CoreAuditCard q={coreQ} />
