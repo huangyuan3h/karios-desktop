@@ -3,10 +3,8 @@
 import * as React from 'react';
 
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
-import { HarborDecisionCard } from '@/components/watchlist/HarborDecisionCard';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
-import { SatelliteDecisionCard } from '@/components/watchlist/SatelliteDecisionCard';
 import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
@@ -334,11 +332,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         ) : null}
         <StrategyModeBar />
         <PickStrongAlignBanner mode={strategyMode} />
-        {strategyMode === 'starship' ? (
-          <SatelliteDecisionCard />
-        ) : (
-          <HarborDecisionCard mode={strategyMode} />
-        )}
+        <PortfolioHealthCard mode={strategyMode} onOpenStock={onOpenStock} />
         <WatchlistToolbar
           trendUpdatedAt={trendUpdatedAt}
           latestAutomation={latestAutomation}
@@ -364,8 +358,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onRunAutomation={() => void onRunAutomation(true)}
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
-
-        <PortfolioHealthCard onOpenStock={onOpenStock} />
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />

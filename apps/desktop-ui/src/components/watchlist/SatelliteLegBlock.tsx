@@ -1,8 +1,6 @@
 'use client';
 
-import * as React from 'react';
-
-import { useTimelineQuery, type TimelineRow } from '@/lib/queries/backtest';
+import type { TimelineRow } from '@/lib/queries/backtest';
 import { cn } from '@/lib/utils';
 
 /** Satellite leg state from the research replay rows (last session). */
@@ -50,30 +48,6 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
       <div className="mt-1 text-[var(--k-muted)]">
         回测口径（研究 replay）。今日 14:30 信号名单/成交记录组件待 OPT-178 重接 + OPT-186；未过执行审计。
       </div>
-    </div>
-  );
-}
-
-/** 星舰 view: satellite-only decision surface. */
-export function SatelliteDecisionCard() {
-  const today = new Date().toISOString().slice(0, 10);
-  const start = (() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().slice(0, 10);
-  })();
-  const q = useTimelineQuery(start, today, 'starship', true);
-  const rows = q.data?.rows ?? [];
-  const last = rows[rows.length - 1];
-  return (
-    <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span className="text-[13px] font-semibold">星舰 · 今日决策</span>
-        <span className="text-[10px] text-[var(--k-muted)]">
-          卫星 standalone（100% 曝露）· 未过执行审计，不进 Live
-        </span>
-      </div>
-      <SatelliteLegBlock row={last} />
     </div>
   );
 }

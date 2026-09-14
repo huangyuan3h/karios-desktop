@@ -31,6 +31,13 @@ const backtestMock = vi.hoisted(() => ({
       isFetching: false,
     }),
   ),
+  useTimelineQuery: vi.fn(
+    (): QueryStub => ({
+      data: { rows: [] },
+      isError: false,
+      isFetching: false,
+    }),
+  ),
 }));
 vi.mock('@/lib/queries/backtest', async () => {
   const actual =
@@ -39,6 +46,7 @@ vi.mock('@/lib/queries/backtest', async () => {
     ...actual,
     useBacktestReconQuery: backtestMock.useBacktestReconQuery,
     useSleeveReconQuery: backtestMock.useSleeveReconQuery,
+    useTimelineQuery: backtestMock.useTimelineQuery,
   };
 });
 
@@ -184,9 +192,10 @@ describe('PortfolioHealthCard (harbor)', () => {
       ],
     });
     renderCard();
-    expect(screen.queryByText(/股票篮买入/)).toBeNull();
-    fireEvent.click(await screen.findByText('展开'));
-    expect(await screen.findByText(/今日 pick=OIL · 只看仓\/轮出/)).toBeDefined();
+    expect(await screen.findByText(/闲置现金停进核心 ETF/)).toBeDefined();
+    expect(screen.queryByText(/股票篮买入（核心 pick=STOCK/)).toBeNull();
+    fireEvent.click(screen.getByText('展开'));
+    expect(await screen.findByText(/核心 pick=/)).toBeDefined();
   });
 
   it('renders the core sleeve reconciliation when available', async () => {
