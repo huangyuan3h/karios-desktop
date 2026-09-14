@@ -114,6 +114,7 @@
 | [`stable/sgap-habit-satellite-standalone-2026-09-14.md`](stable/sgap-habit-satellite-standalone-2026-09-14.md) | **习惯 S-gap 卫星腿 standalone 记录（clean 口径）**：三窗+long、年度、校验 | ✅ 研究记录 |
 | [`sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](sat/sat-valid-shortfall-diagnosis-2026-09-14.md) | **卫星 valid 短板诊断（H-SAT-DIAG）**：有仓日同日核心对照 + 闸门反证 → regime 依赖（非口径 bug） | ✅ 结论级 |
 | [`stable/harbor-sat-weight-2026-09-14.md`](stable/harbor-sat-weight-2026-09-14.md) | **港湾×卫星 曝露曲线（H-SAT-W，预注册）**：7 档权重全不满足 K1–K3 → REJECT | ❌ REJECT |
+| [`stable/harbor-b3-sat-2026-09-14.md`](stable/harbor-b3-sat-2026-09-14.md) | **三腿「母港×卫星」（H-B3-SAT，预注册）**：换基座后 w∈[0.15,1/3] 全过 K1–K3（chosen 1/3 踩线，稳健 0.15–0.25） | ✅ PASS（产品候选增量） |
 
 ### 早期与专题（结论已定 · 有事才翻）
 

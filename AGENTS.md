@@ -169,11 +169,12 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 1. **现行产品基线 = 「港湾」（Harbor）= S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；真值 [`docs/modules/pick-strong-track.md`](docs/modules/pick-strong-track.md)）。三窗增量 **+15.5/+11.0/+11.6pt**、long **+125.4pt**（2026-09-13 修正后）；停车场只作用于 S-3 闲置现金（14:30、`mom60+MA200` argmax、因果 trail8）。
    - 停车场真值 → [`etf-parking-baseline-2026-09-13.md`](docs/backtests/stable/etf-parking-baseline-2026-09-13.md)（B11）
    - ETF 基准 / 最佳拟合 → [`etf-benchmark-parking-2026-09-13.md`](docs/backtests/stable/etf-benchmark-parking-2026-09-13.md)（B13；港湾×风险预算 50/50，落地需另起预注册）
+   - **产品候选（不进 Live）**：母港 = 港湾×B3 50/50 **PASS**（B15）→ [`harbor-riskbudget-2026-09-13.md`](docs/backtests/stable/harbor-riskbudget-2026-09-13.md)；三腿「母港×卫星」**PASS chosen=1/3**（H-B3-SAT，2026-09-14；1/3 踩线、稳健 0.15–0.25）→ [`harbor-b3-sat-2026-09-14.md`](docs/backtests/stable/harbor-b3-sat-2026-09-14.md)
    - S-3 参数真值 → [`docs/modules/strategy-params.md`](docs/modules/strategy-params.md) §1；拒收总表 → [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)
    - Live 现状：旧 `twin_star`/择强路径仍在且有前视/账本 bug → **OPT-178**（修完前不按旧卫星指令下单）。
 2. **历史（REJECT / 已下线，不要再当实盘方案提出）**：
    - 择强单轨「全资产同权 100% argmax」被 **OPT-177** 证伪（long ≈ +0.8% / MDD −58%）；
-   - 机会双子星 / 卫星腿（14:30 名单 + C1 3% + 第 3 日 14:30 卖 + 4×12.5%）重拟合 **REJECT**：[`twin-star-parking-refit-2026-09-13.md`](docs/backtests/stable/twin-star-parking-refit-2026-09-13.md)（B12：long −55.6pt / 回撤 −48.3；卫星 standalone 2022 −34.8% / 2023 −48.0% / MDD −80.6%）。
+   - 机会双子星 / 卫星腿（14:30 名单 + C1 3% + 第 3 日 14:30 卖 + 4×12.5%）**仍 REJECT**：2026-09-14 审计 clean 重跑后死因只剩 valid 单窗（Δ−21.2；旧 boom-bust/long 数字全部作废，卫星 standalone clean long +463.6%）；两腿叠加港湾任何权重也无解（H-SAT-W）→ 只有三腿（母港×卫星）产品候选成立。见 [`twin-star-parking-refit-2026-09-13.md`](docs/backtests/stable/twin-star-parking-refit-2026-09-13.md) · [`audit-three-strategy-lookahead-2026-09-14.md`](docs/backtests/audit-three-strategy-lookahead-2026-09-14.md)。
    - 旧卫星 / 14:30 / C1 各专题档（`sat-*`、`clip4-ops-decisions`、`state-bucket-algo` 等）仅作历史参考，索引见 [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)。
 3. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
 4. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。

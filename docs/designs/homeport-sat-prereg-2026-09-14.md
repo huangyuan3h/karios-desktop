@@ -32,6 +32,6 @@
 - 脚本：`scripts/eval_harbor_b3_sat.py` → `data/backtest_reports/harbor_b3_sat_2026-09-14.json`
 - 结论落 `docs/backtests/stable/harbor-b3-sat-2026-09-14.md` + SUMMARY + todo。
 
-**结果（跑后补）**：
+**结果（跑后补）**：**PASS（chosen = 1/3）**。valid 稀释斜率 **−42.4×w → −14.6×w**（B3 吸收约 2/3）、long Δsr 斜率 **+0.9×w → +1.9×w**；K1–K3：w∈{0.15,0.20,0.25,1/3} 全过、0.10 挂 K2（Δtot +22.2 < 25）、0.40/0.50 挂 K1（−5.8/−7.3）。**chosen=1/3 踩线（valid Δ −4.9 vs 门槛 −5.0）**——按预注册取最大者成立，稳健区间建议 0.15–0.25。chosen 绝对值：OOS2 +89.4 / train +40.7 / valid +20.7 / long +198.1（sr 4.45/4.54/1.93/1.84）。死因预判 #3 证伪（w=0.15 即过 K2）、#2 方向对量级错。结论落 [`../backtests/stable/harbor-b3-sat-2026-09-14.md`](../backtests/stable/harbor-b3-sat-2026-09-14.md)。
 
 *冻结于 2026-09-14，跑数前。*
