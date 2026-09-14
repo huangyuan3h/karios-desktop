@@ -87,7 +87,48 @@ def _sat_book(start: str, end: str) -> dict:
     if nav and nav[0] > 0:
         base = nav[0]
         nav = [v / base for v in nav]
-    return {"dates": dates, "nav": nav, "pos": pos, "summary": sat.get("summary") or {}}
+    return {
+        "dates": dates,
+        "nav": nav,
+        "pos": pos,
+        "summary": sat.get("summary") or {},
+        "rows": rows,
+        "blotter": sat.get("blotter") or [],
+    }
+
+
+def _true_cash_share(sat: dict) -> list[float]:
+    """Engine cash share of NAV = (1 + realized - n*clip) / nav.
+
+    The frozen engine uses FIXED 25% clips (profits are never reinvested), so
+    ``1 - 0.25*n`` (the initial-capital cash share) understates the true cash
+    later in the window. Reconstruct realized from the closed fills'
+    ``contribPct`` (= (trade_ret - costs) * clip * 100).
+    """
+    rows = sat["rows"]
+    blotter = sat["blotter"]
+    realized_by_day: dict[str, float] = {}
+    for b in blotter:
+        if b.get("kind") != "fill" or not b.get("exitDate"):
+            continue
+        c = b.get("contribPct")
+        if c is None:
+            continue
+        realized_by_day[str(b["exitDate"])] = realized_by_day.get(str(b["exitDate"]), 0.0) + float(c) / 100.0
+    cal = sorted(realized_by_day)
+    out: list[float] = []
+    cum = 0.0
+    j = 0
+    for r in rows:
+        d = str(r["date"])
+        while j < len(cal) and cal[j] <= d:
+            cum += realized_by_day[cal[j]]
+            j += 1
+        nav = float(r.get("satNav") or 1.0)
+        npos = int(r.get("satPositions") or 0)
+        cash = 1.0 + cum - npos * SLOT_PCT
+        out.append(min(1.0, max(0.0, cash / nav if nav > 0 else 0.0)))
+    return out
 
 
 def _idle_prev(pos: list[int], *, lag: bool = True) -> list[float]:
@@ -209,6 +250,10 @@ def main() -> int:
 
         w_causal = _idle_prev(pos, lag=True)
         w_same = _idle_prev(pos, lag=False)
+        cash_true = _true_cash_share(sat)
+        w_true = [0.0] * n
+        for i in range(1, n):
+            w_true[i] = cash_true[i - 1]
         arms: dict[str, dict] = {}
         a0 = _stats(sat_nav)
         for bps in TRANSFER_BPS:
@@ -217,6 +262,7 @@ def main() -> int:
         arms["A1_legacy"] = _compose(sat_nav, w_same, core_nav, TRANSFER_BPS[0])
         arms["A2"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[0])
         arms["A2_nocost"] = _compose(sat_nav, w_causal, sleeve_nav, 0.0)
+        arms["A2_true"] = _compose(sat_nav, w_true, sleeve_nav, TRANSFER_BPS[0])
         arms["A2_15bps"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[1])
         arms["A3"] = _compose(sat_nav, w_causal, repo_nav, TRANSFER_BPS[0])
 
@@ -259,6 +305,17 @@ def main() -> int:
             "sleeve_ret_partial_pct": _mean([sleeve_r[i] * 100 for i in idx_partial]),
             "sleeve_ret_fully_deployed_pct": _mean([sleeve_r[i] * 100 for i in idx_deployed]),
         }
+        act = [i for i in range(1, n) if pos[i] > 0]
+        a2_diag["w_naive_mean"] = round(float(np.mean(w_causal[1:])), 3)
+        a2_diag["w_true_mean"] = round(float(np.mean(w_true[1:])), 3)
+        a2_diag["w_true_mean_active"] = (
+            round(float(np.mean([w_true[i] for i in act])), 3) if act else None
+        )
+        a2_diag["w_true_mean_idle"] = (
+            round(float(np.mean([w_true[i] for i in range(1, n) if pos[i] == 0])), 3)
+            if any(pos[i] == 0 for i in range(1, n))
+            else None
+        )
         row["_a2_diag"] = a2_diag
         row["_a2_attrib"] = {
             "gross_pt": round(row["A2_nocost"]["total_pct"] - a0["total_pct"], 1),
@@ -305,6 +362,11 @@ def main() -> int:
             )
         a2 = row["_a2_diag"]
         attrib = row["_a2_attrib"]
+        print(
+            f"  cash-share weight: naive mean {a2['w_naive_mean']} vs true mean {a2['w_true_mean']} "
+            f"(active {a2['w_true_mean_active']}, idle {a2['w_true_mean_idle']})",
+            flush=True,
+        )
         print(
             f"  A2 diag: parked {a2['parked_pct_days']}% NAV-days | fully-idle days "
             f"{a2['share_fully_idle_days_pct']}% (n={a2['days_fully_idle']}) | sleeve daily ret "

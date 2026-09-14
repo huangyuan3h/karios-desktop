@@ -91,6 +91,17 @@
     "delta_mdd": -5.9,
     "year_deltas": null
    },
+   "A2_true": {
+    "n_days": 243,
+    "total_pct": 235.8,
+    "cagr": 253.0,
+    "max_dd": -9.2,
+    "sharpe": 5.27,
+    "delta_total": 23.1,
+    "delta_sharpe": -2.17,
+    "delta_mdd": -5.9,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 243,
     "total_pct": 198.4,
@@ -121,7 +132,11 @@
     "share_fully_idle_days_pct": 39.7,
     "sleeve_ret_fully_idle_pct": 0.0699,
     "sleeve_ret_partial_pct": -0.2217,
-    "sleeve_ret_fully_deployed_pct": 0.0984
+    "sleeve_ret_fully_deployed_pct": 0.0984,
+    "w_naive_mean": 0.446,
+    "w_true_mean": 0.733,
+    "w_true_mean_active": 0.606,
+    "w_true_mean_idle": 0.929
    },
    "_a2_attrib": {
     "gross_pt": 4.9,
@@ -229,6 +244,17 @@
     "delta_mdd": -1.6,
     "year_deltas": null
    },
+   "A2_true": {
+    "n_days": 123,
+    "total_pct": 67.7,
+    "cagr": 190.82,
+    "max_dd": -9.9,
+    "sharpe": 4.29,
+    "delta_total": 27.4,
+    "delta_sharpe": 0.79,
+    "delta_mdd": -1.8,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 123,
     "total_pct": 60.6,
@@ -259,7 +285,11 @@
     "share_fully_idle_days_pct": 46.7,
     "sleeve_ret_fully_idle_pct": 0.2709,
     "sleeve_ret_partial_pct": 0.2288,
-    "sleeve_ret_fully_deployed_pct": 0.0915
+    "sleeve_ret_fully_deployed_pct": 0.0915,
+    "w_naive_mean": 0.496,
+    "w_true_mean": 0.563,
+    "w_true_mean_active": 0.242,
+    "w_true_mean_idle": 0.93
    },
    "_a2_attrib": {
     "gross_pt": 23.8,
@@ -367,6 +397,17 @@
     "delta_mdd": -21.7,
     "year_deltas": null
    },
+   "A2_true": {
+    "n_days": 110,
+    "total_pct": 11.5,
+    "cagr": 28.73,
+    "max_dd": -28.0,
+    "sharpe": 0.77,
+    "delta_total": -3.2,
+    "delta_sharpe": -1.29,
+    "delta_mdd": -21.5,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 110,
     "total_pct": 9.9,
@@ -397,7 +438,11 @@
     "share_fully_idle_days_pct": 75.2,
     "sleeve_ret_fully_idle_pct": -0.024,
     "sleeve_ret_partial_pct": 3.3298,
-    "sleeve_ret_fully_deployed_pct": 0.1763
+    "sleeve_ret_fully_deployed_pct": 0.1763,
+    "w_naive_mean": 0.761,
+    "w_true_mean": 0.767,
+    "w_true_mean_active": 0.154,
+    "w_true_mean_idle": 0.979
    },
    "_a2_attrib": {
     "gross_pt": -3.8,
@@ -540,6 +585,24 @@
      "2026": -9.4
     }
    },
+   "A2_true": {
+    "n_days": 1216,
+    "total_pct": 884.9,
+    "cagr": 60.71,
+    "max_dd": -28.5,
+    "sharpe": 2.09,
+    "delta_total": 421.3,
+    "delta_sharpe": -1.41,
+    "delta_mdd": -20.1,
+    "year_deltas": {
+     "2021": 2.2,
+     "2022": -0.1,
+     "2023": 17.6,
+     "2024": 8.7,
+     "2025": 33.5,
+     "2026": 13.5
+    }
+   },
    "A2_15bps": {
     "n_days": 1216,
     "total_pct": 514.7,
@@ -584,7 +647,11 @@
     "share_fully_idle_days_pct": 52.8,
     "sleeve_ret_fully_idle_pct": 0.0659,
     "sleeve_ret_partial_pct": 0.0382,
-    "sleeve_ret_fully_deployed_pct": 0.0664
+    "sleeve_ret_fully_deployed_pct": 0.0664,
+    "w_naive_mean": 0.573,
+    "w_true_mean": 0.842,
+    "w_true_mean_active": 0.69,
+    "w_true_mean_idle": 0.977
    },
    "_a2_attrib": {
     "gross_pt": 209.4,
@@ -692,6 +759,17 @@
     "delta_mdd": -0.5,
     "year_deltas": null
    },
+   "A2_true": {
+    "n_days": 26,
+    "total_pct": -3.7,
+    "cagr": -31.96,
+    "max_dd": -12.2,
+    "sharpe": -1.16,
+    "delta_total": -0.9,
+    "delta_sharpe": -0.31,
+    "delta_mdd": -0.6,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 26,
     "total_pct": -4.3,
@@ -722,7 +800,11 @@
     "share_fully_idle_days_pct": 4.0,
     "sleeve_ret_fully_idle_pct": -0.1,
     "sleeve_ret_partial_pct": 0.0122,
-    "sleeve_ret_fully_deployed_pct": -0.1223
+    "sleeve_ret_fully_deployed_pct": -0.1223,
+    "w_naive_mean": 0.14,
+    "w_true_mean": 0.134,
+    "w_true_mean_active": 0.14,
+    "w_true_mean_idle": 0.0
    },
    "_a2_attrib": {
     "gross_pt": -0.7,
@@ -755,5 +837,5 @@
   "pass": false,
   "note": "returns-only premise; K3 (MDD/Sharpe) recorded, non-binding; PASS = satellite-anchored capital structure candidate only (NOT Harbor+satellite, H-SAT-W stays REJECT)"
  },
- "as_of": "2026-09-14T23:18:42.479509+00:00"
+ "as_of": "2026-09-14T23:42:50.694685+00:00"
 }
