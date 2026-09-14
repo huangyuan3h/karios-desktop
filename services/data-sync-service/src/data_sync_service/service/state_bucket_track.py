@@ -2,10 +2,10 @@
 
 Two calibers share this engine (2026-09-11 统一后):
   frozen (next_open): 信号 T-1 收盘 → T 开盘成交 → body=3 收盘出。S-gap 研究基线，
-    `build_state_bucket_timeline` / Timeline `strategy=state_bucket` 仍用它。
+    Timeline `strategy=state_bucket` / `recipe="frozen"` 仍用它。
   habit (same_1430): 信号/成交在 T 日 14:30 print，C1 3%，body=3 第 3 日 14:30 出，
     排序用 14:30 可得振幅（`rank_key="amp_1430"`，零前视）。**这是 Live 双子星定义**，
-    Live / 审计 / paper 全部跑它。
+    Live / 审计 / paper / 产品展示（starship/starport，`recipe="habit"`）全部跑它。
 
   state   = S-gap (gap>3%)
   factor  = amplitude 升序取前 1/3 (bucket_q=3, 最低波33%)
@@ -45,6 +45,28 @@ FILL_SAME_1430 = "same_1430"
 VALID_FILL_MODES = (FILL_NEXT_OPEN, FILL_SAME_CLOSE, FILL_SAME_1430)
 SAME_DAY_FILL_MODES = (FILL_SAME_CLOSE, FILL_SAME_1430)
 HABIT_FILL_TIMES = ("1000", "1330", "1400", "1430", "1440", "1450", "1500")
+
+# Two frozen recipes for the satellite replay. Timeline/product callers pass the
+# recipe explicitly; research scripts keep their explicit kwargs.
+FROZEN_RECIPE: dict[str, Any] = {
+    "skip_t1_limit": True,
+    "pool_mode": "strict",
+}
+# Live/habit caliber (OPT-182/183 clean): 14:30 fill+exit, amp_1430 rank, C1 3%,
+# gate_1430. This is the definition the frozen standalone/twin-star numbers use.
+HABIT_RECIPE: dict[str, Any] = {
+    "skip_t1_limit": True,
+    "pool_mode": "strict",
+    "max_pos": MAX_POS,
+    "position_pct": POSITION_PCT,
+    "body": BODY,
+    "fill_mode": FILL_SAME_1430,
+    "fill_hhmm": "1430",
+    "exit_hhmm": "1430",
+    "max_open_to_1430_pct": 0.03,
+    "rank_key": "amp_1430",
+    "gate_1430": True,
+}
 
 
 def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
@@ -1334,7 +1356,8 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
             "fusedPct": round(sat_pct, 2),
             "corePct": None,
             "basePct": None,
-            "maxDdFusedPct": round(sat_dd, 1),
+            # engine keeps the drawdown magnitude; Timeline convention is negative
+            "maxDdFusedPct": round(-abs(sat_dd), 1),
             "satPct": round(sat_pct, 2),
             "satMaxDdPct": round(sat_dd, 1),
         },
@@ -1349,9 +1372,16 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_state_bucket_timeline(*, start: str, end: str) -> dict[str, Any]:
-    """Product Timeline entry for the standalone state-bucket S-gap strategy."""
-    sat = build_sgap_timeline(start=start, end=end, skip_t1_limit=True, pool_mode="strict")
+def build_state_bucket_timeline(
+    *, start: str, end: str, recipe: str = "frozen"
+) -> dict[str, Any]:
+    """Product Timeline entry for the standalone state-bucket S-gap strategy.
+
+    ``recipe="frozen"`` = next_open research baseline (legacy state_bucket view);
+    ``recipe="habit"`` = Live 14:30 caliber (starship/starport product views).
+    """
+    kwargs = HABIT_RECIPE if recipe == "habit" else FROZEN_RECIPE
+    sat = build_sgap_timeline(start=start, end=end, **kwargs)
     out = sgap_to_timeline_rows(sat)
     out["start"] = start
     out["end"] = end

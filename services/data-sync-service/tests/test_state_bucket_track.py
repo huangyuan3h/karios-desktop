@@ -889,6 +889,27 @@ class TestSgapToTimelineRows:
         assert "blotter" in built
         assert any(r.get("strictCount") is not None for r in built["rows"])
 
+    def test_habit_recipe_forwards_live_caliber(self, monkeypatch) -> None:
+        """starship/starport product views must replay the 14:30 Live caliber."""
+        dates, per_ts, mv, _ = _mk_data()
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        seen: dict = {}
+        real = sbt.build_sgap_timeline
+
+        def fake(*, start, end, **kw):
+            seen.update(kw)
+            return real(start=start, end=end, **kw)
+
+        monkeypatch.setattr(sbt, "build_sgap_timeline", fake)
+        built = sbt.build_state_bucket_timeline(start=dates[0], end=dates[-1], recipe="habit")
+        assert seen["fill_mode"] == sbt.FILL_SAME_1430
+        assert seen["fill_hhmm"] == "1430"
+        assert seen["exit_hhmm"] == "1430"
+        assert seen["rank_key"] == "amp_1430"
+        assert seen["gate_1430"] is True
+        assert seen["max_open_to_1430_pct"] == 0.03
+        assert built["rows"]
+
 
 class TestHkContainmentOPT147:
     """OPT-147: HK names must not leak into S-gap pool or R-wide breadth.

@@ -755,12 +755,17 @@ def _get_or_build_timeline(
             return file_cached, None
 
     # Standalone state-bucket: no S-3 / pick-strong dependency.
-    # ``starship`` is the same standalone leg under its 2026-09-14 name (display alias).
+    # ``starship`` is the same standalone leg under its 2026-09-14 name (display alias),
+    # but must replay the Live/habit caliber so it matches the frozen standalone doc.
     if strategy in ("state_bucket", "starship"):
         from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
 
         try:
-            result = build_state_bucket_timeline(start=start, end=end)
+            result = build_state_bucket_timeline(
+                start=start,
+                end=end,
+                recipe="habit" if strategy == "starship" else "frozen",
+            )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=500, detail=f"timeline {strategy} failed: {exc}"
@@ -795,7 +800,7 @@ def _get_or_build_timeline(
             start, end, strategy="homeport", need_engine=need_engine
         )
         try:
-            sat_result = build_state_bucket_timeline(start=start, end=end)
+            sat_result = build_state_bucket_timeline(start=start, end=end, recipe="habit")
             result = blend_starport_timeline(homeport_result, sat_result)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
