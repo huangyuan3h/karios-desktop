@@ -38,11 +38,11 @@ import { recordUserTrade } from '@/lib/queries/userTrades';
 const mockHealth = vi.mocked(fetchPortfolioHealth);
 const mockRecord = vi.mocked(recordUserTrade);
 
-function renderCard() {
+function renderCard(mode: 'harbor' | 'homeport' | 'starport' | 'starship' = 'harbor') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <HarborDecisionCard />
+      <HarborDecisionCard mode={mode} />
     </QueryClientProvider>,
   );
 }
@@ -66,6 +66,22 @@ describe('HarborDecisionCard', () => {
     expect(
       screen.getByText('S-3 核心 + 闲置现金 ETF 停车场 · 100% 硬切 · 与 Timeline 同源'),
     ).toBeTruthy();
+    await waitFor(() => expect(mockHealth).toHaveBeenCalled());
+  });
+
+  it('follows the selected strategy view (星港)', async () => {
+    mockHealth.mockResolvedValue({
+      multiAssetSleeve: { active: true, action: 'HOLD', pick: { key: 'OIL', symbol: 'ETF:513350' } },
+      holdings: [],
+      multiAssetHoldings: [],
+      hkHealth: { holdings: [] },
+    } as never);
+    renderCard('starport');
+    expect(screen.getByText('星港 · 今日决策')).toBeTruthy();
+    expect(
+      screen.getByText('母港底仓 × 卫星 1/3 曝露 · 核心腿买卖照常 · 与 Timeline 同源'),
+    ).toBeTruthy();
+    expect(screen.getByText(/卫星有仓日 1\/3 overlay/)).toBeTruthy();
     await waitFor(() => expect(mockHealth).toHaveBeenCalled());
   });
 

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { useTimelineQuery } from '@/lib/queries/backtest';
+import { STRATEGY_MODE_LABELS, type StrategyMode } from '@/lib/strategy-settings';
 import { detectReplicaGaps, type HoldingSnap } from '@/lib/replica-gap';
 import { invalidateUserTradesQueries, recordUserTrade } from '@/lib/queries/userTrades';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
@@ -58,7 +59,15 @@ async function postSleeveExec(body: Record<string, unknown>): Promise<void> {
   }
 }
 
-export function HarborDecisionCard() {
+const MODE_SUBTITLE: Record<StrategyMode, string> = {
+  harbor: 'S-3 核心 + 闲置现金 ETF 停车场 · 100% 硬切 · 与 Timeline 同源',
+  homeport: '港湾核心 × B3 50/50 · 核心腿买卖照常、B3 月频再平衡 · 与 Timeline 同源',
+  starport: '母港底仓 × 卫星 1/3 曝露 · 核心腿买卖照常 · 与 Timeline 同源',
+  starship: '卫星 standalone · 无港湾核心腿',
+};
+
+export function HarborDecisionCard({ mode = 'harbor' }: { mode?: StrategyMode } = {}) {
+  const strategyName = STRATEGY_MODE_LABELS[mode];
   const qc = useQueryClient();
   const auditQuery = useBehaviorAuditQuery();
   const healthQuery = useQuery({
@@ -72,7 +81,7 @@ export function HarborDecisionCard() {
     d.setFullYear(d.getFullYear() - 1);
     return d.toISOString().slice(0, 10);
   })();
-  const timelineQ = useTimelineQuery(start, today, 'harbor', true);
+  const timelineQ = useTimelineQuery(start, today, mode, true);
   const refresh = useRefreshBehaviorAudit();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -225,6 +234,7 @@ export function HarborDecisionCard() {
   });
 
   const last = timelineQ.data?.rows?.[timelineQ.data.rows.length - 1];
+  const satActive = (last as unknown as { satActive?: boolean })?.satActive ?? null;
   const baseRet = last?.navBaseReturnPct;
   const singleRet =
     (last as unknown as { navSingleReturnPct?: number })?.navSingleReturnPct ??
@@ -238,10 +248,8 @@ export function HarborDecisionCard() {
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
       <div className="flex flex-wrap items-baseline gap-2">
-        <span className="text-[13px] font-semibold">港湾 · 今日决策</span>
-        <span className="text-[10px] text-[var(--k-muted)]">
-          S-3 核心 + 闲置现金 ETF 停车场 · 100% 硬切 · 与 Timeline 同源
-        </span>
+        <span className="text-[13px] font-semibold">{strategyName} · 今日决策</span>
+        <span className="text-[10px] text-[var(--k-muted)]">{MODE_SUBTITLE[mode]}</span>
         <Button
           variant="ghost"
           size="sm"
@@ -259,7 +267,7 @@ export function HarborDecisionCard() {
             今日 {pick}
           </span>
           <span className="ml-2 tabular-nums text-[var(--k-muted)]">
-            过去年 基线 {baseRet.toFixed(1)}% · 港湾 {singleRet.toFixed(1)}% · 超额{' '}
+            过去年 基线 {baseRet.toFixed(1)}% · {strategyName} {singleRet.toFixed(1)}% · 超额{' '}
             {excess != null ? `${excess >= 0 ? '+' : ''}${excess.toFixed(1)}pt` : '—'}
           </span>
           <span className="ml-2 text-emerald-700">
@@ -274,6 +282,20 @@ export function HarborDecisionCard() {
           ETF {gap.etfWeightPct}%（本质差异看回测「归因对照」）
         </div>
       )}
+
+      {mode !== 'harbor' ? (
+        <div className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 text-[10px] text-[var(--k-muted)]">
+          <span className="font-medium text-sky-700 dark:text-sky-300">组合腿</span>
+          {mode === 'homeport'
+            ? ' · B3 逆波动率 50/50（月初再平衡）——paper/实盘记账未接线（OPT-186）'
+            : null}
+          {mode === 'starport'
+            ? ` · B3 月初再平衡（未接线 OPT-186） · 卫星有仓日 1/3 overlay（最近交易日 ${
+                last ? (satActive ? '有仓' : '空仓') : '—'
+              }；信号/成交组件待 OPT-178/186）`
+            : null}
+        </div>
+      ) : null}
 
       <div className="mt-2 flex flex-col gap-1.5 text-xs">
         <div className="flex flex-wrap items-center gap-1.5">

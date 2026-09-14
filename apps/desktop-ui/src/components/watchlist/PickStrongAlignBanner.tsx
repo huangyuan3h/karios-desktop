@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { detectReplicaGaps, type GapSeverity, type HoldingSnap } from '@/lib/replica-gap';
+import { STRATEGY_MODE_LABELS, type StrategyMode } from '@/lib/strategy-settings';
 import { cn } from '@/lib/utils';
 
 const SEV_CLS: Record<GapSeverity, string> = {
@@ -27,7 +28,8 @@ const VERDICT_CLS = {
  * Always-visible daily align (complement to BehaviorAuditBanner / S-3).
  * Harbor keeps the S-3 core instruction (100% switch, idle cash parks in ETF).
  */
-export function PickStrongAlignBanner() {
+export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode } = {}) {
+  const strategyName = STRATEGY_MODE_LABELS[mode];
   const healthQ = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
@@ -55,7 +57,7 @@ export function PickStrongAlignBanner() {
       ? '对齐'
       : report.verdict === 'partial'
         ? '部分偏离'
-        : '偏离港湾';
+        : `偏离${strategyName}`;
 
   return (
     <div
@@ -69,7 +71,7 @@ export function PickStrongAlignBanner() {
       )}
     >
       <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium">
-        <span>港湾日对齐</span>
+        <span>{strategyName}日对齐</span>
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 font-mono text-[10px]">
           pick={report.pick}
         </span>
@@ -81,6 +83,12 @@ export function PickStrongAlignBanner() {
           {report.etfWeightPct}% · 闲置 {report.idlePct}%
         </span>
       </div>
+      {mode !== 'harbor' ? (
+        <p className="mt-1 text-[10px] text-[var(--k-muted)]">
+          对齐针对港湾核心腿；
+          {mode === 'homeport' ? 'B3 月频再平衡' : 'B3 月频 + 卫星 1/3 overlay'}未接入日对齐（OPT-186）。
+        </p>
+      ) : null}
       {healthQ.isLoading && !healthQ.data ? (
         <p className="mt-1 text-[11px] text-[var(--k-muted)]">加载持仓…</p>
       ) : null}

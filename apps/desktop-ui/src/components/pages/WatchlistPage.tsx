@@ -344,8 +344,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <StrategyStatusCard mode={strategyMode} />
         ) : (
           <>
-            <HarborDecisionCard />
-            <PickStrongAlignBanner />
+            <HarborDecisionCard mode={strategyMode} />
+            <PickStrongAlignBanner mode={strategyMode} />
             {strategyMode !== 'harbor' ? <StrategyStatusCard mode={strategyMode} /> : null}
             <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
               <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
