@@ -47,7 +47,7 @@
 
 ## 后续影响 / 留给谁
 
-- **Live 仍 = 港湾**；双子星不因「数字变好」上线（valid 单窗不过 + 早期样本未验证），要重开须新预注册 + valid 短板诊断；母港仍是产品候选（资本结构待拍板 + paper 3/20）。
+- **Live 仍 = 港湾**；双子星不因「数字变好」上线（valid 单窗不过 + 早期样本未验证）；**valid 短板诊断已完成 = regime 依赖（有仓日核心同日 3.2× 跑赢；闸门 +12.4pt 正贡献）** → 见 [`../backtests/sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](../backtests/sat/sat-valid-shortfall-diagnosis-2026-09-14.md)；要重开须新预注册 + 产品层判据；母港仍是产品候选（资本结构待拍板 + paper 3/20）。
 - 文档同步：B12 横幅 / B13 / B15 / B16 修正注、SUMMARY 新增审计行 + 卫星 standalone 行、`pick-strong-track.md`、预注册 postscript、todo §10、**OPT-182 + OPT-183（双市场日历）**、卫星 standalone 专档 [`../backtests/stable/sgap-habit-satellite-standalone-2026-09-14.md`](../backtests/stable/sgap-habit-satellite-standalone-2026-09-14.md)。
 - 测试：+21（raw 基期 MTM / C1 缩放 / gate_1430 / B3 负索引 / trail as-of / parkPct / 平仓回填 / recon 门槛 / **market-aware 日历 ×2**）；全量 **4212 passed**、`db_rows_baseline.py check` OK。
 - 残余（已文档化）：卫星 raw 记账不计 3 日持仓股息（保守）；源数据退市记录不全；14:30 采样 bar 代理 Live 快照；2021–23 为事后样本。

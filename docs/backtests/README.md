@@ -112,6 +112,7 @@
 | [`stable/homeport-regime-2026-09-13.md`](stable/homeport-regime-2026-09-13.md) | B17 母港市况开关（H-MIX-DYN） | ❌ REJECT |
 | [`audit-three-strategy-lookahead-2026-09-14.md`](audit-three-strategy-lookahead-2026-09-14.md) | **三策略前视审计 + qfq/raw 基期 + 双市场日历修复（OPT-182/183）**：8 处修复、clean 三方最终对比 | ✅ 结论级 |
 | [`stable/sgap-habit-satellite-standalone-2026-09-14.md`](stable/sgap-habit-satellite-standalone-2026-09-14.md) | **习惯 S-gap 卫星腿 standalone 记录（clean 口径）**：三窗+long、年度、校验 | ✅ 研究记录 |
+| [`sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](sat/sat-valid-shortfall-diagnosis-2026-09-14.md) | **卫星 valid 短板诊断（H-SAT-DIAG）**：有仓日同日核心对照 + 闸门反证 → regime 依赖（非口径 bug） | ✅ 结论级 |
 
 ### 早期与专题（结论已定 · 有事才翻）
 

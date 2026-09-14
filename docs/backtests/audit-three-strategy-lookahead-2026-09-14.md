@@ -133,7 +133,7 @@
 | 项 | 结果 |
 |---|---|
 | **港湾 P1**（Live） | K1/K2/K3 全过（Δ +17.2/+13.0/+11.6、long +118.8） |
-| **习惯双子星 50/50** | **K1 FAIL（valid −21.2、train Δ+0.0 贴线）· K2 FAIL（valid Δsr −0.65）· K3 PASS（long +90.4）→ REJECT**（维持不进 Live；若要救须新预注册 + valid 短板诊断） |
+| **习惯双子星 50/50** | **K1 FAIL（valid −21.2、train Δ+0.0 贴线）· K2 FAIL（valid Δsr −0.65）· K3 PASS（long +90.4）→ REJECT**（维持不进 Live；valid 短板诊断已完成 = [regime 依赖](sat/sat-valid-shortfall-diagnosis-2026-09-14.md)，重开须新预注册） |
 | **母港 M50** | K1–K5 全过（B3 负索引 + 日历修正后）→ **产品候选**；不进 Live（资本结构 + paper 3/20） |
 
 **纪律提醒**：短窗好看（OOS2 +149.7）不构成翻案——**单窗（valid）不过就是不进 Live**；且卫星在 valid 窗只有 +14.7%（核心 +50.3），说明 edge 有 regime 依赖。与 2026-09-12「漂亮得离谱先查前视」互为镜像：「难看得离谱先查口径」。
@@ -174,6 +174,7 @@ PYTHONPATH=src:scripts python3 scripts/eval_b3_cap.py --save-report             
 ## 5. 关联
 
 - 习惯 S-gap 卫星腿 standalone 记录：[`stable/sgap-habit-satellite-standalone-2026-09-14.md`](stable/sgap-habit-satellite-standalone-2026-09-14.md)
+- 卫星 valid 短板诊断（同日核心对照 + 闸门反证）：[`sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](sat/sat-valid-shortfall-diagnosis-2026-09-14.md)
 - B12：[`stable/twin-star-parking-refit-2026-09-13.md`](stable/twin-star-parking-refit-2026-09-13.md)（顶部修正横幅）
 - B11：[`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md) · B13：[`stable/etf-benchmark-parking-2026-09-13.md`](stable/etf-benchmark-parking-2026-09-13.md)
 - B15：[`stable/harbor-riskbudget-2026-09-13.md`](stable/harbor-riskbudget-2026-09-13.md) · B16：[`stable/b3-cap-2026-09-13.md`](stable/b3-cap-2026-09-13.md)
