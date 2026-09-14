@@ -5,7 +5,7 @@
 > **一句话**：成本稳健（**90bps 往返仍有 +310%/SR 2.45**）、贴板成交 **0**、近涨停仅 4/1040、容量 ≤¥5M 舒适；**通过**执行层审计。残余是**采样 bar 代理**（51.5% 的 fill 在采样窗内全平，amp 排序偏"采样安静"）与 >¥5M 未建模的冲击——均为已记录边界，不改数字。
 > **关键词**：星舰 · 执行审计 · 成本敏感性 · 涨停接近度 · 容量 · 采样代理
 
-**脚本** `scripts/audit_sat_execution.py`（只读）· **报告** `data/backtest_reports/sat_execution_audit_2026-09-14.json` · **前置审计**：[三策略前视审计](../audit-three-strategy-lookahead-2026-09-14.md)（OPT-182/183）· **真值**：[`sgap-habit-satellite-standalone-2026-09-14.md`](sgap-habit-satellite-standalone-2026-09-14.md)
+**脚本** `scripts/audit_sat_execution.py`（只读）· **报告** `data/backtest_reports/sat_execution_audit_2026-09-14.json` · **前置审计**：[三策略前视审计](../audit-three-strategy-lookahead-2026-09-14.md)（OPT-182/183）· **真值**：[`../stable/sgap-habit-satellite-standalone-2026-09-14.md`](../stable/sgap-habit-satellite-standalone-2026-09-14.md)
 
 ---
 
