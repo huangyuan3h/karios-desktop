@@ -72,129 +72,6 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
   }
 }
 
-const PICK_META: Record<string, { label: string; hint: string }> = {
-  STOCK: { label: '股票篮', hint: '100% 跟 S-3 CN+HK 持仓篮（等权）' },
-  GOLD: { label: '黄金 ETF', hint: '518880' },
-  OIL: { label: '原油 ETF', hint: '513350' },
-  NASDAQ: { label: '纳指 ETF', hint: '513110/513100' },
-  BOND10: { label: '国债 ETF', hint: '511260' },
-  REPO: { label: '逆回购', hint: 'GC001 · 无人过线时兜底' },
-};
-
-type Sleeve = NonNullable<PortfolioHealthResponse['multiAssetSleeve']>;
-
-function PickStrongOpsPanel({
-  sleeve,
-  stockHoldingsCount,
-  onBuyEtf,
-  coreBuyable = true,
-}: {
-  sleeve: Sleeve | null | undefined;
-  stockHoldingsCount: number;
-  onBuyEtf?: (symbol: string, name: string | null) => void;
-  /** False when pick=STOCK but no executable basket names today. */
-  coreBuyable?: boolean;
-}) {
-  const pickKey = sleeve?.pick?.key ?? 'REPO';
-  const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
-  const action = sleeve?.action ?? 'NONE';
-  const mom = sleeve?.pick?.mom60;
-  const etfSym = sleeve?.pick?.symbol;
-  const isStock = pickKey === 'STOCK';
-  const isRepo = pickKey === 'REPO';
-  const isEtf = !isStock && !isRepo;
-
-  const steps: string[] = [];
-  if (isStock) {
-    steps.push(
-      coreBuyable
-        ? '核心 100% → 股票篮（下方展开篮内买卖 · 见矫正清单仓位%）'
-        : '核心 100% 目标股票篮，但今日 0 只可执行 → 不要为 STOCK 清空 ETF 停车场',
-    );
-    if (sleeve?.holding && coreBuyable) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
-  } else if (isEtf) {
-    steps.push(`今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）· 闲置现金停进核心 ETF`);
-    if (stockHoldingsCount > 0) {
-      steps.push(`现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
-    }
-    if (action === 'ROTATE' || action === 'BUY')
-      steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
-    if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
-    if (action === 'SELL_TO_REPO')
-      steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
-  } else {
-    steps.push('今日无人过线 → 100% 逆回购 / 空仓观望');
-    if (stockHoldingsCount > 0) {
-      steps.push('股票仓也应清到空（港湾不持）');
-    }
-    if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
-  }
-
-  return (
-    <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/5 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="rounded bg-emerald-600/15 px-1.5 py-0.5 font-semibold text-emerald-800 dark:text-emerald-200">
-          今日 pick · {pickKey}
-        </span>
-        <span className="text-[13px] font-semibold">{meta.label}</span>
-        {mom != null && (
-          <span className="font-mono tabular-nums text-[var(--k-muted)]">mom60 {mom}%</span>
-        )}
-        {sleeve?.stockPick?.mom60 != null && pickKey !== 'STOCK' && (
-          <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
-            vs 股票篮 {sleeve.stockPick.mom60}%
-          </span>
-        )}
-        {sleeve?.etfPick?.mom60 != null && pickKey === 'STOCK' && (
-          <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
-            vs ETF顶 {sleeve.etfPick.key} {sleeve.etfPick.mom60}%
-          </span>
-        )}
-        <span className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px]">
-          {sleeve?.label ?? action}
-        </span>
-      </div>
-      <p className="mt-1 text-[10px] text-[var(--k-muted)]">
-        100% 硬切 · 定案 mom_compare · LB60/MA200
-      </p>
-      {sleeve?.message && action !== 'HOLD' ? (
-        <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
-      ) : null}
-      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
-        {steps.map((s) => (
-          <li key={s}>{s}</li>
-        ))}
-      </ol>
-      {isEtf && etfSym && (action === 'BUY' || action === 'ROTATE') && onBuyEtf ? (
-        <button
-          type="button"
-          onClick={() => onBuyEtf(etfSym, sleeve?.pick?.name ?? meta.label)}
-          className="mt-2 inline-flex items-center rounded border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
-        >
-          记录买入 {etfSym}（模拟盘）
-        </button>
-      ) : null}
-      {sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] tabular-nums text-[var(--k-muted)]">
-          {Object.entries(sleeve.pick.all_mom).map(([k, v]) => (
-            <span
-              key={k}
-              className={cn(
-                'rounded border px-1.5 py-0.5',
-                k === pickKey
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
-                  : 'border-[var(--k-border)]',
-              )}
-            >
-              {k} {v}%{sleeve.pick?.all_above?.[k] === false ? ' ✗MA' : ''}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function HoldingRow({
   h,
   onOpen,
@@ -997,17 +874,6 @@ export function PortfolioHealthCard({
     });
   }
 
-  function handleBuyEtf(symbol: string, name: string | null) {
-    setBuyTarget({
-      symbol,
-      name,
-      score: null,
-      rs: null,
-      sizePct: 100,
-      side: 'BUY',
-    });
-  }
-
   const [stockOpen, setStockOpen] = React.useState(allowStockBuys);
 
   React.useEffect(() => {
@@ -1025,11 +891,7 @@ export function PortfolioHealthCard({
 
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">核心腿状态（港湾配方）</span>
-        <span className="text-[10px] text-[var(--k-muted)]">
-          S-3 核心 + 闲置现金 ETF 停车场 · 与 Timeline 同源 · 独立决策/记录成交见上方策略卡
-        </span>
+      <div className="mb-2 flex items-center justify-end gap-2">
         <span
           className={cn(
             'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
@@ -1091,18 +953,6 @@ export function PortfolioHealthCard({
       )}
 
       <div className="flex flex-col gap-2">
-        {sleeve ? (
-          <PickStrongOpsPanel
-            sleeve={sleeve}
-            stockHoldingsCount={stockHoldingsCount}
-            onBuyEtf={handleBuyEtf}
-            coreBuyable={stockBuyable}
-          />
-        ) : (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
-            live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离港湾）
-          </div>
-        )}
         <MultiAssetHealthBlock
           holdings={data?.multiAssetHoldings}
           sleeve={sleeve}

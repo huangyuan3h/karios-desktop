@@ -117,7 +117,7 @@ describe('PortfolioHealthCard (harbor)', () => {
       hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText('核心腿状态（港湾配方）')).toBeDefined();
+    expect(screen.queryByText('核心腿状态（港湾配方）')).toBeNull();
     expect(screen.queryByText(/机会双子星/)).toBeNull();
     expect(screen.queryByText(/单轨择优/)).toBeNull();
     expect(await screen.findByText('Weak · 空仓观望')).toBeDefined();
@@ -184,10 +184,9 @@ describe('PortfolioHealthCard (harbor)', () => {
       ],
     });
     renderCard();
-    expect(await screen.findByText(/闲置现金停进核心 ETF/)).toBeDefined();
-    expect(screen.queryByText(/股票篮买入（核心 pick=STOCK/)).toBeNull();
-    fireEvent.click(screen.getByText('展开'));
-    expect(await screen.findByText(/核心 pick=/)).toBeDefined();
+    expect(screen.queryByText(/股票篮买入/)).toBeNull();
+    fireEvent.click(await screen.findByText('展开'));
+    expect(await screen.findByText(/今日 pick=OIL · 只看仓\/轮出/)).toBeDefined();
   });
 
   it('renders the core sleeve reconciliation when available', async () => {
