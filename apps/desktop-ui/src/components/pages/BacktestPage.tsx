@@ -685,7 +685,7 @@ function TimelineCard({
     harbor: 'S-3 核心 + 闲置现金 ETF 停车场',
     homeport: 'S-3 核心 + 停车场 × 风险预算 50/50',
     starport: '母港 × 卫星 1/3 曝露',
-    starship: '卫星 standalone（未审计）',
+    starship: '卫星 standalone（审计已过 · 前置未满）',
     twin_star: '港湾核心 × 卫星 50/50',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
@@ -696,7 +696,7 @@ function TimelineCard({
     starport:
       '星港 = 母港 × 卫星 1/3 曝露（有仓日 core + w×(sat−core)）· 展示口径 · H-B3-SAT PASS（K1 余量薄，稳健 0.15–0.25）· 不进 Live',
     starship:
-      '星舰 = 卫星 standalone 100%（amp_1430 + gate_1430 + 14:30 买卖）· 研究展示 · 未过执行审计，不进 Live',
+      '星舰 = 卫星 standalone 100%（amp_1430 + gate_1430 + 14:30 买卖）· 研究展示 · 执行审计 ✅（90bps +310%/SR 2.45、容量 ≤5M）· 不进 Live（前置 = paper 3/20 + 用户授权）',
     twin_star:
       '双子星 = 港湾 × 卫星 50/50（无仓日 100% 港湾）· 并行对照档（保留不退役）· valid 窗弱于港湾（K1/K2 未过）· 不进 Live',
   };

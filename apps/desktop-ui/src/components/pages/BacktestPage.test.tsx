@@ -197,7 +197,7 @@ beforeEach(() => {
           entry('harbor', '港湾', 'live', 'Live'),
           entry('starport', '星港', 'product_candidate_increment', '产品候选增量'),
           entry('twin_star', '双子星', 'parallel_candidate', '并行对照'),
-          entry('starship', '星舰', 'aggressive_unaudited', '激进 · 未审计'),
+          entry('starship', '星舰', 'aggressive_pending', '激进 · 前置未满'),
         ],
       };
     }
@@ -356,7 +356,7 @@ describe('BacktestPage', () => {
 
   it('hovers satellite-only rows without crashing (no navBaseReturnPct)', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /激进 · 未审计/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
     const bar = await screen.findByTestId('harbor-hold-bar');
     fireEvent.mouseMove(bar, { clientX: 0 });
     const tip = await screen.findByTestId('harbor-day-tip');

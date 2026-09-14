@@ -41,7 +41,7 @@ import {
 import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
 import { SatelliteLegBlock } from '@/components/watchlist/SatelliteLegBlock';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
-import { useTimelineQuery } from '@/lib/queries/backtest';
+import { useTimelineQuery, type TimelineStrategy } from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
@@ -913,11 +913,13 @@ export function PortfolioHealthCard({
     d.setFullYear(d.getFullYear() - 1);
     return d.toISOString().slice(0, 10);
   })();
+  const satStrategy: TimelineStrategy =
+    mode === 'starship' ? 'starship' : mode === 'twin_star' ? 'twin_star' : 'starport';
   const satQ = useTimelineQuery(
     satStart,
     satToday,
-    mode === 'starship' ? 'starship' : 'starport',
-    mode === 'starport' || mode === 'starship',
+    satStrategy,
+    mode === 'starport' || mode === 'starship' || mode === 'twin_star',
   );
   const satLast = satQ.data?.rows?.[satQ.data.rows.length - 1];
   const pickKey = sleeve?.pick?.key ?? null;
@@ -1107,7 +1109,9 @@ export function PortfolioHealthCard({
       )}
 
       {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
-      {mode === 'starport' || mode === 'starship' ? <SatelliteLegBlock row={satLast} /> : null}
+      {mode === 'starport' || mode === 'starship' || mode === 'twin_star' ? (
+        <SatelliteLegBlock row={satLast} />
+      ) : null}
       {coreView ? (
       <div className="flex flex-col gap-2">
         {sleeve ? (

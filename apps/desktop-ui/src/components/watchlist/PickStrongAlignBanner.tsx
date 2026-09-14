@@ -82,7 +82,12 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
       {mode !== 'harbor' ? (
         <p className="mt-1 text-[10px] text-[var(--k-muted)]">
           对齐针对港湾核心腿；
-          {mode === 'homeport' ? 'B3 月频再平衡' : 'B3 月频 + 卫星 1/3 overlay'}未接入日对齐（OPT-186）。
+          {mode === 'homeport'
+            ? 'B3 月频再平衡'
+            : mode === 'twin_star'
+              ? '卫星 1/2 overlay'
+              : 'B3 月频 + 卫星 1/3 overlay'}
+          未接入日对齐（OPT-186）。
         </p>
       ) : null}
       {healthQ.isLoading && !healthQ.data ? (

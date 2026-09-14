@@ -9,9 +9,9 @@ afterEach(() => {
 });
 
 describe('StrategyModeBar', () => {
-  it('renders the four strategy views with the default selected', () => {
+  it('renders the five strategy views with the default selected', () => {
     render(<StrategyModeBar />);
-    for (const name of ['港湾', '母港', '星港', '星舰']) {
+    for (const name of ['港湾', '母港', '星港', '星舰', '双子星']) {
       expect(screen.getByRole('button', { name: new RegExp(name) })).toBeDefined();
     }
     expect(screen.getByRole('button', { name: /星港/ }).getAttribute('aria-pressed')).toBe('true');

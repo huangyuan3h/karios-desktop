@@ -22,7 +22,7 @@ export const StrategyCatalogStatusSchema = z.enum([
   'product_candidate',
   'product_candidate_increment',
   'parallel_candidate',
-  'aggressive_unaudited',
+  'aggressive_pending',
   'rejected',
 ]);
 export type StrategyCatalogStatus = z.infer<typeof StrategyCatalogStatusSchema>;

@@ -46,7 +46,8 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
         </span>
       </div>
       <div className="mt-1 text-[var(--k-muted)]">
-        回测口径（研究 replay）。今日 14:30 信号名单/成交记录组件待 OPT-178 重接 + OPT-186；未过执行审计。
+        回测口径（研究 replay）。14:30 信号/成交记录组件待 OPT-178 重接 + OPT-186；执行审计已过（90bps
+        +310%/SR 2.45、容量 ≤5M）。
       </div>
     </div>
   );

@@ -248,4 +248,16 @@ describe('PortfolioHealthCard (harbor)', () => {
     renderCard();
     expect(await screen.findByText(/港湾暂无数据（data-sync-service 未响应）/)).toBeDefined();
   });
+
+  it('renders the satellite leg from the twin_star timeline for twin_star mode', async () => {
+    renderCard({ mode: 'twin_star' });
+    expect(await screen.findByTestId('satellite-leg-block')).toBeDefined();
+    expect(backtestMock.useTimelineQuery).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      'twin_star',
+      true,
+    );
+    expect(screen.queryByTestId('b3-leg-block')).toBeNull();
+  });
 });

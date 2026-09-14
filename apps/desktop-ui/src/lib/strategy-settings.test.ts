@@ -26,7 +26,7 @@ describe('getStrategyMode', () => {
   });
 
   it('migrates a retired mode to starport', () => {
-    window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('twin_star'));
+    window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('legacy_satellite'));
     expect(getStrategyMode()).toBe('starport');
   });
 
@@ -36,18 +36,19 @@ describe('getStrategyMode', () => {
   });
 
   it('keeps explicit selections for every registered mode', () => {
-    for (const mode of ['harbor', 'homeport', 'starport', 'starship'] as const) {
+    for (const mode of ['harbor', 'homeport', 'starport', 'starship', 'twin_star'] as const) {
       setStrategyMode(mode);
       expect(getStrategyMode()).toBe(mode);
     }
   });
 
-  it('labels all four family strategies', () => {
+  it('labels all five family strategies', () => {
     expect(STRATEGY_MODE_LABELS).toEqual({
       harbor: '港湾',
       homeport: '母港',
       starport: '星港',
       starship: '星舰',
+      twin_star: '双子星',
     });
   });
 });
