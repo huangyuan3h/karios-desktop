@@ -59,6 +59,23 @@ def _paper_snapshot() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     )
 
 
+def _decision_day(row: dict[str, Any]) -> str:
+    """Day whose 18:20 decision created this row.
+
+    T+1-open entries carry the decision in ``signalSnapshot.signalDate``; the
+    row may be created later (restart catch-up / backfill), so the createdAt
+    day is only the fallback. Same gate as the pre-decision holdings, which
+    keeps a backfilled leg reconciled on its own day instead of flagged as an
+    extra open on the insertion day.
+    """
+    snap = row.get("signalSnapshot") or {}
+    if isinstance(snap, dict) and snap.get("entryMode") == "next_open":
+        sig = _day_of(snap.get("signalDate"))
+        if sig:
+            return sig
+    return _day_of(row.get("createdAt"))
+
+
 def _opened_by_sleeve_job_today(row: dict[str, Any], day: str) -> bool:
     """Rows the 18:20 job itself created on ``day`` (decision executions).
 
@@ -69,12 +86,7 @@ def _opened_by_sleeve_job_today(row: dict[str, Any], day: str) -> bool:
     sym = str(row.get("symbol") or "").upper()
     if sym not in CANDIDATE_SYMBOLS:
         return False
-    snap = row.get("signalSnapshot") or {}
-    if isinstance(snap, dict) and snap.get("entryMode") == "next_open":
-        sig = _day_of(snap.get("signalDate"))
-        if sig:
-            return sig == day
-    return _day_of(row.get("createdAt")) == day
+    return _decision_day(row) == day
 
 
 def _pre_decision_holdings(
@@ -254,8 +266,7 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
         {
             str(r.get("symbol") or "").upper()
             for r in open_rows
-            if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS
-            and _day_of(r.get("createdAt")) == day
+            if str(r.get("symbol") or "").upper() in CANDIDATE_SYMBOLS and _decision_day(r) == day
         }
     )
     # Harbor exits fill at the next session (signal T close -> T+1 open), so a

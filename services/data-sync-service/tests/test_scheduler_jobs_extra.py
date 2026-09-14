@@ -1108,7 +1108,7 @@ def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
     (17:45) and the fresh watchlist record."""
     _monkey_cst(monkeypatch, 17, 40)
     _patch_today_runs(monkeypatch)
-    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
     monkeypatch.setattr(
         scheduler_pkg.watchlist_automation_job,
         "run",
@@ -1122,8 +1122,18 @@ def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
         "run",
         lambda: calls.__setitem__("cn", calls["cn"] + 1),
     )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_backtest_mirror_job,
+        "run",
+        lambda: calls.__setitem__("mirror", calls["mirror"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.sleeve_paper_job,
+        "run",
+        lambda: calls.__setitem__("sleeve", calls["sleeve"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
-    assert calls == {"wa": 1, "s3": 0, "cn": 0}  # s3 guard (17:45) + cn guard (18:25) not reached
+    assert calls == {"wa": 1, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
 
 
 def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
@@ -1132,7 +1142,7 @@ def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
     17:30 slot nothing runs."""
     _monkey_cst(monkeypatch, 18, 30)
     _patch_today_runs(monkeypatch, ran={"watchlist_automation"})
-    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
     monkeypatch.setattr(
         scheduler_pkg.watchlist_automation_job,
         "run",
@@ -1146,11 +1156,21 @@ def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
         "run",
         lambda: calls.__setitem__("cn", calls["cn"] + 1),
     )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_backtest_mirror_job,
+        "run",
+        lambda: calls.__setitem__("mirror", calls["mirror"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.sleeve_paper_job,
+        "run",
+        lambda: calls.__setitem__("sleeve", calls["sleeve"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
-    assert calls == {"wa": 0, "s3": 1, "cn": 1}
+    assert calls == {"wa": 0, "s3": 1, "cn": 1, "mirror": 1, "sleeve": 1}
 
     _monkey_cst(monkeypatch, 17, 20)
-    calls2: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    calls2: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
     monkeypatch.setattr(
         scheduler_pkg.watchlist_automation_job,
         "run",
@@ -1164,8 +1184,51 @@ def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
         "run",
         lambda: calls2.__setitem__("cn", calls2["cn"] + 1),
     )
+    monkeypatch.setattr(
+        scheduler_pkg.paper_backtest_mirror_job,
+        "run",
+        lambda: calls2.__setitem__("mirror", calls2["mirror"] + 1),
+    )
+    monkeypatch.setattr(
+        scheduler_pkg.sleeve_paper_job,
+        "run",
+        lambda: calls2.__setitem__("sleeve", calls2["sleeve"] + 1),
+    )
     scheduler_pkg.catchup_missed_eod_chain()
-    assert calls2 == {"wa": 0, "s3": 0, "cn": 0}
+    assert calls2 == {"wa": 0, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
+
+
+def test_catchup_sleeve_paper_guards_slot_and_today_record(monkeypatch) -> None:
+    """sleeve_paper_auto (18:20): doesn't run before 18:25, runs once after,
+    and skips when today's record already exists (2026-09-14 restart gap)."""
+    _patch_today_runs(monkeypatch)
+    calls: dict[str, int] = {"sleeve": 0}
+    monkeypatch.setattr(
+        scheduler_pkg.sleeve_paper_job,
+        "run",
+        lambda: calls.__setitem__("sleeve", calls["sleeve"] + 1),
+    )
+    # isolate every other chain step: the cross-day heals below use
+    # get_last_success (not the patched get_today_run) and would otherwise
+    # run the real sync jobs.
+    monkeypatch.setattr(scheduler_pkg.paper_backtest_mirror_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: None)
+    from data_sync_service.scheduler import close_sync_job
+
+    monkeypatch.setattr(close_sync_job, "run", lambda: None)
+    _monkey_cst(monkeypatch, 18, 22)
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"sleeve": 0}  # before its 18:25 guard
+
+    _monkey_cst(monkeypatch, 18, 26)
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"sleeve": 1}
+
+    _patch_today_runs(monkeypatch, ran={"sleeve_paper_auto"})
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"sleeve": 1}  # already ran today
 
 
 def test_catchup_skips_without_close_sync_or_on_weekend(monkeypatch) -> None:
@@ -1175,5 +1238,9 @@ def test_catchup_skips_without_close_sync_or_on_weekend(monkeypatch) -> None:
     monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: ran.append("wa"))
     monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: ran.append("s3"))
     monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: ran.append("cn"))
+    monkeypatch.setattr(
+        scheduler_pkg.paper_backtest_mirror_job, "run", lambda: ran.append("mirror")
+    )
+    monkeypatch.setattr(scheduler_pkg.sleeve_paper_job, "run", lambda: ran.append("sleeve"))
     scheduler_pkg.catchup_missed_eod_chain()
     assert ran == []

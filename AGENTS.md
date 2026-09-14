@@ -127,6 +127,7 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 - `index_basic_sync` — weekdays 17:15 Asia/Shanghai (`scheduler/index_basic_job.py`). Independent sync of `index_dailybasic` so `macro_snapshot.market_breadth` is warm without a user clicking "Sync all".
 - `cn_industry_post_close_sync` — weekdays 17:35 Asia/Shanghai (`scheduler/cn_industry_post_close_job.py`). Runs `sync_cn_industry_fund_flow` + `sync_cn_industry_mainline` + `sync_cn_sentiment` after `close_sync` (17:10) and `watchlist_automation` (17:30). Aligns implementation with `docs/modules/industry-flow.md` and `market-sentiment.md` "盘后每日更新".
 - `factor_signals_sync` — weekdays 18:30 Asia/Shanghai (`scheduler/factor_signals_job.py`). Scans the latest open day for `strong_scoop_exhaustion` into `factor_signals` (direction-only; never touches S-3). Manual trigger: `POST /factors/sync`.
+- `sleeve_paper_auto` (18:20) is now in the startup **EOD catch-up chain** (`catchup_missed_eod_chain`, guard ≥18:25). 2026-09-14: a restart before 18:20 silently dropped the day's Harbor ETF parking mirror and the core recon went red (缺买) — the other chain steps self-healed, this one did not. If the paper book still diverges, backfill with `apply_sleeve_to_paper(day=<signal day>)` (idempotent by symbol/entry/side; next-open fill uses the real open when it exists).
 - All job types above are added to `SYNC_JOB_TYPES` in `api/sync_routes.py` and to `SCHEDULER_JOB_CATALOG` (groups `cnIndustry` / `tvScreener` / `factors`) in `packages/shared/src/schemas/scheduler.ts`.
 
 ---

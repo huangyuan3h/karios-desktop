@@ -634,3 +634,14 @@ def catchup_missed_eod_chain() -> None:
             paper_backtest_mirror_job.run()
         except Exception:  # noqa: BLE001
             logger.warning("eod chain catchup: paper_backtest_mirror run failed", exc_info=True)
+    # sleeve_paper_auto cron: 18:20 — 18:25 avoids the race; mirrors the
+    # Harbor ETF parking decision into the paper book (needs today's CN
+    # close data). 2026-09-14: a restart before 18:20 silently dropped the
+    # day's mirror and the core recon went red (缺买) until the next session;
+    # the other chain steps self-heal, this one did not.
+    if (now.hour, now.minute) >= (18, 25) and not already("sleeve_paper_auto"):
+        logger.info("eod chain catchup: sleeve_paper_auto missed (restart) — re-running")
+        try:
+            sleeve_paper_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: sleeve_paper_auto run failed", exc_info=True)

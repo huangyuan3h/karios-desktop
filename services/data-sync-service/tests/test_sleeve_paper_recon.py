@@ -178,6 +178,30 @@ def test_held_leg_from_earlier_day_is_prestate() -> None:
     assert recon["extraOpens"] == []
 
 
+def test_backfilled_leg_counts_on_signal_day_not_insert_day() -> None:
+    """Restart catch-up/backfill: the row lands on DAY's evening but its
+    decision belongs to an earlier session (signalDate) — it must be held
+    (no extra-open) and not counted as DAY's flow."""
+    backfilled = _open_row(created=None) | {
+        "signalSnapshot": {"entryMode": "next_open", "signalDate": "2026-08-18"},
+        "createdAt": DAY,
+    }
+    recon = _run_recon(open_rows=[backfilled], closed_rows=[], multi=_multi(action="HOLD"))
+    assert recon["ok"] is True
+    assert recon["extraOpens"] == []
+    assert recon["paperBuysToday"] == []
+
+
+def test_catchup_row_counts_on_decision_day() -> None:
+    """A decision executed late (row createdAt after the signal day) still
+    reconciles on its decision day, not the insertion day."""
+    row = _open_row(created=DAY) | {"createdAt": "2026-08-21"}
+    recon = _run_recon(open_rows=[row], closed_rows=[], multi=_multi(action="BUY"))
+    assert recon["ok"] is True
+    assert recon["paperBuysToday"] == [TEST_SYMBOL]
+    assert recon["extraOpens"] == []
+
+
 def test_rotate_expects_sell_old_buy_new() -> None:
     recon = _run_recon(
         open_rows=[_open_row(symbol="ETF:518880"), _open_row(symbol=TEST_SYMBOL, created=DAY)],

@@ -632,8 +632,8 @@ function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
           <div className="flex flex-wrap gap-x-3 tabular-nums text-[10px] text-[var(--k-muted)]">
             <span>应买 {recon.expectedBuys.map(pretty).join(', ') || '—'}</span>
             <span>应卖 {recon.expectedSells.map(pretty).join(', ') || '—'}</span>
-            <span>paper 已买 {recon.paperBuysToday.map(pretty).join(', ') || '—'}</span>
-            <span>paper 已卖 {recon.paperSellsToday.map(pretty).join(', ') || '—'}</span>
+            <span>镜像已买 {recon.paperBuysToday.map(pretty).join(', ') || '—'}</span>
+            <span>镜像已卖 {recon.paperSellsToday.map(pretty).join(', ') || '—'}</span>
           </div>
           {hasGap && (
             <div className="flex flex-col gap-0.5">
@@ -652,6 +652,9 @@ function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
                   <span className="font-mono text-[10px]">多开</span> {pretty(s)}
                 </div>
               ))}
+              <div className="text-[10px] text-[var(--k-muted)]">
+                缺买/缺卖/多开 = paper 自动镜像账本与引擎的差异，非你的手动成交。
+              </div>
             </div>
           )}
         </div>
