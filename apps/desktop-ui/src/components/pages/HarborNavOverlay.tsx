@@ -84,7 +84,7 @@ function yDomain(points: HarborNavPoint[]): [number, number] {
   const vals: number[] = [];
   for (const p of points) {
     vals.push(p.harborPct);
-    vals.push(p.basePct);
+    if (p.basePct != null) vals.push(p.basePct);
     if (p.harborSimPct != null) vals.push(p.harborSimPct);
   }
   if (!vals.length) return [0, 1];

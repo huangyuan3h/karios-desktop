@@ -7,7 +7,8 @@ export type HarborNavPoint = {
   harborPct: number;
   /** OPT-152 实盘口径 product curve (null when the backend ran without sim NAVs). */
   harborSimPct: number | null;
-  basePct: number;
+  /** Base-leg NAV% (null on satellite-only rows such as 星舰). */
+  basePct: number | null;
   /** TIP-016 posture annotation: line circuit + CN sentiment risk mode. */
   cnCircuit: boolean;
   hkCircuit: boolean;
@@ -39,7 +40,7 @@ export function buildHarborNavPoints(rows: TimelineRow[]): HarborNavPoint[] {
     date: r.date,
     harborPct: r.navSingleReturnPct,
     harborSimPct: r.navSimReturnPct ?? null,
-    basePct: r.navBaseReturnPct,
+    basePct: r.navBaseReturnPct ?? null,
     cnCircuit: Boolean(r.cnCircuit),
     hkCircuit: Boolean(r.hkCircuit),
     sentiment: r.sentiment ?? null,

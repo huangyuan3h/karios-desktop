@@ -488,7 +488,8 @@ export type TimelineRow = {
   navSleeve: number | null;
   navSingle: number;
   navMulti: number;
-  navBaseReturnPct: number;
+  /** Base-leg NAV%; absent on satellite-only rows (星舰/state_bucket). */
+  navBaseReturnPct?: number | null;
   navSingleReturnPct: number;
   navMultiReturnPct: number;
   /** OPT-152 实盘口径 product curve (S-3 actual NAV; null when sim curves absent). */

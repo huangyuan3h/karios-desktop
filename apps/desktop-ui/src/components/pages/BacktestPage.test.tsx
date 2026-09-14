@@ -197,16 +197,13 @@ beforeEach(() => {
           entry('harbor', '港湾', 'live', 'Live'),
           entry('starport', '星港', 'product_candidate_increment', '产品候选增量'),
           entry('twin_star', '双子星', 'parallel_candidate', '并行对照'),
+          entry('starship', '星舰', 'aggressive_unaudited', '激进 · 未审计'),
         ],
       };
     }
     if (String(path).includes('/api/backtest/timeline')) {
-      return {
-        ok: true,
-        strategy: 'harbor',
-        mode: 'mom_compare',
-        summary: { fusedPct: 12.5, basePct: 3.2, maxDdFusedPct: 9.4 },
-        rows: [
+      const satelliteOnly = String(path).includes('strategy=starship');
+      const rows = [
           {
             date: '2026-08-01',
             deployedPct: 100,
@@ -295,7 +292,13 @@ beforeEach(() => {
             navSimReturnPct: 9,
             exits: [],
           },
-        ],
+        ];
+      return {
+        ok: true,
+        strategy: 'harbor',
+        mode: 'mom_compare',
+        summary: { fusedPct: 12.5, basePct: 3.2, maxDdFusedPct: 9.4 },
+        rows: satelliteOnly ? rows.map((r) => ({ ...r, navBaseReturnPct: undefined })) : rows,
       };
     }
     if (String(path).includes('/api/backtest/return-attribution')) {
@@ -349,6 +352,15 @@ describe('BacktestPage', () => {
     expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
     fireEvent.click(await screen.findByRole('button', { name: /并行对照/ }));
     expect(await screen.findByText(/Timeline（双子星/)).toBeDefined();
+  });
+
+  it('hovers satellite-only rows without crashing (no navBaseReturnPct)', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 未审计/ }));
+    const bar = await screen.findByTestId('harbor-hold-bar');
+    fireEvent.mouseMove(bar, { clientX: 0 });
+    const tip = await screen.findByTestId('harbor-day-tip');
+    expect(tip.textContent).toContain('基线 —');
   });
 
   it('shows the harbor timeline on compare tab', async () => {

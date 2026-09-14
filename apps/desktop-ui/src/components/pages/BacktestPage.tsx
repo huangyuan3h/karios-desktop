@@ -768,7 +768,9 @@ function TimelineCard({
   })();
   const hoverSingle = hoverRow ? (hoverRow.navSingleReturnPct ?? hoverRow.navMultiReturnPct) : null;
   const hoverExcess =
-    hoverRow && hoverSingle != null ? hoverSingle - hoverRow.navBaseReturnPct : null;
+    hoverRow && hoverSingle != null && hoverRow.navBaseReturnPct != null
+      ? hoverSingle - hoverRow.navBaseReturnPct
+      : null;
   const pickLabel: Record<string, string> = {
     STOCK: '股票',
     GOLD: '黄金',
@@ -785,7 +787,9 @@ function TimelineCard({
         Timeline（{strategyLabel} · {strategySubtitle[strategy]}）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
-          {last ? ` · ${strategyLabel} ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%` : ''}
+          {last
+            ? ` · ${strategyLabel} ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct ?? '—'}%`
+            : ''}
           {strategy === 'homeport' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
             : ''}
@@ -911,7 +915,11 @@ function TimelineCard({
                       {hoverRow.date} · {harborHoldLine(hoverRow)}
                     </div>
                     <div className="text-[var(--k-muted)]">
-                      基线 {hoverRow.navBaseReturnPct.toFixed(2)}% · {strategyLabel}{' '}
+                      基线{' '}
+                      {hoverRow.navBaseReturnPct != null
+                        ? `${hoverRow.navBaseReturnPct.toFixed(2)}%`
+                        : '—'}{' '}
+                      · {strategyLabel}{' '}
                       {hoverSingle != null ? `${hoverSingle.toFixed(2)}%` : '—'} · 超额{' '}
                       {hoverExcess != null
                         ? `${hoverExcess >= 0 ? '+' : ''}${hoverExcess.toFixed(2)}%`
