@@ -343,6 +343,7 @@ describe('BacktestPage', () => {
   it('shows the selected strategy timeline under the catalog panel', async () => {
     renderPage();
     expect(await screen.findByText(/Timeline（港湾/)).toBeDefined();
+    expect(screen.queryByText(/资金流全景/)).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
     expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
   });
@@ -351,7 +352,8 @@ describe('BacktestPage', () => {
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
     expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
-    expect(await screen.findByText('港湾NAV%')).toBeDefined();
+    expect(await screen.findByText(/资金流全景/)).toBeDefined();
+    expect((await screen.findAllByText('港湾NAV%')).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/产品过去一年/)).toBeDefined();
     expect(screen.getByText(/三窗 · OOS2/)).toBeDefined();

@@ -657,9 +657,11 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
 function TimelineCard({
   strategy: controlledStrategy,
   onStrategyChange,
+  showFundFlow = true,
 }: {
   strategy?: TimelineStrategy;
   onStrategyChange?: (strategy: TimelineStrategy) => void;
+  showFundFlow?: boolean;
 } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
@@ -928,7 +930,7 @@ function TimelineCard({
               ) : null}
             </div>
             <HarborNavOverlay rows={rows} seriesLabel={strategyLabel} />
-            <FundFlowPanel className="mt-1.5" start={start} end={end} />
+            {showFundFlow ? <FundFlowPanel className="mt-1.5" start={start} end={end} /> : null}
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
               <span>
                 连续相同持仓合并为一块（宽度=天数，块内标持有）· 股票红（斜纹=股票+停车）/ 黄金amber
@@ -1404,7 +1406,11 @@ export function BacktestPage() {
               双子星已退役，无 Timeline 曲线；曲线数据见上方「优 / 劣」与真值档。
             </div>
           ) : (
-            <TimelineCard strategy={catalogKey} onStrategyChange={setCatalogKey} />
+            <TimelineCard
+              strategy={catalogKey}
+              onStrategyChange={setCatalogKey}
+              showFundFlow={false}
+            />
           )}
         </TabsContent>
         <TabsContent value="compare" className="mt-4 flex flex-col gap-4">
