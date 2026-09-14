@@ -216,6 +216,7 @@ def main() -> int:
             arms[f"A1{suffix}"] = _compose(sat_nav, w_causal, core_nav, bps)
         arms["A1_legacy"] = _compose(sat_nav, w_same, core_nav, TRANSFER_BPS[0])
         arms["A2"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[0])
+        arms["A2_nocost"] = _compose(sat_nav, w_causal, sleeve_nav, 0.0)
         arms["A2_15bps"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[1])
         arms["A3"] = _compose(sat_nav, w_causal, repo_nav, TRANSFER_BPS[0])
 
@@ -239,6 +240,33 @@ def main() -> int:
                 "delta_mdd": round(m["max_dd"] - a0["max_dd"], 1),
                 "year_deltas": _year_deltas(dates, nav, sat_nav) if wname == "long" else None,
             }
+        # A2 diagnostics: sleeve daily returns bucketed by satellite occupancy
+        sleeve_r = _rets(sleeve_nav)
+
+        def _mean(xs: list[float]) -> float | None:
+            return round(float(np.mean(xs)), 4) if xs else None
+
+        idx_full_idle = [i for i in range(1, n) if w_causal[i] >= 0.99]
+        idx_partial = [i for i in range(1, n) if 0.0 < w_causal[i] < 0.99]
+        idx_deployed = [i for i in range(1, n) if w_causal[i] <= 0.0]
+        a2_diag = {
+            "parked_pct_days": round(100 * float(np.mean(w_causal[1:])), 1) if n > 1 else 0.0,
+            "days_fully_idle": len(idx_full_idle),
+            "days_partial": len(idx_partial),
+            "days_fully_deployed": len(idx_deployed),
+            "share_fully_idle_days_pct": round(100 * len(idx_full_idle) / max(1, n - 1), 1),
+            "sleeve_ret_fully_idle_pct": _mean([sleeve_r[i] * 100 for i in idx_full_idle]),
+            "sleeve_ret_partial_pct": _mean([sleeve_r[i] * 100 for i in idx_partial]),
+            "sleeve_ret_fully_deployed_pct": _mean([sleeve_r[i] * 100 for i in idx_deployed]),
+        }
+        row["_a2_diag"] = a2_diag
+        row["_a2_attrib"] = {
+            "gross_pt": round(row["A2_nocost"]["total_pct"] - a0["total_pct"], 1),
+            "net_pt": round(row["A2"]["total_pct"] - a0["total_pct"], 1),
+        }
+        row["_a2_attrib"]["cost_pt"] = round(
+            row["_a2_attrib"]["gross_pt"] - row["_a2_attrib"]["net_pt"], 1
+        )
         active_days = sum(1 for p in pos if p > 0)
         w_avg = float(np.mean(w_causal[1:])) if n > 1 else 0.0
         turns = float(np.mean([abs(w_causal[i] - w_causal[i - 1]) for i in range(1, n)])) if n > 1 else 0.0
@@ -275,6 +303,16 @@ def main() -> int:
                 f"Δsr {rec['delta_sharpe']:+.2f} Δdd {rec['delta_mdd']:+.1f}{extra}",
                 flush=True,
             )
+        a2 = row["_a2_diag"]
+        attrib = row["_a2_attrib"]
+        print(
+            f"  A2 diag: parked {a2['parked_pct_days']}% NAV-days | fully-idle days "
+            f"{a2['share_fully_idle_days_pct']}% (n={a2['days_fully_idle']}) | sleeve daily ret "
+            f"idle {a2['sleeve_ret_fully_idle_pct']}% / partial {a2['sleeve_ret_partial_pct']}% / "
+            f"deployed {a2['sleeve_ret_fully_deployed_pct']}% | gross {attrib['gross_pt']:+7.1f} "
+            f"cost {attrib['cost_pt']:+6.1f} net {attrib['net_pt']:+7.1f}",
+            flush=True,
+        )
         occ = row["_occupancy"]
         print(
             f"  occupancy active {occ['pct_active']}% / avg pos {occ['avg_positions_active']} "
