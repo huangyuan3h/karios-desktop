@@ -6,6 +6,8 @@ import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { HarborDecisionCard } from '@/components/watchlist/HarborDecisionCard';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
+import { StrategyStatusCard } from '@/components/watchlist/StrategyStatusCard';
 import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
@@ -38,8 +40,10 @@ import {
 } from '@/lib/watchlist-automation';
 import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
 import { loadWatchlist } from '@/lib/watchlist-storage';
+import { useStrategyMode } from '@/lib/strategy-settings';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  const strategyMode = useStrategyMode();
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();
@@ -335,16 +339,24 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
-        <HarborDecisionCard />
-        <PickStrongAlignBanner />
-        <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
-          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
-            展开旧提醒（轮动 / Gate 详情）
-          </summary>
-          <div className="mt-3">
-            <ThirdAssetSleeveBanner />
-          </div>
-        </details>
+        <StrategyModeBar />
+        {strategyMode === 'starship' ? (
+          <StrategyStatusCard mode={strategyMode} />
+        ) : (
+          <>
+            <HarborDecisionCard />
+            <PickStrongAlignBanner />
+            {strategyMode !== 'harbor' ? <StrategyStatusCard mode={strategyMode} /> : null}
+            <details className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/30 px-3 py-2">
+              <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
+                展开旧提醒（轮动 / Gate 详情）
+              </summary>
+              <div className="mt-3">
+                <ThirdAssetSleeveBanner />
+              </div>
+            </details>
+          </>
+        )}
         {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
