@@ -17,6 +17,8 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  // Timeline default follows the 默认策略 setting; these tests exercise the harbor UI.
+  window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('harbor'));
   apiGetJson.mockReset();
   apiGetJson.mockImplementation(async (path: string) => {
     if (String(path).includes('/api/backtest/overview')) {
@@ -324,6 +326,12 @@ describe('BacktestPage', () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: '母港' }));
     expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
+  });
+
+  it('defaults the timeline to the configured strategy (星港)', async () => {
+    window.localStorage.removeItem('karios.strategyMode.v2');
+    renderPage();
+    expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
   });
 
   it('renders auto-segmented holding blocks and per-day hover details', async () => {

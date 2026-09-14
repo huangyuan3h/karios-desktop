@@ -15,6 +15,7 @@ import { patchUserTrade } from '@/lib/queries/userTrades';
 import { buildHarborSegments, fitSegmentLabel, harborHoldLine } from '@/lib/harbor-segments';
 import { cn } from '@/lib/utils';
 import { resolveTimelineWindows, roleBadge, type TimelineWindowId } from '@/lib/timeline-windows';
+import { getStrategyMode } from '@/lib/strategy-settings';
 
 import {
   GATE_LEVELS,
@@ -658,15 +659,27 @@ function TimelineCard() {
   const selected = windows.find((w) => w.id === windowId) ?? windows[0];
   const start = selected.start;
   const end = selected.end;
-  const [strategy, setStrategy] = React.useState<TimelineStrategy>('harbor');
+  const [strategy, setStrategy] = React.useState<TimelineStrategy>(() => getStrategyMode());
   const q = useTimelineQuery(start, end, strategy, true);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
-  const strategySubtitle =
-    strategy === 'homeport'
-      ? 'S-3 核心 + 停车场 × 风险预算 50/50'
-      : 'S-3 核心 + 闲置现金 ETF 停车场';
+  const strategySubtitle: Record<TimelineStrategy, string> = {
+    harbor: 'S-3 核心 + 闲置现金 ETF 停车场',
+    homeport: 'S-3 核心 + 停车场 × 风险预算 50/50',
+    starport: '母港 × 卫星 1/3 曝露',
+    starship: '卫星 standalone（未审计）',
+  };
+  const strategyNote: Record<TimelineStrategy, string> = {
+    harbor:
+      '港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·\n            与 Watchlist「今日下单」同一冻结配方',
+    homeport:
+      '母港 = 港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）· 展示口径 · B16/B17 已 REJECT',
+    starport:
+      '星港 = 母港 × 卫星 1/3 曝露（有仓日 core + w×(sat−core)）· 展示口径 · H-B3-SAT PASS（K1 余量薄，稳健 0.15–0.25）· 不进 Live',
+    starship:
+      '星舰 = 卫星 standalone 100%（amp_1430 + gate_1430 + 14:30 买卖）· 研究展示 · 未过执行审计，不进 Live',
+  };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
@@ -749,12 +762,15 @@ function TimelineCard() {
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
       <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         <BarChart3 className="size-3.5" />
-        Timeline（{strategyLabel} · {strategySubtitle}）
+        Timeline（{strategyLabel} · {strategySubtitle[strategy]}）
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last ? ` · ${strategyLabel} ${harborLast ?? '—'}% · 基线 ${last.navBaseReturnPct}%` : ''}
           {strategy === 'homeport' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
+            : ''}
+          {strategy === 'starport' && summary?.homeportPct != null
+            ? ` · 母港 ${summary.homeportPct}%`
             : ''}
         </span>
       </div>
@@ -777,7 +793,7 @@ function TimelineCard() {
           </button>
         ))}
         <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
-        {(['harbor', 'homeport'] as const).map((s) => (
+        {(['harbor', 'homeport', 'starport', 'starship'] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -923,9 +939,7 @@ function TimelineCard() {
             </span>
           </div>
           <div className="rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[10px] text-[var(--k-muted)]">
-            {strategy === 'homeport'
-              ? '母港 = 港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）· 展示口径 · B16/B17 已 REJECT'
-              : '港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·\n            与 Watchlist「今日下单」同一冻结配方'}
+            {strategyNote[strategy]}
           </div>
           <div className="max-h-[360px] overflow-auto rounded border border-[var(--k-border)]">
             <table className="w-full text-left text-xs tabular-nums">

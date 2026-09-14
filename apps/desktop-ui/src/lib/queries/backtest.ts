@@ -515,6 +515,12 @@ export type TimelineSummary = {
   maxDdFusedPct?: number;
   /** Homeport only: underlying Harbor NAV% (the fusedPct is the Homeport NAV). */
   harborPct?: number;
+  /** Starport only: underlying Homeport NAV% (the fusedPct is the Starport NAV). */
+  homeportPct?: number;
+  /** Starport only: standalone satellite NAV% (reference). */
+  satPct?: number;
+  /** Starport only: satellite-active day count in the window. */
+  activeDays?: number;
 };
 
 export type TimelineResponse = {
@@ -529,11 +535,13 @@ export type TimelineResponse = {
   rows: TimelineRow[];
 };
 
-export type TimelineStrategy = 'harbor' | 'homeport';
+export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   harbor: '港湾',
   homeport: '母港',
+  starport: '星港',
+  starship: '星舰',
 };
 
 export function useTimelineQuery(

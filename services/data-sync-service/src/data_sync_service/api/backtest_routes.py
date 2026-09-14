@@ -54,6 +54,7 @@ def warm_default_timelines() -> None:
     plans: list[dict[str, Any]] = [
         {"strategy": "harbor", "need_engine": True},
         {"strategy": "homeport", "need_engine": True},
+        {"strategy": "starport", "need_engine": True},
         {"strategy": "pick_strong", "need_engine": True},
     ]
     for kwargs in plans:
@@ -449,7 +450,7 @@ def backtest_timeline(
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "harbor",
-        description="harbor | homeport | pick_strong | state_bucket",
+        description="harbor | homeport | starport | starship | pick_strong | state_bucket",
     ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
@@ -459,6 +460,8 @@ def backtest_timeline(
 
     - strategy=harbor: 港湾 baseline (S-3 core + idle-cash ETF parking).
     - strategy=homeport: 母港 = 港湾 x B3 risk-budget 50/50 (display only).
+    - strategy=starport: 星港 = 母港 x satellite overlay w=1/3 (H-B3-SAT, display only).
+    - strategy=starship: 星舰 = satellite standalone (research display; not audited).
     - strategy=pick_strong: legacy 择强单轨 ``mom_compare`` (research only).
     - strategy=state_bucket: 状态分桶 research timeline (独立腿).
     """
@@ -470,10 +473,11 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    if strategy not in ("harbor", "homeport", "pick_strong", "state_bucket"):
+    allowed = ("harbor", "homeport", "starport", "starship", "pick_strong", "state_bucket")
+    if strategy not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown strategy={strategy!r}; use harbor|homeport|pick_strong|state_bucket",
+            detail=f"unknown strategy={strategy!r}; use {'|'.join(allowed)}",
         )
     result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
@@ -728,15 +732,18 @@ def _get_or_build_timeline(
             return file_cached, None
 
     # Standalone state-bucket: no S-3 / pick-strong dependency.
-    if strategy == "state_bucket":
+    # ``starship`` is the same standalone leg under its 2026-09-14 name (display alias).
+    if strategy in ("state_bucket", "starship"):
         from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
 
         try:
             result = build_state_bucket_timeline(start=start, end=end)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
-                status_code=500, detail=f"timeline state_bucket failed: {exc}"
+                status_code=500, detail=f"timeline {strategy} failed: {exc}"
             ) from exc
+        if strategy == "starship":
+            result = {**result, "mode": "starship", "strategy": "星舰"}
         _timeline_cache[cache_key] = result
         return result, None
 
@@ -752,6 +759,24 @@ def _get_or_build_timeline(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=500, detail=f"timeline homeport failed: {exc}"
+            ) from exc
+        _timeline_cache[cache_key] = result
+        return result, engine_ctx
+
+    # Starport derives from the cached Homeport timeline + standalone satellite rows.
+    if strategy == "starport":
+        from data_sync_service.service.starport import blend_starport_timeline
+        from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
+
+        homeport_result, engine_ctx = _get_or_build_timeline(
+            start, end, strategy="homeport", need_engine=need_engine
+        )
+        try:
+            sat_result = build_state_bucket_timeline(start=start, end=end)
+            result = blend_starport_timeline(homeport_result, sat_result)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline starport failed: {exc}"
             ) from exc
         _timeline_cache[cache_key] = result
         return result, engine_ctx
