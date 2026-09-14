@@ -1,12 +1,14 @@
 # Karios 回测实验记录（Backtest Experiments）
 
 > **何时看**：任何新回测实验前、复盘策略演进时。**用户要改策略 / 仓位 / 退出时，Agent 先读 [`SUMMARY.md`](./SUMMARY.md) 和本目录实验，再开口。**
-> **终局策略**：**机会双子星 v3.1 clip4**（择强核心 + strict S-gap 4×12.5%）—— [`state-bucket-algo-2026-08-31.md`](core/state-bucket-algo-2026-08-31.md)。核心腿规则在 [`pick-strong-track.md`](../modules/pick-strong-track.md)。  
-> 本目录记录通往该策略的实验（含拒收）；**新结论必须写清对机会双子星 / 其核心腿的增量**。
+> **现行产品基线**：**港湾（Harbor）= S-3 核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`，Live 2026-09-13）—— [`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md)；真值 [`pick-strong-track.md`](../modules/pick-strong-track.md)。
+> **产品候选**：**母港** = 港湾 × B3 风险预算 50/50（[B15](stable/harbor-riskbudget-2026-09-13.md)，PASS，未进 Live）。
+> **历史/已作废**：机会双子星 v3.1 clip4 + 择强单轨（OPT-177 前视、B12 口径 bug）—— 见 [三策略审计 2026-09-14](audit-three-strategy-lookahead-2026-09-14.md)。
+> 本目录记录通往该基线的实验（含拒收）；**新结论必须写清对港湾核心 / 母港的增量**（历史实验对双子星的增量保留）。
 >
 > **改策略流程**：走仓库根 `AGENTS.md` → Strategy / parameter changes（主源，含调参查找）。
 > 本目录只管实验导航 + 验证纪律。
-> **SUMMARY 标题注**：「指向择强单轨」是历史名；终局 = 机会双子星，核心腿 = 择强单轨（单轨现为对照）。
+> **SUMMARY 标题注**：「指向择强单轨」是历史名；现行 = 港湾，母港为候选，双子星/择强为历史。
 >
 > **编码速查**：`P*` → `experiments-planned.md`（信号池 P1-P26）· `D*` → `experiments-d-pool.md`（D1-D8）
 > · `A*/B*/C*` → `experiments-defensive.md`（防守 23 项）· `C1` → `sat-entry-c1` · `H1/H2/H3/H4` → rank/c1-grid/bucketq/rwide
@@ -22,8 +24,8 @@
 
 | 文档 | 内容 | 状态 |
 |------|------|------|
-| [`SUMMARY.md`](./SUMMARY.md) | **总览（指向择强单轨）** | ✅ **必读入口** |
-| [`../modules/pick-strong-track.md`](../modules/pick-strong-track.md) | **择强单轨策略真值 + 过去一年验证** | ✅ **产品真值** |
+| [`SUMMARY.md`](./SUMMARY.md) | **总览（含 B11–B17 + 三策略审计修正）** | ✅ **必读入口** |
+| [`../modules/pick-strong-track.md`](../modules/pick-strong-track.md) | **港湾（Harbor）策略真值（S-3 核心 + 停车场）** | ✅ **产品真值** |
 | [`audit-plan-2026-08-29.md`](./audit-plan-2026-08-29.md) | 组合可信度审计计划 | ✅ |
 | [`audit-verdict-2026-08-29.md`](./audit-verdict-2026-08-29.md) | 审计结论（P0 已修） | ✅ |
 | [`pick-strong-hardening-2026-08-29.md`](core/pick-strong-hardening-2026-08-29.md) | 择强参数加固网格 · **维持 A0** | ✅ |
@@ -96,6 +98,20 @@
 | [`factors/gtja191-l0-screen-2026-09-12.md`](factors/gtja191-l0-screen-2026-09-12.md) | GTJA 191 全集 L0（168 条 × 三窗；无新轴） | ❌ REJECT（同价量相关族，成本不可交易） |
 | [`factors/hk-alpha101-gtja191-l0-2026-09-12.md`](factors/hk-alpha101-gtja191-l0-2026-09-12.md) | HK（H 股）Alpha101+GTJA191 对照（269 条 × 三窗） | ❌ REJECT（同族复现但更差；非 A 股特有） |
 | [`factors/README.md`](factors/README.md) | **因子档案总台账**（101/191 + 全部历史因子一眼判定） | ✅ 索引 |
+
+### 2026-09-13 → 09-14 增补（港湾上线 + 三策略审计）
+
+| 文档 | 内容 | 状态 |
+|------|------|------|
+| [`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md) | B11 新基线「港湾」= S-3 + 闲置现金停车场（P1 PASS） | ✅ **产品基线** |
+| [`stable/twin-star-parking-refit-2026-09-13.md`](stable/twin-star-parking-refit-2026-09-13.md) | B12 习惯双子星重拟合（口径 bug，已作废见审计） | ❌ REJECT |
+| [`stable/etf-benchmark-parking-2026-09-13.md`](stable/etf-benchmark-parking-2026-09-13.md) | B13 ETF 买持基准 × 多方法拟合（最佳拟合=×风险预算 50/50） | ✅ 标尺 |
+| [`stable/parking-cooldown-2026-09-13.md`](stable/parking-cooldown-2026-09-13.md) | B14 停车场 trail 后再入场冷却 | ❌ REJECT |
+| [`stable/harbor-riskbudget-2026-09-13.md`](stable/harbor-riskbudget-2026-09-13.md) | B15「母港」= 港湾 × B3 风险预算 50/50 | 🟡 **PASS 产品候选** |
+| [`stable/b3-cap-2026-09-13.md`](stable/b3-cap-2026-09-13.md) | B16 B3 单资产权重上限（H-B3-CAP） | ❌ REJECT |
+| [`stable/homeport-regime-2026-09-13.md`](stable/homeport-regime-2026-09-13.md) | B17 母港市况开关（H-MIX-DYN） | ❌ REJECT |
+| [`audit-three-strategy-lookahead-2026-09-14.md`](audit-three-strategy-lookahead-2026-09-14.md) | **三策略前视审计 + qfq/raw 基期 + 双市场日历修复（OPT-182/183）**：8 处修复、clean 三方最终对比 | ✅ 结论级 |
+| [`stable/sgap-habit-satellite-standalone-2026-09-14.md`](stable/sgap-habit-satellite-standalone-2026-09-14.md) | **习惯 S-gap 卫星腿 standalone 记录（clean 口径）**：三窗+long、年度、校验 | ✅ 研究记录 |
 
 ### 早期与专题（结论已定 · 有事才翻）
 

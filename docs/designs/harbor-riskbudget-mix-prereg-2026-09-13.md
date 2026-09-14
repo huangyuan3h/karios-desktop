@@ -50,6 +50,6 @@
 - 脚本：`scripts/eval_harbor_riskbudget.py` → `data/backtest_reports/harbor_riskbudget_2026-09-13.json`
 - 结论落 `docs/backtests/stable/harbor-riskbudget-2026-09-13.md` + `SUMMARY.md` + `todo.md`。
 
-**结果（跑后补）**：**M50 PASS（K1–K5 全过）→ 产品候选（不进 Live）。** 修正 NAV + 月初现实再平衡：四窗 Sharpe **1.99/3.32/2.26/1.23**（vs 港湾 1.84/2.76/2.14/1.05）、MDD **−9.0/−5.2/−11.4/−12.2**（vs −14.3/−8.4/−21.8/−23.4）、long **+122.5**（vs +219.9）；2022–23 压测 mix 0.62/−8.3 vs 港湾 0.57/−15.9；20bp 成本敏感性仍全过。B13 日频零成本复刻 ≈ 月频含成本（long +124.4 vs +122.5）→ 结论对再平衡实现不敏感。见 [`harbor-riskbudget-2026-09-13.md`](../backtests/stable/harbor-riskbudget-2026-09-13.md)。
+**结果（跑后补）**：**M50 PASS（K1–K5 全过）→ 产品候选（不进 Live）。** 修正 NAV + 月初现实再平衡：四窗 Sharpe **1.99/3.32/2.26/1.23**（vs 港湾 1.84/2.76/2.14/1.05）、MDD **−9.0/−5.2/−11.4/−12.2**（vs −14.3/−8.4/−21.8/−23.4）、long **+122.5**（vs +219.9）；2022–23 压测 mix 0.62/−8.3 vs 港湾 0.57/−15.9；20bp 成本敏感性仍全过。B13 日频零成本复刻 ≈ 月频含成本（long +124.4 vs +122.5）→ 结论对再平衡实现不敏感。**2026-09-14 日历修正（OPT-183）clean：M50 = +36.5/+35.0/+25.6/+116.3（Sharpe 1.90/3.52/2.26/1.18），K1–K5 仍全过。** 见 [`harbor-riskbudget-2026-09-13.md`](../backtests/stable/harbor-riskbudget-2026-09-13.md)。
 
 *冻结于 2026-09-13，跑数前。*

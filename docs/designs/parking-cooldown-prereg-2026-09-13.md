@@ -57,6 +57,6 @@
 - 实现：`service/harbor.py`（`pick_parking(exclude_keys=...)` + `parking_replay(cooldown_days=...)`，默认零变化）+ `tests/test_harbor_parking.py`
 - 结论落 `docs/backtests/stable/parking-cooldown-2026-09-13.md` + `SUMMARY.md` + `todo.md`。
 
-**结果（跑后补）**：**REJECT（k∈{1,2,3,5} 四档全挂 K1/K2/K4/K5）→ 港湾 P1（k=0）维持，方向关闭。** k0 与 B11 单源修正口径逐数一致（+62.0/+45.3/+50.3/+219.9）；冷却档 valid 总收益 **−6.8~−13.4pt**、long k1 **−22.9pt**，valid MDD 最好只改善 +2.4pt（门槛 3pt）、Sharpe 四档全降。**主死因 = #1 截右尾**（挡住急跌后 V 反抽）+ #4 regime（长窗纯税）；k5 long +5.0 是单窗假象。见 [`parking-cooldown-2026-09-13.md`](../backtests/stable/parking-cooldown-2026-09-13.md)。
+**结果（跑后补）**：**REJECT（k∈{1,2,3,5} 四档全挂 K1/K2/K4/K5）→ 港湾 P1（k=0）维持，方向关闭。** k0 与 B11 单源修正口径逐数一致（+62.0/+45.3/+50.3/+219.9）；冷却档 valid 总收益 **−6.8~−13.4pt**、long k1 **−22.9pt**，valid MDD 最好只改善 +2.4pt（门槛 3pt）、Sharpe 四档全降。**主死因 = #1 截右尾**（挡住急跌后 V 反抽）+ #4 regime（长窗纯税）；k5 long +5.0 是单窗假象。**2026-09-14 clean 重跑：k0=+201.5，四档仍全挂（valid −6.8~−13.4、long k1 −21.7）。** 见 [`parking-cooldown-2026-09-13.md`](../backtests/stable/parking-cooldown-2026-09-13.md)。
 
 *冻结于 2026-09-13，跑数前。*

@@ -2,6 +2,7 @@
 
 > 预注册 [`homeport-regime-prereg-2026-09-13.md`](../../designs/homeport-regime-prereg-2026-09-13.md) · 脚本 `scripts/eval_homeport_regime.py` · 报告 `data/backtest_reports/homeport_regime_2026-09-13.json`
 > **判定：REJECT（K2/K3/K6 挂）→ 静态 50/50（M50）维持；"进攻 100/0、防守 50/50"方向关闭。信号 = `沪深300 close(t-1) > MA200(t-1)`。**
+> ⚠️ **2026-09-14 日历修正（OPT-183）**：clean 重跑结论不变（dyn long 24.6/Sharpe 1.06/MDD −20.8 vs M50 17.4/1.18/−11.6；压测 0.07/−16.8 vs M50 0.39/−8.3）。详见 [三策略前视审计 2026-09-14](../audit-three-strategy-lookahead-2026-09-14.md)。
 
 ## 1. 做了什么
 

@@ -2,6 +2,7 @@
 
 > 预注册 [`parking-cooldown-prereg-2026-09-13.md`](../../designs/parking-cooldown-prereg-2026-09-13.md) · 脚本 `scripts/eval_parking_cooldown.py` · 报告 `data/backtest_reports/parking_cooldown_2026-09-13.json`
 > **判定：REJECT（k∈{1,2,3,5} 四档全挂 K1/K2/K4/K5）→ 港湾 P1（k=0）维持；B11 §3.3「trail 后冷却」候选清空、方向关闭。**
+> ⚠️ **2026-09-14 日历修正（OPT-183）**：clean 重跑 k0=+55.2/+52.2/+50.3/+201.5；k1 valid −7.9 / long −21.7，k2 valid −6.8，k3 valid −13.4，k5 valid −9.5；四档仍全挂、换手反增（valid 21→26/27）→ **结论不变**（下表为 09-13 旧口径数字，历史）。
 
 ## 1. 做了什么
 

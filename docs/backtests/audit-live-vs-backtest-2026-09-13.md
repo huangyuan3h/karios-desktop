@@ -3,6 +3,7 @@
 > 工具：`scripts/verify_harbor_live_vs_backtest.py`（PIT 逐日重放：Live 决策链 vs 港湾回测行）
 > 口径：两边同一价格源（DB `daily`）、同一日历；映射 = Live 在 T 收盘的决策 ↔ 回测行 (T+1) 的持有 pick。
 > **最终结论：决策单源统一后，三窗对账 100%（473/473）。**
+> ⚠️ **2026-09-14 日历修正（OPT-183）**：本档 §“连带修正”的 P1 数字（+62.0/+45.3/+50.3/+219.9）按 clean 日历更新为 **+55.2/+52.2/+50.3/+201.5（Δ +17.2/+13.0/+11.6/+118.8）**；对账方法与结论不变。见 [三策略审计 §F](audit-three-strategy-lookahead-2026-09-14.md)。
 
 ## 方法
 1. `multi_asset_sleeve.build_multi_asset_sleeve`（Live）用 `fetch_last_bars` PIT 截断（只喂 ≤T 的 bar）逐日重放，维护 held/entryDate 状态（与 `sleeve_paper_auto` 一致）。

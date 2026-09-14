@@ -30,17 +30,17 @@
 
 > ⚠️ **2026-09-12 审计（OPT-177）**：trail8 的回测实现曾用**当日收盘**触发 trail、却把**当日收益记 0**（1 日前视）。实测 long 窗 `fusedPct 40.2%(含前视) → 0.8%(因果)`、valid `56.9% → 20.0%`——**文档中 trail8 的 `+75/+82pt` 增量几乎全为前视幻觉**。已把 `build_nav_from_cache`/`build_mom_compare_timeline` 改为 **t-1 收盘触发（因果）**；trail8 的**真实**增量仅 valid +8.5pt / long +7.5pt（见 [`audit-trail8-2026-09-12.md`](../backtests/audit-trail8-2026-09-12.md)）。**双子星相关过往前视口径数字作废、待重验**。
 >
-> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗 **+15.5/+11.0/+11.6**、long **+125.4**（幻影日 + 决策单源）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；卫星腿重拟合 REJECT（B12：long −55.6/回撤 −48.3）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）；旧 T6 展示收敛 **OPT-179**。
+> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗增量 **+17.2/+13.0/+11.6**、long **+118.8**（2026-09-14 日历修正 clean 口径；幻影日 + 决策单源）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；卫星腿重拟合 REJECT（B12 旧口径已作废 → [2026-09-14 修正审计](../backtests/audit-three-strategy-lookahead-2026-09-14.md)：仍 REJECT，只挂 valid 单窗）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）+ **OPT-182/183**；旧 T6 展示收敛 **OPT-179**。
 
 历史拒收（旧择强层，保留备查）：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`pick-strong-hardening-2026-08-29.md`](../backtests/core/pick-strong-hardening-2026-08-29.md)；trail8 旧绝对 NAV 证据 [`pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/core/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；**已因 OPT-177 作废**）。
 
 > **Live / Watchlist（2026-09-13 已切）**：港湾（S-3 核心 + 闲置停车场）；`twin_star`/卫星路径已从代码删除（OPT-178 ✅）。
 
-> ~~**机会双子星 v3.1（2026-09-02 · 实盘默认）**~~ **→ 已 REJECT / 历史（2026-09-13 · B12）**：卫星腿重拟合停车场核心 **OOS2 +36.5 / train −11.8 / valid −28.8 / long −55.6**（long 回撤 −23.6 → −48.3）；40/60、60/40 全不过。根因：卫星 standalone **2022 −34.8% / 2023 −48.0%、long MDD −80.6%**（boom-bust），旧 clip4 三窗恰是其 2024 +164.7% / 2025 +77.4% 黄金段 + 含前视核心腿 → **旧"50/50 用很少收益换 Sharpe/回撤"双失真**。卫星现行配方**不进新基线、禁止调参重扫**；要救须带全周期门槛另起预注册。真值：[`twin-star-parking-refit-2026-09-13.md`](../backtests/stable/twin-star-parking-refit-2026-09-13.md)、旧档 [`state-bucket-algo-2026-08-31.md`](../backtests/core/state-bucket-algo-2026-08-31.md)。  
+> ~~**机会双子星 v3.1（2026-09-02 · 实盘默认）**~~ **→ 已 REJECT / 历史（2026-09-13 · B12）**：卫星腿重拟合停车场核心 **OOS2 +36.5 / train −11.8 / valid −28.8 / long −55.6**（long 回撤 −23.6 → −48.3）；40/60、60/40 全不过。~~根因：卫星 standalone 2022 −34.8% / 2023 −48.0%、long MDD −80.6%（boom-bust）~~ **⚠️ 2026-09-14：以上数字与根因叙事作废**——B12 实跑用了全天振幅旧前视键、缺 C1/14:30 卖、核心为旧本地循环。修正口径（Live 习惯 + `gate_1430` + 单源核心 + **qfq/raw 基期统一** + **市场日历过滤**）重跑：卫星 long **+463.6%/MDD −8.4%**、双子星 50/50 **OOS2 +149.7 / train +52.2 / valid +29.1 / long +291.9**（Δcore +94.5/+0.0/**−21.2**/+90.4）→ **仍 REJECT，只挂 valid 单窗（K1/K2），K3 过**。卫星仍**不进新基线、禁止调参重扫**；要救须带全周期门槛另起预注册。修正真值：[`audit-three-strategy-lookahead-2026-09-14.md`](../backtests/audit-three-strategy-lookahead-2026-09-14.md)；B12 旧档（已加修正横幅）[`twin-star-parking-refit-2026-09-13.md`](../backtests/stable/twin-star-parking-refit-2026-09-13.md)、旧档 [`state-bucket-algo-2026-08-31.md`](../backtests/core/state-bucket-algo-2026-08-31.md)。  
 > **Timeline 图口径（2026-09-09 起 · OPT-152 · 历史）**：双子星 Timeline 主曲线 = 旧实盘口径；100% 押注基准 = 灰虚线对照。卫星线随 B12 一并作废。见 `optimization-checklist/archive/2026-09-09-opt-152-timeline-product-curve.md`。
 
 > **不是「100% argmax 择强」**：ETF 层只停闲置现金，不做"股票 vs ETF 谁最强"的仓位切换。  
-> **不是「纯 S-3」**：S-3 生成 STOCK 候选/持仓；闲置现金由停车场增强（三窗 **+9.4/+6.0/+9.1pt**、long **+90.0pt** vs 纯 S-3——绝对 +55.9/+40.4/+47.8/+184.5）。  
+> **不是「纯 S-3」**：S-3 生成 STOCK 候选/持仓；闲置现金由停车场增强（三窗 **+17.2/+13.0/+11.6pt**、long **+118.8pt** vs 纯 S-3——绝对 +55.2/+52.2/+50.3/+201.5；2026-09-14 日历修正后口径）。  
 > **股票核心**：来自 **S-3**；**状态分桶 S-gap** 是并列的独立 A 股腿（可 Timeline `strategy=state_bucket` 单独回测），**不是**港湾替换件。**母港（Homeport）= 港湾 × B3 风险预算 50/50** 亦为 Timeline 选项（`strategy=homeport`，展示口径，非 Live；[B15](../backtests/stable/harbor-riskbudget-2026-09-13.md)）。
 
 ---

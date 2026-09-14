@@ -42,6 +42,6 @@
 - 脚本：`scripts/eval_b3_cap.py` → `data/backtest_reports/b3_cap_2026-09-13.json`
 - 结论落 `docs/backtests/stable/b3-cap-2026-09-13.md` + `SUMMARY.md` + `todo.md`。
 
-**结果（跑后补）**：**REJECT**。cap50 独立 long CAGR 8.2→9.7 但 Sharpe **1.76→1.41**、MDD −4.7→−7.1；cap60 1.55 更差；母港层 cap50 近似中性（long +129.6 vs +122.5、Sharpe 持平 1.23、MDD −12.6）但 K1 挡住。**#4 regime 命中**：2021–26 国债是最高 Sharpe 资产，capsize 是本区间的正解；incumbent（无上限）维持。见 [`b3-cap-2026-09-13.md`](../backtests/stable/b3-cap-2026-09-13.md)。
+**结果（跑后补）**：**REJECT**。cap50 独立 long CAGR 8.2→9.7 但 Sharpe **1.76→1.41**、MDD −4.7→−7.1；cap60 1.55 更差；母港层 cap50 近似中性（long +129.6 vs +122.5、Sharpe 持平 1.23、MDD −12.6）但 K1 挡住。**#4 regime 命中**：2021–26 国债是最高 Sharpe 资产，capsize 是本区间的正解；incumbent（无上限）维持。**2026-09-14 clean 重跑：仍 REJECT（母港层 cap50 +123.2 vs base +116.3、Sharpe 1.18 持平）。** 见 [`b3-cap-2026-09-13.md`](../backtests/stable/b3-cap-2026-09-13.md)。
 
 *冻结于 2026-09-13，跑数前。*

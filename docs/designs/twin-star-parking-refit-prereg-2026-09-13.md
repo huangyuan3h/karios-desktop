@@ -40,4 +40,6 @@
 
 **结果（跑后补）**：**REJECT（K1/K2/K3 全 FAIL）**。50/50 双子星 vs 停车场核心：OOS2 **+36.5/+1.14sr/回撤改善**；train **−11.8/−0.16**；valid **−28.8/−0.84**；long **−55.6/−0.13 且回撤 −23.6→−48.3**。40/60、60/40 全不过。根因：卫星 standalone 年度 **2022 −34.8% / 2023 −48.0%**、long MDD **−80.6%**（boom-bust），旧 clip4 三窗恰是其 2024+164.7%/2025+77.4% 黄金段 + 含前视核心腿 → 旧"少收益换 Sharpe/回撤"双失真。见 [`twin-star-parking-refit-2026-09-13.md`](../backtests/stable/twin-star-parking-refit-2026-09-13.md)。
 
+> ⚠️ **2026-09-14 修正（两处口径 bug + 双市场日历 · 以上结果作废）**：① §2 冻结的卫星调用缺 Live 习惯参数（`rank_key="amp_1430"`、`exit_hhmm="1430"`、C1 3%），实跑的是全天振幅旧前视键；核心也用了旧本地循环。② 更关键：`daily` 在 09-11 被重灌 qfq 而复权，`bar_5min` 是 raw——老口径「收盘卖」把 qfq 收盘价 vs raw 入场价平仓，制造系统性亏损与 −80% 假回撤。③ 引擎/卫星日历含 HK-only 日期（OPT-183），卫星假期强平、PnL 归零。**clean 重跑：卫星 long +463.6%/MDD −8.4%，双子星 OOS2 +149.7 / train +52.2 / valid +29.1（−21.2 vs 核心）/ long +291.9（Δ+90.4）→ 仍 REJECT，只挂 valid 单窗（K1/K2）+ train Δ 贴 0**。详见 [三策略前视审计 2026-09-14](../backtests/audit-three-strategy-lookahead-2026-09-14.md)。
+
 *冻结于 2026-09-13，跑数前。*

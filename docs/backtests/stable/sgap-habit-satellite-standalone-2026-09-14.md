@@ -1,0 +1,66 @@
+# 习惯 S-gap 卫星腿 · standalone 记录（基期统一后）· 2026-09-14
+
+> **何时看**：想理解「习惯双子星」的卫星腿到底能赚多少、或要重开卫星参数时。
+> **何时不看**：想要产品/Live 规则——Live 是「港湾」，本档只是**研究记录**（卫星腿不是独立产品）。
+> **一句话**：卫星 = 隔夜跳空 >3% 的 A 股里，挑「14:30 前振幅最小」的 1/3，14:30 买、第 3 日 14:30 卖，4×25%、30bps；基期统一 + 日历修正（OPT-183）后 standalone 三窗 **+212.7 / +40.3 / +14.7**、long **+463.6%（MDD −8.4）**；但 **valid 单窗只有 +14.7%** → 拖累双子星过不了 K1/K2。
+> **关键词**：S-gap 卫星 · amp_1430 · C1 · 14:30 时钟 · standalone · OPT-182/183
+
+---
+
+## 1. 口径（冻结）
+
+| 项 | 值 |
+|---|---|
+| 引擎（单源） | `service/state_bucket_track.replay_sgap_from_context`（Live / 审计 / 回测同一实现） |
+| 股票池 | CN A 股，排除 ST / BJ / 已退市（`_load_rows`），要求当日有市值数据 |
+| 信号（state） | S-gap：`open / pre_close − 1 > 3%`（开盘即可知） |
+| 排序（rank） | `amp_1430`：`bar_5min` 中 `trade_time ≤ 14:30` 的 (max high − min low) / 14:30 print，升序取前 1/3（`bucket_q=3`） |
+| 过滤 C1 | 14:30 print / open − 1 > 3% 则跳过（不追已冲高）；涨停锁定同样跳过 |
+| 仓位 | 4 槽 × 25%（`max_pos=4`、`position_pct=0.25`），strict 池不补位；standalone 未用满的部分计现金 |
+| 持有/退出 | `body=3`：T 日 14:30 买，第 3 个交易日 14:30 卖（`exit_hhmm="1430"`） |
+| 成本 | 30bps 往返（`COSTS_ROUNDTRIP`，CN paper cost model） |
+| 闸（gate） | R-wide：14:30 可得面板的（price > MA20）占比 > 0.5（`gate_1430=True`） |
+| 价格基期 | **raw**（`bar_5min` 原始成交价）；`daily`（前复权）只用于 gap/universe |
+| 单源对账 | OPT-180（Live=回测决策 100%）；本档数字为**基期统一后**（OPT-182 ⑦） |
+
+> 与 Live 的关系：Live「习惯」口径 = 14:30 信号/成交/退出 + C1 + `amp_1430`（2026-09-03 定型、09-11 时钟统一）。twin-star Live 路径已于 09-13 退役（OPT-178），本腿现仅用于研究与双子星回测。
+
+## 2. 最终数字（含成本；standalone = 100% 名义本金）· 2026-09-14 clean 口径（OPT-182 + OPT-183）
+
+| 窗口 | total | CAGR | maxDD | Sharpe | fills | active |
+|---|---|---|---|---|---|---|
+| OOS2（2024-08~2025-08） | **+212.7%** | 227.8% | −3.3% | **7.44** | 268 | 67% |
+| train（2025-08~2026-02） | +40.3% | 101.1% | −8.1% | 3.50 | 123 | 57% |
+| valid（2026-03~2026-08） | **+14.7%** | 37.3% | −6.5% | 2.06 | 50 | 27% |
+| long（2021-08~2026-08） | **+463.6%** | 43.1% | **−8.4%** | 3.50 | 1036 | 52% |
+
+**年度分解（long，clean）**：2021 +68.5%（8–12 月）/ 2022 **+43.8** / 2023 +15.3 / 2024 +43.7 / 2025 +32.6 / 2026 +5.8（至 8/7）。
+→ 与 B12 旧记录的「2022 −34.8% / 2023 −48.0% / MDD −80.6%（boom-bust）」**完全不同：那是 qfq/raw 基期混用造成的假象**；日历修正（HK-only 日期剔除）再抬高 long +24.6pt（+439.0→+463.6）。见 [审计 §E/§F](../audit-three-strategy-lookahead-2026-09-14.md)。
+
+## 3. 用途与判定
+
+- **用途**：作为「习惯双子星」的增强腿（有卫星仓日与港湾核心 50/50；无仓日 100% 核心）。不是独立产品、无 Live 接线。
+- **双子星贡献**：加卫星后 long +201.5%→**+291.9%**、Sharpe 1.00→**1.45**、回撤 −22.8%→−20.8%（OOS2/train/long 全面改善）。
+- **短板**：valid 窗卫星只有 +14.7%（同一窗核心 +50.3%），双子星被稀释（Δ−21.2 / Δsr−0.65）→ 冻结 K1/K2 不过，**双子星维持 REJECT**。
+- **风险/纪律**：卫星早期年份（2021–23）是事后样本（C1/amp_1430 规则在 2024+ 窗验证）；重开参数须新预注册 + 全周期门槛 + valid 短板诊断；已 REJECT 变体不得直接进 Live。
+
+## 4. 数据真实性（2026-09-14 校验）
+
+- long 窗把每笔 raw 成交价按**当日因子**（raw 15:00 ÷ qfq close）换算回前复权后：**1036/1036 入场、1017/1017 出场全部落在该股当日日线 [low, high] 内**（另 19 笔出场日无行情数据，多为退市/停牌）；单笔盈亏 −18.7%~+26.3%（20% 涨跌幅板），无异常值。
+- 退市股（生存偏差）在 gap 事件中占 **0.36%**（本库退市记录不全，属已知残余）。
+- 残余：3 日持仓不计股息（保守）；14:30 用采样 5 分钟 bar 代理 Live 实时快照（名字级非逐只相同）。
+
+## 5. 复现
+
+```bash
+cd services/data-sync-service
+# 输出里的「卫星 standalone」行 = 本档数字
+PYTHONPATH=src:scripts python3 scripts/eval_twin_star_parking.py --windows OOS2,train,valid
+PYTHONPATH=src:scripts python3 scripts/eval_twin_star_parking.py --windows long
+```
+
+## 6. 关联
+
+- 三策略审计（含口径 A/C/E 修复与分解）：[`../audit-three-strategy-lookahead-2026-09-14.md`](../audit-three-strategy-lookahead-2026-09-14.md) · 归档 [`archive/2026-09-14-three-strategy-audit.md`](../../archive/2026-09-14-three-strategy-audit.md)
+- 卫星历史实验：C1/14:30 卖 [`sat/sat-exit-hhmm-2026-09-03.md`](../sat/sat-exit-hhmm-2026-09-03.md) · 时钟统一 [`sat/sat-clock-unify-1430-2026-09-11.md`](../sat/sat-clock-unify-1430-2026-09-11.md) · 桶/闸 [`sat/sat-bucketq-2026-09-04.md`](../sat/sat-bucketq-2026-09-04.md) / [`sat/sat-rwide-2026-09-04.md`](../sat/sat-rwide-2026-09-04.md) · C1 网格 [`sat/sat-c1-grid-2026-09-04.md`](../sat/sat-c1-grid-2026-09-04.md)
+- 双子星重拟合（已作废）[`twin-star-parking-refit-2026-09-13.md`](twin-star-parking-refit-2026-09-13.md) · 工程项 **OPT-182**

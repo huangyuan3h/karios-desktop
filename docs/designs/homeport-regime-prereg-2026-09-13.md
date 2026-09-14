@@ -38,6 +38,6 @@ vs 静态 M50（H-MIX）：
 - 脚本：`scripts/eval_homeport_regime.py` → `data/backtest_reports/homeport_regime_2026-09-13.json`
 - 结论落 `docs/backtests/stable/homeport-regime-2026-09-13.md` + `SUMMARY.md` + `todo.md`。
 
-**结果（跑后补）**：**REJECT（K2/K3/K6 挂）**。DYN long CAGR **24.7**（> M50 18.0）但 Sharpe **1.08 < 1.23**、MDD **−20.6**（> −14.2 线）；2022–23 压测 **0.20/−10.5** vs M50 0.62/−8.3（MA200 熊市来回甩，长窗 36 次切换）；valid 强市 +42.8 但 MDD −21.7（回港湾级）。**"进攻 100/0"能实现，"防守 50/50"不比静态更会防守**——与 A2/DH/TIP-016 同墙。静态 M50 维持。见 [`homeport-regime-2026-09-13.md`](../backtests/stable/homeport-regime-2026-09-13.md)。
+**结果（跑后补）**：**REJECT（K2/K3/K6 挂）**。DYN long CAGR **24.7**（> M50 18.0）但 Sharpe **1.08 < 1.23**、MDD **−20.6**（> −14.2 线）；2022–23 压测 **0.20/−10.5** vs M50 0.62/−8.3（MA200 熊市来回甩，长窗 36 次切换）；valid 强市 +42.8 但 MDD −21.7（回港湾级）。**"进攻 100/0"能实现，"防守 50/50"不比静态更会防守**——与 A2/DH/TIP-016 同墙。静态 M50 维持。**2026-09-14 clean 重跑：仍 REJECT（dyn 24.6/1.06/−20.8 vs M50 17.4/1.18/−11.6）。** 见 [`homeport-regime-2026-09-13.md`](../backtests/stable/homeport-regime-2026-09-13.md)。
 
 *冻结于 2026-09-13，跑数前。*
