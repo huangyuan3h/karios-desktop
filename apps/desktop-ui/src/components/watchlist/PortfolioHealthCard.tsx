@@ -111,7 +111,9 @@ function PickStrongOpsPanel({
   const isRepo = pickKey === 'REPO';
   const isEtf = !isStock && !isRepo;
 
-  const parkPct = sleeve?.parkPct ?? sleeve?.idlePct;
+  const idlePct = sleeve?.idlePct;
+  const parkPct = sleeve?.parkPct ?? idlePct;
+  const fmt = (v: number | null | undefined) => (v != null ? `${v.toFixed(0)}%` : '—');
   const steps: string[] = [];
   if (isStock) {
     steps.push(
@@ -122,9 +124,11 @@ function PickStrongOpsPanel({
     if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：先卖出 ETF，再配股票');
   } else if (isEtf) {
     steps.push(
-      parkPct != null
-        ? `闲置现金 ${parkPct.toFixed(0)}% → ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动，停车只停闲钱`
-        : `闲置现金 → ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动，停车只停闲钱`,
+      action === 'HOLD'
+        ? `闲置现金 ${fmt(idlePct)} · 继续持有 ${meta.label}（${etfSym ?? pickKey}）· 停车只停闲钱`
+        : action === 'ROTATE' || action === 'BUY'
+          ? `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
+          : `闲置现金 ${fmt(idlePct)} → 逆回购 · 股票核心不动`,
     );
     if (stockHoldingsCount > 0) {
       steps.push(
@@ -173,7 +177,7 @@ function PickStrongOpsPanel({
         </span>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
-        100% 硬切 · 定案 mom_compare · LB60/MA200
+        停车规则：mom60+MA200 选趋势最好的一只 · 回撤 8% 出场 · 只停闲置现金
       </p>
       {sleeve?.message && action !== 'HOLD' ? (
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
@@ -1283,7 +1287,13 @@ export function PortfolioHealthCard({
         ) : null}
         {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
         {mode === 'starport' || mode === 'starship' || mode === 'twin_star' ? (
-          <SatelliteLegBlock row={satLast} />
+          <SatelliteLegBlock
+            row={satLast}
+            strategy={mode}
+            satWeight={satQ.data?.satWeight ?? null}
+            openPositions={satQ.data?.openPositions ?? []}
+            parkedHeld={satQ.data?.parkedHeld ?? null}
+          />
         ) : null}
       </div>
 

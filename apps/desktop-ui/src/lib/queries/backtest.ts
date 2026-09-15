@@ -627,6 +627,12 @@ export type TimelineResponse = {
   parkedBlotter?: TimelineParkedBlotterRow[];
   /** Starship v2: parked leg held at the window end (null = cash/REPO). */
   parkedHeld?: TimelineParkedHeld | null;
+  /** Overlay strategies: satellite capital weight (星港 1/3, 双子星 1/2, 星舰 1). */
+  satWeight?: number | null;
+  /** Satellite slot capacity (MAX_POS=4) — never re-derive in the UI. */
+  satCapacity?: number | null;
+  /** Overlay strategies: which leg is the base (homeportPct / harborPct / satellite). */
+  baseKey?: string | null;
 };
 
 export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship' | 'twin_star';

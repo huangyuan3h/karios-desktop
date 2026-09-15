@@ -1145,7 +1145,14 @@ def replay_sgap_from_context(
         held = ci - ei + 1 if ei >= 0 and ci >= 0 else 0
         p_body = int(p.get("body", body))
         days_left = max(0, p_body - held)
-        exit_due = cal[ei + p_body - 1] if ei >= 0 and ei + p_body - 1 < len(cal) else last_day
+        # Prefer the entry-time due date when the window calendar ends before it
+        # (entry-time uses the requested `end`, so an in-flight leg shows the real
+        # next session instead of being clamped to the last loaded data day).
+        exit_due = (
+            cal[ei + p_body - 1]
+            if ei >= 0 and ei + p_body - 1 < len(cal)
+            else p.get("exit_due")
+        )
         open_positions.append(
             {
                 "ts": ts,
@@ -1240,6 +1247,7 @@ def replay_sgap_from_context(
         "pool_mode": pool_mode,
         "position_pct": clip,
         "max_pos": max_pos,
+        "satCapacity": max_pos,
         "fill_mode": fill_mode,
         "fill_hhmm": fill_hhmm if fill_mode == FILL_SAME_1430 else None,
         "exit_hhmm": exit_hhmm,
@@ -1358,6 +1366,7 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
         "mode": "state_bucket_sgap",
         "strategy": "状态分桶 S-gap (可执行)",
         "rows": rows,
+        "satCapacity": int(sat.get("satCapacity") or MAX_POS),
         "summary": {
             "fusedPct": round(sat_pct, 2),
             "corePct": None,

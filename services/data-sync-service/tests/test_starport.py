@@ -59,6 +59,25 @@ class TestStarportTimeline:
         assert abs(out["rows"][1]["navSingle"] - round(expected, 6)) < 1e-9
         assert out["summary"]["activeDays"] == 1
 
+    def test_passes_satellite_book_weight_and_capacity_through(self) -> None:
+        """OPT-207: the UI hints read the satellite book from the payload."""
+        hp = _homeport([1.0, 1.05])
+        sat = _sat([(1.0, True), (1.10, True)])
+        sat["satCapacity"] = 4
+        sat["openPositions"] = [{"ts": "300906.SZ", "daysLeft": 1}]
+        sat["blotter"] = [{"kind": "open", "date": "2024-01-02", "ts": "300906.SZ"}]
+        out = blend_starport_timeline(hp, sat)
+        assert out["satWeight"] == round(SAT_WEIGHT, 4)
+        assert out["baseKey"] == "homeportPct"
+        assert out["satCapacity"] == 4
+        assert out["openPositions"] == sat["openPositions"]
+        assert out["blotter"] == sat["blotter"]
+
+    def test_twin_star_reports_half_weight_on_harbor_base(self) -> None:
+        out = blend_twin_star_timeline(_homeport([1.0]), _sat([(1.0, False)]))
+        assert out["satWeight"] == TWIN_STAR_WEIGHT
+        assert out["baseKey"] == "harborPct"
+
     def test_missing_satellite_day_counts_inactive(self) -> None:
         hp = _homeport([1.0, 1.10])
         sat = {"ok": True, "rows": [{"date": "2024-01-01", "satNav": 1.0, "satActive": True}], "summary": {}}

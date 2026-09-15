@@ -271,4 +271,38 @@ describe('PortfolioHealthCard (harbor)', () => {
     );
     expect(screen.queryByTestId('b3-leg-block')).toBeNull();
   });
+
+  it('renders starport operation hints from the blended satellite payload', async () => {
+    backtestMock.useTimelineQuery.mockReturnValue({
+      data: {
+        rows: [
+          {
+            date: '2026-09-14',
+            satActive: true,
+            satPositions: 4,
+            satSlots: 4,
+            satCapacity: 4,
+            gateOpen: false,
+          },
+        ],
+        summary: { fusedPct: 1 },
+        satWeight: 1 / 3,
+        satCapacity: 4,
+        openPositions: [
+          {
+            ts: '300906.SZ',
+            entryDate: '2026-09-11',
+            entryPrice: 28.12,
+            daysLeft: 1,
+          },
+        ],
+      },
+      isError: false,
+      isFetching: false,
+    });
+    renderCard({ mode: 'starport' });
+    expect(await screen.findByText(/操作提示（研究档 · 不进 Live）/)).toBeDefined();
+    expect(screen.getByText(/星港：母港 2\/3 \+ 卫星 1\/3/)).toBeDefined();
+    expect(screen.getByText(/14:30 到期卖出（余 1 日）：/)).toBeDefined();
+  });
 });

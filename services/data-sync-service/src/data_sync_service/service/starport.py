@@ -44,6 +44,13 @@ def blend_overlay_timeline(
     out["mode"] = mode
     out["strategy"] = strategy_label
     out["rows"] = rows
+    # Satellite book + weighting metadata for the UI operation hints (OPT-207).
+    # Same source as the standalone starship view: never re-derive in the frontend.
+    out["satWeight"] = round(float(sat_weight), 4)
+    out["baseKey"] = base_key
+    out["satCapacity"] = satellite_result.get("satCapacity")
+    out["openPositions"] = list(satellite_result.get("openPositions") or [])
+    out["blotter"] = list(satellite_result.get("blotter") or [])
     if not rows:
         out["summary"] = {**src_summary}
         return out

@@ -782,7 +782,15 @@ def _get_or_build_timeline(
                 status_code=500, detail=f"timeline {strategy} failed: {exc}"
             ) from exc
         if strategy == "starship":
-            result = {**result, "mode": "starship", "strategy": "星舰"}
+            # v2 = satellite (full weight) + idle-cash ETF parking; the UI hints
+            # read `satWeight`/`satCapacity`/`parkedHeld` from the same payload.
+            result = {
+                **result,
+                "mode": "starship",
+                "strategy": "星舰",
+                "satWeight": 1.0,
+                "baseKey": "satellite",
+            }
         _timeline_cache[cache_key] = result
         return result, None
 
