@@ -1,0 +1,468 @@
+{
+ "tag": "family-regime-2026-09-15",
+ "window": [
+  "2021-08-01",
+  "2026-08-07"
+ ],
+ "annual": {
+  "2021": {
+   "harbor": {
+    "total": -5.1,
+    "mdd": 15.2,
+    "sharpe": -1.64
+   },
+   "homeport": {
+    "total": -1.0,
+    "mdd": 9.0,
+    "sharpe": -1.58
+   },
+   "starport": {
+    "total": 17.3,
+    "mdd": 7.6,
+    "sharpe": -1.17
+   },
+   "twin_star": {
+    "total": 22.3,
+    "mdd": 12.7,
+    "sharpe": -1.11
+   },
+   "starship": {
+    "total": 70.7,
+    "mdd": 5.6,
+    "sharpe": -0.6
+   },
+   "index": {
+    "total": 0.3,
+    "mdd": 5.3,
+    "sharpe": -0.69
+   }
+  },
+  "2022": {
+   "harbor": {
+    "total": 8.4,
+    "mdd": 15.9,
+    "sharpe": 0.58
+   },
+   "homeport": {
+    "total": 3.3,
+    "mdd": 8.3,
+    "sharpe": 0.4
+   },
+   "starport": {
+    "total": 14.7,
+    "mdd": 6.7,
+    "sharpe": 1.64
+   },
+   "twin_star": {
+    "total": 24.5,
+    "mdd": 9.4,
+    "sharpe": 1.73
+   },
+   "starship": {
+    "total": 43.7,
+    "mdd": 6.9,
+    "sharpe": 2.72
+   },
+   "index": {
+    "total": -20.1,
+    "mdd": 27.4,
+    "sharpe": -1.07
+   }
+  },
+  "2023": {
+   "harbor": {
+    "total": 1.2,
+    "mdd": 16.3,
+    "sharpe": 0.16
+   },
+   "homeport": {
+    "total": 3.9,
+    "mdd": 7.9,
+    "sharpe": 0.42
+   },
+   "starport": {
+    "total": 7.4,
+    "mdd": 7.4,
+    "sharpe": 0.81
+   },
+   "twin_star": {
+    "total": 5.8,
+    "mdd": 12.9,
+    "sharpe": 0.44
+   },
+   "starship": {
+    "total": 32.9,
+    "mdd": 7.5,
+    "sharpe": 1.86
+   },
+   "index": {
+    "total": -9.8,
+    "mdd": 19.9,
+    "sharpe": -0.73
+   }
+  },
+  "2024": {
+   "harbor": {
+    "total": 29.9,
+    "mdd": 22.4,
+    "sharpe": 1.03
+   },
+   "homeport": {
+    "total": 24.4,
+    "mdd": 11.6,
+    "sharpe": 1.4
+   },
+   "starport": {
+    "total": 30.9,
+    "mdd": 6.9,
+    "sharpe": 2.07
+   },
+   "twin_star": {
+    "total": 35.4,
+    "mdd": 13.0,
+    "sharpe": 1.54
+   },
+   "starship": {
+    "total": 52.5,
+    "mdd": 14.8,
+    "sharpe": 2.29
+   },
+   "index": {
+    "total": 17.4,
+    "mdd": 12.4,
+    "sharpe": 0.86
+   }
+  },
+  "2025": {
+   "harbor": {
+    "total": 51.6,
+    "mdd": 10.9,
+    "sharpe": 1.9
+   },
+   "homeport": {
+    "total": 30.6,
+    "mdd": 6.1,
+    "sharpe": 2.1
+   },
+   "starport": {
+    "total": 40.2,
+    "mdd": 4.3,
+    "sharpe": 3.14
+   },
+   "twin_star": {
+    "total": 66.8,
+    "mdd": 8.1,
+    "sharpe": 3.02
+   },
+   "starship": {
+    "total": 66.0,
+    "mdd": 11.2,
+    "sharpe": 2.64
+   },
+   "index": {
+    "total": 20.8,
+    "mdd": 10.1,
+    "sharpe": 1.39
+   }
+  },
+  "2026": {
+   "harbor": {
+    "total": 47.0,
+    "mdd": 20.8,
+    "sharpe": 1.81
+   },
+   "homeport": {
+    "total": 25.2,
+    "mdd": 11.2,
+    "sharpe": 1.86
+   },
+   "starport": {
+    "total": 12.3,
+    "mdd": 11.2,
+    "sharpe": 1.11
+   },
+   "twin_star": {
+    "total": 7.7,
+    "mdd": 20.8,
+    "sharpe": 0.54
+   },
+   "starship": {
+    "total": 19.3,
+    "mdd": 28.5,
+    "sharpe": 0.88
+   },
+   "index": {
+    "total": 2.6,
+    "mdd": 9.9,
+    "sharpe": 0.32
+   }
+  }
+ },
+ "monthly": {
+  "harbor": {
+   "n": 61,
+   "win_rate_pct": 56.0,
+   "median_pct": 1.2,
+   "worst": [
+    [
+     "2024-08",
+     -11.1
+    ],
+    [
+     "2021-10",
+     -7.9
+    ],
+    [
+     "2026-06",
+     -6.9
+    ]
+   ]
+  },
+  "homeport": {
+   "n": 61,
+   "win_rate_pct": 61.0,
+   "median_pct": 0.6,
+   "worst": [
+    [
+     "2024-08",
+     -5.8
+    ],
+    [
+     "2022-01",
+     -3.9
+    ],
+    [
+     "2021-10",
+     -3.5
+    ]
+   ]
+  },
+  "starport": {
+   "n": 61,
+   "win_rate_pct": 69.0,
+   "median_pct": 1.2,
+   "worst": [
+    [
+     "2026-07",
+     -3.8
+    ],
+    [
+     "2021-10",
+     -3.5
+    ],
+    [
+     "2026-06",
+     -3.2
+    ]
+   ]
+  },
+  "twin_star": {
+   "n": 61,
+   "win_rate_pct": 69.0,
+   "median_pct": 2.0,
+   "worst": [
+    [
+     "2021-10",
+     -7.9
+    ],
+    [
+     "2026-07",
+     -7.2
+    ],
+    [
+     "2026-06",
+     -6.9
+    ]
+   ]
+  },
+  "starship": {
+   "n": 61,
+   "win_rate_pct": 72.0,
+   "median_pct": 2.8,
+   "worst": [
+    [
+     "2026-04",
+     -8.8
+    ],
+    [
+     "2026-06",
+     -6.9
+    ],
+    [
+     "2024-08",
+     -6.3
+    ]
+   ]
+  }
+ },
+ "buckets": {
+  "trend_ma200": {
+   "above": {
+    "days": 559,
+    "harbor": {
+     "daily_pct": 0.173,
+     "annualized_pct": 42.1
+    },
+    "homeport": {
+     "daily_pct": 0.107,
+     "annualized_pct": 25.9
+    },
+    "starport": {
+     "daily_pct": 0.108,
+     "annualized_pct": 26.1
+    },
+    "twin_star": {
+     "daily_pct": 0.134,
+     "annualized_pct": 32.5
+    },
+    "starship": {
+     "daily_pct": 0.174,
+     "annualized_pct": 42.4
+    }
+   },
+   "below": {
+    "days": 456,
+    "harbor": {
+     "daily_pct": 0.045,
+     "annualized_pct": 10.9
+    },
+    "homeport": {
+     "daily_pct": 0.039,
+     "annualized_pct": 9.4
+    },
+    "starport": {
+     "daily_pct": 0.066,
+     "annualized_pct": 16.0
+    },
+    "twin_star": {
+     "daily_pct": 0.086,
+     "annualized_pct": 20.9
+    },
+    "starship": {
+     "daily_pct": 0.182,
+     "annualized_pct": 44.2
+    }
+   }
+  },
+  "mom20": {
+   "down": {
+    "days": 643,
+    "harbor": {
+     "daily_pct": 0.054,
+     "annualized_pct": 13.1
+    },
+    "homeport": {
+     "daily_pct": 0.043,
+     "annualized_pct": 10.4
+    },
+    "starport": {
+     "daily_pct": 0.066,
+     "annualized_pct": 16.0
+    },
+    "twin_star": {
+     "daily_pct": 0.084,
+     "annualized_pct": 20.3
+    },
+    "starship": {
+     "daily_pct": 0.176,
+     "annualized_pct": 42.8
+    }
+   },
+   "up": {
+    "days": 551,
+    "harbor": {
+     "daily_pct": 0.168,
+     "annualized_pct": 40.9
+    },
+    "homeport": {
+     "daily_pct": 0.098,
+     "annualized_pct": 23.7
+    },
+    "starport": {
+     "daily_pct": 0.11,
+     "annualized_pct": 26.8
+    },
+    "twin_star": {
+     "daily_pct": 0.144,
+     "annualized_pct": 35.1
+    },
+    "starship": {
+     "daily_pct": 0.184,
+     "annualized_pct": 44.8
+    }
+   }
+  },
+  "vol": {
+   "high": {
+    "days": 397,
+    "harbor": {
+     "daily_pct": 0.168,
+     "annualized_pct": 40.8
+    },
+    "homeport": {
+     "daily_pct": 0.111,
+     "annualized_pct": 27.0
+    },
+    "starport": {
+     "daily_pct": 0.124,
+     "annualized_pct": 30.1
+    },
+    "twin_star": {
+     "daily_pct": 0.161,
+     "annualized_pct": 39.2
+    },
+    "starship": {
+     "daily_pct": 0.196,
+     "annualized_pct": 47.6
+    }
+   },
+   "low": {
+    "days": 399,
+    "harbor": {
+     "daily_pct": 0.185,
+     "annualized_pct": 45.0
+    },
+    "homeport": {
+     "daily_pct": 0.107,
+     "annualized_pct": 26.0
+    },
+    "starport": {
+     "daily_pct": 0.116,
+     "annualized_pct": 28.1
+    },
+    "twin_star": {
+     "daily_pct": 0.161,
+     "annualized_pct": 39.2
+    },
+    "starship": {
+     "daily_pct": 0.153,
+     "annualized_pct": 37.1
+    }
+   },
+   "mid": {
+    "days": 398,
+    "harbor": {
+     "daily_pct": -0.033,
+     "annualized_pct": -8.0
+    },
+    "homeport": {
+     "daily_pct": -0.014,
+     "annualized_pct": -3.3
+    },
+    "starport": {
+     "daily_pct": 0.02,
+     "annualized_pct": 4.8
+    },
+    "twin_star": {
+     "daily_pct": 0.012,
+     "annualized_pct": 3.0
+    },
+    "starship": {
+     "daily_pct": 0.192,
+     "annualized_pct": 46.6
+    }
+   }
+  }
+ },
+ "as_of": "2026-09-15T00:37:44.979877+00:00"
+}

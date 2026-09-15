@@ -27,6 +27,18 @@ export const StrategyCatalogStatusSchema = z.enum([
 ]);
 export type StrategyCatalogStatus = z.infer<typeof StrategyCatalogStatusSchema>;
 
+/**
+ * Regime fit map (OPT-202): when the strategy's edge is present vs absent,
+ * with the supporting evidence rows. Descriptive only — never a trading gate.
+ */
+export const StrategyCatalogRegimeSchema = z.object({
+  fit: z.array(z.string()),
+  unfit: z.array(z.string()),
+  evidence: z.array(z.object({ label: z.string(), value: z.string() })),
+  note: z.string().optional(),
+});
+export type StrategyCatalogRegime = z.infer<typeof StrategyCatalogRegimeSchema>;
+
 export const StrategyCatalogEntrySchema = z.object({
   key: StrategyCatalogKeySchema,
   name: z.string(),
@@ -46,6 +58,8 @@ export const StrategyCatalogEntrySchema = z.object({
   }),
   pros: z.array(z.string()),
   cons: z.array(z.string()),
+  /** Optional per-strategy regime map (starship v2 currently). */
+  regime: StrategyCatalogRegimeSchema.optional(),
 });
 export type StrategyCatalogEntry = z.infer<typeof StrategyCatalogEntrySchema>;
 

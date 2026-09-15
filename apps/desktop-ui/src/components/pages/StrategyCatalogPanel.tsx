@@ -167,6 +167,49 @@ export function StrategyCatalogPanel({
           </div>
         </div>
 
+        {selected.regime ? (
+          <div className="mt-3 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-2">
+            <div className="text-[11px] font-medium">市场适配（只描述 · 不作闸门）</div>
+            <div className="mt-1 grid gap-2 md:grid-cols-2">
+              <div>
+                <div className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                  适合
+                </div>
+                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-[var(--k-muted)]">
+                  {selected.regime.fit.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[10px] font-medium text-red-700 dark:text-red-300">
+                  不适合 / 主要风险
+                </div>
+                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-[var(--k-muted)]">
+                  {selected.regime.unfit.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {selected.regime.evidence.length ? (
+              <table className="mt-2 w-full text-left text-[10px] tabular-nums">
+                <tbody>
+                  {selected.regime.evidence.map((e) => (
+                    <tr key={`${e.label}-${e.value}`} className="border-t border-[var(--k-border)]/50">
+                      <td className="w-[88px] py-0.5 pr-2 text-[var(--k-muted)]">{e.label}</td>
+                      <td className="py-0.5">{e.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+            {selected.regime.note ? (
+              <p className="mt-1 text-[10px] text-[var(--k-muted)]">{selected.regime.note}</p>
+            ) : null}
+          </div>
+        ) : null}
+
         <p className="mt-3 text-[10px] text-[var(--k-muted)]">
           真值：{selected.doc}
           {selected.timelineStrategy

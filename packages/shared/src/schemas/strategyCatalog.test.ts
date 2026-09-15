@@ -22,6 +22,13 @@ const entry = {
   cons: ['回撤深'],
 };
 
+const REGIME = {
+  fit: ['高波动 + 指数弱于 MA200'],
+  unfit: ['停车资产单日 ±10% 抽搐'],
+  evidence: [{ label: '2025', value: 'v1 +32.6 / v2 +66.0 / Δ+33.4' }],
+  note: '只描述，不作闸门',
+};
+
 describe('StrategyCatalogSchema', () => {
   it('parses a catalog payload', () => {
     const out = StrategyCatalogSchema.parse({ ok: true, strategies: [entry] });
@@ -45,6 +52,17 @@ describe('StrategyCatalogSchema', () => {
     });
     expect(out.strategies[0]?.timelineStrategy).toBe('twin_star');
     expect(out.strategies[0]?.status).toBe('parallel_candidate');
+  });
+
+  it('accepts an optional regime map and omits it for rows without one', () => {
+    const out = StrategyCatalogSchema.parse({
+      ok: true,
+      strategies: [{ ...entry, key: 'starship', regime: REGIME }],
+    });
+    expect(out.strategies[0]?.regime?.fit[0]).toContain('高波动');
+    expect(out.strategies[0]?.regime?.evidence[0]?.label).toBe('2025');
+    const noRegime = StrategyCatalogSchema.parse({ ok: true, strategies: [entry] });
+    expect(noRegime.strategies[0]?.regime).toBeUndefined();
   });
 
   it('rejects unknown statuses and missing windows', () => {

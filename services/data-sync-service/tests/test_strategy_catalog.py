@@ -32,10 +32,20 @@ def test_catalog_rows_are_complete() -> None:
         assert row["pros"] and row["cons"]
 
 
+def test_every_strategy_carries_a_regime_map() -> None:
+    for row in strategy_catalog():
+        reg = row.get("regime")
+        assert reg, f"{row['key']} missing regime"
+        assert reg["fit"] and reg["unfit"] and reg["evidence"]
+        assert reg["note"]
+        assert all(set(e) == {"label", "value"} for e in reg["evidence"])
+
+
 def test_catalog_returns_fresh_copies() -> None:
     first = strategy_catalog()
     first[0]["windows"]["long"]["total"] = 999.9
     first[0]["pros"].append("mutated")
+    first[0]["regime"]["fit"].append("mutated")
     second = strategy_catalog()
     assert second[0]["windows"]["long"]["total"] == 201.5
     assert "mutated" not in second[0]["pros"]

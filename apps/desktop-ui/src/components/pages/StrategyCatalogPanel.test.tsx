@@ -34,6 +34,12 @@ const CATALOG = {
       },
       pros: ['四窗全正、绝对收益最强（long +201.5%）'],
       cons: ['long Sharpe 仅 1.00、回撤深（−22.8%）'],
+      regime: {
+        fit: ['指数 >MA200（日均 +0.173% ≈ 年化 +42%）'],
+        unfit: ['中波动区为负（−0.033%/日）'],
+        evidence: [{ label: '2025', value: '+51.6（10.9 / 1.90）' }],
+        note: '只描述、不作闸门',
+      },
     },
     {
       key: 'homeport',
@@ -113,6 +119,14 @@ beforeEach(() => {
 });
 
 describe('StrategyCatalogPanel', () => {
+  it('renders the regime fit map and evidence for the selected strategy', async () => {
+    renderPanel();
+    expect(await screen.findByText('市场适配（只描述 · 不作闸门）')).toBeDefined();
+    expect(screen.getByText(/指数 >MA200/)).toBeDefined();
+    expect(screen.getByText(/中波动区为负/)).toBeDefined();
+    expect(screen.getByText('+51.6（10.9 / 1.90）')).toBeDefined();
+  });
+
   it('renders the five family tabs and the selected strategy windows', async () => {
     renderPanel();
     expect(await screen.findByText('策略族总览')).toBeDefined();
