@@ -3,6 +3,8 @@
  * and the user's book (realized sells + open MTM), not shallow "wrong pick today".
  */
 
+import { parkingKeyForSymbol } from '@/lib/parking-universe';
+
 export const TRACK_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
 export type TrackPick = (typeof TRACK_PICKS)[number];
 
@@ -55,16 +57,6 @@ export type AttributionDiffReport = {
   userTopWeight: TrackPick | null;
 };
 
-const ETF_BUCKET: Record<string, TrackPick> = {
-  '518880': 'GOLD',
-  '513350': 'OIL',
-  '513100': 'NASDAQ',
-  '513110': 'NASDAQ',
-  '513500': 'NASDAQ',
-  '159941': 'NASDAQ',
-  '511260': 'BOND10',
-};
-
 export function symbolToTrackPick(symbol: string): TrackPick | 'OTHER' {
   const s = (symbol || '').toUpperCase();
   const bare = s.replace('ETF:', '').replace('.SH', '').replace('.SZ', '').replace('.HK', '');
@@ -72,7 +64,8 @@ export function symbolToTrackPick(symbol: string): TrackPick | 'OTHER' {
     return 'STOCK';
   }
   if (s.startsWith('HK:')) return 'STOCK';
-  if (bare in ETF_BUCKET) return ETF_BUCKET[bare];
+  const key = parkingKeyForSymbol(bare);
+  if (key) return key;
   return 'OTHER';
 }
 
