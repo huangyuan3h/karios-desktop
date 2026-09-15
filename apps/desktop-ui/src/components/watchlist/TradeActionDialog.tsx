@@ -7,6 +7,8 @@ import { CircleX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
+import { LotSizeHint } from './LotSizeHint';
+
 export type TradeDialogKind = 'buy' | 'add' | 'sell';
 
 export type TradeDialogOpenState = {
@@ -152,6 +154,13 @@ export function TradeActionDialog({
               }}
             />
           </div>
+          {kind !== 'sell' && valid ? (
+            <LotSizeHint
+              symbol={state.item.symbol}
+              price={parsedPrice}
+              targetPct={parsedPct}
+            />
+          ) : null}
           {missingCost ? (
             <div>
               <div className="mb-1 text-[var(--k-muted)]">

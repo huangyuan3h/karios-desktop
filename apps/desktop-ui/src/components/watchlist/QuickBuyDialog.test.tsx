@@ -38,6 +38,21 @@ describe('QuickBuyDialog', () => {
     expect(mockedSnapshot).not.toHaveBeenCalled();
   });
 
+  it('shows the nearest integer-lot order for BUY once the capital is set', () => {
+    window.localStorage.setItem('karios.accountCapital.v1', JSON.stringify(500000));
+    render(
+      <QuickBuyDialog
+        state={{ symbol: 'CN:600519', name: '贵州茅台' }}
+        suggestPct={10}
+        initialPrice={100}
+        onClose={() => {}}
+        onConfirm={() => {}}
+      />,
+    );
+    expect(screen.getByText(/≈ 500 股/)).toBeDefined();
+    window.localStorage.clear();
+  });
+
   it('keeps the price field editable while the snapshot loads, and never wipes typed input', async () => {
     const gate = deferred<{ quotes: Record<string, { price: number }> }>();
     mockedSnapshot.mockClear().mockReturnValueOnce(gate.promise as never);

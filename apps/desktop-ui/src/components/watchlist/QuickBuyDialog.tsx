@@ -7,6 +7,8 @@ import { CircleX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
 
+import { LotSizeHint } from './LotSizeHint';
+
 export type QuickBuyDialogState = {
   symbol: string;
   name: string | null;
@@ -17,6 +19,8 @@ export type QuickBuyDialogState = {
 type QuickBuyDialogProps = {
   state: QuickBuyDialogState;
   suggestPct: number;
+  /** Candidate rank in today's score-sorted list (1 = top) for the size tilt. */
+  rank?: number | null;
   side?: 'BUY' | 'SELL';
   /** Live price already in memory (row quote) — prefill instantly, skip fetch. */
   initialPrice?: number | null;
@@ -32,6 +36,7 @@ const PCT_RE = /^\d+(\.\d{0,2})?$/;
 export function QuickBuyDialog({
   state,
   suggestPct,
+  rank = null,
   side = 'BUY',
   initialPrice = null,
   busy = false,
@@ -145,9 +150,19 @@ export function QuickBuyDialog({
               }}
             />
           </div>
-          {side === 'BUY' && (
-            <div className="text-[11px] text-[var(--k-muted)]">账本：核心 S-3 规则</div>
-          )}
+          {side === 'BUY' ? (
+            <>
+              <div className="text-[11px] text-[var(--k-muted)]">账本：核心 S-3 规则</div>
+              {valid ? (
+                <LotSizeHint
+                  symbol={state.symbol}
+                  price={parsedPrice}
+                  targetPct={parsedPct}
+                  rank={rank}
+                />
+              ) : null}
+            </>
+          ) : null}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>

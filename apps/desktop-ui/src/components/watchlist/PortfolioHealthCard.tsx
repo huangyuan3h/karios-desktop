@@ -357,7 +357,7 @@ function BuyList({
   remindedSymbols: Set<string>;
   boughtSymbols: Set<string>;
   onRemind: (c: PortfolioCandidate, sizePct: number) => void;
-  onBuy: (c: PortfolioCandidate, sizePct: number) => void;
+  onBuy: (c: PortfolioCandidate, sizePct: number, rank?: number) => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const navSize = suggestedSizePct ?? 10;
@@ -431,7 +431,7 @@ function BuyList({
               ) : (
                 <button
                   type="button"
-                  onClick={() => onBuy(c, navSize)}
+                  onClick={() => onBuy(c, navSize, i + 1)}
                   className="inline-flex items-center gap-0.5 rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
                   title="立刻买入：设仓位/价格，记入模拟盘（paper trade）"
                 >
@@ -955,6 +955,7 @@ export function PortfolioHealthCard({
     sizePct: number;
     side: 'BUY' | 'SELL';
     initialPrice?: number | null;
+    rank?: number | null;
   } | null>(null);
   const [boughtSymbols, setBoughtSymbols] = React.useState<Set<string>>(new Set());
   const [buyError, setBuyError] = React.useState<string | null>(null);
@@ -1076,7 +1077,7 @@ export function PortfolioHealthCard({
     }
   }
 
-  function handleBuy(c: PortfolioCandidate, sizePct: number) {
+  function handleBuy(c: PortfolioCandidate, sizePct: number, rank?: number) {
     setBuyTarget({
       symbol: c.symbol ?? c.ts_code ?? '',
       name: c.name ?? null,
@@ -1084,6 +1085,7 @@ export function PortfolioHealthCard({
       rs: c.rs,
       sizePct,
       side: 'BUY',
+      rank: rank ?? null,
     });
   }
 
@@ -1282,6 +1284,7 @@ export function PortfolioHealthCard({
             rs: buyTarget.rs,
           }}
           suggestPct={buyTarget.sizePct}
+          rank={buyTarget.rank ?? null}
           side={buyTarget.side}
           initialPrice={buyTarget.initialPrice ?? null}
           busy={buyBusy}
