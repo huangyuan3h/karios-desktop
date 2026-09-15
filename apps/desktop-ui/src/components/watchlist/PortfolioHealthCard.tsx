@@ -41,6 +41,7 @@ import {
 import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
 import { SatelliteLegBlock } from '@/components/watchlist/SatelliteLegBlock';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
+import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
 import { useTimelineQuery, type TimelineStrategy } from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
@@ -77,12 +78,14 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
 }
 
 const PICK_META: Record<string, { label: string; hint: string }> = {
-  STOCK: { label: '股票篮', hint: '100% 跟 S-3 CN+HK 持仓篮（等权）' },
-  GOLD: { label: '黄金 ETF', hint: '518880' },
-  OIL: { label: '原油 ETF', hint: '513350' },
-  NASDAQ: { label: '纳指 ETF', hint: '513110/513100' },
-  BOND10: { label: '国债 ETF', hint: '511260' },
-  REPO: { label: '逆回购', hint: 'GC001 · 无人过线时兜底' },
+  STOCK: { label: '股票篮', hint: 'S-3 CN+HK 持仓篮（等权，10% 上限）' },
+  ...Object.fromEntries(
+    PARKING_KEYS.map((key) => [
+      key,
+      { label: PARKING_META[key].short, hint: PARKING_META[key].hint },
+    ]),
+  ),
+  REPO: { label: '逆回购', hint: 'GC001 · 无 ETF 过线时兜底' },
 };
 
 type Sleeve = NonNullable<PortfolioHealthResponse['multiAssetSleeve']>;
@@ -108,18 +111,25 @@ function PickStrongOpsPanel({
   const isRepo = pickKey === 'REPO';
   const isEtf = !isStock && !isRepo;
 
+  const parkPct = sleeve?.parkPct ?? sleeve?.idlePct;
   const steps: string[] = [];
   if (isStock) {
     steps.push(
       coreBuyable
-        ? '核心 100% → 股票篮（下方展开篮内买卖 · 见矫正清单仓位%）'
-        : '核心 100% 目标股票篮，但今日 0 只可执行 → 不要为 STOCK 清空 ETF 停车场',
+        ? '核心：按下方股票篮买入（见仓位%，停车只停剩下的闲钱）'
+        : '核心目标股票篮，但今日 0 只可执行 → 不要为 STOCK 卖光 ETF 停车场',
     );
-    if (sleeve?.holding && coreBuyable) steps.push('若仍持有 ETF：先卖出 ETF，再配股票');
+    if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：先卖出 ETF，再配股票');
   } else if (isEtf) {
-    steps.push(`今日资金 100% → ${meta.label}（${etfSym ?? pickKey}）· 闲置现金停进核心 ETF`);
+    steps.push(
+      parkPct != null
+        ? `闲置现金 ${parkPct.toFixed(0)}% → ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动，停车只停闲钱`
+        : `闲置现金 → ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动，停车只停闲钱`,
+    );
     if (stockHoldingsCount > 0) {
-      steps.push(`现有 ${stockHoldingsCount} 只股票仓：应减仓/清仓，切到 ETF（硬切）`);
+      steps.push(
+        `现有 ${stockHoldingsCount} 只股票仓按 S-3 自身规则处理（停车不要求为买 ETF 卖股票）`,
+      );
     }
     if (action === 'ROTATE' || action === 'BUY')
       steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
@@ -127,11 +137,8 @@ function PickStrongOpsPanel({
     if (action === 'SELL_TO_REPO')
       steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
-    steps.push('今日无人过线 → 100% 逆回购 / 空仓观望');
-    if (stockHoldingsCount > 0) {
-      steps.push('股票仓也应清到空（港湾不持）');
-    }
-    if (sleeve?.holding) steps.push('卖出 ETF 转 REPO');
+    steps.push('今日无 ETF 站上 200 日线 → 闲置现金留逆回购（股票核心不动）');
+    if (sleeve?.holding) steps.push('卖出停车 ETF 转 REPO');
   }
 
   return (
@@ -140,7 +147,7 @@ function PickStrongOpsPanel({
         <span className="h-3 w-[3px] rounded-full bg-emerald-500" />
         操作引导
         <span className="text-[10px] font-normal text-[var(--k-muted)]">
-          港湾核心 · 目标 100% 硬切
+          港湾：S-3 股票核心 + 闲置现金停车
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -367,7 +374,7 @@ function BuyList({
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>下午 2 点 · 股票篮买入（核心 pick=STOCK · score 前 5）</span>
+        <span>下午 2 点 · 股票篮买入（S-3 核心 · score 前 5）</span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -753,7 +760,8 @@ function HealthPanel({
   const regime = regimeBadge(block?.regime);
   const idSuffix = tag === 'HK' ? '-hk' : '';
   const gateClosed = isMarketGateClosed(block);
-  const sleevePick = overall?.multiAssetSleeve?.pick?.key ?? null;
+  // Parking pick (ETF key / null=REPO). It NEVER gates the stock core (OPT-206).
+  const parkingPick = overall?.multiAssetSleeve?.pick?.key ?? null;
   const showBuyList =
     allowStockBuys && candidates.length > 0 && block?.regime !== 'Weak' && !gateClosed;
 
@@ -819,7 +827,7 @@ function HealthPanel({
         ) : null}
         <span className="text-[var(--k-muted)]">
           篮内候选 {block ? (block.s3Candidates?.length ?? 0) : '…'}
-          {sleevePick ? ` · 核心 pick ${sleevePick}` : ''}
+          {parkingPick ? ` · 停车 pick ${parkingPick}` : ''}
         </span>
       </div>
       {block?.infoSummary && (
@@ -872,7 +880,7 @@ function HealthPanel({
                   ? {
                       ...h,
                       action: 'EXIT',
-                      reason: h.reason ?? `核心今日 pick=${sleevePick}，股票篮应轮出`,
+                      reason: h.reason ?? `停车今日 pick=${parkingPick}，股票篮应轮出`,
                     }
                   : h
               }
@@ -899,8 +907,8 @@ function HealthPanel({
         />
       ) : !allowStockBuys && candidates.length > 0 ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-          核心 pick=<strong>{sleevePick}</strong> ≠ STOCK → 股票候选 {candidates.length} 只
-          <strong>不执行买入</strong>
+          股票候选 <strong>{candidates.length}</strong> 只 · 今日不满足 S-3
+          开仓条件（闸门/市况）→ <strong>不执行买入</strong>
         </div>
       ) : allowStockBuys && block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
@@ -991,15 +999,29 @@ export function PortfolioHealthCard({
     mode === 'starport' || mode === 'starship' || mode === 'twin_star',
   );
   const satLast = satQ.data?.rows?.[satQ.data.rows.length - 1];
+  /** Parking pick (ETF key / null=REPO). */
   const pickKey = sleeve?.pick?.key ?? null;
-  const allowStockBuys = pickKey === 'STOCK';
-  const rotateOutCn = pickKey != null && pickKey !== 'STOCK';
-  const rotateOutHk = pickKey != null && pickKey !== 'STOCK';
+  const s3CandidatesCount = data?.s3Candidates?.length ?? 0;
+  const gateClosedToday = data != null && isMarketGateClosed(data);
+  /**
+   * Harbor (OPT-206): the S-3 core's buys are governed by the gate/candidates
+   * (backend `s3BuySetup` = gate open + executable basket), NOT by the parking
+   * pick. The old `pickKey === 'STOCK'` test silently disabled every core buy
+   * whenever the idle cash was parked in an ETF.
+   */
+  const allowStockBuys =
+    sleeve?.s3BuySetup ?? (pickKey === 'STOCK' || (s3CandidatesCount > 0 && !gateClosedToday));
+  /**
+   * Parking never sells the core: stock exits come from the backend's
+   * per-holding S-3 actions. (Old code rotated the whole basket out whenever
+   * the parking pick was an ETF.)
+   */
+  const rotateOutCn = false;
+  const rotateOutHk = false;
   const stockHoldingsCount =
     (data?.holdings?.length ?? 0) + (data?.hkHealth?.holdings?.length ?? 0);
-  /** STOCK pick with no executable basket today → keep the ETF parked. */
-  const stockBuyable =
-    allowStockBuys && data != null && (data.s3Candidates?.length ?? 0) > 0 && !isMarketGateClosed(data);
+  /** Harbor setup but no executable basket today → keep the parking ETF. */
+  const stockBuyable = allowStockBuys && s3CandidatesCount > 0 && !gateClosedToday;
   const coreDestinationReady = !allowStockBuys || stockBuyable;
 
   async function addToWatchlistAndRemind(values: { targetPrice: number | null; note: string }) {

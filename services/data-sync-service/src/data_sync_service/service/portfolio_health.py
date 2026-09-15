@@ -867,7 +867,12 @@ def build_portfolio_health(
         logger.warning("portfolio health pulse hints failed: %s", exc)
         pulse_hints = []
     # Multi-asset holdings (GOLD/OIL/BOND) separate from S-3
-    from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol as _is_multi
+    from data_sync_service.service.multi_asset_sleeve import (
+        is_multi_asset_symbol as _is_multi,
+    )
+    from data_sync_service.service.multi_asset_sleeve import (
+        multi_key_for_symbol as _multi_key,
+    )
 
     multi_holdings = []
     for h in raw_holdings:
@@ -884,7 +889,9 @@ def build_portfolio_health(
                 md = _etf_market_data(str(ts))
             except Exception:
                 md = {}
-            holding = {**h, "marketData": md, "isMulti": True}
+            # Canonical parking key (OPT-206): the Watchlist must not re-derive
+            # its own symbol->key map (it used to, and could disagree).
+            holding = {**h, "marketData": md, "isMulti": True, "key": _multi_key(sym)}
             try:
                 from data_sync_service.service.multi_asset_sleeve import _etf_trail_exit
 

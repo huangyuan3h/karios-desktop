@@ -160,31 +160,33 @@ describe('PortfolioHealthCard (harbor)', () => {
       hkHealth: { regime: 'Diverging', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText(/股票篮买入（核心 pick=STOCK/)).toBeDefined();
+    expect(await screen.findByText(/股票篮买入/)).toBeDefined();
     expect(await screen.findByText(/每票建议 10%/)).toBeDefined();
     expect(screen.getAllByText('买 10%').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('贵州茅台')).toBeDefined();
   });
 
-  it('does not offer stock buys when the core pick is an ETF', async () => {
+  it('keeps core stock buys + parking when the idle cash is parked in an ETF', async () => {
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
         active: true,
         action: 'HOLD',
         label: '持有原油 ETF',
-        message: '核心 OIL',
+        message: '港湾停车：持有 513350（mom60 4.98%）',
         pick: { key: 'OIL', mom60: 4.98, symbol: 'ETF:513350' },
-        mode: 'mom_compare',
+        mode: 'harbor',
       },
       tradeDate: '2026-08-28',
       regime: 'Diverging',
       panicCooldown: { active: false },
       s3Candidates: [{ symbol: 'CN:600519', name: '贵州茅台', score: 82 }],
+      s3Rules: { suggestedSizePct: 10, envScaleToday: 1 },
       holdings: [],
       hkHealth: null,
       multiAssetHoldings: [
         {
           symbol: 'ETF:513350',
+          key: 'OIL',
           name: '原油 ETF',
           positionPct: 94,
           marketData: { close: 1.2, ma200: 1.0, above: true },
@@ -192,10 +194,14 @@ describe('PortfolioHealthCard (harbor)', () => {
       ],
     });
     renderCard();
-    expect(await screen.findByText(/闲置现金停进核心 ETF/)).toBeDefined();
-    expect(screen.queryByText(/股票篮买入（核心 pick=STOCK/)).toBeNull();
-    fireEvent.click(screen.getByText('展开'));
-    expect(await screen.findByText(/核心 pick=/)).toBeDefined();
+    // Parking guidance: idle cash only, core untouched.
+    expect(await screen.findByText(/停车只停闲钱/)).toBeDefined();
+    // Harbor: an ETF parking pick must NOT disable the S-3 core buys.
+    expect(await screen.findByText(/股票篮买入/)).toBeDefined();
+    expect(screen.getByText('贵州茅台')).toBeDefined();
+    expect(screen.queryByText(/应轮出/)).toBeNull();
+    // Parking block must use the canonical key from the API (OPT-206).
+    expect(await screen.findByText(/停车 OIL mom60/)).toBeDefined();
   });
 
   it('renders the core sleeve reconciliation when available', async () => {

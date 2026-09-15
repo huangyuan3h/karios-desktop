@@ -13,6 +13,7 @@ import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { cn } from '@/lib/utils';
 import { useTimelineQuery } from '@/lib/queries/backtest';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
+import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
 
 function tone(v: number | null | undefined): string {
   if (v == null) return 'text-[var(--k-muted)]';
@@ -20,10 +21,9 @@ function tone(v: number | null | undefined): string {
 }
 
 const PICK_TS: Record<string, string> = {
-  GOLD: '518880',
-  OIL: '513350',
-  NASDAQ: '513110',
-  BOND10: '511260',
+  ...Object.fromEntries(
+    PARKING_KEYS.map((key) => [key, PARKING_META[key].ts.split('.')[0]]),
+  ),
   REPO: 'GC001',
 };
 
@@ -271,7 +271,7 @@ export function RecentDailyCompareCard() {
       </div>
       <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
         <strong>港湾</strong> = <code>GET /api/backtest/timeline?strategy=harbor</code>
-        （pick_strong 核心 mom_compare · 闲置现金停进核心 ETF · 与 Watchlist 同源）。
+        （S-3 股票核心 + 闲置现金停车 · 与 Watchlist 同源）。
         <strong>最近操作</strong> = 当前 Watchlist/体检持仓（含多资产
         ETF）相对成本的加权收益（bars）。 「现仓快照」每日行相同——不是历史逐日持仓回放。
       </p>

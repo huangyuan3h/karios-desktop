@@ -162,6 +162,8 @@ export interface PortfolioHealthResponse {
     label?: string;
     message?: string;
     idlePct?: number;
+    /** Parking target size = stock-idle + the leg being replaced (ROTATE). */
+    parkPct?: number;
     s3BuySetup?: boolean;
     mode?: string;
     strategy?: string;
@@ -195,6 +197,8 @@ export interface PortfolioHealthResponse {
   multiAssetHoldings?: Array<{
     symbol: string;
     name?: string | null;
+    /** Canonical parking key from the backend (OPT-206); null = unknown. */
+    key?: string | null;
     positionPct?: number;
     costPrice?: number | null;
     entryDate?: string | null;

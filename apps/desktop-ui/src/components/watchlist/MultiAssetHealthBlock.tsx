@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { PARKING_META, parkingKeyForSymbol } from '@/lib/parking-universe';
 import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 
 type MultiHolding = NonNullable<PortfolioHealthResponse['multiAssetHoldings']>[number];
@@ -8,19 +9,23 @@ type MultiSleeve = PortfolioHealthResponse['multiAssetSleeve'];
 
 const KEY_META: Record<string, { label: string; icon: string; color: string }> = {
   STOCK: { label: '股票篮', icon: '📈', color: 'border-violet-500/30 bg-violet-500/5' },
-  GOLD: { label: '黄金', icon: '🪙', color: 'border-amber-500/30 bg-amber-500/5' },
-  OIL: { label: '原油', icon: '🛢️', color: 'border-slate-500/30 bg-slate-500/5' },
-  NASDAQ: { label: '纳指', icon: '🇺🇸', color: 'border-blue-500/30 bg-blue-500/5' },
-  BOND10: { label: '国债', icon: '🏦', color: 'border-emerald-500/30 bg-emerald-500/5' },
+  GOLD: { label: PARKING_META.GOLD.label, icon: '🪙', color: 'border-amber-500/30 bg-amber-500/5' },
+  OIL: { label: PARKING_META.OIL.label, icon: '🛢️', color: 'border-slate-500/30 bg-slate-500/5' },
+  NASDAQ: {
+    label: PARKING_META.NASDAQ.label,
+    icon: '🇺🇸',
+    color: 'border-blue-500/30 bg-blue-500/5',
+  },
+  BOND10: {
+    label: PARKING_META.BOND10.label,
+    icon: '🏦',
+    color: 'border-emerald-500/30 bg-emerald-500/5',
+  },
 };
 
-function holdingKey(sym: string): string {
-  const s = sym.toUpperCase();
-  if (s.includes('518880') || s.includes('518800')) return 'GOLD';
-  if (s.includes('513350') || s.includes('159518') || s.includes('561570')) return 'OIL';
-  if (s.includes('513110') || s.includes('513100') || s.includes('513500')) return 'NASDAQ';
-  if (s.includes('511260') || s.includes('511010')) return 'BOND10';
-  return 'OTHER';
+/** Prefer the API's canonical key; fall back to the shared alias map. */
+function holdingKey(h: MultiHolding): string {
+  return h.key ?? parkingKeyForSymbol(h.symbol) ?? 'OTHER';
 }
 
 export function MultiAssetHealthBlock({
@@ -75,16 +80,16 @@ export function MultiAssetHealthBlock({
       pickKey != null &&
       (pickKey !== 'STOCK' || coreDestinationReady) ? (
         <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
-          今日动作：用闲置 {sleeve.idlePct}% 买入{' '}
-          {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}，核心补足 100%
-          （闲置现金停进核心 ETF，不留现金）
+          今日动作：用闲置 {sleeve.parkPct ?? sleeve.idlePct}% 停进{' '}
+          {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}
+          （港湾停车只停闲钱，股票核心不动）
         </div>
       ) : null}
 
       {hasHoldings ? (
         <div className="flex flex-col gap-1.5">
           {openHoldings.map((h) => {
-            const key = holdingKey(h.symbol);
+            const key = holdingKey(h);
             const meta = KEY_META[key] ?? {
               label: key,
               icon: '📦',
@@ -97,11 +102,12 @@ export function MultiAssetHealthBlock({
             const above = md?.above;
             const pos = typeof h.positionPct === 'number' ? h.positionPct : null;
             const isPick = pickKey != null && key === pickKey;
+            const parkTarget = sleeve?.parkPct ?? sleeve?.idlePct;
             const holdTip =
               pickKey === 'STOCK' && !coreDestinationReady
                 ? '核心股票篮空 · 停车场 ETF 继续持有（不清仓）'
                 : isPick
-                  ? '今日 pick（mom_compare 定案）· 目标 100%'
+                  ? '今日 pick（mom60+MA200 选趋势最好）· 目标 = 闲置现金'
                   : undefined;
             const adjust =
               pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
@@ -110,19 +116,22 @@ export function MultiAssetHealthBlock({
                   : {
                       label: '卖出',
                       cls: 'bg-red-500/10 text-red-600',
-                      tip: `非今日 pick（${pickKey}），资金调向 ${pickKey}`,
+                      tip: `停车轮动：非今日 pick（${pickKey}），资金调向 ${pickKey}`,
                     }
                 : isPick
-                  ? pos != null && pos < 99
+                  ? pos != null && parkTarget != null && pos < parkTarget - 1
                     ? {
                         label: '加仓',
                         cls: 'bg-sky-500/10 text-sky-700',
-                        tip: `今日 pick · 目标 100%（当前 ${pos.toFixed(1)}%）`,
+                        tip:
+                          parkTarget != null
+                            ? `今日 pick · 停车目标 ${parkTarget.toFixed(0)}%（当前 ${pos.toFixed(1)}%）`
+                            : `今日 pick · 当前 ${pos.toFixed(1)}%`,
                       }
                     : {
                         label: '持有',
                         cls: 'bg-emerald-500/10 text-emerald-700',
-                        tip: holdTip ?? '今日 pick（mom_compare 定案）',
+                        tip: holdTip ?? '今日 pick（mom60+MA200 选趋势最好）',
                       }
                   : holdTip
                     ? { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip }
@@ -201,7 +210,7 @@ export function MultiAssetHealthBlock({
           动作：
           <span className="font-medium text-[var(--k-fg)]">{sleeve.label ?? sleeve.action}</span>
           {pickKey
-            ? ` · 核心 ${pickKey} mom60 ${(sleeve as unknown as { pick?: { mom60?: number } }).pick?.mom60 ?? ''}%`
+            ? ` · 停车 ${pickKey} mom60 ${(sleeve as unknown as { pick?: { mom60?: number } }).pick?.mom60 ?? ''}%`
             : ''}
         </div>
       ) : null}

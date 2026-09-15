@@ -1,10 +1,12 @@
 /**
  * Replica gap — live book vs today's S-3 core recipe.
  *
- * The harbor baseline keeps the S-3 pick-strong core: t-1 mom → 100% switch
- * at next session, with idle cash parked in the core ETF. This module flags
- * live-book deviations from that instruction.
+ * The harbor baseline keeps the S-3 pick-strong core (t-1 mom, next-session
+ * fills) and parks only the idle cash in the trend-best ETF (mom60+MA200).
+ * This module flags live-book deviations from that instruction.
  */
+
+import { parkingSymbolsFor } from '@/lib/parking-universe';
 
 export type HoldingSnap = {
   symbol: string;
@@ -33,13 +35,6 @@ export type ReplicaGapReport = {
   reasons: ReplicaGapReason[];
 };
 
-const ETF_PICK_PREFIX: Record<string, string[]> = {
-  GOLD: ['ETF:518880', '518880'],
-  OIL: ['ETF:513350', '513350'],
-  NASDAQ: ['ETF:513100', 'ETF:513110', 'ETF:513500', 'ETF:159941', '513100', '513110'],
-  BOND10: ['ETF:511260', '511260'],
-};
-
 export function classifyHoldingSymbol(symbol: string): 'STOCK' | 'ETF' | 'OTHER' {
   const s = (symbol || '').toUpperCase();
   if (s.startsWith('CN:') || s.startsWith('HK:')) return 'STOCK';
@@ -52,7 +47,7 @@ export function holdingMatchesPick(symbol: string, pick: string): boolean {
   const p = (pick || 'REPO').toUpperCase();
   if (p === 'STOCK') return s.startsWith('CN:') || s.startsWith('HK:');
   if (p === 'REPO') return false;
-  const aliases = ETF_PICK_PREFIX[p] ?? [];
+  const aliases = parkingSymbolsFor(p);
   return aliases.some((a) => s === a.toUpperCase() || s.includes(a.replace('ETF:', '')));
 }
 
@@ -200,8 +195,8 @@ export function detectReplicaGaps(input: {
       reasons.push({
         id: 'wrong_etf',
         severity: 'warn',
-        title: '持有非今日核心 ETF',
-        detail: `其他 ETF 约 ${Math.max(0, otherEtf).toFixed(0)}%。港湾核心只持 argmax 那一只（或 REPO）。`,
+        title: '持有非今日停车 ETF',
+        detail: `其他 ETF 约 ${Math.max(0, otherEtf).toFixed(0)}%。港湾停车只持 argmax 那一只（或 REPO）。`,
       });
     }
   }

@@ -26,21 +26,70 @@ from typing import Any
 import numpy as np
 
 from data_sync_service.db.daily import fetch_last_bars
-from data_sync_service.service.harbor import pick_parking
+from data_sync_service.service.harbor import (
+    MULTI_TS,
+    NAMES,
+    NASDAQ_ALIASES,
+    TRAIL_PCT,
+    pick_parking,
+)
 
 logger = logging.getLogger(__name__)
 
-CANDIDATES = [
-    {"key": "GOLD", "ts": "518880.SH", "symbol": "ETF:518880", "name": "华安黄金ETF"},
-    {"key": "OIL", "ts": "513350.SH", "symbol": "ETF:513350", "name": "富国油气QDII"},
-    {"key": "NASDAQ", "ts": "513110.SH", "symbol": "ETF:513110", "name": "华泰柏瑞纳指100QDII"},
-    {"key": "NASDAQ", "ts": "513100.SH", "symbol": "ETF:513100", "name": "广发纳指100QDII"},
-    {"key": "BOND10", "ts": "511260.SH", "symbol": "ETF:511260", "name": "10年国债ETF"},
-]
+
+def _parking_candidates() -> list[dict[str, str]]:
+    """Parking universe derived from the canonical ``harbor`` definitions.
+
+    Single source: ``harbor.MULTI_TS``/``NASDAQ_ALIASES``/``NAMES`` own the
+    keys/ts_codes/names. A local copy here used to drift from the engine
+    universe (OPT-206).
+    """
+    out = [
+        {
+            "key": key,
+            "ts": ts,
+            "symbol": f"ETF:{ts.split('.')[0]}",
+            "name": NAMES.get(key, key),
+        }
+        for key, ts in MULTI_TS.items()
+    ]
+    known_ts = {c["ts"] for c in out}
+    for alias in NASDAQ_ALIASES:
+        if alias in known_ts:
+            continue
+        out.append(
+            {
+                "key": "NASDAQ",
+                "ts": alias,
+                "symbol": f"ETF:{alias.split('.')[0]}",
+                "name": NAMES.get("NASDAQ", "NASDAQ"),
+            }
+        )
+    return out
+
+
+CANDIDATES = _parking_candidates()
 
 # NASDAQ has two tradable aliases (513110/513100) – keep both, dedupe by key in _pick.
 MULTI_ASSET_SYMBOLS = {c["symbol"] for c in CANDIDATES}
 MULTI_ASSET_TS_CODES = {c["ts"] for c in CANDIDATES}
+
+
+def multi_key_for_symbol(symbol: str | None) -> str | None:
+    """Canonical parking key for a holding symbol/ts_code (None = not parked).
+
+    Accepts ``ETF:513100`` / ``513100.SH`` / ``513100`` shapes. Returns the
+    engine key (GOLD/OIL/NASDAQ/BOND10) so the Watchlist never re-derives its
+    own mapping and can never disagree with ``harbor.pick_parking``.
+    """
+    s = str(symbol or "").upper()
+    if not s:
+        return None
+    code = s.replace("ETF:", "").split(".")[0]
+    for c in CANDIDATES:
+        if s == c["symbol"] or s == c["ts"] or code == c["ts"].split(".")[0]:
+            return c["key"]
+    return None
 
 
 def is_multi_asset_symbol(symbol: str) -> bool:
@@ -72,8 +121,9 @@ def _etf_market_data(ts: str) -> dict[str, Any]:
 LOOKBACK = 60
 MA_WINDOW = 200
 COST = 0.0005
-# Harbor ETF risk exit (causal: trigger on the decision print, no same-day credit).
-TRAILING_PCT = 8.0
+# Harbor ETF risk exit (causal: trigger on the decision print, no same-day
+# credit). Single source: harbor.TRAIL_PCT — never a local 8.0 copy (OPT-206).
+TRAILING_PCT = TRAIL_PCT
 
 
 def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
