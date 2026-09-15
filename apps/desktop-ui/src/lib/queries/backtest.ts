@@ -553,6 +553,31 @@ export type TimelineSummary = {
   parkedPct?: number | null;
   parkedMaxDdPct?: number | null;
   parkedAvgWeight?: number | null;
+  /** Starship v2 only: parked-sleeve buy/sell event count + trail exits. */
+  parkedTrades?: number | null;
+  parkedTrailExits?: number | null;
+};
+
+/** Starship v2 parked sleeve (idle cash -> trend ETF) buy/sell record. */
+export type TimelineParkedBlotterRow = {
+  /** Fill date (engine convention: the record's prev close, 14:30 close proxy). */
+  date: string;
+  kind: 'buy' | 'sell';
+  key: string;
+  name: string;
+  ts: string;
+  price?: number | null;
+  reason: 'entry' | 'rotate' | 'trail' | 'cash';
+};
+
+export type TimelineParkedHeld = {
+  key: string;
+  name: string;
+  ts: string;
+  since?: string | null;
+  price?: number | null;
+  /** Idle (parked) weight at the window end. */
+  weight?: number | null;
 };
 
 export type TimelineBlotterRow = {
@@ -598,6 +623,10 @@ export type TimelineResponse = {
   blotter?: TimelineBlotterRow[];
   /** Satellite strategies: open legs as of the window end. */
   openPositions?: TimelineOpenPosition[];
+  /** Starship v2: parked-sleeve ETF buy/sell audit trail. */
+  parkedBlotter?: TimelineParkedBlotterRow[];
+  /** Starship v2: parked leg held at the window end (null = cash/REPO). */
+  parkedHeld?: TimelineParkedHeld | null;
 };
 
 export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship' | 'twin_star';

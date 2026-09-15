@@ -1002,6 +1002,159 @@ class TestStarshipParkedComposition:
         assert res["rows"][1]["satNavReturnPct"] == 5.0
         assert res["summary"]["parkedPct"] == res["summary"]["fusedPct"]
         assert res["summary"]["maxDdFusedPct"] == -abs(res["summary"]["parkedMaxDdPct"])
+        # no want/pick info in this fake -> no sleeve events
+        assert res["parkedBlotter"] == []
+        assert res["parkedHeld"] is None
+
+    def test_parked_blotter_records_buys_sells_and_trail(self) -> None:
+        closes = {
+            "518880.SH": {"2026-01-05": 5.0, "2026-01-06": 5.1, "2026-01-07": 5.2},
+            "513350.SH": {"2026-01-06": 1.4, "2026-01-07": 1.45, "2026-01-08": 1.5},
+        }
+        recs = [
+            # day 1: idle cash enters GOLD at the 01-05 close (14:30 close proxy)
+            {
+                "date": "2026-01-06",
+                "prev": "2026-01-05",
+                "want_key": "GOLD",
+                "want_ts": "518880.SH",
+                "parking_ret": 0.01,
+                "sides": 1,
+                "trail_exit": False,
+            },
+            # day 2: rotate GOLD -> OIL
+            {
+                "date": "2026-01-07",
+                "prev": "2026-01-06",
+                "want_key": "OIL",
+                "want_ts": "513350.SH",
+                "parking_ret": 0.0,
+                "sides": 2,
+                "trail_exit": False,
+            },
+            # day 3: trail exit -> cash, no same-day re-entry
+            {
+                "date": "2026-01-08",
+                "prev": "2026-01-07",
+                "want_key": "GOLD",
+                "want_ts": "518880.SH",
+                "parking_ret": 0.0,
+                "sides": 1,
+                "trail_exit": True,
+            },
+        ]
+        events, held = sbt.parked_blotter(recs, closes, names={"GOLD": "华安黄金ETF"})
+        assert [e["kind"] for e in events] == ["buy", "sell", "buy", "sell"]
+        assert [e["date"] for e in events] == [
+            "2026-01-05",
+            "2026-01-06",
+            "2026-01-06",
+            "2026-01-07",
+        ]
+        assert events[0]["key"] == "GOLD"
+        assert events[0]["reason"] == "entry"
+        assert events[0]["name"] == "华安黄金ETF"
+        assert events[0]["price"] == 5.0
+        assert events[1]["reason"] == "rotate"
+        assert events[1]["price"] == 5.1
+        assert events[2]["ts"] == "513350.SH"
+        assert events[3]["reason"] == "trail"
+        assert events[3]["ts"] == "513350.SH"
+        assert held is None
+
+    def test_parked_blotter_keeps_open_leg_and_cash_exit(self) -> None:
+        closes = {"518880.SH": {"2026-01-05": 5.0, "2026-01-06": 5.2}}
+        recs = [
+            {
+                "date": "2026-01-06",
+                "prev": "2026-01-05",
+                "want_key": "GOLD",
+                "want_ts": "518880.SH",
+                "parking_ret": 0.0,
+                "sides": 1,
+                "trail_exit": False,
+            },
+        ]
+        events, held = sbt.parked_blotter(recs, closes)
+        assert len(events) == 1
+        assert held == {
+            "key": "GOLD",
+            "name": "GOLD",
+            "ts": "518880.SH",
+            "since": "2026-01-05",
+            "price": 5.2,
+        }
+        # no candidate -> rotate to cash (REPO), still no trail
+        recs.append(
+            {
+                "date": "2026-01-07",
+                "prev": "2026-01-06",
+                "want_key": None,
+                "want_ts": None,
+                "parking_ret": 0.0,
+                "sides": 1,
+                "trail_exit": False,
+            }
+        )
+        events, held = sbt.parked_blotter(recs, closes)
+        assert [(e["kind"], e["reason"]) for e in events] == [("buy", "entry"), ("sell", "cash")]
+        assert held is None
+
+    def test_apply_parked_display_records_blotter_and_held(self, monkeypatch) -> None:
+        import data_sync_service.service.harbor as harbor
+
+        out = {
+            "ok": True,
+            "rows": [
+                {
+                    "date": "2026-01-05",
+                    "satNav": 1.0,
+                    "satNavReturnPct": 0.0,
+                    "navSingle": 1.0,
+                    "navSingleReturnPct": 0.0,
+                    "navMulti": 1.0,
+                    "navMultiReturnPct": 0.0,
+                    "cashShare": 1.0,
+                },
+                {
+                    "date": "2026-01-06",
+                    "satNav": 1.0,
+                    "satNavReturnPct": 0.0,
+                    "navSingle": 1.0,
+                    "navSingleReturnPct": 0.0,
+                    "navMulti": 1.0,
+                    "navMultiReturnPct": 0.0,
+                    "cashShare": 1.0,
+                },
+            ],
+            "summary": {},
+            "openPositions": [],
+            "blotter": [],
+        }
+        closes = {"518880.SH": {"2026-01-05": 5.0, "2026-01-06": 5.1}}
+        monkeypatch.setattr(harbor, "load_etf_closes", lambda: closes)
+        monkeypatch.setattr(
+            harbor,
+            "parking_replay",
+            lambda etf, dates, **kw: [
+                {
+                    "date": "2026-01-06",
+                    "prev": "2026-01-05",
+                    "want_key": "GOLD",
+                    "want_ts": "518880.SH",
+                    "parking_ret": 0.01,
+                    "sides": 1,
+                    "trail_exit": False,
+                }
+            ],
+        )
+        res = sbt.apply_parked_display(out, cost_bps=0.0)
+        assert res["parkedBlotter"][0]["kind"] == "buy"
+        assert res["parkedBlotter"][0]["name"] == "华安黄金ETF"
+        assert res["parkedHeld"]["ts"] == "518880.SH"
+        assert res["parkedHeld"]["weight"] == 1.0
+        assert res["summary"]["parkedTrades"] == 1
+        assert res["summary"]["parkedTrailExits"] == 0
 
 
 class TestHkContainmentOPT147:

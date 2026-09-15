@@ -1436,20 +1436,93 @@ def compose_parked_rows(
     }
 
 
+def parked_blotter(
+    recs: list[dict[str, Any]],
+    closes: dict[str, dict[str, float]],
+    *,
+    names: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Buy/sell audit trail for the parked sleeve (starship v2).
+
+    Events come from the canonical ``harbor.parking_replay`` records: the engine
+    fills at ``prev`` close (the 14:30 caliber's close proxy), so the trade date
+    is the record's ``prev``. A trail exit sells to cash (REPO) with no same-day
+    re-entry; an alias switch (NASDAQ 513100<->513110) is a sell+buy pair with
+    ``reason="rotate"``. Prices are the same close map the replay used.
+    """
+    names = names or {}
+    events: list[dict[str, Any]] = []
+    held_key: str | None = None
+    held_ts: str | None = None
+    since: str | None = None
+
+    def price(ts: str, day: str) -> float | None:
+        v = (closes.get(ts) or {}).get(day)
+        return round(float(v), 3) if v else None
+
+    def push(day: str, kind: str, key: str | None, ts: str, reason: str) -> None:
+        if not ts:
+            return
+        events.append(
+            {
+                "date": day,
+                "kind": kind,
+                "key": key or ts,
+                "name": names.get(key or "", key or ts),
+                "ts": ts,
+                "price": price(ts, day),
+                "reason": reason,
+            }
+        )
+
+    for rec in recs:
+        day = str(rec.get("prev") or "")
+        want_key = rec.get("want_key")
+        want_ts = rec.get("want_ts")
+        if rec.get("trail_exit") and held_ts:
+            push(day, "sell", held_key, held_ts, "trail")
+            held_key = held_ts = since = None
+        elif held_ts != want_ts:
+            if held_ts:
+                push(day, "sell", held_key, held_ts, "rotate" if want_ts else "cash")
+            if want_ts:
+                push(day, "buy", want_key, want_ts, "rotate" if held_ts else "entry")
+            held_key, held_ts = want_key, want_ts
+            since = day if want_ts else None
+    if not held_ts:
+        return events, None
+    last_day = str(recs[-1].get("date") or "") if recs else ""
+    return events, {
+        "key": held_key,
+        "name": names.get(held_key or "", held_key or ""),
+        "ts": held_ts,
+        "since": since,
+        "price": price(held_ts, last_day),
+    }
+
+
 def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[str, Any]:
     """Overlay starship v2 (satellite + parked idle cash) onto a Timeline result.
 
     Display fields (``navSingle*``/``navMulti*``) switch to the parked series;
     ``satNav``/``satNavReturnPct`` stay standalone so the satellite-leg detail
     panel and all blend legs (starport/twin_star) keep the frozen v1 numbers.
+    Adds ``parkedBlotter``/``parkedHeld`` so the audit trail records the sleeve's
+    ETF buys/sells (e.g. 买黄金), not just the satellite book.
     """
-    from data_sync_service.service.harbor import COST, load_etf_closes, parking_replay
+    from data_sync_service.service.harbor import (
+        COST,
+        NAMES,
+        load_etf_closes,
+        parking_replay,
+    )
 
     rows = out.get("rows") or []
     if not rows:
         return out
     dates = [str(r["date"]) for r in rows]
-    recs = parking_replay(load_etf_closes(), dates, idle_by_day=None)
+    closes = load_etf_closes()
+    recs = parking_replay(closes, dates, idle_by_day=None)
     sleeve_ret_by_day = {
         str(rec["date"]): float(rec["parking_ret"]) - COST * int(rec["sides"]) for rec in recs
     }
@@ -1466,12 +1539,19 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
         r["navMulti"] = p["parkedNav"]
         r["navSingleReturnPct"] = p["parkedReturnPct"]
         r["navMultiReturnPct"] = p["parkedReturnPct"]
+    events, held = parked_blotter(recs, closes, names=NAMES)
+    if held is not None:
+        held["weight"] = parked["rows"][-1]["parkedWeight"]
     summary = out.setdefault("summary", {})
     summary["parkedPct"] = parked["summary"]["parkedPct"]
     summary["parkedMaxDdPct"] = parked["summary"]["parkedMaxDdPct"]
     summary["parkedAvgWeight"] = parked["summary"]["avgParkedWeight"]
+    summary["parkedTrades"] = len(events)
+    summary["parkedTrailExits"] = sum(1 for e in events if e["reason"] == "trail")
     summary["fusedPct"] = parked["summary"]["parkedPct"]
     summary["maxDdFusedPct"] = -abs(parked["summary"]["parkedMaxDdPct"])
+    out["parkedBlotter"] = events
+    out["parkedHeld"] = held
     out["mode"] = "starship_parked"
     out["note"] = (
         "星舰 v2 = 卫星 standalone + 闲置现金停 ETF 停车场（H-SAT-IDLE A2_true，"

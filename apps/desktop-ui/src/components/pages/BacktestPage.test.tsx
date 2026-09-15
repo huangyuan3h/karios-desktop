@@ -319,7 +319,15 @@ beforeEach(() => {
           fusedPct: 12.5,
           basePct: 3.2,
           maxDdFusedPct: 9.4,
-          ...(satelliteOnly ? { parkedPct: 18.4, parkedMaxDdPct: 28.5, parkedAvgWeight: 0.75 } : {}),
+          ...(satelliteOnly
+            ? {
+                parkedPct: 18.4,
+                parkedMaxDdPct: 28.5,
+                parkedAvgWeight: 0.75,
+                parkedTrades: 5,
+                parkedTrailExits: 1,
+              }
+            : {}),
         },
         rows: satelliteOnly ? satRows : rows,
         ...(satelliteOnly
@@ -369,6 +377,61 @@ beforeEach(() => {
                   closeReason: 'skip_t1_limit',
                 },
               ],
+              parkedBlotter: [
+                {
+                  date: '2026-08-01',
+                  kind: 'buy',
+                  key: 'GOLD',
+                  name: '华安黄金ETF',
+                  ts: '518880.SH',
+                  price: 5.12,
+                  reason: 'entry',
+                },
+                {
+                  date: '2026-08-05',
+                  kind: 'sell',
+                  key: 'GOLD',
+                  name: '华安黄金ETF',
+                  ts: '518880.SH',
+                  price: 5.24,
+                  reason: 'rotate',
+                },
+                {
+                  date: '2026-08-05',
+                  kind: 'buy',
+                  key: 'OIL',
+                  name: '富国油气QDII',
+                  ts: '513350.SH',
+                  price: 1.38,
+                  reason: 'rotate',
+                },
+                {
+                  date: '2026-08-06',
+                  kind: 'sell',
+                  key: 'OIL',
+                  name: '富国油气QDII',
+                  ts: '513350.SH',
+                  price: 1.41,
+                  reason: 'trail',
+                },
+                {
+                  date: '2026-08-07',
+                  kind: 'buy',
+                  key: 'GOLD',
+                  name: '华安黄金ETF',
+                  ts: '518880.SH',
+                  price: 5.3,
+                  reason: 'entry',
+                },
+              ],
+              parkedHeld: {
+                key: 'GOLD',
+                name: '华安黄金ETF',
+                ts: '518880.SH',
+                since: '2026-08-07',
+                price: 5.31,
+                weight: 0.75,
+              },
             }
           : {}),
       };
@@ -466,6 +529,17 @@ describe('BacktestPage', () => {
     expect(await screen.findByText('3 日到期')).toBeDefined();
     expect((await screen.findAllByText('688155.SH')).length).toBeGreaterThan(0);
     expect(await screen.findByText('当前持仓 1 · 买 1 / 卖 1 · 跳过 1')).toBeDefined();
+  });
+
+  it('records the parked-sleeve ETF trades in the starship audit', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    expect(await screen.findByText('停车套筒明细（闲钱买 ETF）')).toBeDefined();
+    expect(await screen.findByText('买 3 / 卖 2 · 回撤出场 1')).toBeDefined();
+    expect(await screen.findByText(/当前持有 黄金 518880.SH/)).toBeDefined();
+    expect(await screen.findByText(/停车权重 75%/)).toBeDefined();
+    expect((await screen.findAllByText('513350.SH')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('回撤 8%')).length).toBeGreaterThan(0);
   });
 
   it('shows the harbor timeline on compare tab', async () => {

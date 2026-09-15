@@ -45,6 +45,8 @@ import {
   type BacktestParams,
   type TimelineBlotterRow,
   type TimelineOpenPosition,
+  type TimelineParkedBlotterRow,
+  type TimelineParkedHeld,
   type TimelineStrategy,
 } from '@/lib/queries/backtest';
 
@@ -691,6 +693,8 @@ function TimelineCard({
   const summary = q.data?.summary;
   const blotter = q.data?.blotter ?? [];
   const openPositions = q.data?.openPositions ?? [];
+  const parkedBlotter = q.data?.parkedBlotter ?? [];
+  const parkedHeld = q.data?.parkedHeld ?? null;
   const satelliteFills = React.useMemo(() => {
     const byDay = new Map<string, string[]>();
     for (const b of q.data?.blotter ?? []) {
@@ -1184,6 +1188,14 @@ function TimelineCard({
             <SatelliteLegDetail
               blotter={blotter}
               openPositions={openPositions}
+              showAll={showAll}
+            />
+          ) : null}
+          {strategy === 'starship' && parkedBlotter.length > 0 ? (
+            <ParkedLegDetail
+              blotter={parkedBlotter}
+              held={parkedHeld}
+              trailExits={summary?.parkedTrailExits ?? null}
               showAll={showAll}
             />
           ) : null}
@@ -2186,6 +2198,104 @@ const BLOTTER_KIND: Record<string, { label: string; cls: string }> = {
   skip_t1: { label: 'T+1 跳过', cls: 'bg-[var(--k-border)] text-[var(--k-muted)]' },
   skip_c1: { label: '14:30 跳过', cls: 'bg-[var(--k-border)] text-[var(--k-muted)]' },
 };
+
+const PARKED_KIND: Record<string, { label: string; cls: string }> = {
+  buy: { label: '买入', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
+  sell: { label: '卖出', cls: 'bg-red-500/10 text-red-700 dark:text-red-300' },
+};
+
+const PARKED_REASON: Record<string, string> = {
+  entry: '进场',
+  rotate: '换仓',
+  trail: '回撤 8%',
+  cash: '无候选回现金',
+};
+
+/** Starship v2 parked sleeve: idle cash -> trend ETF buys/sells (audit trail). */
+function ParkedLegDetail({
+  blotter,
+  held,
+  trailExits,
+  showAll,
+}: {
+  blotter: TimelineParkedBlotterRow[];
+  held: TimelineParkedHeld | null;
+  trailExits: number | null;
+  showAll: boolean;
+}) {
+  const buys = blotter.filter((b) => b.kind === 'buy').length;
+  const sells = blotter.filter((b) => b.kind === 'sell').length;
+  const trails = trailExits ?? blotter.filter((b) => b.reason === 'trail').length;
+  const flow = [...blotter].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const visible = showAll ? flow : flow.slice(-30);
+
+  return (
+    <div className="rounded border border-sky-500/30 bg-sky-500/5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-sky-500/20 px-2 py-1.5 text-[11px] font-medium">
+        停车套筒明细（闲钱买 ETF）
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          mom60+MA200 挑趋势最好的一个 · 回撤 8% 出场 · 换仓计两侧成本
+        </span>
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          买 {buys} / 卖 {sells} · 回撤出场 {trails}
+        </span>
+      </div>
+      <div className="px-2 py-1.5 text-[11px]">
+        {held ? (
+          <span>
+            {`当前持有 ${PICK_LABELS[held.key] ?? held.name} ${held.ts}`}
+            {held.since ? ` · 自 ${held.since}` : ''}
+            {held.price != null ? ` · 现价 ${held.price}` : ''}
+            {held.weight != null ? ` · 停车权重 ${Math.round(held.weight * 100)}%` : ''}
+          </span>
+        ) : (
+          <span className="text-[var(--k-muted)]">当前空仓（现金 / 逆回购）</span>
+        )}
+      </div>
+      <div className="max-h-[220px] overflow-auto px-2 pb-1.5">
+        <table className="w-full text-left text-[11px] tabular-nums">
+          <thead className="sticky top-0 bg-[var(--k-surface)]">
+            <tr className="text-[10px] text-[var(--k-muted)]">
+              <th className="py-0.5 pr-2">成交日</th>
+              <th className="py-0.5 pr-2">动作</th>
+              <th className="py-0.5 pr-2">标的</th>
+              <th className="py-0.5 pr-2">价格</th>
+              <th className="py-0.5 pr-2">原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((b, i) => {
+              const meta = PARKED_KIND[b.kind] ?? {
+                label: b.kind,
+                cls: 'bg-[var(--k-border)] text-[var(--k-muted)]',
+              };
+              return (
+                <tr key={`${b.kind}-${b.date}-${b.ts}-${i}`} className="border-t border-sky-500/10">
+                  <td className="py-0.5 pr-2 font-mono">{b.date}</td>
+                  <td className="py-0.5 pr-2">
+                    <span className={cn('rounded px-1 py-px text-[10px]', meta.cls)}>
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td className="py-0.5 pr-2">
+                    {PICK_LABELS[b.key] ?? b.name} <span className="font-mono">{b.ts}</span>
+                  </td>
+                  <td className="py-0.5 pr-2">{b.price ?? '—'}</td>
+                  <td className="py-0.5 pr-2 text-[10px] text-[var(--k-muted)]">
+                    {PARKED_REASON[b.reason] ?? b.reason}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="pt-1 text-[10px] text-[var(--k-muted)]">
+          成交价 = 成交日收盘（回测按 14:30 收盘代理）· 停车只作用于闲钱，核心/卫星收益不动
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /** Satellite-leg detail: current legs + buy/sell blotter (starport/starship). */
 function SatelliteLegDetail({
