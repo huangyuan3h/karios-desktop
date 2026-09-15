@@ -1,10 +1,5 @@
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
-import {
-  ensureWatchlistHydrated,
-  loadWatchlist,
-  saveWatchlist,
-  type WatchlistItem,
-} from '@/lib/watchlist-storage';
+import { hydrateWatchlist } from '@/lib/watchlist-storage';
 
 export type AutomationRemoveItem = {
   symbol: string;
@@ -72,23 +67,34 @@ export async function ackAutomationRun(runId: string): Promise<void> {
   await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {});
 }
 
-export function funnelFromMeta(
-  meta: Record<string, unknown> | undefined,
-): Record<string, number> | null {
-  const raw = meta?.funnel;
-  if (!raw || typeof raw !== 'object') return null;
-  const f = raw as Record<string, unknown>;
-  const num = (k: string) => (typeof f[k] === 'number' && Number.isFinite(f[k]) ? Number(f[k]) : 0);
+export type PoolRunCounts = {
+  s3PoolSize: number;
+  s3PoolPrevSize: number;
+  satellitePoolSize: number;
+  addedS3: number;
+  addedSatellite: number;
+  removedS3: number;
+  removedSatellite: number;
+};
+
+const numOr = (v: unknown, fallback = 0): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
+/** OPT-209 pool run meta (replaces the retired TV funnel counts). */
+export function poolFromMeta(meta: Record<string, unknown> | undefined): PoolRunCounts | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const added = (meta.poolAdded ?? {}) as Record<string, unknown>;
+  const removed = (meta.poolRemoved ?? {}) as Record<string, unknown>;
+  const hasPool = meta.poolAdded != null || meta.poolRemoved != null || meta.poolCaliber != null;
+  if (!hasPool) return null;
   return {
-    tvHit: num('tvHit'),
-    passPullback: num('passPullback'),
-    passTrendOk: num('passTrendOk'),
-    addedNew: num('addedNew'),
-    droppedByPullback: num('droppedByPullback'),
-    fallbackUsed: Number(Boolean(f.fallbackUsed)),
-    fallbackHit: num('fallbackHit'),
-    fallbackTrendOk: num('fallbackTrendOk'),
-    fallbackAdded: num('fallbackAdded'),
+    s3PoolSize: numOr(meta.s3PoolSize),
+    s3PoolPrevSize: numOr(meta.s3PoolPrevSize),
+    satellitePoolSize: numOr(meta.satellitePoolSize),
+    addedS3: numOr(added.s3),
+    addedSatellite: numOr(added.satellite),
+    removedS3: numOr(removed.s3),
+    removedSatellite: numOr(removed.satellite),
   };
 }
 
@@ -121,80 +127,29 @@ export function formatAutomationTop5Part(meta: Record<string, unknown> | undefin
   return ` | top5 ${names.join(',')}`;
 }
 
-export async function applyAutomationRun(
-  run: AutomationRun,
-  options?: {
-    silent?: boolean;
-    onStage?: (label: string) => void;
-    existingItems?: WatchlistItem[];
-  },
-): Promise<ApplyAutomationResult> {
-  if (run.skipped) {
-    throw new Error(run.skipReason || 'automation skipped');
-  }
-
-  const onStage = options?.onStage;
-  let items = options?.existingItems ?? loadWatchlist();
-
-  onStage?.('Removing weak symbols…');
-  const removeSet = new Set((run.remove ?? []).map((x) => x.symbol));
-  const before = items.length;
-  items = items.filter((x) => !removeSet.has(x.symbol));
-  const removed = before - items.length;
-  await saveWatchlist(items);
-
-  onStage?.('Appending Alpha Radar S candidates…');
-  const existing = new Set(items.map((x) => x.symbol));
-  const now = new Date().toISOString();
-  let alphaAdded = 0;
-  for (const row of run.alphaAdd ?? []) {
-    const sym = String(row.symbol || '').trim();
-    if (!sym || existing.has(sym)) continue;
-    existing.add(sym);
-    items.push({
-      symbol: sym,
-      name: row.name ?? null,
-      addedAt: now,
-      color: '#e0e7ff',
-      // TIP-012: research-channel candidates (研报 → α) keep their own
-      // registry source so the Watchlist / journal can attribute them.
-      source: row.channel === 'research' ? 'research' : 'alpha_radar',
-    });
-    alphaAdded += 1;
-  }
-  if (alphaAdded > 0) await saveWatchlist(items);
-
-  onStage?.('Acknowledging automation run…');
-  await ackAutomationRun(run.runId);
-
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem('karios.watchlist.automation.ackedRunId', run.runId);
-    } catch {
-      // ignore
-    }
-  }
-
-  return {
-    removed,
-    screenerAdded: 0,
-    alphaAdded,
-  };
-}
-
+/**
+ * OPT-209: the backend now auto-applies the pool run to the registry (S-3 +
+ * 星舰 add/GC), so the client only re-hydrates the registry afterwards.
+ */
 export async function runManualAutomation(options?: {
   force?: boolean;
   onStage?: (label: string) => void;
 }): Promise<{ run: AutomationRun; result?: ApplyAutomationResult }> {
-  options?.onStage?.('Ensuring registry is synced…');
-  await ensureWatchlistHydrated();
-  options?.onStage?.('Running backend automation…');
+  options?.onStage?.('Running backend pool automation…');
   const run = await triggerAutomationRun(options?.force ?? true);
   if (run.skipped) {
     return { run };
   }
-  const result = await applyAutomationRun(run, { onStage: options?.onStage });
-  return { run, result };
+  options?.onStage?.('Reloading registry…');
+  await hydrateWatchlist();
+  return {
+    run,
+    result: {
+      removed: run.remove?.length ?? 0,
+      screenerAdded: 0,
+      alphaAdded: run.alphaAdd?.length ?? 0,
+    },
+  };
 }
 
 export function formatAutomationSummary(
@@ -205,19 +160,14 @@ export function formatAutomationSummary(
   if (run.skipped) {
     return `Skipped: ${run.skipReason || 'unknown'}`;
   }
-  const removed = result?.removed ?? run.remove?.length ?? 0;
-  const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
-  const research = run.meta?.researchCandidates ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
-  const researchPart = typeof research === 'number' && research > 0 ? ` | 研报α +${research}` : '';
-  const rejected = run.meta?.alphaRejected;
-  let rejectPart = '';
-  if (rejected && typeof rejected === 'object') {
-    const entries = Object.entries(rejected as Record<string, unknown>)
-      .filter(([, v]) => typeof v === 'number' && v > 0)
-      .map(([k, v]) => `${k}:${v}`);
-    if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
+  const pool = poolFromMeta(run.meta);
+  if (pool) {
+    return `Last pool automation: ${when} (${trigger}) | S-3 池 ${pool.s3PoolSize} (+${pool.addedS3} / −${pool.removedS3}) · 星舰 ${pool.satellitePoolSize} (+${pool.addedSatellite} / −${pool.removedSatellite})`;
   }
-  return `Last automation: ${when} (${trigger}) | −${removed} removed · alpha +${alpha}${researchPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
+  // Legacy runs (pre-OPT-209 funnel/alpha counts).
+  const removed = result?.removed ?? run.remove?.length ?? 0;
+  const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
+  return `Last automation: ${when} (${trigger}) | −${removed} removed · alpha +${alpha}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
 }

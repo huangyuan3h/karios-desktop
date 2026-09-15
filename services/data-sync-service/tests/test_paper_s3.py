@@ -1395,3 +1395,53 @@ def test_circuit_hk_ignores_cn_book() -> None:
         assert paper_s3._circuit_blocked(as_of="2026-08-07", market="HK") is False
         # default stays CN for existing callers
         assert paper_s3._circuit_blocked(as_of="2026-08-07") is False
+
+
+class TestPoolCaliber:
+    """OPT-209: gate-free observation pool (score≥65 & RS only, CN+HK)."""
+
+    def test_pool_ignores_regime_flow_and_keeps_held(self) -> None:
+        with _patch_day_gates(regime="Weak", flow_ok=False, mainline=[]):
+            paper_s3._load_today_scores.return_value = {CN_A: 90.0, CN_B: 40.0}
+            with patch.object(paper_s3, "_live_held_symbols", return_value={CN_A}):
+                live = paper_s3.build_s3_candidates(trade_date="2026-08-07")
+                pool = paper_s3.build_s3_candidates(trade_date="2026-08-07", gate_mode="pool")
+        assert live == []
+        assert [c["symbol"] for c in pool] == [CN_A]
+        assert pool[0]["score"] == 90.0
+
+    def test_pool_ranks_by_score_then_rs_and_caps(self) -> None:
+        day = "2026-08-07"
+        with _patch_day_gates():
+            paper_s3._load_today_scores.return_value = {CN_A: 90.0, CN_B: 90.0}
+            with patch.object(
+                paper_s3,
+                "_load_rs_ranks",
+                lambda cfg, cal, universe: {
+                    day: {ts: (0.7 if ts.startswith("600002") else 0.9) for ts in universe}
+                },
+            ):
+                pool = paper_s3.build_s3_candidates(trade_date=day, gate_mode="pool")
+                capped = paper_s3.build_s3_candidates(
+                    trade_date=day, gate_mode="pool", max_positions=1
+                )
+        assert [c["symbol"] for c in pool] == [CN_A, CN_B]  # 0.9 RS first
+        assert [c["symbol"] for c in capped] == [CN_A]
+
+    def test_pool_respects_rs_floor_and_board_exclude(self) -> None:
+        day = "2026-08-07"
+        with _patch_day_gates():
+            paper_s3._load_today_scores.return_value = {
+                CN_A: 90.0,
+                CN_B: 99.0,
+                "CN:300001": 99.0,
+            }
+            with patch.object(
+                paper_s3,
+                "_load_rs_ranks",
+                lambda cfg, cal, universe: {
+                    day: {ts: (0.4 if ts.startswith("600002") else 0.9) for ts in universe}
+                },
+            ):
+                pool = paper_s3.build_s3_candidates(trade_date=day, gate_mode="pool")
+        assert [c["symbol"] for c in pool] == [CN_A]

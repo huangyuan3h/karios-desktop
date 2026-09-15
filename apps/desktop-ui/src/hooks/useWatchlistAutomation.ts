@@ -3,11 +3,10 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { useAutomationPendingQuery } from '@/lib/queries/automation';
+import { useAutomationLatestQuery } from '@/lib/queries/automation';
 import { watchlistRiskQueryKey } from '@/lib/queries/dashboard';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
-import { applyAutomationRun, isAutomationPollWindow } from '@/lib/watchlist-automation';
-import { loadWatchlist } from '@/lib/watchlist-storage';
+import { hydrateWatchlist, loadWatchlist } from '@/lib/watchlist-storage';
 
 const ACK_STORAGE_KEY = 'karios.watchlist.automation.ackedRunId';
 
@@ -40,38 +39,37 @@ function watchlistSymbolsFromStorage(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * OPT-209: the backend applies each pool run to the registry itself (S-3 +
+ * 星舰 add / invalidation GC). The client only re-hydrates the registry and
+ * refreshes market data when a new applied run appears — no client-side apply,
+ * no ack step.
+ */
 export function useWatchlistAutomation(): void {
   const queryClient = useQueryClient();
-  const applyingRef = React.useRef(false);
-  const { data: pending } = useAutomationPendingQuery();
+  const refreshingRef = React.useRef(false);
+  const { data: latest } = useAutomationLatestQuery();
 
   React.useEffect(() => {
-    if (!isAutomationPollWindow()) return;
-    if (!pending || pending.skipped) return;
-    if (getAckedRunId() === pending.runId) return;
-    if (applyingRef.current) return;
+    if (!latest?.runId || latest.skipped) return;
+    if (getAckedRunId() === latest.runId) return;
+    if (refreshingRef.current) return;
 
-    let cancelled = false;
-    applyingRef.current = true;
+    refreshingRef.current = true;
     void (async () => {
       try {
-        await applyAutomationRun(pending, { silent: true });
-        if (cancelled) return;
-        setAckedRunId(pending.runId);
+        setAckedRunId(latest.runId);
+        await hydrateWatchlist();
         const symbols = watchlistSymbolsFromStorage();
         if (symbols.length) {
           void queryClient.invalidateQueries({ queryKey: watchlistMarketKey(symbols) });
         }
         void queryClient.invalidateQueries({ queryKey: watchlistRiskQueryKey() });
       } catch {
-        // silent scheduled apply
+        // silent background refresh
       } finally {
-        applyingRef.current = false;
+        refreshingRef.current = false;
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pending, queryClient]);
+  }, [latest, queryClient]);
 }

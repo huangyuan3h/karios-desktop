@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from datetime import date, timedelta
 from typing import Any
@@ -20,11 +19,13 @@ from data_sync_service.db.industry_fund_flow import (
 from data_sync_service.db.sync_job_record import get_today_run
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.db.watchlist_automation import (
+    ack_run,
     get_pending_run,
     get_run_by_id,
     get_scores_for_symbol,
     insert_automation_run,
     list_registry,
+    upsert_registry,
     upsert_score_daily,
 )
 from data_sync_service.service.alpha_radar_catalyst import (
@@ -36,11 +37,6 @@ from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
 from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
-from data_sync_service.service.research import (
-    RESEARCH_MAX_CANDIDATES,
-    RESEARCH_SCORE_MIN,
-    build_research_catalyst_payload,
-)
 from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -49,6 +45,18 @@ logger = logging.getLogger(__name__)
 SCORE_REMOVAL_THRESHOLD = 30.0
 CATALYST_SCORE_MIN = 85.0
 CONSECUTIVE_LOW_SCORE_DAYS = 3
+
+# OPT-209 (2026-09-15, user): the automation maintains the *strategy pool* =
+# the two backtest legs — S-3 (score≥65 & RS, gate-free observation caliber)
+# and 星舰/卫星 (habit replay legs). The Alpha/研报 channels are off; legacy
+# registry rows from those channels are left untouched (manual cleanup).
+SOURCE_S3 = "s3"
+SOURCE_SATELLITE = "satellite"
+# Pool width per market: score≥65 & RS passers number ~540 on a normal day, so
+# the pool keeps the engine's basket cap (S3_MAX_POSITIONS=10) by score rank.
+S3_POOL_MAX: int | None = None  # None -> S3_MAX_POSITIONS at call time
+S3_POOL_FAIL_DAYS = 2
+ALPHA_CHANNEL_ENABLED = False
 # Alpha entry light gate: wider than BUY mainline Top3 (see TIP-004).
 ALPHA_ENTRY_TOP_INDUSTRIES = 10
 # TIP-003 empty-window fallback universe.
@@ -558,6 +566,155 @@ def compute_removals(
     return out
 
 
+def compute_s3_pool(*, day: str, max_positions: int | None = S3_POOL_MAX) -> list[dict[str, Any]]:
+    """S-3 observation pool for ``day`` (score≥65 & RS floor, CN+HK).
+
+    OPT-209: uses the gate-free pool caliber so the Watchlist keeps tracking
+    names through Weak/blocked markets; buying stays governed by the Live path.
+    Width = the engine's basket cap (S3_MAX_POSITIONS) by score rank.
+    """
+    from data_sync_service.service.paper_s3 import S3_MAX_POSITIONS, build_s3_candidates
+
+    limit = int(max_positions if max_positions is not None else S3_MAX_POSITIONS)
+    out: list[dict[str, Any]] = []
+    for market in ("CN", "HK"):
+        try:
+            rows = build_s3_candidates(
+                trade_date=day,
+                market=market,
+                max_positions=limit,
+                gate_mode="pool",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("s3 pool %s %s failed: %s", market, day, exc)
+            continue
+        out.extend({**row, "market": market, "source": SOURCE_S3} for row in rows)
+    return out
+
+
+def compute_satellite_pool(*, day: str) -> list[dict[str, Any]]:
+    """Current 星舰/卫星 legs (habit replay) as pool items.
+
+    Research book: names enter on the 14:30 fill and leave when the replay
+    exits them (body=3), so the pool mirrors the satellite's live legs.
+    """
+    from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
+
+    start = (date.fromisoformat(day) - timedelta(days=200)).isoformat()
+    try:
+        replay = build_state_bucket_timeline(start=start, end=day, recipe="habit")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("satellite pool %s failed: %s", day, exc)
+        return []
+    out: list[dict[str, Any]] = []
+    for p in replay.get("openPositions") or []:
+        ts = str(p.get("ts") or "")
+        code = ts.split(".")[0]
+        if not code:
+            continue
+        out.append(
+            {
+                "symbol": f"CN:{code}",
+                "ts_code": ts,
+                "name": None,
+                "source": SOURCE_SATELLITE,
+                "entryDate": p.get("entryDate"),
+                "exitDue": p.get("exitDue"),
+                "heldDays": p.get("heldDays"),
+                "daysLeft": p.get("daysLeft"),
+            }
+        )
+    return out
+
+
+def compute_pool_removals(
+    registry: list[dict[str, Any]],
+    *,
+    s3_symbols_today: set[str],
+    s3_symbols_prev: set[str] | None,
+    satellite_symbols_today: set[str],
+) -> list[dict[str, Any]]:
+    """OPT-209 GC: S-3 leaves after ``S3_POOL_FAIL_DAYS`` consecutive fails;
+    星舰 leaves when the replay no longer holds it. Held names never leave.
+    """
+    out: list[dict[str, Any]] = []
+    for item in registry:
+        sym = str(item.get("symbol") or "").strip()
+        source = str(item.get("source") or "manual")
+        if not sym:
+            continue
+        pos_raw = item.get("positionPct")
+        try:
+            held = pos_raw is not None and float(pos_raw) > 0
+        except (TypeError, ValueError):
+            held = False
+        if held:
+            continue
+        if source == SOURCE_S3:
+            # No previous session data -> cannot verify two consecutive fails,
+            # keep the row (fail-open).
+            if (
+                s3_symbols_prev is not None
+                and sym not in s3_symbols_today
+                and sym not in s3_symbols_prev
+            ):
+                out.append({"symbol": sym, "reason": "s3_failed_2d"})
+        elif source == SOURCE_SATELLITE:
+            if sym not in satellite_symbols_today:
+                out.append({"symbol": sym, "reason": "satellite_exited"})
+    return out
+
+
+def apply_pool_run(
+    *,
+    run_id: str,
+    registry: list[dict[str, Any]],
+    remove_items: list[dict[str, Any]],
+    pool_add: list[dict[str, Any]],
+    satellite_symbols_today: set[str] | None = None,
+) -> dict[str, int]:
+    """Auto-apply a pool run to the registry (OPT-209, no user ack step).
+
+    Merge semantics: removals drop rows; additions insert or refresh rows and
+    never override a manual row. A name held by both legs is tagged
+    ``satellite`` (shorter life). ``upsert_registry`` full-syncs the merged
+    list, then the run is marked applied.
+    """
+    now = _shanghai_today_iso()
+    sat_today = satellite_symbols_today or set()
+    by_sym: dict[str, dict[str, Any]] = {}
+    for item in registry:
+        sym = str(item.get("symbol") or "").strip()
+        if sym:
+            by_sym[sym] = dict(item)
+    for r in remove_items:
+        by_sym.pop(str(r.get("symbol") or ""), None)
+    added = 0
+    for item in pool_add:
+        sym = str(item.get("symbol") or "").strip()
+        if not sym:
+            continue
+        prev = by_sym.get(sym)
+        if prev is None:
+            by_sym[sym] = {**item, "addedAt": now}
+            added += 1
+            continue
+        prev_source = str(prev.get("source") or "manual")
+        if prev_source == "manual":
+            continue  # never override the user's own row
+        if prev_source in (SOURCE_S3, SOURCE_SATELLITE):
+            source = SOURCE_SATELLITE if sym in sat_today else str(item.get("source") or prev_source)
+            by_sym[sym] = {
+                **prev,
+                **item,
+                "source": source,
+                "addedAt": prev.get("addedAt") or now,
+            }
+    upsert_registry(list(by_sym.values()))
+    ack_run(run_id)
+    return {"added": added, "removed": len(remove_items), "registry": len(by_sym)}
+
+
 def compute_alpha_additions(
     limit: int = 200,
     *,
@@ -867,69 +1024,68 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         str(r.get("symbol")): r for r in trendok_rows if isinstance(r, dict) and r.get("symbol")
     }
 
-    top_5d = get_top_5d_industry_names()
-    meta["top5dIndustries"] = sorted(top_5d)
+    # --- Strategy pool (OPT-209): S-3 + 星舰, invalidation GC, auto-apply -----
+    s3_pool = compute_s3_pool(day=trade_date)
+    s3_symbols_today = {str(x.get("symbol")) for x in s3_pool if x.get("symbol")}
+    prev_dates = [d for d in get_last_n_trading_dates(S3_POOL_FAIL_DAYS) if d < trade_date]
+    prev_day = prev_dates[-1] if prev_dates else None
+    s3_symbols_prev: set[str] | None = None
+    if prev_day:
+        s3_symbols_prev = {
+            str(x.get("symbol"))
+            for x in compute_s3_pool(day=prev_day)
+            if x.get("symbol")
+        }
+    satellite_legs = compute_satellite_pool(day=trade_date)
+    satellite_symbols_today = {str(x.get("symbol")) for x in satellite_legs if x.get("symbol")}
 
-    streak_dates = get_last_n_trading_dates(CONSECUTIVE_LOW_SCORE_DAYS)
-    meta["streakTradeDates"] = streak_dates
+    meta["s3PoolSize"] = len(s3_symbols_today)
+    meta["s3PoolPrevDate"] = prev_day
+    meta["s3PoolPrevSize"] = len(s3_symbols_prev or [])
+    meta["satellitePoolSize"] = len(satellite_symbols_today)
+    meta["poolCaliber"] = "s3=score>=65&rs (gate-free), satellite=habit legs"
 
-    catalyst_payload, alpha_s_symbols = load_catalyst_window(add_limit=200)
-    meta["alphaSSymbols"] = len(alpha_s_symbols)
-    meta["catalystWindowTotal"] = int(catalyst_payload.get("total") or 0)
-
-    remove_items = compute_removals(
+    remove_items = compute_pool_removals(
         registry,
-        trade_dates=streak_dates,
-        top_5d_industries=top_5d,
-        trendok_by_symbol=trendok_by_symbol,
-        alpha_s_symbols=alpha_s_symbols,
+        s3_symbols_today=s3_symbols_today,
+        s3_symbols_prev=s3_symbols_prev,
+        satellite_symbols_today=satellite_symbols_today,
     )
-    top10 = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
-    meta["top10dIndustries"] = sorted(top10)
-    alpha_add, alpha_rejected = compute_alpha_additions(
-        catalyst_payload=catalyst_payload,
-        top_industries=top10,
-    )
-    meta["alphaCandidates"] = len(alpha_add)
-    meta["alphaRejected"] = alpha_rejected
-
-    # TIP-012: research channel (研报 → α) — same entry gates, lower floor.
-    # PAUSED 2026-09-07 (research-coverage-2026-09-07 REJECT: first-coverage
-    # 10d -3%, denser coverage worse; TIP-012 shipped on plumbing only, the
-    # promised 2-week observation never ran). Research sync / list / display /
-    # trace stay live; only registry nomination is skipped. Re-enable with
-    # RESEARCH_CHANNEL_ENABLED=1 after the TIP-012 observation passes.
-    research_add: list[dict[str, Any]] = []
-    research_rejected: dict[str, int] = {}
-    research_enabled = os.getenv("RESEARCH_CHANNEL_ENABLED", "0").strip() == "1"
-    if not research_enabled:
-        research_rejected = {"research_channel_paused": 1}
+    existing_symbols = {str(x.get("symbol")) for x in registry if x.get("symbol")}
+    pool_add: list[dict[str, Any]] = []
+    for item in [*s3_pool, *satellite_legs]:
+        sym = str(item.get("symbol") or "")
+        if not sym or sym in existing_symbols:
+            continue
+        existing_symbols.add(sym)
+        row = {k: v for k, v in item.items() if v is not None}
+        row["poolDate"] = trade_date
+        name = (trendok_by_symbol.get(sym) or {}).get("name")
+        if name:
+            row["name"] = name
+        pool_add.append(row)
+    meta["poolAdded"] = {
+        "s3": sum(1 for x in pool_add if x.get("source") == SOURCE_S3),
+        "satellite": sum(1 for x in pool_add if x.get("source") == SOURCE_SATELLITE),
+    }
+    meta["poolRemoved"] = {
+        "s3": sum(1 for x in remove_items if x.get("reason") == "s3_failed_2d"),
+        "satellite": sum(1 for x in remove_items if x.get("reason") == "satellite_exited"),
+    }
+    if ALPHA_CHANNEL_ENABLED:
+        # Retired 2026-09-15 (user): the pool = backtest legs only. The Alpha
+        # catalyst/research nomination path stays in code for reference.
+        catalyst_payload, _alpha_s_symbols = load_catalyst_window(add_limit=200)
+        top10 = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
+        alpha_add, alpha_rejected = compute_alpha_additions(
+            catalyst_payload=catalyst_payload,
+            top_industries=top10,
+        )
+        meta["alphaCandidates"] = len(alpha_add)
+        meta["alphaRejected"] = alpha_rejected
     else:
-        try:
-            research_payload = build_research_catalyst_payload(limit=100)
-            # Research reports carry their own East Money industry label (same
-            # taxonomy as the EM cache); prefer it over the DB cache so fresh
-            # names without a warm cache row still pass the defense/Top10 gates.
-            research_industries = {
-                str(x.get("symbol")): str(x["industryName"])
-                for x in (research_payload.get("items") or [])
-                if isinstance(x, dict) and x.get("symbol") and x.get("industryName")
-            }
-            research_add, research_rejected = compute_alpha_additions(
-                catalyst_payload=research_payload,
-                industry_by_symbol=research_industries,
-                top_industries=top10,
-                score_min=RESEARCH_SCORE_MIN,
-            )
-            # Attention budget: cap research-channel additions per run (best
-            # scores first — payload is already sorted descending).
-            research_add = research_add[:RESEARCH_MAX_CANDIDATES]
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("research channel candidate build failed: %s", exc)
-            research_rejected = {"research_channel_error": 1}
-    alpha_add = alpha_add + research_add
-    meta["researchCandidates"] = len(research_add)
-    meta["researchRejected"] = research_rejected
+        alpha_add = []
+        meta["alphaChannel"] = "off"
 
     run_id = insert_automation_run(
         trade_date=trade_date,
@@ -937,9 +1093,17 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         skipped=False,
         skip_reason=None,
         remove_items=remove_items,
-        alpha_add=alpha_add,
+        alpha_add=pool_add,
         meta=meta,
     )
+    applied = apply_pool_run(
+        run_id=run_id,
+        registry=registry,
+        remove_items=remove_items,
+        pool_add=pool_add,
+        satellite_symbols_today=satellite_symbols_today,
+    )
+    meta["applied"] = applied
 
     return {
         "runId": run_id,
@@ -947,8 +1111,9 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         "skipped": False,
         "skipReason": None,
         "remove": remove_items,
-        "alphaAdd": alpha_add,
+        "alphaAdd": pool_add,
         "meta": meta,
+        "applied": True,
     }
 
 

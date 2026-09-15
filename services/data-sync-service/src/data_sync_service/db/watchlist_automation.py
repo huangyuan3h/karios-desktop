@@ -336,7 +336,7 @@ def list_recent_runs(*, limit: int = 10) -> list[dict[str, Any]]:
                 FROM {RUNS_TABLE}
                 WHERE applied_at IS NOT NULL
                   AND meta IS NOT NULL
-                  AND meta->>'funnel' IS NOT NULL
+                  AND (meta ? 'poolAdded' OR meta->>'funnel' IS NOT NULL)
                 ORDER BY trade_date DESC, created_at DESC
                 LIMIT %s
                 """,

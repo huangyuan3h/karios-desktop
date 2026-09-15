@@ -6,6 +6,10 @@ export const WatchlistSourceSchema = z.enum([
   'screener_fallback',
   'alpha_radar',
   'research',
+  /** OPT-209: S-3 backtest pool member (score≥65 & RS, gate-free caliber). */
+  's3',
+  /** OPT-209: 星舰/卫星 research leg (habit replay, 3-day hold). */
+  'satellite',
 ]);
 export type WatchlistSource = z.infer<typeof WatchlistSourceSchema>;
 
@@ -73,3 +77,16 @@ export const FunnelHistoryResponseSchema = z.object({
   asOfDate: z.string(),
 });
 export type FunnelHistoryResponse = z.infer<typeof FunnelHistoryResponseSchema>;
+
+/** OPT-209 pool run meta: what the strategy-pool automation added/removed. */
+export const AutomationPoolMetaSchema = z.object({
+  s3PoolSize: z.number().optional(),
+  s3PoolPrevDate: z.string().nullable().optional(),
+  s3PoolPrevSize: z.number().optional(),
+  satellitePoolSize: z.number().optional(),
+  poolAdded: z.object({ s3: z.number(), satellite: z.number() }).optional(),
+  poolRemoved: z.object({ s3: z.number(), satellite: z.number() }).optional(),
+  poolCaliber: z.string().optional(),
+  alphaChannel: z.string().optional(),
+});
+export type AutomationPoolMeta = z.infer<typeof AutomationPoolMetaSchema>;

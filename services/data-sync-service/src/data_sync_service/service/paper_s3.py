@@ -372,8 +372,15 @@ def build_s3_candidates(
     trade_date: str | None = None,
     max_positions: int = S3_MAX_POSITIONS,
     market: str = "CN",
+    gate_mode: str = "live",
 ) -> list[dict[str, Any]]:
     """S-3-qualified candidates on ``trade_date`` (same gates as the backtest).
+
+    ``gate_mode="live"`` (default) = the Live/buy caliber, unchanged.
+    ``gate_mode="pool"`` (OPT-209, Watchlist observation pool) = score≥65 & RS
+    floor only: no regime/panic/circuit/flow/sentiment gates and no
+    held-symbol exclusion, so the pool keeps tracking names through weak
+    markets (buying is still gated by the Live path).
 
     2026-08-10 (HK parallel line): ``market="HK"`` runs the HK regime line —
     HSI/HSTECH regime gate (via the engine's market-aware ``_load_regime_by_day``),
@@ -406,17 +413,22 @@ def build_s3_candidates(
     # drawdown_circuit_pct; paper and backtest stay same-code.
     # 2026-09-09 (TIP-016 B): extended to HK (walk-forward PASS on the
     # settle=2 HK baseline: OOS2 +11.6 / train +1.8 / valid -1.2).
-    if _circuit_blocked(as_of=day, market=market):
+    if gate_mode == "live" and _circuit_blocked(as_of=day, market=market):
         return []
 
     # 2026-09-10 (TIP-017 B frozen): CN rescue-flow gate — pause new entries
     # while 沪深300 < MA200 AND broad-ETF 20d share delta ≤ 0. Fail-open.
-    if _national_team_blocked(as_of=day, market=market):
+    if gate_mode == "live" and _national_team_blocked(as_of=day, market=market):
         return []
 
     # 2026-08-12 (OPT-094): CN red-light days produce no candidates (no
     # recommendations) — same replay as the backtest light_red_block.
-    if market == "CN" and S3_LIGHT_RED_BLOCK and _index_light_red(as_of=day):
+    if (
+        gate_mode == "live"
+        and market == "CN"
+        and S3_LIGHT_RED_BLOCK
+        and _index_light_red(as_of=day)
+    ):
         return []
 
     scores = _load_today_scores(day, market=market)
@@ -454,6 +466,38 @@ def build_s3_candidates(
             if prev_rs:
                 rs_by_day = prev_rs
         rs_by_day = rs_by_day or {}
+
+    if gate_mode == "pool":
+        # Watchlist observation pool (OPT-209): score & RS only. Ranked by
+        # (score desc, RS desc, symbol) — score alone leaves hundreds of
+        # 100-point ties whose symbol-order tie-break would be arbitrary.
+        passers: list[tuple[float, float, str, str]] = []
+        for sym in sorted(scores):
+            if scores[sym] < S3_SCORE_THRESHOLD:
+                continue
+            ts = resolved.get(sym)
+            if not ts:
+                continue
+            rs = rs_by_day.get(ts)
+            if rs is None or rs < rs_min:
+                continue
+            code = str(sym).split(":")[-1]
+            if S3_EXCLUDE_BOARDS and code[:3] in S3_EXCLUDE_BOARDS:
+                continue
+            passers.append((float(scores[sym]), float(rs), sym, ts))
+        passers.sort(key=lambda x: (-x[0], -x[1], x[2]))
+        return [
+            {
+                "symbol": sym,
+                "name": None,  # filled in via stock basic by the caller
+                "ts_code": ts,
+                "industry": None,
+                "score": score,
+                "rs": rs,
+                "regime": regime_by_day.get(day),
+            }
+            for score, rs, sym, ts in passers[:max_positions]
+        ]
 
     held = _live_held_symbols()
     open_paper = _open_paper_symbols()

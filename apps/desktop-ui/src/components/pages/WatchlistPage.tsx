@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { PoolHistoryTable } from '@/components/watchlist/PoolHistoryTable';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
@@ -361,7 +361,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />
-          <FunnelHistoryTable limit={10} />
+          <PoolHistoryTable limit={10} />
         </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">

@@ -108,7 +108,9 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
           it.source === 'screener' ||
           it.source === 'screener_fallback' ||
           it.source === 'alpha_radar' ||
-          it.source === 'research'
+          it.source === 'research' ||
+          it.source === 's3' ||
+          it.source === 'satellite'
             ? it.source
             : 'manual',
       } satisfies WatchlistItem;

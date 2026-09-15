@@ -340,39 +340,35 @@ B_momentum 模式：
 - 只刷新缓存数据，不强制网络请求
 - 手动 Refresh 才会强制更新网络数据
 
-### 盘后自动化（17:30）
+### 盘后自动化（17:30）· 策略池（OPT-209，2026-09-15 用户拍板）
 
-每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）：
+每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）。
+自 2026-09-15 起，automation **只维护两条回测腿的策略池**（`run_watchlist_automation`）：
 
-1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的空仓股票；**仅**催化窗口内仍含 Max Grade=`S` 的 `alpha_radar` 票豁免（与 WATCH_SILENT 对齐）。非 S 的 alpha 票与 screener/manual 相同可被 GC。
-2. **Screener 导入**：与「Import from screener」相同（回撤 + TrendOK；空窗时 TIP-003 降级）
-3. **Alpha Radar**：catalystScore &gt; 85 且评级 S，再过轻量进池闸（非防守板块；缺东财行业拒绝；若行业为申万一级则须 ∈ 5D Top10，细粒度东财名跳过 Top10）后 append；`meta.alphaRejected` 记拒绝原因。Max Grade=`S` 豁免三日 GC 使用完整催化窗口（非 score Top200）。
+1. **S-3 池**（`source=s3`）：`paper_s3.build_s3_candidates(gate_mode="pool")` —— **score≥65 & RS 过线**（CN RS≥0.5 / HK RS≥0.6、剔除 300 板），**不含 regime 闸**，所以弱市里池仍保留名字（买入仍由 Live 闸门决定）。宽度 = 引擎建仓上限 `S3_MAX_POSITIONS`（每市场 10，按 score→RS 排名）。
+2. **星舰池**（`source=satellite`，研究档）：习惯 replay（`state_bucket_track`, `recipe="habit"`）当前持有的 14:30 卫星腿（持 3 个交易日），带 `entryDate/exitDue/daysLeft` 元数据。
+3. **失效自动移除**（持仓豁免，`positionPct>0` 不删）：S-3 = **连续 2 日**（`S3_POOL_FAIL_DAYS`）不再出现在池里；星舰 = replay 已出场（不再持有）。
+4. **自动应用**：run 写入 registry 即生效（`apply_pool_run` → `upsert_registry` → `ack_run`），前端不再有 pending/ack 步骤，只在下一次 hydrate 时刷新。
+5. **Alpha / 研报渠道已停用**（`ALPHA_CHANNEL_ENABLED=False`）：不再从催化/研报提名；历史 `alpha_radar`/`screener*` 行保留不动（手动清理）。
 
-**漏斗指标（TIP-002 / TIP-003）**：Import / Automation apply 后记录 `funnel`：`tvHit → passPullback → passTrendOk → +addedNew`；空窗时追加 `| fb Hit→OK→+N`（`fallbackUsed`）。降级票 `source=screener_fallback`，只过 TrendOK、不过 52W 回撤；可被三日 Score GC。
-
-**Automation 摘要 / meta 复盘字段（TIP-008）**：Scheduler 与 Watchlist 工具栏共用 `formatAutomationSummary`：
+**池变动历史**：`GET /watchlist/automation/runs` 返回每个交易日的 run（`meta.poolAdded/poolRemoved{s3,satellite}` + `meta.s3PoolSize/satellitePoolSize`），Watchlist 诊断面板渲染为「S-3 池 / 星舰 / 加入 / 移除」表。
 
 ```text
-Last automation: {time} ({trigger}) | −N screener +X alpha +Y | funnel … | fb … | alphaReject k:v,… | sync ind✓ tv✓ | top5 电子,计算机,…
+Last pool automation: {time} ({trigger}) | S-3 池 10 (+3 / −2) · 星舰 4 (+4 / −0)
 ```
 
 | meta 字段 | 摘要展示 | 说明 |
 |-----------|----------|------|
-| `funnel` | `funnel TV…` / `fb…` | ack 后写入；含 `fallbackUsed` |
-| `alphaRejected` | `alphaReject reason:count` | 进池闸拒绝分布 |
-| `industrySync` / `screenerSync` | `sync ind✓/✗ tv✓/✗` | `ok:false` / `error` / screener `failed>0` → ✗ |
-| `top5dIndustries` | `top5 a,b,…`（最多 5 名） | 三日 GC 用的 5D Top5 |
+| `poolAdded` / `poolRemoved` | `(+a / −r)` 分腿 | 本日新增 / 失效移除数 |
+| `s3PoolSize` / `s3PoolPrevSize` | `S-3 池 N` | 今日 / 前一交易日（两日失效判定用） |
+| `satellitePoolSize` | `星舰 N` | 当前卫星腿数 |
+| `poolCaliber` | — | 口径字符串（审计用） |
+| `alphaChannel` | — | `off`（渠道停用标记） |
+| `industrySync` | `sync ind✓/✗` | 行业流同步失败只进 meta，不中断 run |
 
-### 空窗降级（TIP-003）
+### 历史渠道（2026-09-15 前，已停用）
 
-触发：`tvHit == 0` 或 `passPullback == 0`（含「TV 有票但全被回撤杀掉」）。
-
-1. 取 5D 净流入 Top5 申万一级行业，剔除防守（银行 / 公用事业 / 煤炭等）
-2. 东财 `industry_name LIKE %行业%` 拉成分，合计最多 80 只
-3. TrendOK ✅ 且不在列表中 → append，`source=screener_fallback`
-4. 主路径已有 `passPullback > 0` 时**不**触发降级
-
-前端在 17:30–20:00 轮询后端 pending run 并落地到 localStorage。
+TV screener 漏斗（`meta.funnel`：`tvHit → passPullback → passTrendOk → +addedNew`）、TIP-003 空窗降级（`source=screener_fallback`）、Alpha Radar / 研报进池（catalystScore >85 & S 级 + 轻量闸）均已停用；相关代码保留在 `watchlist_automation.compute_alpha_additions` / `compute_removals` 供参考，不再被 run 调用。
 
 ---
 

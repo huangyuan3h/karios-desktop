@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Switch } from '@/components/ui/switch';
 
 /**
- * 诊断面板容器：交易期望值看板 · Funnel History · Import debug table 三块
+ * 诊断面板容器：交易期望值看板 · 策略池变动（S-3 / 星舰）两块
  * 放一起，用一个总开关统一显隐（默认收起——这些是复盘/调试信息，大部分
  * 时间不该占据视线）。内容保持挂载，切换不重置内部查询状态。
  */
@@ -19,7 +19,7 @@ export function WatchlistInsightsPanel({ children }: { children: React.ReactNode
           <div className="text-sm font-medium">诊断面板</div>
           <Switch checked={open} onCheckedChange={setOpen} aria-label="Toggle insights panel" />
         </div>
-        <div className="text-[11px] text-[var(--k-muted)]">交易期望值 · 漏斗转化率 · 导入调试</div>
+        <div className="text-[11px] text-[var(--k-muted)]">交易期望值 · 策略池变动（S-3 / 星舰）</div>
       </div>
       <div className={open ? 'mt-4 space-y-4' : 'hidden'}>{children}</div>
     </section>

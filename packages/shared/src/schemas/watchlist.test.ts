@@ -30,6 +30,21 @@ describe('WatchlistRegistryItemSchema', () => {
     });
     expect(item.source).toBe('screener_fallback');
   });
+
+  it('accepts the OPT-209 strategy-pool sources', () => {
+    expect(
+      WatchlistRegistryItemSchema.parse({ symbol: 'CN:600001', source: 's3' }).source,
+    ).toBe('s3');
+    expect(
+      WatchlistRegistryItemSchema.parse({ symbol: 'CN:300906', source: 'satellite' }).source,
+    ).toBe('satellite');
+  });
+
+  it('rejects unknown sources', () => {
+    expect(() =>
+      WatchlistRegistryItemSchema.parse({ symbol: 'CN:600001', source: 'tv_screener_legacy' }),
+    ).toThrow();
+  });
 });
 
 describe('WatchlistItemSchema', () => {

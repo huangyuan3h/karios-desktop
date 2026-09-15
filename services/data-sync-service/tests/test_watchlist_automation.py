@@ -428,92 +428,98 @@ def test_record_score_snapshots_returns_rows(monkeypatch) -> None:
     assert rows == fixture_rows
 
 
-def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
-    compute_calls: list[tuple[list[str], bool]] = []
-
-    def fake_compute(symbols: list[str], realtime: bool = False) -> list[dict]:
-        compute_calls.append((symbols, realtime))
-        return [
-            {
-                "symbol": "CN:600000",
-                "asOfDate": "2026-06-18",
-                "score": 20.0,
-                "values": {"emIndustry": "Coal"},
-            },
-            {
-                "symbol": "CN:600001",
-                "asOfDate": "2026-06-18",
-                "score": 85.0,
-                "values": {"emIndustry": "Tech"},
-            },
-        ]
-
-    monkeypatch.setattr(wa, "compute_trendok_for_symbols", fake_compute)
+def _patch_pool_run_seams(
+    monkeypatch,
+    *,
+    registry=None,
+    s3=None,
+    sat=None,
+    run_id: str = "run-p",
+):
+    """Shared OPT-209 pool-run seams (no DB, no replay, no catalyst)."""
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(
-        wa,
-        "list_registry",
-        lambda: [
-            {"symbol": "CN:600000", "source": "manual"},
-            {"symbol": "CN:600001", "source": "manual"},
-        ],
-    )
-    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
-    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-1")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
-    monkeypatch.setattr(
-        wa,
-        "get_last_n_trading_dates",
-        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
-    )
-    monkeypatch.setattr(
-        wa,
-        "load_catalyst_window",
-        lambda add_limit=200: (
-            {
-                "items": [
-                    {
-                        "symbol": "600000",
-                        "name": "Weak Alpha",
-                        "catalystScore": 90.0,
-                        "articles": [{"catalystGrade": "A"}],
-                    }
-                ],
-                "total": 1,
-            },
-            set(),
-        ),
-    )
-    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
-    monkeypatch.setattr(
-        wa,
-        "build_research_catalyst_payload",
-        lambda limit=100: {"stalenessBasis": "test", "maxAgeDays": 14, "total": 0, "items": []},
-    )
-
-    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
-        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
-
-    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
-    # 2026-08-12: the CN universe is the whole market (daily table) —
-    # isolate the universe seam so this test asserts its own small pool.
+    monkeypatch.setattr(wa, "list_registry", lambda: list(registry or []))
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows or []))
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: run_id)
+    monkeypatch.setattr(wa, "get_last_n_trading_dates", lambda n, end=None: [])
     monkeypatch.setattr(
         wa,
         "_score_universe_symbols",
         lambda: (["CN:600000", "CN:600001"], [], []),
     )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
+    s3_items = (
+        s3
+        if s3 is not None
+        else [
+            {
+                "symbol": "CN:600001",
+                "source": wa.SOURCE_S3,
+                "score": 90.0,
+                "rs": 0.9,
+                "ts_code": "600001.SH",
+            }
+        ]
+    )
+    sat_items = (
+        sat
+        if sat is not None
+        else [
+            {
+                "symbol": "CN:300906",
+                "source": wa.SOURCE_SATELLITE,
+                "ts_code": "300906.SZ",
+                "entryDate": "2026-06-18",
+            }
+        ]
+    )
+    monkeypatch.setattr(wa, "compute_s3_pool", lambda day, max_positions=None: list(s3_items))
+    monkeypatch.setattr(wa, "compute_satellite_pool", lambda day: list(sat_items))
+    applied: dict = {}
+    monkeypatch.setattr(
+        wa,
+        "apply_pool_run",
+        lambda **kw: (
+            applied.update(kw),
+            {
+                "added": len(kw.get("pool_add") or []),
+                "removed": len(kw.get("remove_items") or []),
+                "registry": 3,
+            },
+        )[1],
+    )
+    return applied
+
+
+def test_run_watchlist_automation_pool_run_and_apply(monkeypatch) -> None:
+    """OPT-209: one trendok pass, S-3 + 星舰 additions, auto-applied."""
+    compute_calls: list[tuple[list[str], bool]] = []
+
+    def fake_compute(symbols: list[str], realtime: bool = False) -> list[dict]:
+        compute_calls.append((symbols, realtime))
+        return [
+            {"symbol": "CN:600000", "asOfDate": "2026-06-18", "score": 20.0, "values": {}},
+            {"symbol": "CN:600001", "asOfDate": "2026-06-18", "score": 85.0, "values": {}},
+        ]
+
+    applied = _patch_pool_run_seams(monkeypatch, run_id="run-1")
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", fake_compute)
 
     result = wa.run_watchlist_automation(trigger="manual", force=True)
 
     assert len(compute_calls) == 1
     assert compute_calls[0][0] == ["CN:600000", "CN:600001"]
-    assert compute_calls[0][1] is False
     assert result["meta"]["scoreSnapshots"] == 2
-    assert result["meta"]["alphaSSymbols"] == 0
-    assert result["meta"]["alphaRejected"]["no_s_grade"] == 1
-    assert result["alphaAdd"] == []
-    assert "remove" in result
-    assert isinstance(result["remove"], list)
+    assert result["meta"]["alphaChannel"] == "off"
+    assert result["meta"]["s3PoolSize"] == 1
+    assert result["meta"]["satellitePoolSize"] == 1
+    assert result["meta"]["poolAdded"] == {"s3": 1, "satellite": 1}
+    assert result["meta"]["poolRemoved"] == {"s3": 0, "satellite": 0}
+    assert [x["symbol"] for x in result["alphaAdd"]] == ["CN:600001", "CN:300906"]
+    assert result["applied"] is True
+    assert applied["run_id"] == "run-1"
+    assert applied["satellite_symbols_today"] == {"CN:300906"}
 
 
 def test_list_fallback_universe_skips_defense_and_caps(monkeypatch) -> None:
@@ -644,78 +650,22 @@ def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
     assert captured[0][1]["trade_date"] == wa._shanghai_today_iso()
 
 
-def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
-    monkeypatch.setenv("RESEARCH_CHANNEL_ENABLED", "1")
-    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
-    monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "list_registry", lambda: [])
-    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
-    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
-    monkeypatch.setattr(
-        wa,
-        "get_last_n_trading_dates",
-        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
-    )
-    monkeypatch.setattr(
-        wa,
-        "load_catalyst_window",
-        lambda add_limit=200: ({"items": [], "total": 0}, set()),
-    )
-    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
-    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
+def test_run_watchlist_automation_alpha_channel_off(monkeypatch) -> None:
+    """OPT-209: the Alpha/研报 nomination channel is retired."""
 
-    research_calls: dict = {}
+    def boom(*a, **kw):
+        raise AssertionError("retired channel must not load")
 
-    def fake_research(limit: int = 100) -> dict:
-        research_calls["limit"] = limit
-        return {
-            "stalenessBasis": "test",
-            "maxAgeDays": 14,
-            "total": 1,
-            "items": [
-                {
-                    "symbol": "CN:600999",
-                    "name": "Research Pick",
-                    "catalystScore": 88.0,
-                    "industryName": "银行",
-                    "articles": [{"catalystGrade": "S"}],
-                }
-            ],
-        }
-
-    monkeypatch.setattr(wa, "build_research_catalyst_payload", fake_research)
-
-    added_calls: dict = {}
-
-    def fake_additions(
-        catalyst_payload=None,
-        industry_by_symbol=None,
-        top_industries=None,
-        score_min=None,
-        limit=200,
-    ) -> tuple[list[dict], dict[str, int]]:
-        added_calls["score_min"] = score_min
-        return (
-            [
-                {
-                    "symbol": "CN:600999",
-                    "name": "Research Pick",
-                    "catalystScore": 88.0,
-                    "channel": "research",
-                    "source": "ALPHA",
-                }
-            ],
-            {},
-        )
-
-    monkeypatch.setattr(wa, "compute_alpha_additions", fake_additions)
+    applied = _patch_pool_run_seams(monkeypatch, s3=[], sat=[])
+    monkeypatch.setattr(wa, "load_catalyst_window", boom)
+    monkeypatch.setattr(wa, "compute_alpha_additions", boom)
 
     result = wa.run_watchlist_automation(trigger="scheduled", force=True)
     assert result["skipped"] is False
-    assert research_calls["limit"] == 100
-    assert result["meta"]["researchCandidates"] == 1
-    assert result["meta"]["researchRejected"] == {}
+    assert result["meta"]["alphaChannel"] == "off"
+    assert "alphaCandidates" not in result["meta"]
+    assert result["alphaAdd"] == []
+    assert applied["pool_add"] == []
 
 
 def test_normalize_trade_date_variants() -> None:
@@ -849,36 +799,17 @@ def test_run_watchlist_automation_skipped_path(monkeypatch) -> None:
 
 def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> None:
     """Industry sync raising must land in meta, not crash the run."""
-    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
-    monkeypatch.setattr(
-        wa, "sync_cn_industry_fund_flow", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
-    monkeypatch.setattr(wa, "list_registry", lambda: [])
-    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
-    monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-2")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
+    applied = _patch_pool_run_seams(monkeypatch, s3=[], sat=[], run_id="run-2")
     monkeypatch.setattr(
         wa,
-        "get_last_n_trading_dates",
-        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
-    )
-    monkeypatch.setattr(
-        wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())
-    )
-    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
-    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
-    monkeypatch.setattr(
-        wa, "build_research_catalyst_payload", lambda limit=100: {"items": [], "total": 0}
-    )
-    monkeypatch.setattr(
-        wa,
-        "compute_alpha_additions",
-        lambda **kw: ([], {}),
+        "sync_cn_industry_fund_flow",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
     out = wa.run_watchlist_automation(trigger="scheduled", force=True)
     assert out["skipped"] is False
     assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
+    assert applied["run_id"] == "run-2"
 
 
 def test_run_intraday_scores_realtime_refresh(monkeypatch) -> None:
@@ -979,34 +910,3 @@ def test_is_cn_b_share() -> None:
     assert wa._is_cn_b_share("") is False
 
 
-def test_run_watchlist_automation_research_channel_paused_by_default(monkeypatch) -> None:
-    """TIP-012 paused 2026-09-07: no env flag -> no research payload build."""
-    monkeypatch.delenv("RESEARCH_CHANNEL_ENABLED", raising=False)
-    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
-    monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "list_registry", lambda: [])
-    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
-    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
-    monkeypatch.setattr(
-        wa,
-        "get_last_n_trading_dates",
-        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
-    )
-    monkeypatch.setattr(
-        wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())
-    )
-    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
-    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
-
-    def boom(limit: int = 100) -> dict:
-        raise AssertionError("research payload must not build while paused")
-
-    monkeypatch.setattr(wa, "build_research_catalyst_payload", boom)
-    monkeypatch.setattr(wa, "compute_alpha_additions", lambda **kwargs: ([], {}))
-
-    result = wa.run_watchlist_automation(trigger="scheduled", force=True)
-    assert result["skipped"] is False
-    assert result["meta"]["researchCandidates"] == 0
-    assert result["meta"]["researchRejected"] == {"research_channel_paused": 1}
-    assert all(a.get("channel") != "research" for a in result["alphaAdd"])
