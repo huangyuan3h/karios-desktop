@@ -443,7 +443,7 @@ describe('BacktestPage', () => {
     expect((await screen.findAllByText(/停车 100%/)).length).toBeGreaterThanOrEqual(1);
     expect((await screen.findAllByText(/停车 50%/)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/停车均值 75%/)).toBeDefined();
-    expect(await screen.findByText(/v2 卫星 \+ 闲置现金停 ETF 套筒/)).toBeDefined();
+    expect(await screen.findByText(/v2：卫星 \+ 闲钱停 ETF/)).toBeDefined();
   });
 
   it('paints satellite timeline blocks by slot occupancy, not as gray parking', async () => {
@@ -471,7 +471,7 @@ describe('BacktestPage', () => {
   it('shows the harbor timeline on compare tab', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
-    expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
+    expect(await screen.findByText(/港湾 · 选强股票 \+ 闲钱停 ETF 停车场/)).toBeDefined();
     expect(await screen.findByText(/资金流全景/)).toBeDefined();
     expect((await screen.findAllByText('港湾NAV%')).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/滚动过去一年/).length).toBeGreaterThanOrEqual(1);
@@ -498,7 +498,7 @@ describe('BacktestPage', () => {
   it('renders auto-segmented holding blocks and per-day hover details', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
-    await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/);
+    await screen.findByText(/港湾 · 选强股票 \+ 闲钱停 ETF 停车场/);
     expect(await screen.findByTestId('harbor-seg-2026-08-01')).toBeDefined();
     expect(screen.getByTestId('harbor-seg-2026-08-05')).toBeDefined();
     expect(screen.getAllByText(/股票 2天/).length).toBeGreaterThanOrEqual(1);
@@ -522,7 +522,7 @@ describe('BacktestPage', () => {
   it('switches timeline query to the OOS2 gate window', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
-    expect(await screen.findByText(/港湾 · S-3 核心 \+ 闲置现金 ETF 停车场/)).toBeDefined();
+    expect(await screen.findByText(/港湾 · 选强股票 \+ 闲钱停 ETF 停车场/)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /三窗 · OOS2/ }));
     expect(
       apiGetJson.mock.calls.some((c: unknown[]) => String(c[0]).includes('start=2024-08-01')),

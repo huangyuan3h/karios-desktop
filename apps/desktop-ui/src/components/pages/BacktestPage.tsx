@@ -701,23 +701,23 @@ function TimelineCard({
   }, [q.data]);
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
   const strategySubtitle: Record<TimelineStrategy, string> = {
-    harbor: 'S-3 核心 + 闲置现金 ETF 停车场',
-    homeport: 'S-3 核心 + 停车场 × 风险预算 50/50',
-    starport: '母港 × 卫星 1/3 曝露',
-    starship: 'v2 卫星 + 闲置现金停 ETF 套筒（前置未满）',
-    twin_star: '港湾核心 × 卫星 50/50',
+    harbor: '选强股票 + 闲钱停 ETF 停车场',
+    homeport: '港湾一半 + 风险预算一半（回撤小、收益也小）',
+    starport: '母港 + 一点卫星（最多 1/3）· 全家最稳',
+    starship: 'v2：卫星 + 闲钱停 ETF（收益高、回撤也大）',
+    twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
     harbor:
-      '港湾核心 = S-3 择强（mom_compare+trail8）· 闲置现金停进核心 ETF（mom60+MA200 argmax）·\n            与 Watchlist「今日下单」同一冻结配方',
+      '港湾 = 买 A 股最强的一批股票 + 没买股票的钱去买趋势最好的一个 ETF（黄金/原油/纳指/国债里挑）。和 Watchlist「今日下单」是同一套配方。',
     homeport:
-      '母港 = 港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）· 展示口径 · B16/B17 已 REJECT',
+      '母港 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。回撤比港湾小一半，收益也差不多小一半。',
     starport:
-      '星港 = 母港 × 卫星 1/3 曝露（有仓日 core + w×(sat−core)）· 展示口径 · H-B3-SAT PASS（K1 余量薄，稳健 0.15–0.25）· 不进 Live',
+      '星港 = 母港 + 一点卫星（卫星最多占 1/3 的钱）。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
     starship:
-      '星舰 v2 = 卫星（amp_1430 + gate_1430 + 14:30 买卖）+ 闲置现金因果停放 ETF 停车场（mom60+MA200 argmax、trail8、5bps/边）· 真实现金权重（固定 25% clip）· long +884.9 / MDD −28.5 / SR 2.09（15bps 仍 +829.5）· 展示/回测口径 · 不进 Live（前置 = paper 3/20 + 用户授权）· 卫星腿执行审计 ✅（90bps +310%、容量 ≤5M）',
+      '星舰 v2 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 没出手时的现金（平均 84%）去买趋势最好的 ETF。长期 +885%，但最大回撤 −28.5%（跌幅全部来自停车资产）。不进实盘（还差 paper 3/20 + 授权）。',
     twin_star:
-      '双子星 = 港湾 × 卫星 50/50（无仓日 100% 港湾）· 并行对照档（保留不退役）· valid 窗弱于港湾（K1/K2 未过）· 不进 Live',
+      '双子星 = 港湾一半 + 卫星一半。行情好的年份冲得最猛（2025 +67%），卫星不行的年份很平庸。保留作对照观察，不进实盘。',
   };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const satMode = rows.some((r) => isSatelliteRow(r));

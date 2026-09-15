@@ -12,10 +12,10 @@ const WINDOW_ROWS: {
   label: string;
   role: string;
 }[] = [
-  { key: 'OOS2', label: 'OOS2', role: '三窗' },
-  { key: 'train', label: 'train', role: '三窗' },
-  { key: 'valid', label: 'valid', role: '三窗' },
-  { key: 'long', label: 'long', role: '长窗' },
+  { key: 'OOS2', label: 'OOS2', role: '第 1 段' },
+  { key: 'train', label: 'train', role: '第 2 段' },
+  { key: 'valid', label: 'valid', role: '第 3 段' },
+  { key: 'long', label: 'long', role: '全周期 5 年' },
 ];
 
 function fmtPct(v: number): string {
@@ -115,10 +115,10 @@ export function StrategyCatalogPanel({
             <thead className="bg-[var(--k-surface)] text-[10px] text-[var(--k-muted)]">
               <tr>
                 <th className="py-1 pr-2 pl-2">窗口</th>
-                <th className="py-1 pr-2">收益</th>
-                <th className="py-1 pr-2">CAGR</th>
+                <th className="py-1 pr-2">总收益</th>
+                <th className="py-1 pr-2">年化</th>
                 <th className="py-1 pr-2">最大回撤</th>
-                <th className="py-1 pr-2">Sharpe</th>
+                <th className="py-1 pr-2">性价比</th>
               </tr>
             </thead>
             <tbody>
@@ -150,7 +150,7 @@ export function StrategyCatalogPanel({
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2">
-            <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">优</div>
+            <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">优点</div>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[var(--k-muted)]">
               {selected.pros.map((p) => (
                 <li key={p}>{p}</li>
@@ -158,7 +158,7 @@ export function StrategyCatalogPanel({
             </ul>
           </div>
           <div className="rounded border border-red-500/30 bg-red-500/5 p-2">
-            <div className="text-[11px] font-medium text-red-700 dark:text-red-300">劣</div>
+            <div className="text-[11px] font-medium text-red-700 dark:text-red-300">注意</div>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[var(--k-muted)]">
               {selected.cons.map((c) => (
                 <li key={c}>{c}</li>
@@ -169,7 +169,7 @@ export function StrategyCatalogPanel({
 
         {selected.regime ? (
           <div className="mt-3 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-2">
-            <div className="text-[11px] font-medium">市场适配（只描述 · 不作闸门）</div>
+            <div className="text-[11px] font-medium">什么行情下好用（只是记录，不是买卖开关）</div>
             <div className="mt-1 grid gap-2 md:grid-cols-2">
               <div>
                 <div className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
