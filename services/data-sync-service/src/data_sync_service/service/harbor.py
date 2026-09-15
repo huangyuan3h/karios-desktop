@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import bisect
 import csv
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 LOOKBACK = 60
 MA_WINDOW = 200
@@ -34,8 +37,54 @@ MULTI_TS: dict[str, str] = {
 NASDAQ_ALIASES = ("513110.SH", "513100.SH")
 
 
+def merge_recent_db_closes(
+    out: dict[str, dict[str, float]],
+    wanted: set[str] | tuple[str, ...] | None = None,
+) -> dict[str, dict[str, float]]:
+    """Append DB ETF closes newer than each series' last research-panel date.
+
+    ``data/etf/etf_daily.csv`` is a monthly snapshot (full sync on the 1st),
+    while ``sleeve_etf_daily_sync`` (weekdays 17:25) writes the same ts_codes
+    into ``daily``. The frozen history stays untouched — only dates after each
+    series' last CSV date are appended, ``close × adj_factor`` (the CSV
+    ``close_adj`` convention). Failures are logged and ignored: this is a
+    display-freshness path, never a gate.
+    """
+    want = sorted({str(t) for t in (wanted or ()) if t})
+    if not want:
+        return out
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                for ts in want:
+                    last = max((out.get(ts) or {}), default="")
+                    cur.execute(
+                        """
+                        SELECT trade_date, close * COALESCE(adj_factor, 1)
+                        FROM daily
+                        WHERE ts_code = %s AND trade_date > %s
+                        ORDER BY trade_date
+                        """,
+                        (ts, last or "1900-01-01"),
+                    )
+                    for day, close in cur.fetchall():
+                        try:
+                            c = float(close)
+                        except (TypeError, ValueError):
+                            continue
+                        if c <= 0:
+                            continue
+                        d = day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)
+                        out.setdefault(ts, {})[d] = c
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("merge_recent_db_closes failed: %s", exc)
+    return out
+
+
 def load_etf_closes() -> dict[str, dict[str, float]]:
-    """Adjusted ETF closes from the research panel; fall back to `daily`."""
+    """Adjusted ETF closes from the research panel + the fresh DB tail."""
     wanted = {*MULTI_TS.values(), *NASDAQ_ALIASES}
     csv_path = Path(__file__).resolve().parents[3] / "data" / "etf" / "etf_daily.csv"
     out: dict[str, dict[str, float]] = {}
@@ -54,12 +103,12 @@ def load_etf_closes() -> dict[str, dict[str, float]]:
                 if c > 0:
                     out.setdefault(ts, {})[d] = c
     if out:
-        return out
+        return merge_recent_db_closes(out, wanted)
     from data_sync_service.service.pick_strong_track import fetch_etf_closes
 
     for key, ts in MULTI_TS.items():
         out[ts] = fetch_etf_closes().get(key) or {}
-    return out
+    return merge_recent_db_closes(out, wanted)
 
 
 NAMES: dict[str, str] = {

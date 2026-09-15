@@ -220,6 +220,7 @@ class TestBuildSgapTimeline:
         assert exit_row["satPositions"] == 0
         assert exit_row["satActive"] is True
         assert exit_row["satSlots"] == 1
+        assert exit_row["satCapacity"] == sbt.MAX_POS
         # open book empty after body exit (and window ends with no new fill)
         assert r.get("openPositions") == [] or all(
             p["ts"] != "A.SH" for p in r.get("openPositions") or []

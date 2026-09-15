@@ -324,6 +324,8 @@ export type SleeveRecon = {
   userSells: string[];
   userAlignment?: 'idle' | 'aligned' | 'pending' | 'missing';
   userExecDate?: string | null;
+  /** Next session a decided exit fills into (Harbor sells at T+1 open). */
+  exitExecDate?: string | null;
 };
 
 export type SleeveReconResponse = { ok: boolean; recon: SleeveRecon };
@@ -333,6 +335,9 @@ export function useSleeveReconQuery(enabled = true) {
     queryKey: ['backtest', 'sleeve-recon'],
     queryFn: () => apiGetJson<SleeveReconResponse>('/api/backtest/sleeve-recon/latest'),
     staleTime: 60_000,
+    // Real-time tracking: the panel compares the strategy, the paper mirror and
+    // the user's recorded trades, so it must refresh during the session.
+    refetchInterval: 60_000,
     enabled,
   });
 }
@@ -515,6 +520,8 @@ export type TimelineRow = {
   satActive?: boolean | null;
   satPositions?: number;
   satSlots?: number;
+  /** Slot capacity of the satellite book (MAX_POS, 4). */
+  satCapacity?: number;
   filledToday?: number;
   idleSlots?: number;
   gateOpen?: boolean | null;

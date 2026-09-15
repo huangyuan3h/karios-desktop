@@ -15,6 +15,8 @@ from pathlib import Path
 from statistics import pstdev
 from typing import Any
 
+from data_sync_service.service.harbor import merge_recent_db_closes
+
 RISK_UNIVERSE: tuple[str, ...] = (
     "510300.SH",
     "510500.SH",
@@ -30,7 +32,7 @@ STRATEGY_LABEL = "母港"
 
 
 def load_risk_closes() -> dict[str, dict[str, float]]:
-    """Adjusted closes for the B3 universe from the research ETF panel."""
+    """Adjusted closes for the B3 universe (research panel + fresh DB tail)."""
     csv_path = Path(__file__).resolve().parents[3] / "data" / "etf" / "etf_daily.csv"
     wanted = set(RISK_UNIVERSE)
     out: dict[str, dict[str, float]] = {}
@@ -48,7 +50,7 @@ def load_risk_closes() -> dict[str, dict[str, float]]:
                     continue
                 if c > 0:
                     out.setdefault(ts, {})[d] = c
-    return out
+    return merge_recent_db_closes(out, wanted)
 
 
 def inverse_vol_weights(vol: dict[str, float]) -> dict[str, float]:

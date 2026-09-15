@@ -240,7 +240,12 @@ describe('PortfolioHealthCard (harbor)', () => {
     });
     renderCard();
     expect(await screen.findByText(/核心腿对账 · 2026-09-01/)).toBeDefined();
-    expect(screen.getByText(/你待执行（次日开盘）/)).toBeDefined();
+    expect(screen.getAllByText(/你的账户/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/待执行 · 下一交易日 开盘买 CN:600519/),
+    ).toBeDefined();
+    expect(screen.getByText(/镜像盘/)).toBeDefined();
+    expect(screen.getByText(/缺卖 513110/)).toBeDefined();
   });
 
   it('shows a harbor error banner when the health endpoint fails', async () => {

@@ -90,7 +90,7 @@ def blend_overlay_timeline(
         sat_row = sat_by_day.get(str(r.get("date"))) or {}
         r["satNav"] = round(sat_nav[i], 6)
         r["satActive"] = bool(sat_row.get("satActive"))
-        for key in ("satPositions", "satSlots", "filledToday", "idleSlots", "gateOpen"):
+        for key in ("satPositions", "satSlots", "satCapacity", "filledToday", "idleSlots", "gateOpen"):
             if key in sat_row:
                 r[key] = sat_row[key]
     out["summary"] = {

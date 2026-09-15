@@ -1128,6 +1128,7 @@ def replay_sgap_from_context(
                 "skipNoPrint1430": no_print_1430,
                 "filledToday": filled_today,
                 "idleSlots": idle_slots,
+                "satCapacity": max_pos,
                 "gateOpen": gate_open,
             }
         )
@@ -1345,6 +1346,7 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
                 "skipT1Count": r.get("skipT1Count"),
                 "filledToday": r.get("filledToday"),
                 "idleSlots": r.get("idleSlots"),
+                "satCapacity": int(r.get("satCapacity") or MAX_POS),
                 "gateOpen": r.get("gateOpen"),
             }
         )

@@ -17,11 +17,16 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
   }
   const active = row.satActive === true;
   const pos = row.satPositions ?? 0;
-  const slots = row.satSlots ?? 0;
+  // `satSlots` counts slots in play today (open + closed), which exceeds the
+  // capacity on recycle days — the label needs the capacity, not that count.
+  const capacity = row.satCapacity ?? pos + (row.idleSlots ?? 0);
+  const churn =
+    typeof row.satSlots === 'number' ? Math.max(0, row.satSlots - pos) : 0;
+  const gateLabel = row.gateOpen === true ? '开' : row.gateOpen === false ? '关' : '—';
   const holdingLabel = active
     ? pos > 0
-      ? `有仓 ${pos}/${slots} 槽`
-      : `今日有成交（现持 0/${slots} 槽）`
+      ? `有仓 ${pos}/${capacity} 槽`
+      : `今日有成交（现持 0/${capacity} 槽）`
     : '空仓';
   return (
     <div
@@ -41,8 +46,11 @@ export function SatelliteLegBlock({ row }: { row?: TimelineRow | null }) {
           {holdingLabel}
         </span>
         <span className="text-[var(--k-muted)]">
-          最近交易日 {row.date} · 闸 {row.gateOpen === false ? '关' : '开'}
-          {typeof row.filledToday === 'number' ? ` · 当日成交 ${row.filledToday}` : ''}
+          最近交易日 {row.date} · 闸 {gateLabel}
+          {typeof row.filledToday === 'number' && row.filledToday > 0
+            ? ` · 当日成交 ${row.filledToday}`
+            : ''}
+          {churn > 0 ? ` · 今日换 ${churn}` : ''}
         </span>
       </div>
       <div className="mt-1 text-[var(--k-muted)]">

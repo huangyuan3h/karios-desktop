@@ -149,7 +149,30 @@ def test_sell_recorded_ok_from_closed_leg_prestate() -> None:
     assert recon["ok"] is True
     assert recon["expectedSells"] == [TEST_SYMBOL]
     assert recon["paperSellsToday"] == [TEST_SYMBOL]
-    assert recon["userAlignment"] == "missing"  # engine sold today, user did not
+    # SELL fills next open (Fri after Thu): user pending, not missing.
+    assert recon["userAlignment"] == "pending"
+    assert recon["exitExecDate"] == "2026-08-21"
+
+
+def test_sell_aligned_when_user_books_next_open() -> None:
+    recon = _run_recon(
+        open_rows=[],
+        closed_rows=[_closed_row(day="2026-08-21")],
+        multi=_multi(action="SELL_TO_REPO"),
+        user_rows=[_user_row(TEST_SYMBOL, "SELL", "2026-08-21")],
+    )
+    assert recon["userAlignment"] == "aligned"
+    assert recon["userSells"] == [TEST_SYMBOL]
+
+
+def test_sell_aligned_when_user_books_same_day() -> None:
+    recon = _run_recon(
+        open_rows=[],
+        closed_rows=[_closed_row(day="2026-08-21")],
+        multi=_multi(action="SELL_TO_REPO"),
+        user_rows=[_user_row(TEST_SYMBOL, "SELL", DAY)],
+    )
+    assert recon["userAlignment"] == "aligned"
 
 
 def test_leg_sold_at_today_open_is_not_prestate() -> None:

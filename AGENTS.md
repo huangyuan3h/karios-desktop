@@ -132,6 +132,16 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 
 ---
 
+## ETF research panel freshness (OPT-203)
+
+- `data/etf/etf_daily.csv` is a **monthly** snapshot (full ETF sync on the 1st). The daily
+  `sleeve_etf_daily_sync` (weekdays 17:25) writes the 5 sleeve ETFs into `daily` only.
+- Display/research code must go through `harbor.load_etf_closes()` / `homeport.load_risk_closes()`:
+  they merge the newer `daily` tail (`merge_recent_db_closes`, `close × adj_factor`, only dates
+  after each series' CSV end; frozen history stays byte-identical). Reading the CSV directly
+  makes harbor-family timelines and the B3 card lag up to a month (bug found 2026-09-15).
+- Windows ending at/before the CSV's last date are unaffected — frozen backtests reproduce.
+
 ## Frontend data fetching (OPT-012)
 
 - Polling pages use **`@tanstack/react-query`** via `lib/queries/*` hooks (`useDashboardSummaryQuery`, `useWatchlistMarketQuery`, `useMacroSnapshotQuery`, etc.).

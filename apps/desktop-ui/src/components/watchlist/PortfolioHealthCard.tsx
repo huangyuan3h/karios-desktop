@@ -507,6 +507,12 @@ function ReconBlock({
         <span className="tabular-nums">
           回测应持 {recon.expected} · 实持 {recon.actual} · 缺 {recon.missing} · 多 {recon.extra}
         </span>
+        {typeof recon.alignedReturnDiffPct === 'number' ? (
+          <span className="text-[10px] text-[var(--k-muted)]">
+            对齐票中位差 {recon.alignedReturnDiffPct > 0 ? '+' : ''}
+            {recon.alignedReturnDiffPct.toFixed(1)}pt（我 − 回测）
+          </span>
+        ) : null}
         {hasGap && (
           <button
             type="button"
@@ -568,10 +574,17 @@ function ReconBlock({
   );
 }
 
-/** OPT-151: core-leg (multi-asset sleeve) paper expected-vs-actual banner.
- * Paper-level mismatch = 🔴; the user side is informational (manual execution
- * may lag to the next open). */
-function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
+/** OPT-151/OPT-203: core-leg tracking — strategy vs paper mirror vs your book.
+ * Refreshes every 60s and spells out the exact next action when you are behind. */
+function SleeveReconBlock({
+  recon,
+  updatedAt,
+  holdings,
+}: {
+  recon: SleeveRecon | undefined;
+  updatedAt?: number;
+  holdings?: PortfolioHealthResponse['multiAssetHoldings'];
+}) {
   const [expanded, setExpanded] = React.useState(false);
   if (!recon) return null;
   if (recon.error) {
@@ -581,18 +594,47 @@ function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
       </div>
     );
   }
+  const pretty = (s: string) => s.replace(/^ETF:/, '');
   const hasGap =
     recon.missedBuys.length > 0 || recon.missedSells.length > 0 || recon.extraOpens.length > 0;
-  const userFlag =
-    recon.userAlignment === 'aligned'
-      ? '· 你已执行'
-      : recon.userAlignment === 'pending'
-        ? '· 你待执行（次日开盘）'
-        : recon.userAlignment === 'missing'
-          ? '· 你未执行'
-          : '';
-  const actionable = recon.expectedBuys.length > 0 || recon.expectedSells.length > 0;
-  const pretty = (s: string) => s.replace('ETF:', '');
+  const expected = recon.expectedBuys.length > 0 || recon.expectedSells.length > 0;
+  const execDate = recon.expectedBuys.length > 0 ? recon.userExecDate : recon.exitExecDate;
+  const heldSyms = (holdings ?? []).map((h) => pretty(String(h.symbol ?? '')));
+  const targetSym = recon.pickSymbol ? pretty(recon.pickSymbol) : null;
+  const holdingRow = (holdings ?? []).find((h) => pretty(String(h.symbol ?? '')) === targetSym);
+  const targetMismatch = targetSym != null && heldSyms.length > 0 && !holdingRow;
+  const heldLabel = heldSyms.length
+    ? `实持 ${heldSyms.join(', ')}${
+        holdingRow?.positionPct != null ? ` ${holdingRow.positionPct}%` : ''
+      }`
+    : '实持 空仓';
+  const you = (() => {
+    if (!recon.decisionAvailable) return { tone: 'muted', text: '决策不可用，先不要手动操作' };
+    if (!expected) return { tone: 'muted', text: '无操作' };
+    if (recon.userAlignment === 'aligned') return { tone: 'ok', text: '✓ 已跟上' };
+    if (recon.userAlignment === 'pending') {
+      const buys = recon.expectedBuys.map(pretty).join(', ');
+      const sells = recon.expectedSells.map(pretty).join(', ');
+      const act = buys ? `买 ${buys}` : `卖 ${sells}`;
+      return { tone: 'warn', text: `待执行 · ${execDate ?? '下一交易日'} 开盘${act}` };
+    }
+    if (recon.userAlignment === 'missing') {
+      const buys = recon.expectedBuys.map(pretty).join(', ');
+      const sells = recon.expectedSells.map(pretty).join(', ');
+      const parts = [buys ? `应买 ${buys}` : '', sells ? `应卖 ${sells}` : ''].filter(Boolean);
+      return { tone: 'bad', text: `未执行 · ${parts.join(' / ') || '—'}` };
+    }
+    return null;
+  })();
+  const toneCls: Record<string, string> = {
+    ok: 'text-emerald-700 dark:text-emerald-300',
+    warn: 'text-amber-700 dark:text-amber-300',
+    bad: 'text-red-600 dark:text-red-400',
+    muted: 'text-[var(--k-muted)]',
+  };
+  const time = updatedAt
+    ? new Date(updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    : null;
   return (
     <div
       id="sleeve-recon"
@@ -611,57 +653,73 @@ function SleeveReconBlock({ recon }: { recon: SleeveRecon | undefined }) {
           {hasGap ? '🔴' : '✓'}
         </span>
         <span className="font-semibold">核心腿对账 · {recon.day}</span>
+        {time ? <span className="text-[10px] text-[var(--k-muted)]">实时 {time}</span> : null}
         <span className="tabular-nums text-[var(--k-muted)]">
           {recon.decisionAvailable
-            ? `应做 ${recon.label ?? recon.action ?? '—'}`
+            ? `策略 ${recon.label ?? recon.action ?? '—'}${
+                targetSym ? ` · 目标 ${targetSym}` : ''
+              } · ${heldLabel}`
             : '核心决策不可用（候选数据不足）'}
-          {userFlag ? ` ${userFlag}` : ''}
         </span>
-        {actionable || hasGap ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
-          >
-            {expanded ? '收起' : '细节'}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+        >
+          {expanded ? '收起' : '细节'}
+        </button>
       </div>
-      {expanded && (
-        <div className="mt-1.5 flex flex-col gap-1 border-t border-sky-500/20 pt-1.5 text-[11px]">
-          <div className="flex flex-wrap gap-x-3 tabular-nums text-[10px] text-[var(--k-muted)]">
-            <span>应买 {recon.expectedBuys.map(pretty).join(', ') || '—'}</span>
-            <span>应卖 {recon.expectedSells.map(pretty).join(', ') || '—'}</span>
-            <span>镜像已买 {recon.paperBuysToday.map(pretty).join(', ') || '—'}</span>
-            <span>镜像已卖 {recon.paperSellsToday.map(pretty).join(', ') || '—'}</span>
-          </div>
-          {hasGap && (
-            <div className="flex flex-col gap-0.5">
-              {recon.missedBuys.map((s) => (
-                <div key={`mb-${s}`} className="text-red-600 dark:text-red-400">
-                  <span className="font-mono text-[10px]">缺买</span> {pretty(s)}
-                </div>
-              ))}
-              {recon.missedSells.map((s) => (
-                <div key={`ms-${s}`} className="text-red-600 dark:text-red-400">
-                  <span className="font-mono text-[10px]">缺卖</span> {pretty(s)}
-                </div>
-              ))}
-              {recon.extraOpens.map((s) => (
-                <div key={`eo-${s}`} className="text-amber-700 dark:text-amber-300">
-                  <span className="font-mono text-[10px]">多开</span> {pretty(s)}
-                </div>
-              ))}
-              <div className="text-[10px] text-[var(--k-muted)]">
-                缺买/缺卖/多开 = paper 自动镜像账本与引擎的差异，非你的手动成交。
-              </div>
-            </div>
-          )}
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px]">
+        <span className="text-[10px] text-[var(--k-muted)]">镜像盘</span>
+        {hasGap ? (
+          <span className="text-red-600 dark:text-red-400">
+            🔴 偏离 ·{' '}
+            {recon.missedBuys.length ? `缺买 ${recon.missedBuys.map(pretty).join(', ')} ` : ''}
+            {recon.missedSells.length ? `缺卖 ${recon.missedSells.map(pretty).join(', ')} ` : ''}
+            {recon.extraOpens.length ? `多开 ${recon.extraOpens.map(pretty).join(', ')}` : ''}
+          </span>
+        ) : (
+          <span className="text-emerald-700 dark:text-emerald-300">✓ 已跟上策略</span>
+        )}
+      </div>
+      {you ? (
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px]">
+          <span className="text-[10px] text-[var(--k-muted)]">你的账户</span>
+          <span className={cn('font-medium', toneCls[you.tone])}>{you.text}</span>
+          {targetMismatch ? (
+            <span className="text-red-600 dark:text-red-400">· 实持与目标不一致，需换仓</span>
+          ) : null}
         </div>
-      )}
+      ) : null}
+      {expanded ? (
+        <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 border-t border-sky-500/20 pt-1.5 text-[10px] tabular-nums">
+          <span className="text-[var(--k-muted)]">策略</span>
+          <span>
+            应买 {recon.expectedBuys.map(pretty).join(', ') || '—'} · 应卖{' '}
+            {recon.expectedSells.map(pretty).join(', ') || '—'} · 闲置 {recon.idlePct ?? '—'}%
+          </span>
+          <span className="text-[var(--k-muted)]">镜像</span>
+          <span>
+            已买 {recon.paperBuysToday.map(pretty).join(', ') || '—'} · 已卖{' '}
+            {recon.paperSellsToday.map(pretty).join(', ') || '—'}
+            {hasGap ? ' · 有差异（见上）' : ' · 无差异'}
+          </span>
+          <span className="text-[var(--k-muted)]">你</span>
+          <span>
+            已买 {recon.userBuys.map(pretty).join(', ') || '—'} · 已卖{' '}
+            {recon.userSells.map(pretty).join(', ') || '—'} · 执行日{' '}
+            {recon.userExecDate ?? '—'} / {recon.exitExecDate ?? '—'}
+          </span>
+        </div>
+      ) : null}
+      <div className="mt-1 text-[10px] text-[var(--k-muted)]">
+        镜像差异 = 自动镜像账本与引擎的偏差；你的账户按你记录的成交判定（信号 T 收盘 → T+1
+        开盘执行，买卖同口径）。
+      </div>
     </div>
   );
 }
+
 
 function HealthPanel({
   title,
@@ -1139,7 +1197,11 @@ export function PortfolioHealthCard({
           onOpen={onOpenStock}
           coreDestinationReady={coreDestinationReady}
         />
-        <SleeveReconBlock recon={sleeveReconQ.data?.recon} />
+        <SleeveReconBlock
+          recon={sleeveReconQ.data?.recon}
+          updatedAt={sleeveReconQ.dataUpdatedAt}
+          holdings={data?.multiAssetHoldings}
+        />
         <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
           <button
             type="button"

@@ -190,11 +190,19 @@ def _user_alignment(
     user_rows: list[dict[str, Any]],
     user_exec_date: str | None,
     day: str,
+    *,
+    exit_exec_date: str | None = None,
 ) -> str:
-    """idle / aligned / pending / missing. Never flips ``ok``."""
+    """idle / aligned / pending / missing. Never flips ``ok``.
+
+    Both sides fill at the next open (signal T close -> T+1 open), so an
+    expected buy *or* sell stays ``pending`` until its exec session happens.
+    """
     if not expected_buys and not expected_sells:
         return "idle"
     buy_days = {day, user_exec_date or ""}
+    sell_days = {day, exit_exec_date or ""}
+    pending_exec = [d for d in (user_exec_date, exit_exec_date) if d and d > day]
 
     def _norm(sym: str) -> str:
         return str(sym or "").upper().replace("ETF:", "").replace(".SH", "")
@@ -207,12 +215,12 @@ def _user_alignment(
     user_sells = {
         _norm(r.get("symbol"))
         for r in user_rows
-        if str(r.get("side") or "") == "SELL" and _day_of(r.get("trade_date")) == day
+        if str(r.get("side") or "") == "SELL" and _day_of(r.get("trade_date")) in sell_days
     }
     normalized_buys = {_norm(s) for s in expected_buys}
     normalized_sells = {_norm(s) for s in expected_sells}
-    if user_exec_date and user_exec_date > day and normalized_buys - user_buys:
-        return "pending"  # BUY fills next open; the session has not happened
+    if pending_exec and (normalized_buys - user_buys or normalized_sells - user_sells):
+        return "pending"
     if normalized_buys - user_buys or normalized_sells - user_sells:
         return "missing"
     return "aligned"
@@ -325,10 +333,16 @@ def sleeve_paper_recon(*, day: str | None = None) -> dict[str, Any]:
         "userSells": sorted(
             str(r.get("symbol") or "")
             for r in user_rows
-            if str(r.get("side") or "") == "SELL" and _day_of(r.get("trade_date")) == day
+            if str(r.get("side") or "") == "SELL"
+            and _day_of(r.get("trade_date")) in {day, exit_exec_date or ""}
         ),
         "userAlignment": _user_alignment(
-            expected_buys, expected_sells, user_rows, user_exec_date, day
+            expected_buys,
+            expected_sells,
+            user_rows,
+            user_exec_date,
+            day,
+            exit_exec_date=exit_exec_date,
         ),
         "userExecDate": user_exec_date,
         "exitExecDate": exit_exec_date,
