@@ -309,6 +309,12 @@ beforeEach(() => {
         parkedNav: r.navSingle,
         parkedReturnPct: r.navSingleReturnPct,
         parkedWeight: i % 2 === 0 ? 1 : 0.5,
+        // 08-01 建仓 GOLD → 08-04 换仓 OIL → 08-05 回撤转现金 → 08-06 再建 GOLD
+        parkedPick: i === 0 ? 'GOLD' : i === 1 ? 'OIL' : i === 2 ? 'REPO' : 'GOLD',
+        parkedTs: i === 0 || i === 3 ? '518880.SH' : i === 1 ? '513350.SH' : 'GC001',
+        parkedSides: i === 1 ? 2 : 1,
+        parkedRetPct: i === 2 ? -0.9 : 0.8,
+        parkedTrail: i === 2,
         cashShare: i % 2 === 0 ? 1 : 0.5,
       }));
       return {
@@ -388,7 +394,7 @@ beforeEach(() => {
                   reason: 'entry',
                 },
                 {
-                  date: '2026-08-05',
+                  date: '2026-08-04',
                   kind: 'sell',
                   key: 'GOLD',
                   name: '华安黄金ETF',
@@ -397,7 +403,7 @@ beforeEach(() => {
                   reason: 'rotate',
                 },
                 {
-                  date: '2026-08-05',
+                  date: '2026-08-04',
                   kind: 'buy',
                   key: 'OIL',
                   name: '富国油气QDII',
@@ -406,7 +412,7 @@ beforeEach(() => {
                   reason: 'rotate',
                 },
                 {
-                  date: '2026-08-06',
+                  date: '2026-08-05',
                   kind: 'sell',
                   key: 'OIL',
                   name: '富国油气QDII',
@@ -415,7 +421,7 @@ beforeEach(() => {
                   reason: 'trail',
                 },
                 {
-                  date: '2026-08-07',
+                  date: '2026-08-06',
                   kind: 'buy',
                   key: 'GOLD',
                   name: '华安黄金ETF',
@@ -428,7 +434,7 @@ beforeEach(() => {
                 key: 'GOLD',
                 name: '华安黄金ETF',
                 ts: '518880.SH',
-                since: '2026-08-07',
+                since: '2026-08-06',
                 price: 5.31,
                 weight: 0.75,
               },
@@ -503,10 +509,25 @@ describe('BacktestPage', () => {
   it('labels the starship v2 parked-cash overlay', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
-    expect((await screen.findAllByText(/停车 100%/)).length).toBeGreaterThanOrEqual(1);
-    expect((await screen.findAllByText(/停车 50%/)).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/停车 黄金 100%/)).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/停车 原油 50%/)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/停车均值 75%/)).toBeDefined();
     expect(await screen.findByText(/v2：卫星 \+ 闲钱停 ETF/)).toBeDefined();
+  });
+
+  it('records the parking ETF per day (建仓/换仓/回撤转现金) in the starship day table', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    // 08-04 rotate: sell GOLD → buy OIL
+    expect(await screen.findByText(/停车 原油 50%（换仓）/)).toBeDefined();
+    // 08-05 trail exit: the sleeve sits in cash (REPO)
+    expect(await screen.findByText(/停车 现金 100%（回撤8%→现金）/)).toBeDefined();
+    // 08-06 re-entry, and the tooltip carries the sleeve trades + day return
+    const cell = await screen.findByText(/停车 黄金 50%（建仓）/);
+    const title = cell.getAttribute('title') ?? '';
+    expect(title).toContain('停车 黄金');
+    expect(title).toContain('代码 518880.SH');
+    expect(title).toContain('买黄金 518880.SH @5.3');
   });
 
   it('paints satellite timeline blocks by slot occupancy, not as gray parking', async () => {

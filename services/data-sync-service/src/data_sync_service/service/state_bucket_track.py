@@ -1537,6 +1537,7 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
     }
     parked = compose_parked_rows(rows, sleeve_ret_by_day, cost_bps=cost_bps)
     by_day = {r["date"]: r for r in parked["rows"]}
+    rec_by_day = {str(rec["date"]): rec for rec in recs}
     for r in rows:
         p = by_day.get(str(r["date"]))
         if not p:
@@ -1544,6 +1545,14 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
         r["parkedNav"] = p["parkedNav"]
         r["parkedReturnPct"] = p["parkedReturnPct"]
         r["parkedWeight"] = p["parkedWeight"]
+        # Per-day parking leg (which ETF the idle cash sits in + trade marker),
+        # so the day table records 买黄金/换原油 instead of only the weight %.
+        rec = rec_by_day.get(str(r["date"])) or {}
+        r["parkedPick"] = rec.get("pick_key")
+        r["parkedTs"] = rec.get("pick_ts")
+        r["parkedSides"] = int(rec.get("sides") or 0)
+        r["parkedRetPct"] = round(float(rec.get("parking_ret") or 0.0) * 100, 2)
+        r["parkedTrail"] = bool(rec.get("trail_exit"))
         r["navSingle"] = p["parkedNav"]
         r["navMulti"] = p["parkedNav"]
         r["navSingleReturnPct"] = p["parkedReturnPct"]

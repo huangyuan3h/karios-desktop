@@ -533,6 +533,13 @@ export type TimelineRow = {
   parkedNav?: number | null;
   parkedReturnPct?: number | null;
   parkedWeight?: number | null;
+  /** Per-day parking leg (which ETF) + trade marker, from the parking replay. */
+  parkedPick?: string | null;
+  parkedTs?: string | null;
+  parkedSides?: number | null;
+  /** The parking leg's own close-to-close return that day (before costs). */
+  parkedRetPct?: number | null;
+  parkedTrail?: boolean | null;
   /** Engine cash share at the close (fixed 25% clips -> grows as NAV compounds). */
   cashShare?: number | null;
 };

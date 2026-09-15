@@ -695,6 +695,16 @@ function TimelineCard({
   const openPositions = q.data?.openPositions ?? [];
   const parkedBlotter = q.data?.parkedBlotter ?? [];
   const parkedHeld = q.data?.parkedHeld ?? null;
+  const parkedEventsByDay = React.useMemo(() => {
+    const byDay = new Map<string, string[]>();
+    for (const e of q.data?.parkedBlotter ?? []) {
+      const label = `${e.kind === 'buy' ? '买' : '卖'}${PICK_LABELS[e.key] ?? e.key} ${e.ts}${
+        e.price != null ? ` @${e.price}` : ''
+      }`;
+      byDay.set(e.date, [...(byDay.get(e.date) ?? []), label]);
+    }
+    return byDay;
+  }, [q.data]);
   const satelliteFills = React.useMemo(() => {
     const byDay = new Map<string, string[]>();
     for (const b of q.data?.blotter ?? []) {
@@ -1099,6 +1109,33 @@ function TimelineCard({
                               ? 'GC001'
                               : (r.pick ?? 'REPO'));
                   const syms = holdsStock ? (r.stockSymbols ?? []).join(' ') || '—' : pickSym;
+                  const parkedKey = r.parkedPick;
+                  const parkedLabel =
+                    parkedKey && parkedKey !== 'REPO'
+                      ? (PICK_LABELS[parkedKey] ?? parkedKey)
+                      : parkedKey === 'REPO'
+                        ? '现金'
+                        : null;
+                  const parkedSides = r.parkedSides ?? 0;
+                  const parkedNote =
+                    parkedSides <= 0
+                      ? ''
+                      : r.parkedTrail
+                        ? '（回撤8%→现金）'
+                        : parkedSides >= 2
+                          ? '（换仓）'
+                          : parkedKey && parkedKey !== 'REPO'
+                            ? '（建仓）'
+                            : '（清仓转现金）';
+                  const parkedTip = [
+                    parkedKey ? `停车 ${parkedLabel}` : '',
+                    r.parkedTs ? `代码 ${r.parkedTs}` : '',
+                    r.parkedWeight != null ? `权重 ${Math.round(r.parkedWeight * 100)}%` : '',
+                    r.parkedRetPct != null ? `当日 ${r.parkedRetPct >= 0 ? '+' : ''}${r.parkedRetPct}%` : '',
+                    ...(parkedEventsByDay.get(r.date) ?? []),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
@@ -1117,14 +1154,19 @@ function TimelineCard({
                           {badge}
                         </span>
                       </td>
-                      <td className="py-1 pr-2 text-[var(--k-muted)]">
+                      <td
+                        className="py-1 pr-2 text-[var(--k-muted)]"
+                        title={sat ? parkedTip || undefined : undefined}
+                      >
                         {sat ? (
                           <>
                             卫星 {r.satPositions ?? 0}仓
                             {r.idleSlots ? ` · 空${r.idleSlots}槽` : ''}
                             {r.gateOpen === false ? ' · 闸关' : ''}
                             {r.parkedWeight != null && r.parkedWeight > 0
-                              ? ` · 停车 ${Math.round(r.parkedWeight * 100)}%`
+                              ? ` · 停车 ${parkedLabel ? `${parkedLabel} ` : ''}${Math.round(
+                                  r.parkedWeight * 100,
+                                )}%${parkedNote}`
                               : ''}
                           </>
                         ) : holdsStock ? (

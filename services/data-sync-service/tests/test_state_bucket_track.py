@@ -1140,6 +1140,8 @@ class TestStarshipParkedComposition:
                 {
                     "date": "2026-01-06",
                     "prev": "2026-01-05",
+                    "pick_key": "GOLD",
+                    "pick_ts": "518880.SH",
                     "want_key": "GOLD",
                     "want_ts": "518880.SH",
                     "parking_ret": 0.01,
@@ -1155,6 +1157,13 @@ class TestStarshipParkedComposition:
         assert res["parkedHeld"]["weight"] == 1.0
         assert res["summary"]["parkedTrades"] == 1
         assert res["summary"]["parkedTrailExits"] == 0
+        # per-day parking leg so the day table records which ETF + the trade
+        row = res["rows"][1]
+        assert row["parkedPick"] == "GOLD"
+        assert row["parkedTs"] == "518880.SH"
+        assert row["parkedSides"] == 1
+        assert row["parkedRetPct"] == 1.0
+        assert row["parkedTrail"] is False
 
 
 class TestHkContainmentOPT147:
