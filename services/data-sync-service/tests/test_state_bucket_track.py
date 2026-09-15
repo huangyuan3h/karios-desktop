@@ -911,6 +911,98 @@ class TestSgapToTimelineRows:
         assert built["rows"]
 
 
+class TestStarshipParkedComposition:
+    """H-SAT-IDLE A2_true (starship v2): park idle cash in the ETF sleeve, causal T-1."""
+
+    def test_compose_parked_rows_causal_cash_share(self) -> None:
+        rows = [
+            {"date": "2026-01-05", "satNav": 1.0, "cashShare": 1.0},
+            {"date": "2026-01-06", "satNav": 1.02, "cashShare": 1.0},
+            {"date": "2026-01-07", "satNav": 1.02, "cashShare": 0.5},
+            {"date": "2026-01-08", "satNav": 1.02, "cashShare": 0.5},
+        ]
+        sleeve = {
+            "2026-01-05": 0.0,
+            "2026-01-06": 0.01,
+            "2026-01-07": -0.02,
+            "2026-01-08": 0.01,
+        }
+        out = sbt.compose_parked_rows(rows, sleeve, cost_bps=0.0)
+        got = out["rows"]
+        assert got[0]["parkedNav"] == 1.0
+        # day 2 parks the previous day's cash share (1.0): 2% sat + 1% sleeve
+        assert got[1]["parkedWeight"] == 1.0
+        assert got[1]["parkedNav"] == pytest.approx(1.03, abs=1e-6)
+        # day 3 still parks day-2 cash (1.0) -> sleeve -2%
+        assert got[2]["parkedWeight"] == 1.0
+        assert got[2]["parkedNav"] == pytest.approx(1.03 * 0.98, abs=1e-6)
+        # day 4 parks day-3 cash (0.5) -> half the sleeve move
+        assert got[3]["parkedWeight"] == 0.5
+        assert got[3]["parkedNav"] == pytest.approx(1.03 * 0.98 * 1.005, abs=1e-6)
+        assert out["summary"]["parkedPct"] == pytest.approx(
+            round((1.03 * 0.98 * 1.005 - 1) * 100, 2), abs=0.02
+        )
+
+    def test_compose_parked_rows_charges_transfer_cost(self) -> None:
+        rows = [
+            {"date": "2026-01-05", "satNav": 1.0, "cashShare": 1.0},
+            {"date": "2026-01-06", "satNav": 1.0, "cashShare": 0.0},
+        ]
+        out = sbt.compose_parked_rows(rows, {"2026-01-06": 0.0}, cost_bps=5.0)
+        # weight goes 0 -> 1 on day 2: 5bps one side of 100%
+        assert out["rows"][1]["parkedNav"] == pytest.approx(1.0 - 0.0005, abs=1e-9)
+
+    def test_apply_parked_display_switches_display_fields_only(self, monkeypatch) -> None:
+        import data_sync_service.service.harbor as harbor
+
+        rows = [
+            {
+                "date": "2026-01-05",
+                "satNav": 1.0,
+                "satNavReturnPct": 0.0,
+                "navSingle": 1.0,
+                "navSingleReturnPct": 0.0,
+                "navMulti": 1.0,
+                "navMultiReturnPct": 0.0,
+                "cashShare": 1.0,
+            },
+            {
+                "date": "2026-01-06",
+                "satNav": 1.05,
+                "satNavReturnPct": 5.0,
+                "navSingle": 1.05,
+                "navSingleReturnPct": 5.0,
+                "navMulti": 1.05,
+                "navMultiReturnPct": 5.0,
+                "cashShare": 1.0,
+            },
+        ]
+        out = {
+            "ok": True,
+            "rows": [dict(r) for r in rows],
+            "summary": {"satPct": 5.0},
+            "openPositions": [],
+            "blotter": [],
+        }
+        monkeypatch.setattr(harbor, "load_etf_closes", lambda: {"513350.SH": {}})
+        monkeypatch.setattr(
+            harbor,
+            "parking_replay",
+            lambda etf, dates, **kw: [
+                {"date": d, "parking_ret": 0.02, "sides": 0} for d in dates[1:]
+            ],
+        )
+        res = sbt.apply_parked_display(out, cost_bps=0.0)
+        # display NAV = parked (satellite 5% + idle sleeve 2% on day 2)
+        assert res["rows"][1]["navSingle"] == pytest.approx(1.07, abs=1e-6)
+        assert res["rows"][1]["navSingleReturnPct"] == res["rows"][1]["parkedReturnPct"]
+        # standalone fields untouched for the detail panel / blend legs
+        assert res["rows"][1]["satNav"] == 1.05
+        assert res["rows"][1]["satNavReturnPct"] == 5.0
+        assert res["summary"]["parkedPct"] == res["summary"]["fusedPct"]
+        assert res["summary"]["maxDdFusedPct"] == -abs(res["summary"]["parkedMaxDdPct"])
+
+
 class TestHkContainmentOPT147:
     """OPT-147: HK names must not leak into S-gap pool or R-wide breadth.
 

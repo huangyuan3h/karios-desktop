@@ -45,7 +45,7 @@ export const STRATEGY_MODE_DESCRIPTIONS: Record<StrategyMode, string> = {
   homeport: '港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）。回撤减半、收益近半。',
   starport: '母港 × 卫星 1/3 曝露（H-B3-SAT PASS，K1 余量薄）。数据收集默认档。',
   starship:
-    '卫星 100% standalone（long +463.6% / SR 3.50）。执行审计 ✅（90bps +310%/SR 2.45、容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',
+    'v2 = 卫星 + 闲置现金停 ETF 停车场（long +884.9% / MDD −28.5 / SR 2.09；15bps 仍 +829.5）。卫星执行审计 ✅（90bps +310%、容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',
   twin_star: '港湾核心 × 卫星 50/50（无仓日 100% 港湾）。并行对照档，保留不退役。',
 };
 

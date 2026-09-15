@@ -102,6 +102,17 @@
     "delta_mdd": -5.9,
     "year_deltas": null
    },
+   "A2_true_15bps": {
+    "n_days": 243,
+    "total_pct": 228.0,
+    "cagr": 244.53,
+    "max_dd": -9.2,
+    "sharpe": 5.17,
+    "delta_total": 15.3,
+    "delta_sharpe": -2.27,
+    "delta_mdd": -5.9,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 243,
     "total_pct": 198.4,
@@ -255,6 +266,17 @@
     "delta_mdd": -1.8,
     "year_deltas": null
    },
+   "A2_true_15bps": {
+    "n_days": 123,
+    "total_pct": 65.3,
+    "cagr": 182.53,
+    "max_dd": -10.1,
+    "sharpe": 4.18,
+    "delta_total": 25.0,
+    "delta_sharpe": 0.68,
+    "delta_mdd": -2.0,
+    "year_deltas": null
+   },
    "A2_15bps": {
     "n_days": 123,
     "total_pct": 60.6,
@@ -406,6 +428,17 @@
     "delta_total": -3.2,
     "delta_sharpe": -1.29,
     "delta_mdd": -21.5,
+    "year_deltas": null
+   },
+   "A2_true_15bps": {
+    "n_days": 110,
+    "total_pct": 10.8,
+    "cagr": 26.85,
+    "max_dd": -28.3,
+    "sharpe": 0.74,
+    "delta_total": -3.9,
+    "delta_sharpe": -1.32,
+    "delta_mdd": -21.8,
     "year_deltas": null
    },
    "A2_15bps": {
@@ -603,6 +636,24 @@
      "2026": 13.5
     }
    },
+   "A2_true_15bps": {
+    "n_days": 1216,
+    "total_pct": 829.5,
+    "cagr": 58.79,
+    "max_dd": -28.6,
+    "sharpe": 2.04,
+    "delta_total": 365.9,
+    "delta_sharpe": -1.46,
+    "delta_mdd": -20.2,
+    "year_deltas": {
+     "2021": 0.7,
+     "2022": -2.3,
+     "2023": 15.9,
+     "2024": 7.1,
+     "2025": 32.1,
+     "2026": 13.3
+    }
+   },
    "A2_15bps": {
     "n_days": 1216,
     "total_pct": 514.7,
@@ -669,159 +720,6 @@
     "corr_core_sat_all": 0.09,
     "corr_core_sat_idle": 0.0
    }
-  },
-  "holdout": {
-   "satellite": {
-    "n_days": 26,
-    "total_pct": -2.8,
-    "cagr": -25.17,
-    "max_dd": -11.6,
-    "sharpe": -0.85,
-    "delta_total": 0.0,
-    "delta_sharpe": 0.0,
-    "delta_mdd": 0.0
-   },
-   "_x_standalone": {
-    "core": {
-     "n_days": 26,
-     "total_pct": -2.5,
-     "cagr": -22.9,
-     "max_dd": -4.2,
-     "sharpe": -1.14
-    },
-    "sleeve": {
-     "n_days": 26,
-     "total_pct": -2.5,
-     "cagr": -22.9,
-     "max_dd": -4.2,
-     "sharpe": -1.14
-    },
-    "repo": {
-     "n_days": 26,
-     "total_pct": 0.1,
-     "cagr": 0.7,
-     "max_dd": 0.0,
-     "sharpe": 0.0
-    }
-   },
-   "A1": {
-    "n_days": 26,
-    "total_pct": -3.7,
-    "cagr": -31.96,
-    "max_dd": -12.2,
-    "sharpe": -1.16,
-    "delta_total": -0.9,
-    "delta_sharpe": -0.31,
-    "delta_mdd": -0.6,
-    "year_deltas": null
-   },
-   "A1_15bps": {
-    "n_days": 26,
-    "total_pct": -4.3,
-    "cagr": -35.96,
-    "max_dd": -12.3,
-    "sharpe": -1.36,
-    "delta_total": -1.5,
-    "delta_sharpe": -0.51,
-    "delta_mdd": -0.7,
-    "year_deltas": null
-   },
-   "A1_legacy": {
-    "n_days": 26,
-    "total_pct": -1.2,
-    "cagr": -11.53,
-    "max_dd": -11.1,
-    "sharpe": -0.29,
-    "delta_total": 1.6,
-    "delta_sharpe": 0.56,
-    "delta_mdd": 0.5,
-    "year_deltas": null
-   },
-   "A2": {
-    "n_days": 26,
-    "total_pct": -3.7,
-    "cagr": -31.96,
-    "max_dd": -12.2,
-    "sharpe": -1.16,
-    "delta_total": -0.9,
-    "delta_sharpe": -0.31,
-    "delta_mdd": -0.6,
-    "year_deltas": null
-   },
-   "A2_nocost": {
-    "n_days": 26,
-    "total_pct": -3.5,
-    "cagr": -29.86,
-    "max_dd": -12.1,
-    "sharpe": -1.06,
-    "delta_total": -0.7,
-    "delta_sharpe": -0.21,
-    "delta_mdd": -0.5,
-    "year_deltas": null
-   },
-   "A2_true": {
-    "n_days": 26,
-    "total_pct": -3.7,
-    "cagr": -31.96,
-    "max_dd": -12.2,
-    "sharpe": -1.16,
-    "delta_total": -0.9,
-    "delta_sharpe": -0.31,
-    "delta_mdd": -0.6,
-    "year_deltas": null
-   },
-   "A2_15bps": {
-    "n_days": 26,
-    "total_pct": -4.3,
-    "cagr": -35.96,
-    "max_dd": -12.3,
-    "sharpe": -1.36,
-    "delta_total": -1.5,
-    "delta_sharpe": -0.51,
-    "delta_mdd": -0.7,
-    "year_deltas": null
-   },
-   "A3": {
-    "n_days": 26,
-    "total_pct": -3.1,
-    "cagr": -27.33,
-    "max_dd": -11.7,
-    "sharpe": -0.95,
-    "delta_total": -0.3,
-    "delta_sharpe": -0.1,
-    "delta_mdd": -0.1,
-    "year_deltas": null
-   },
-   "_a2_diag": {
-    "parked_pct_days": 14.0,
-    "days_fully_idle": 1,
-    "days_partial": 5,
-    "days_fully_deployed": 19,
-    "share_fully_idle_days_pct": 4.0,
-    "sleeve_ret_fully_idle_pct": -0.1,
-    "sleeve_ret_partial_pct": 0.0122,
-    "sleeve_ret_fully_deployed_pct": -0.1223,
-    "w_naive_mean": 0.14,
-    "w_true_mean": 0.134,
-    "w_true_mean_active": 0.14,
-    "w_true_mean_idle": 0.0
-   },
-   "_a2_attrib": {
-    "gross_pt": -0.7,
-    "net_pt": -0.9,
-    "cost_pt": 0.2
-   },
-   "_occupancy": {
-    "days": 26,
-    "pct_active": 96.2,
-    "pct_flat": 3.8,
-    "avg_positions_active": 3.6,
-    "avg_idle_share": 0.14,
-    "avg_daily_turnover": 0.24,
-    "fills": 41,
-    "corr_core_sat_all": -0.16,
-    "corr_core_sat_idle": -0.07
-   }
   }
  },
  "verdict": {
@@ -837,5 +735,5 @@
   "pass": false,
   "note": "returns-only premise; K3 (MDD/Sharpe) recorded, non-binding; PASS = satellite-anchored capital structure candidate only (NOT Harbor+satellite, H-SAT-W stays REJECT)"
  },
- "as_of": "2026-09-14T23:42:50.694685+00:00"
+ "as_of": "2026-09-14T23:55:27.046502+00:00"
 }

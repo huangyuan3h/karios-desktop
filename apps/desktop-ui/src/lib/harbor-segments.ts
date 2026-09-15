@@ -71,7 +71,11 @@ export function harborHoldLine(r: TimelineRow): string {
     const idle = r.idleSlots ?? Math.max(0, SAT_CAPACITY - pos);
     const gate = r.gateOpen === false ? ' · 闸关' : '';
     const filled = r.filledToday ? ` · 成交${r.filledToday}` : '';
-    return `卫星 ${pos}/${SAT_CAPACITY}仓 · 空${idle}槽${gate}${filled}`;
+    const park =
+      r.parkedWeight != null && r.parkedWeight > 0.001
+        ? ` · 停车 ${Math.round(r.parkedWeight * 100)}%`
+        : '';
+    return `卫星 ${pos}/${SAT_CAPACITY}仓 · 空${idle}槽${gate}${filled}${park}`;
   }
   const pick = r.pick ?? 'REPO';
   const meta = PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };

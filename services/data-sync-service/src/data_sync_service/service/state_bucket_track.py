@@ -1107,11 +1107,14 @@ def replay_sgap_from_context(
         sat_active = len(positions) > 0 or len(closed_today) > 0
         sat_slots = len(positions) + len(closed_today)
         idle_slots = max(0, max_pos - sat_slots)
+        cash = 1.0 + realized - len(positions) * clip
+        cash_share = min(1.0, max(0.0, cash / nav)) if nav > 0 else 0.0
         rows.append(
             {
                 "date": day,
                 "satNav": round(nav, 6),
                 "satNavReturnPct": round((nav - 1) * 100, 2),
+                "cashShare": round(cash_share, 4),
                 "satPositions": len(positions),
                 "satSlots": sat_slots,
                 "satActive": sat_active,
@@ -1335,6 +1338,7 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
                 "satNavReturnPct": ret_pct,
                 "satPositions": int(r.get("satPositions") or 0),
                 "satSlots": int(r.get("satSlots") or r.get("satPositions") or 0),
+                "cashShare": r.get("cashShare"),
                 "satActive": bool(r.get("satActive")) if "satActive" in r else None,
                 "gapCount": r.get("gapCount"),
                 "strictCount": r.get("strictCount"),
@@ -1372,19 +1376,124 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compose_parked_rows(
+    rows: list[dict[str, Any]],
+    sleeve_ret_by_day: dict[str, float],
+    *,
+    cost_bps: float = 5.0,
+) -> dict[str, Any]:
+    """Starship v2 composition (H-SAT-IDLE `A2_true`, user-approved 2026-09-15).
+
+    ``port_ret_t = sat_ret_t + w_t * sleeve_ret_t - cost * |w_t - w_{t-1}|`` with
+    ``w_t = cashShare_{t-1}`` (causal, true engine cash share: the frozen engine
+    uses fixed 25% clips so idle cash grows as NAV compounds).
+
+    Pure function (no DB) — returns ``{"rows": [{date, parkedNav,
+    parkedReturnPct, parkedWeight}], "summary": {...}}``.
+    """
+    out_rows: list[dict[str, Any]] = []
+    if not rows:
+        return {"rows": [], "summary": {}}
+    nav = 1.0
+    prev_w = 0.0
+    peak = 1.0
+    max_dd = 0.0
+    for i, r in enumerate(rows):
+        w = 0.0
+        if i > 0:
+            w = min(1.0, max(0.0, float(rows[i - 1].get("cashShare") or 0.0)))
+        r_sat = 0.0
+        if i > 0:
+            prev_nav = float(rows[i - 1].get("satNav") or 0.0)
+            cur_nav = float(r.get("satNav") or 0.0)
+            r_sat = cur_nav / prev_nav - 1.0 if prev_nav > 0 else 0.0
+        r_sleeve = float(sleeve_ret_by_day.get(str(r["date"]), 0.0))
+        cost = cost_bps / 1e4 * abs(w - prev_w)
+        nav *= 1.0 + r_sat + w * r_sleeve - cost
+        peak = max(peak, nav)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - nav) / peak)
+        out_rows.append(
+            {
+                "date": r["date"],
+                "parkedNav": round(nav, 6),
+                "parkedReturnPct": round((nav - 1) * 100, 2),
+                "parkedWeight": round(w, 4),
+            }
+        )
+        prev_w = w
+    return {
+        "rows": out_rows,
+        "summary": {
+            "parkedPct": round((nav - 1) * 100, 2),
+            "parkedMaxDdPct": round(max_dd * 100, 1),
+            "avgParkedWeight": round(
+                sum(r["parkedWeight"] for r in out_rows) / len(out_rows), 3
+            ),
+        },
+    }
+
+
+def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[str, Any]:
+    """Overlay starship v2 (satellite + parked idle cash) onto a Timeline result.
+
+    Display fields (``navSingle*``/``navMulti*``) switch to the parked series;
+    ``satNav``/``satNavReturnPct`` stay standalone so the satellite-leg detail
+    panel and all blend legs (starport/twin_star) keep the frozen v1 numbers.
+    """
+    from data_sync_service.service.harbor import COST, load_etf_closes, parking_replay
+
+    rows = out.get("rows") or []
+    if not rows:
+        return out
+    dates = [str(r["date"]) for r in rows]
+    recs = parking_replay(load_etf_closes(), dates, idle_by_day=None)
+    sleeve_ret_by_day = {
+        str(rec["date"]): float(rec["parking_ret"]) - COST * int(rec["sides"]) for rec in recs
+    }
+    parked = compose_parked_rows(rows, sleeve_ret_by_day, cost_bps=cost_bps)
+    by_day = {r["date"]: r for r in parked["rows"]}
+    for r in rows:
+        p = by_day.get(str(r["date"]))
+        if not p:
+            continue
+        r["parkedNav"] = p["parkedNav"]
+        r["parkedReturnPct"] = p["parkedReturnPct"]
+        r["parkedWeight"] = p["parkedWeight"]
+        r["navSingle"] = p["parkedNav"]
+        r["navMulti"] = p["parkedNav"]
+        r["navSingleReturnPct"] = p["parkedReturnPct"]
+        r["navMultiReturnPct"] = p["parkedReturnPct"]
+    summary = out.setdefault("summary", {})
+    summary["parkedPct"] = parked["summary"]["parkedPct"]
+    summary["parkedMaxDdPct"] = parked["summary"]["parkedMaxDdPct"]
+    summary["parkedAvgWeight"] = parked["summary"]["avgParkedWeight"]
+    summary["fusedPct"] = parked["summary"]["parkedPct"]
+    summary["maxDdFusedPct"] = -abs(parked["summary"]["parkedMaxDdPct"])
+    out["mode"] = "starship_parked"
+    out["note"] = (
+        "星舰 v2 = 卫星 standalone + 闲置现金停 ETF 停车场（H-SAT-IDLE A2_true，"
+        "真实现金权重 causal T-1，5bps/边）。展示/回测口径；Live=港湾，前置=paper 3/20+授权。"
+    )
+    return out
+
+
 def build_state_bucket_timeline(
-    *, start: str, end: str, recipe: str = "frozen"
+    *, start: str, end: str, recipe: str = "frozen", parked_display: bool = False
 ) -> dict[str, Any]:
     """Product Timeline entry for the standalone state-bucket S-gap strategy.
 
     ``recipe="frozen"`` = next_open research baseline (legacy state_bucket view);
     ``recipe="habit"`` = Live 14:30 caliber (starship/starport product views).
+    ``parked_display`` = starship v2 overlay (idle cash parked in the ETF sleeve).
     """
     kwargs = HABIT_RECIPE if recipe == "habit" else FROZEN_RECIPE
     sat = build_sgap_timeline(start=start, end=end, **kwargs)
     out = sgap_to_timeline_rows(sat)
     out["start"] = start
     out["end"] = end
+    if parked_display:
+        out = apply_parked_display(out)
     return out
 
 

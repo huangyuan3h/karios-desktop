@@ -518,6 +518,16 @@ export type TimelineRow = {
   filledToday?: number;
   idleSlots?: number;
   gateOpen?: boolean | null;
+  /**
+   * Starship v2 (H-SAT-IDLE A2_true, 2026-09-15): idle cash parked in the ETF
+   * sleeve, causal T-1. ``navSingle*`` already carries the parked series;
+   * ``satNav*`` stays standalone for the satellite detail panel.
+   */
+  parkedNav?: number | null;
+  parkedReturnPct?: number | null;
+  parkedWeight?: number | null;
+  /** Engine cash share at the close (fixed 25% clips -> grows as NAV compounds). */
+  cashShare?: number | null;
 };
 
 export type TimelineSummary = {
@@ -532,6 +542,10 @@ export type TimelineSummary = {
   satPct?: number;
   /** Starport only: satellite-active day count in the window. */
   activeDays?: number;
+  /** Starship v2 only: parked series total/DD and average parked weight. */
+  parkedPct?: number | null;
+  parkedMaxDdPct?: number | null;
+  parkedAvgWeight?: number | null;
 };
 
 export type TimelineBlotterRow = {

@@ -775,6 +775,7 @@ def _get_or_build_timeline(
                 start=start,
                 end=end,
                 recipe="habit" if strategy == "starship" else "frozen",
+                parked_display=strategy == "starship",
             )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(

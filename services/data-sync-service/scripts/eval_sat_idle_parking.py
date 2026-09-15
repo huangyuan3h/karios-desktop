@@ -263,6 +263,7 @@ def main() -> int:
         arms["A2"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[0])
         arms["A2_nocost"] = _compose(sat_nav, w_causal, sleeve_nav, 0.0)
         arms["A2_true"] = _compose(sat_nav, w_true, sleeve_nav, TRANSFER_BPS[0])
+        arms["A2_true_15bps"] = _compose(sat_nav, w_true, sleeve_nav, TRANSFER_BPS[1])
         arms["A2_15bps"] = _compose(sat_nav, w_causal, sleeve_nav, TRANSFER_BPS[1])
         arms["A3"] = _compose(sat_nav, w_causal, repo_nav, TRANSFER_BPS[0])
 

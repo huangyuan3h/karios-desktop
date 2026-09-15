@@ -306,12 +306,21 @@ beforeEach(() => {
         filledToday: i % 2 === 0 ? 2 : 0,
         idleSlots: i % 2 === 0 ? 0 : 2,
         gateOpen: true,
+        parkedNav: r.navSingle,
+        parkedReturnPct: r.navSingleReturnPct,
+        parkedWeight: i % 2 === 0 ? 1 : 0.5,
+        cashShare: i % 2 === 0 ? 1 : 0.5,
       }));
       return {
         ok: true,
         strategy: satelliteOnly ? 'starship' : 'harbor',
         mode: 'mom_compare',
-        summary: { fusedPct: 12.5, basePct: 3.2, maxDdFusedPct: 9.4 },
+        summary: {
+          fusedPct: 12.5,
+          basePct: 3.2,
+          maxDdFusedPct: 9.4,
+          ...(satelliteOnly ? { parkedPct: 18.4, parkedMaxDdPct: 28.5, parkedAvgWeight: 0.75 } : {}),
+        },
         rows: satelliteOnly ? satRows : rows,
         ...(satelliteOnly
           ? {
@@ -425,6 +434,16 @@ describe('BacktestPage', () => {
     const tip = await screen.findByTestId('harbor-day-tip');
     expect(tip.textContent).toContain('基线 —');
     expect(tip.textContent).toContain('卫星 4/4仓 · 空0槽');
+    expect(tip.textContent).toContain('停车 100%');
+  });
+
+  it('labels the starship v2 parked-cash overlay', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    expect((await screen.findAllByText(/停车 100%/)).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/停车 50%/)).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(/停车均值 75%/)).toBeDefined();
+    expect(await screen.findByText(/v2 卫星 \+ 闲置现金停 ETF 套筒/)).toBeDefined();
   });
 
   it('paints satellite timeline blocks by slot occupancy, not as gray parking', async () => {

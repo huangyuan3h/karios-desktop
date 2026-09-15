@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-UPDATED = "2026-09-14"
+UPDATED = "2026-09-15"
 
 # Windows: total% (含成本) / CAGR% / maxDD% / Sharpe. Frozen 2026-09-14 clean.
 _STRATEGIES: list[dict[str, Any]] = [
@@ -78,25 +78,30 @@ _STRATEGIES: list[dict[str, Any]] = [
     {
         "key": "starship",
         "name": "星舰",
-        "structure": "习惯 S-gap 卫星 standalone（14:30 买/第 3 日 14:30 卖、amp_1430、gate_1430、4×25% 槽、30bps）",
+        "structure": (
+            "v2（2026-09-15 用户拍板）= 习惯 S-gap 卫星（14:30 买/第 3 日 14:30 卖、amp_1430、"
+            "gate_1430、4×25% 槽、30bps）+ 闲置现金因果停放 ETF 停车场（mom60+MA200 argmax、"
+            "trail8、5bps/边、真实现金权重 T−1）"
+        ),
         "status": "aggressive_pending",
         "statusLabel": "激进 · 前置未满",
         "timelineStrategy": "starship",
-        "doc": "docs/backtests/stable/sgap-habit-satellite-standalone-2026-09-14.md",
+        "doc": "docs/backtests/stable/sat-idle-parking-2026-09-15.md",
         "tag": "starship",
         "windows": {
-            "OOS2": {"total": 212.7, "cagr": 227.8, "mdd": -3.3, "sharpe": 7.44},
-            "train": {"total": 40.3, "cagr": 101.1, "mdd": -8.1, "sharpe": 3.50},
-            "valid": {"total": 14.7, "cagr": 37.3, "mdd": -6.5, "sharpe": 2.06},
-            "long": {"total": 463.6, "cagr": 43.1, "mdd": -8.4, "sharpe": 3.50},
+            "OOS2": {"total": 235.8, "cagr": 253.0, "mdd": -9.2, "sharpe": 5.27},
+            "train": {"total": 67.7, "cagr": 190.8, "mdd": -9.9, "sharpe": 4.29},
+            "valid": {"total": 11.5, "cagr": 28.7, "mdd": -28.0, "sharpe": 0.77},
+            "long": {"total": 884.9, "cagr": 60.7, "mdd": -28.5, "sharpe": 2.09},
         },
         "pros": [
-            "long +463.6%/SR 3.50/MDD −8.4%，年度全正、与核心低相关",
-            "执行审计 ✅（2026-09-14）：90bps 仍 +310%/SR 2.45、贴板 0、容量 ≤5M",
+            "long +884.9%（15bps 3× 成本仍 +829.5）· OOS2/train 双升、闲置现金不再空转",
+            "停放腿与其空仓日不冲突（长窗空仓日套筒 +0.066%/日）；成本不敏感",
         ],
         "cons": [
-            "进 Live 前置未满：paper 3/20 + 用户风险授权（执行审计已过）",
-            "多重检验 + regime 依赖（2026 仅 +5.8%、valid +14.7%）——数字当上限看",
+            "风险预算显式上移：MDD −8.4→−28.5、SR 3.50→2.09、valid −3.2（house K2 不过，用户覆盖）",
+            "停车资产自体风险（套筒 MDD −28.7）在弱广度 regime 成为组合主风险——非黑天鹅、会复发",
+            "进 Live 前置未满：paper 3/20 + 用户风险授权",
         ],
     },
     {

@@ -23,7 +23,7 @@ def test_catalog_has_five_family_strategies_in_order() -> None:
 
 def test_catalog_rows_are_complete() -> None:
     for row in strategy_catalog():
-        assert row["updated"] == "2026-09-14"
+        assert row["updated"] == "2026-09-15"
         assert row["structure"] and row["statusLabel"] and row["doc"] and row["tag"]
         assert set(row["windows"]) == WINDOW_KEYS
         for w in row["windows"].values():
