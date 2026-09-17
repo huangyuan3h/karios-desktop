@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
+
 from data_sync_service.service.harbor import (
     MULTI_TS,
+    build_harbor_timeline,
+    merge_recent_db_closes,
     parking_replay,
     pick_parking,
 )
@@ -123,3 +127,143 @@ class TestParkingCooldown:
         for offset in (0, 1, 2, 3):
             assert recs[t + offset]["pick_key"] == "REPO"
         assert recs[t + 4]["pick_key"] == "GOLD"
+
+
+class TestHarborTimelineLegs:
+    """Timeline carries every leg: full stock list + parking audit trail.
+
+    No DB: synthetic panel / positions / engine NAV only.
+    """
+
+    def _inputs(self) -> tuple[list[str], dict, list[dict], dict[str, float]]:
+        days = _days(300)
+        panel = _panel(other_above=True)
+        poses = [
+            {
+                "ts_code": f"60000{i}.SH",
+                "symbol": f"CN:60000{i}",
+                "position_pct": 0.1,
+                "entry_date": days[0],
+            }
+            for i in range(5)
+        ]
+        positions_by_day = [{"date": d, "positions": [dict(p) for p in poses]} for d in days]
+        engine_nav = {d: 1.0 for d in days}
+        return days, panel, positions_by_day, engine_nav
+
+    def test_rows_carry_parking_markers_and_full_symbols(self) -> None:
+        days, panel, positions_by_day, engine_nav = self._inputs()
+        out = build_harbor_timeline(
+            calendar=days,
+            positions_by_day=positions_by_day,
+            engine_nav_by_day=engine_nav,
+            etf_close=panel,
+        )
+        rows = out["rows"]
+        assert len(rows) == len(days) - 1
+        for r in rows:
+            assert {"parkedSides", "parkedRetPct", "parkedTrail"} <= set(r)
+        assert any(r["parkedSides"] > 0 for r in rows)
+        assert any(r["parkedTrail"] for r in rows)
+        # 5 tickets held -> all 5 named (the old 3-symbol cap is gone).
+        assert rows[0]["positions"] == 5
+        assert rows[0]["stockSymbols"] == [f"CN:60000{i}" for i in range(5)]
+
+    def test_parked_blotter_and_held_match_replay(self) -> None:
+        days, panel, positions_by_day, engine_nav = self._inputs()
+        out = build_harbor_timeline(
+            calendar=days,
+            positions_by_day=positions_by_day,
+            engine_nav_by_day=engine_nav,
+            etf_close=panel,
+        )
+        events = out["parkedBlotter"]
+        assert events and events[0]["kind"] == "buy" and events[0]["key"] == "GOLD"
+        assert any(e["kind"] == "sell" and e["reason"] == "trail" for e in events)
+        held = out["parkedHeld"]
+        assert held is not None and held["key"] == "GOLD"
+        assert held["ts"] == MULTI_TS["GOLD"]
+        # P1 parks the whole idle fraction: 5 x 10% deployed -> 50% parked.
+        assert held["weight"] == 0.5
+        assert out["summary"]["parkedTrades"] == len(events)
+        assert out["summary"]["parkedTrailExits"] == out["summary"]["trailExits"] >= 1
+
+
+class TestMergeRecentDbClosesBasis:
+    """2026-09-17 audit: ETF tail must be scaled onto the CSV (close_adj) basis.
+
+    ``daily.close`` for ETFs is raw and ``adj_factor`` is NULL, so the old
+    ``close * COALESCE(adj_factor, 1)`` append created −80%/+193% fake jumps.
+    """
+
+    class _FakeCursor:
+        def __init__(self, anchor, tail):
+            self._anchor = anchor
+            self._tail = tail
+            self._mode = ""
+
+        def execute(self, sql: str, params) -> None:  # noqa: ANN001
+            self._mode = "anchor" if "DESC" in sql else "tail"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def fetchone(self):
+            return self._anchor if self._mode == "anchor" else None
+
+        def fetchall(self):
+            return list(self._tail) if self._mode == "tail" else []
+
+    class _FakeConn:
+        def __init__(self, cur):
+            self._cur = cur
+
+        def cursor(self):
+            return self._cur
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _run(self, monkeypatch, out, anchor, tail):
+        cur = self._FakeCursor(anchor, tail)
+        monkeypatch.setattr(
+            "data_sync_service.db.get_connection", lambda: self._FakeConn(cur)
+        )
+        return merge_recent_db_closes(out, ["513100.SH"])
+
+    def test_tail_scaled_by_overlap_ratio_when_adj_factor_missing(
+        self, monkeypatch
+    ) -> None:  # noqa: ANN001
+        # CSV last 11.009182 (= raw 2.201 x 5.0019); DB tail raw 2.191 was
+        # appended verbatim before the fix -> a -80.1% fake day.
+        out = {"513100.SH": {"2026-09-11": 11.009182}}
+        anchor = (date(2026, 9, 11), 2.201, None)
+        tail = [(date(2026, 9, 14), 2.191, None), (date(2026, 9, 15), 2.196, None)]
+        merged = self._run(monkeypatch, out, anchor, tail)
+        assert merged["513100.SH"]["2026-09-11"] == 11.009182  # history intact
+        assert merged["513100.SH"]["2026-09-14"] == pytest.approx(
+            2.191 * 11.009182 / 2.201, rel=1e-9
+        )
+        day_ret = merged["513100.SH"]["2026-09-14"] / 11.009182 - 1.0
+        assert abs(day_ret) < 0.01  # continuity, no −80% break
+
+    def test_tail_prefers_stored_adj_factor(self, monkeypatch) -> None:  # noqa: ANN001
+        out = {"513100.SH": {"2026-09-11": 11.009182}}
+        anchor = (date(2026, 9, 11), 2.201, 5.0019)
+        tail = [(date(2026, 9, 14), 2.191, 5.0019)]
+        merged = self._run(monkeypatch, out, anchor, tail)
+        assert merged["513100.SH"]["2026-09-14"] == pytest.approx(2.191 * 5.0019)
+
+    def test_no_common_basis_falls_back_to_raw_and_keeps_going(
+        self, monkeypatch
+    ) -> None:  # noqa: ANN001
+        out = {"513100.SH": {}}
+        tail = [(date(2026, 9, 14), 2.191, None)]
+        merged = self._run(monkeypatch, out, None, tail)
+        assert merged["513100.SH"]["2026-09-14"] == 2.191

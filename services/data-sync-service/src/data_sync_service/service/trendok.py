@@ -666,7 +666,12 @@ def _apply_inst_flow_risk_buy_blocks(
     *,
     inst_flow: dict[str, Any] | None,
 ) -> None:
-    """Block buy when institutions net-sell while Lhasa retail dominates on a surge day."""
+    """Block buy when institutions net-sell while Lhasa retail dominates on a surge day.
+
+    Evidence (B18 / H-FLOW-1, seat-level 2021-26, N=17,254 Lhasa net-buy events):
+    Lhasa net-buy stock-days gap -2.23% at the next open vs institutions +0.43%
+    (docs/backtests/hotmoney/seat-flow-2026-09-15.md).
+    """
     if bool((res.get("stopLossParts") or {}).get("exit_now")):
         return
     if not bool(res.get("riskMetricsLive")):

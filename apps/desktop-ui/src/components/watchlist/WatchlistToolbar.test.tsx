@@ -74,8 +74,8 @@ describe('WatchlistToolbar', () => {
         })}
       />,
     );
-    expect(screen.getByText(/Automation skipped \(too_soon\)/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Force run'));
+    expect(screen.getByText(/自动化已跳过（too_soon）/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('强制跑一次'));
     expect(onForceAutomationFromSkip).toHaveBeenCalled();
   });
 

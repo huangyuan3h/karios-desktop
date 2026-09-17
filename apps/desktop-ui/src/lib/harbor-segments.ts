@@ -50,6 +50,25 @@ export function isSatelliteRow(r: TimelineRow): boolean {
   return r.satPositions != null || r.pick === 'S-GAP';
 }
 
+/**
+ * True when the row carries the Harbor-family base leg (S-3 stocks and/or the
+ * parking ETF). Overlay rows (星港/双子星) carry BOTH legs, so the bar/table
+ * must render both instead of picking one branch.
+ */
+export function hasBaseLeg(r: TimelineRow): boolean {
+  return (r.positions ?? 0) > 0 || (r.pick != null && r.pick !== 'S-GAP');
+}
+
+/** True when the row carries the Homeport B3 leg top holding. */
+export function hasRiskLeg(r: TimelineRow): boolean {
+  return r.riskTop != null && r.riskTop !== '';
+}
+
+/** True when the row carries a starship-style parked-sleeve marker. */
+export function hasParkedLeg(r: TimelineRow): boolean {
+  return r.parkedPick != null && r.parkedPick !== '';
+}
+
 const PICK_META: Record<string, { name: string; tiny: string; code: string | null }> = {
   STOCK: { name: '股票', tiny: '股', code: null },
   GOLD: { name: '黄金', tiny: '金', code: '518880' },
@@ -59,35 +78,76 @@ const PICK_META: Record<string, { name: string; tiny: string; code: string | nul
   REPO: { name: '逆回购', tiny: '回', code: 'GC001' },
 };
 
+export type PickMeta = { name: string; tiny: string; code: string | null };
+
+/** Bar colors for the B3 universe (keyed by ts_code). */
+export const RISK_TS_COLOR: Record<string, string> = {
+  '510300.SH': 'bg-blue-600',
+  '510500.SH': 'bg-cyan-600',
+  '518880.SH': 'bg-amber-500',
+  '513100.SH': 'bg-indigo-500',
+  '511260.SH': 'bg-emerald-600',
+};
+
+/** Segment color for a PARK strip row: parking palette first, then B3. */
+export function stripPickColor(pick: string): string {
+  return pickColorOf(pick) ?? RISK_TS_COLOR[pick] ?? 'bg-gray-300';
+}
+
+function pickColorOf(pick: string): string | undefined {
+  const map: Record<string, string> = {
+    STOCK: 'bg-red-500',
+    GOLD: 'bg-amber-500',
+    OIL: 'bg-slate-800 dark:bg-slate-200',
+    NASDAQ: 'bg-blue-600',
+    BOND10: 'bg-emerald-600',
+    REPO: 'bg-zinc-300 dark:bg-zinc-700',
+  };
+  return map[pick];
+}
+
 function shortCode(ts: string | null | undefined): string | null {
   if (!ts) return null;
   return ts.split('.')[0] || null;
 }
 
 /** One-line "what the portfolio held that day" for tooltips. */
-export function harborHoldLine(r: TimelineRow): string {
-  if (isSatelliteRow(r)) {
-    const pos = r.satPositions ?? 0;
-    const idle = r.idleSlots ?? Math.max(0, SAT_CAPACITY - pos);
-    const gate = r.gateOpen === false ? ' · 闸关' : '';
-    const filled = r.filledToday ? ` · 成交${r.filledToday}` : '';
-    const park =
-      r.parkedWeight != null && r.parkedWeight > 0.001
-        ? ` · 停车 ${Math.round(r.parkedWeight * 100)}%`
-        : '';
-    return `卫星 ${pos}/${SAT_CAPACITY}仓 · 空${idle}槽${gate}${filled}${park}`;
-  }
+export function harborHoldLine(r: TimelineRow, riskNames?: Record<string, string>): string {
+  const base = baseHoldLine(r, riskNames);
+  if (!isSatelliteRow(r)) return base;
+  const pos = r.satPositions ?? 0;
+  const idle = r.idleSlots ?? Math.max(0, SAT_CAPACITY - pos);
+  const gate = r.gateOpen === false ? ' · 闸关' : '';
+  const filled = r.filledToday ? ` · 成交${r.filledToday}` : '';
+  const parkName =
+    r.parkedPick && r.parkedPick !== 'REPO' ? `${PICK_META[r.parkedPick]?.name ?? r.parkedPick} ` : '';
+  const park =
+    r.parkedWeight != null && r.parkedWeight > 0.001
+      ? ` · 停车 ${parkName}${Math.round(r.parkedWeight * 100)}%`
+      : '';
+  const sat = `卫星 ${pos}/${SAT_CAPACITY}仓 · 空${idle}槽${gate}${filled}${park}`;
+  // Overlay rows (星港/双子星) carry both legs: show both.
+  return hasBaseLeg(r) && base ? `${sat} · ${base}` : sat;
+}
+
+/** Base-leg (stocks + parking ETF + B3) hold line; '' when the row has no base. */
+function baseHoldLine(r: TimelineRow, riskNames?: Record<string, string>): string {
+  if (!hasBaseLeg(r)) return '';
   const pick = r.pick ?? 'REPO';
   const meta = PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };
   const code = shortCode(r.pickTs) ?? meta.code;
   const pos = r.positions ?? 0;
+  const risk =
+    r.riskTop && r.riskTopW != null
+      ? ` · B3 ${riskNames?.[r.riskTop] ?? r.riskTop} ${Math.round(r.riskTopW * 100)}%`
+      : '';
   if (pos > 0) {
     const syms = (r.stockSymbols ?? []).slice(0, 4).join(' ');
     const park =
       (r.idlePct ?? 0) > 0 && pick !== 'REPO' ? `+停车 ${meta.name}${code ? ` ${code}` : ''}` : '';
-    return `股票 ${pos}票${syms ? ` ${syms}` : ''}${park ? ` ${park}` : ''}`;
+    return `股票 ${pos}票${syms ? ` ${syms}` : ''}${park ? ` ${park}` : ''}${risk}`;
   }
-  return `${meta.name}${code ? ` ${code}` : ''}`;
+  return `${meta.name}${code ? ` ${code}` : ''}${risk}`;
 }
 
 function pickNav(r: TimelineRow): number {
@@ -116,8 +176,10 @@ function buildLabels(
   code: string | null,
   retPct: number | null,
   sat: HarborSegment['sat'],
+  metaOverride?: Record<string, PickMeta>,
 ): HarborSegment['labels'] {
-  const meta = PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };
+  const meta = metaOverride?.[pick] ??
+    PICK_META[pick] ?? { name: pick, tiny: pick.slice(0, 1), code: null };
   const sym = code ?? meta.code;
   const ret = retPct != null ? ` ${fmtSignedPct(retPct)}` : '';
   if (mode === 'SAT') {
@@ -170,8 +232,18 @@ function segmentMode(r: TimelineRow): HarborSegment['mode'] {
   return (r.idlePct ?? 0) >= 50 ? 'MIXED' : 'STOCK';
 }
 
-export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
+export type BuildSegmentsOptions = {
+  /** Treat every row as a base-leg row (overlay base strip: ignore sat fields). */
+  ignoreSat?: boolean;
+  /** Extra pick metadata (e.g. B3 ts_code -> display name), merged over PICK_META. */
+  meta?: Record<string, PickMeta>;
+};
+
+export function buildHarborSegments(rows: TimelineRow[], opts?: BuildSegmentsOptions): HarborSegment[] {
   const out: HarborSegment[] = [];
+  const meta = opts?.meta;
+  const metaName = (pick: string): string =>
+    meta?.[pick]?.name ?? PICK_META[pick]?.name ?? pick;
   let prevNavEnd: number | null = null;
   let current: HarborSegment | null = null;
   let counts = new Map<string, number>();
@@ -190,10 +262,10 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
       current.mode === 'SAT'
         ? satState
         : current.mode === 'PARK'
-          ? `${PICK_META[current.pick]?.name ?? current.pick}${current.code ? ` ${current.code}` : ''}`
+          ? `${metaName(current.pick)}${current.code ? ` ${current.code}` : ''}`
           : `股票 ${current.positions}票${counts.size ? ` · 持有(${stockHoldLine(counts)})` : ''}${
               current.mode === 'MIXED'
-                ? ` · 闲置${current.idlePct}%停 ${PICK_META[current.pick]?.name ?? current.pick}${
+                ? ` · 闲置${current.idlePct}%停 ${metaName(current.pick)}${
                     current.code ? ` ${current.code}` : ''
                   }`
                 : ''
@@ -210,12 +282,12 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
   };
 
   for (const r of rows) {
-    const satRow = isSatelliteRow(r);
+    const satRow = opts?.ignoreSat ? false : isSatelliteRow(r);
     const pick = satRow ? 'S-GAP' : (r.pick ?? 'REPO');
     const mode: HarborSegment['mode'] = satRow ? 'SAT' : segmentMode(r);
     const code = satRow || mode === 'STOCK'
       ? null
-      : (shortCode(r.pickTs) ?? PICK_META[pick]?.code ?? null);
+      : (shortCode(r.pickTs) ?? meta?.[pick]?.code ?? PICK_META[pick]?.code ?? null);
     const sat: HarborSegment['sat'] = satRow
       ? {
           positions: r.satPositions ?? 0,
@@ -249,7 +321,7 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
         navPct: nav,
         retPct,
         sat,
-        labels: buildLabels(mode, pick, 1, r.positions ?? 0, code, retPct, sat),
+        labels: buildLabels(mode, pick, 1, r.positions ?? 0, code, retPct, sat, meta),
         title: '',
       };
       counts = new Map();
@@ -270,6 +342,7 @@ export function buildHarborSegments(rows: TimelineRow[]): HarborSegment[] {
         code,
         current.retPct,
         sat,
+        meta,
       );
     }
     if (mode === 'STOCK' || mode === 'MIXED') {
@@ -295,4 +368,58 @@ export function fitSegmentLabel(labels: HarborSegment['labels'], widthPx: number
     if (variant && estimateLabelPx(variant) <= widthPx) return variant;
   }
   return '';
+}
+
+/**
+ * Parking-leg strip (星舰): which ETF the idle cash sits in each day.
+ * Consecutive same-ETF days merge into one block (PARK mode, parking colors).
+ */
+export function buildParkingStrip(rows: TimelineRow[]): HarborSegment[] {
+  const pseudo: TimelineRow[] = [];
+  for (const r of rows) {
+    if (!hasParkedLeg(r)) continue;
+    pseudo.push({
+      ...r,
+      positions: 0,
+      cnPositions: 0,
+      hkPositions: 0,
+      stockSymbols: [],
+      exits: [],
+      pick: r.parkedPick ?? null,
+      pickTs: r.parkedTs ?? null,
+      navSingleReturnPct: r.parkedReturnPct ?? r.navSingleReturnPct,
+    });
+  }
+  // ignoreSat: pseudo rows inherit sat fields from the spread; the strip is
+  // the parking leg only.
+  return buildHarborSegments(pseudo, { ignoreSat: true });
+}
+
+/**
+ * B3-leg strip (母港/星港): the sleeve's top holding each day.
+ * Metadata (ts -> display name) comes from the payload's riskUniverse.
+ */
+export function buildRiskStrip(
+  rows: TimelineRow[],
+  universe: Array<{ ts: string; name: string }>,
+): HarborSegment[] {
+  const meta: Record<string, PickMeta> = {};
+  for (const u of universe) {
+    meta[u.ts] = { name: u.name, tiny: u.name.slice(0, 1), code: u.ts.split('.')[0] ?? null };
+  }
+  const pseudo: TimelineRow[] = [];
+  for (const r of rows) {
+    if (!hasRiskLeg(r)) continue;
+    pseudo.push({
+      ...r,
+      positions: 0,
+      cnPositions: 0,
+      hkPositions: 0,
+      stockSymbols: [],
+      exits: [],
+      pick: r.riskTop ?? null,
+      pickTs: r.riskTop ?? null,
+    });
+  }
+  return buildHarborSegments(pseudo, { ignoreSat: true, meta });
 }

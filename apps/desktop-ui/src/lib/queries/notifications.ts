@@ -3,9 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
+import { getStrategyMode } from '@/lib/strategy-settings';
 
-/** Harbor core notifications ride the retired single-track lane on the backend. */
-const HARBOR_NOTIFY_MODE = 'single_track';
+/** Legacy S-3-only feed value; the live feed now follows the selected strategy. */
+export const LEGACY_NOTIFY_MODE = 'single_track';
 
 export type NotificationItem = {
   id: string;
@@ -21,11 +22,16 @@ export type NotificationItem = {
 
 export type NotificationsResponse = { ok: boolean; items: NotificationItem[] };
 
-export function useNotificationsQuery(enabled = true) {
+/**
+ * OPT-223: the feed follows the selected strategy (satellite action item), so
+ * switching modes refetches. Falls back to the localStorage value when the
+ * caller does not pass the reactive mode.
+ */
+export function useNotificationsQuery(enabled = true, mode?: string) {
+  const notifyMode = mode ?? getStrategyMode();
   return useQuery({
-    queryKey: ['notifications', HARBOR_NOTIFY_MODE],
-    queryFn: () =>
-      apiGetJson<NotificationsResponse>(`/api/notifications?mode=${HARBOR_NOTIFY_MODE}`),
+    queryKey: ['notifications', notifyMode],
+    queryFn: () => apiGetJson<NotificationsResponse>(`/api/notifications?mode=${notifyMode}`),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: true,

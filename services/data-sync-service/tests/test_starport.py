@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from data_sync_service.service.starport import (
     SAT_WEIGHT,
+    STARPORT_DEFAULT_WEIGHT,
     TWIN_STAR_WEIGHT,
     blend_starport_timeline,
     blend_twin_star_timeline,
@@ -54,10 +55,19 @@ class TestStarportTimeline:
 
     def test_active_day_applies_weighted_overlay(self) -> None:
         hp = _homeport([1.0, 1.10])
-        out = blend_starport_timeline(hp, _sat([(1.0, False), (1.20, True)]))
+        out = blend_starport_timeline(
+            hp, _sat([(1.0, False), (1.20, True)]), sat_weight=SAT_WEIGHT
+        )
         expected = 1.0 * (1.0 + 0.10 + SAT_WEIGHT * (0.20 - 0.10))
         assert abs(out["rows"][1]["navSingle"] - round(expected, 6)) < 1e-9
         assert out["summary"]["activeDays"] == 1
+
+    def test_default_weight_is_02_display_dial(self) -> None:
+        hp = _homeport([1.0, 1.10])
+        out = blend_starport_timeline(hp, _sat([(1.0, False), (1.20, True)]))
+        assert out["satWeight"] == round(STARPORT_DEFAULT_WEIGHT, 4)
+        expected = 1.0 * (1.0 + 0.10 + STARPORT_DEFAULT_WEIGHT * (0.20 - 0.10))
+        assert abs(out["rows"][1]["navSingle"] - round(expected, 6)) < 1e-9
 
     def test_passes_satellite_book_weight_and_capacity_through(self) -> None:
         """OPT-207: the UI hints read the satellite book from the payload."""
@@ -67,7 +77,7 @@ class TestStarportTimeline:
         sat["openPositions"] = [{"ts": "300906.SZ", "daysLeft": 1}]
         sat["blotter"] = [{"kind": "open", "date": "2024-01-02", "ts": "300906.SZ"}]
         out = blend_starport_timeline(hp, sat)
-        assert out["satWeight"] == round(SAT_WEIGHT, 4)
+        assert out["satWeight"] == round(STARPORT_DEFAULT_WEIGHT, 4)
         assert out["baseKey"] == "homeportPct"
         assert out["satCapacity"] == 4
         assert out["openPositions"] == sat["openPositions"]
@@ -115,3 +125,95 @@ class TestTwinStarTimeline:
 
     def test_default_weight_is_half(self) -> None:
         assert TWIN_STAR_WEIGHT == 0.5
+
+
+def _base_with_legs() -> dict:
+    base = _homeport([1.0, 1.05])
+    base["parkedBlotter"] = [
+        {"kind": "buy", "date": "2024-01-01", "key": "GOLD", "ts": "518880.SH"}
+    ]
+    base["parkedHeld"] = {"key": "GOLD", "ts": "518880.SH", "weight": 0.5}
+    base["riskBlotter"] = [{"date": "2024-01-01", "weights": {}, "turnover": 0.0}]
+    base["riskHeld"] = {"date": "2024-01-02", "weights": {}}
+    base["riskUniverse"] = [{"ts": "510300.SH", "name": "沪深300"}]
+    base["summary"]["parkedTrailExits"] = 1
+    base["summary"]["riskPct"] = 2.0
+    return base
+
+
+class TestOverlayLegPassthrough:
+    def test_starport_carries_parking_and_risk_legs(self) -> None:
+        base = _base_with_legs()
+        out = blend_starport_timeline(base, _sat([(1.0, False), (1.05, False)]))
+        assert out["parkedBlotter"] == base["parkedBlotter"]
+        assert out["parkedHeld"] == base["parkedHeld"]
+        assert out["riskBlotter"] == base["riskBlotter"]
+        assert out["riskHeld"] == base["riskHeld"]
+        assert out["riskUniverse"] == base["riskUniverse"]
+        assert out["summary"]["parkedTrailExits"] == 1
+        assert out["summary"]["riskPct"] == 2.0
+
+    def test_twin_star_carries_parking_leg(self) -> None:
+        base = _base_with_legs()
+        out = blend_twin_star_timeline(base, _sat([(1.0, False), (1.05, False)]))
+        assert out["parkedBlotter"] == base["parkedBlotter"]
+        assert out["parkedHeld"] == base["parkedHeld"]
+        assert out["riskUniverse"] == base["riskUniverse"]
+
+    def test_missing_legs_stay_missing(self) -> None:
+        out = blend_twin_star_timeline(_homeport([1.0]), _sat([(1.0, False)]))
+        for key in ("parkedBlotter", "parkedHeld", "riskBlotter", "riskHeld", "riskUniverse"):
+            assert key not in out
+
+    def test_day_one_blended_return_is_not_dropped(self) -> None:
+        """OPT-211 P3: rows[0] carries the base day-1 return; the blend must
+        compound it (plus the satellite leg when day 1 is active) instead of
+        restarting from 1.0 (a real +4.2% M50 day was lost on valid)."""
+        base = {
+            "ok": True,
+            "rows": [
+                {
+                    "date": "2024-01-02",
+                    "prev": "2024-01-01",
+                    "navSingle": 1.04,
+                    "navMulti": 1.04,
+                    "navSingleReturnPct": 4.0,
+                },
+                {
+                    "date": "2024-01-03",
+                    "prev": "2024-01-02",
+                    "navSingle": 1.05,
+                    "navMulti": 1.05,
+                    "navSingleReturnPct": 5.0,
+                },
+            ],
+            "summary": {"fusedPct": 5.0},
+        }
+        sat = {
+            "ok": True,
+            "rows": [
+                {"date": "2024-01-01", "satNav": 1.0, "satActive": False},
+                {"date": "2024-01-02", "satNav": 1.12, "satActive": True},
+                {"date": "2024-01-03", "satNav": 1.12, "satActive": False},
+            ],
+            "summary": {},
+        }
+        out = blend_starport_timeline(base, sat)
+        day1 = 0.04 + STARPORT_DEFAULT_WEIGHT * (0.12 - 0.04)
+        day2 = 1.05 / 1.04 - 1.0
+        assert abs(out["summary"]["fusedPct"] - round((1 + day1) * (1 + day2) * 100 - 100, 2)) < 0.05
+        assert out["summary"]["activeDays"] == 1
+        assert out["rows"][0]["navSingle"] == round(1 + day1, 6)
+
+    def test_inactive_day_one_seeds_base_level(self) -> None:
+        base = {
+            "ok": True,
+            "rows": [
+                {"date": "2024-01-02", "prev": "2024-01-01", "navSingle": 1.04,
+                 "navMulti": 1.04, "navSingleReturnPct": 4.0},
+            ],
+            "summary": {"fusedPct": 4.0},
+        }
+        out = blend_starport_timeline(base, _sat([(1.0, False)]))
+        assert out["summary"]["fusedPct"] == 4.0
+        assert out["summary"]["activeDays"] == 0

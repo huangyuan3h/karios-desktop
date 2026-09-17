@@ -592,11 +592,16 @@ def compute_s3_pool(*, day: str, max_positions: int | None = S3_POOL_MAX) -> lis
     return out
 
 
-def compute_satellite_pool(*, day: str) -> list[dict[str, Any]]:
+def compute_satellite_pool(*, day: str) -> list[dict[str, Any]] | None:
     """Current 星舰/卫星 legs (habit replay) as pool items.
 
     Research book: names enter on the 14:30 fill and leave when the replay
     exits them (body=3), so the pool mirrors the satellite's live legs.
+
+    Returns ``None`` when the replay FAILED (not "no legs"): the 14:30 fill
+    panel only exists after ``bar_5min_close`` (18:40), and a transient
+    failure must never be read as "every satellite name exited" by
+    ``compute_pool_removals`` (fail-open, same contract as the S-3 branch).
     """
     from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
 
@@ -605,7 +610,7 @@ def compute_satellite_pool(*, day: str) -> list[dict[str, Any]]:
         replay = build_state_bucket_timeline(start=start, end=day, recipe="habit")
     except Exception as exc:  # noqa: BLE001
         logger.warning("satellite pool %s failed: %s", day, exc)
-        return []
+        return None
     out: list[dict[str, Any]] = []
     for p in replay.get("openPositions") or []:
         ts = str(p.get("ts") or "")
@@ -632,10 +637,13 @@ def compute_pool_removals(
     *,
     s3_symbols_today: set[str],
     s3_symbols_prev: set[str] | None,
-    satellite_symbols_today: set[str],
+    satellite_symbols_today: set[str] | None,
 ) -> list[dict[str, Any]]:
     """OPT-209 GC: S-3 leaves after ``S3_POOL_FAIL_DAYS`` consecutive fails;
     星舰 leaves when the replay no longer holds it. Held names never leave.
+
+    ``satellite_symbols_today=None`` means the replay could not be computed →
+    skip satellite removals entirely (fail-open, never wipe the pool).
     """
     out: list[dict[str, Any]] = []
     for item in registry:
@@ -660,7 +668,7 @@ def compute_pool_removals(
             ):
                 out.append({"symbol": sym, "reason": "s3_failed_2d"})
         elif source == SOURCE_SATELLITE:
-            if sym not in satellite_symbols_today:
+            if satellite_symbols_today is not None and sym not in satellite_symbols_today:
                 out.append({"symbol": sym, "reason": "satellite_exited"})
     return out
 
@@ -1037,12 +1045,19 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
             if x.get("symbol")
         }
     satellite_legs = compute_satellite_pool(day=trade_date)
-    satellite_symbols_today = {str(x.get("symbol")) for x in satellite_legs if x.get("symbol")}
+    satellite_symbols_today: set[str] | None = None
+    if satellite_legs is None:
+        # Replay failed: skip satellite add/remove (fail-open). The post-close
+        # refresh (bar_5min_close → refresh_satellite_pool) retries the day.
+        satellite_legs = []
+        meta["satellitePoolError"] = True
+    else:
+        satellite_symbols_today = {str(x.get("symbol")) for x in satellite_legs if x.get("symbol")}
+        meta["satellitePoolSize"] = len(satellite_symbols_today)
 
     meta["s3PoolSize"] = len(s3_symbols_today)
     meta["s3PoolPrevDate"] = prev_day
     meta["s3PoolPrevSize"] = len(s3_symbols_prev or [])
-    meta["satellitePoolSize"] = len(satellite_symbols_today)
     meta["poolCaliber"] = "s3=score>=65&rs (gate-free), satellite=habit legs"
 
     remove_items = compute_pool_removals(
@@ -1114,6 +1129,106 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         "alphaAdd": pool_add,
         "meta": meta,
         "applied": True,
+    }
+
+
+def refresh_satellite_pool(*, day: str | None = None, trigger: str = "post_5min") -> dict[str, Any]:
+    """Re-apply the 星舰 pool AFTER the day's 14:30 fill panel exists (18:40+).
+
+    The 17:30 run builds the satellite leg from the habit replay, but the
+    decision-day 14:30 prints only land with ``bar_5min_close`` (18:40) —
+    names that entered at 14:30 were therefore mirrored a day late
+    (2026-09-17 audit). This refresh recomputes the legs, adds/keeps them,
+    drops names the replay no longer holds, and records its own run row
+    (trigger ``post_5min``) so the audit trail shows the second application.
+
+    Idempotent: safe to re-run; a replay failure is a no-op (never removes).
+    S-3 rows and manual rows are untouched (S-3 GC is skipped by passing no
+    previous-session data).
+    """
+    from data_sync_service.db.watchlist_automation import get_latest_run
+
+    trade_date = day or _shanghai_today_iso()
+    legs = compute_satellite_pool(day=trade_date)
+    if legs is None:
+        return {
+            "ok": False,
+            "tradeDate": trade_date,
+            "error": "satellite replay failed — registry untouched",
+        }
+    satellite_symbols_today = {str(x.get("symbol")) for x in legs if x.get("symbol")}
+    registry = list_registry()
+    remove_items = compute_pool_removals(
+        registry,
+        s3_symbols_today=set(),
+        s3_symbols_prev=None,
+        satellite_symbols_today=satellite_symbols_today,
+    )
+    existing_symbols = {str(x.get("symbol")) for x in registry if x.get("symbol")}
+    pool_add: list[dict[str, Any]] = []
+    for item in legs:
+        sym = str(item.get("symbol") or "")
+        if not sym:
+            continue
+        row = {k: v for k, v in item.items() if v is not None}
+        row["poolDate"] = trade_date
+        pool_add.append(row)
+    added_no = sum(1 for x in pool_add if x["symbol"] not in existing_symbols)
+
+    # Accumulate the day's counts: the UI keeps ONE applied row per trade_date
+    # (newest wins), so carry the 17:30 run's S-3 numbers forward.
+    meta: dict[str, Any] = {"trigger": trigger, "refresh": "satellite-post-5min"}
+    prev_run = get_latest_run()
+    if prev_run and str(prev_run.get("tradeDate") or "") == trade_date:
+        base = prev_run.get("meta") or {}
+        if isinstance(base, dict):
+            meta.update(base)
+    meta["satellitePoolSize"] = len(satellite_symbols_today)
+    base_added = meta.get("poolAdded") if isinstance(meta.get("poolAdded"), dict) else {}
+    base_removed = meta.get("poolRemoved") if isinstance(meta.get("poolRemoved"), dict) else {}
+    meta["poolAdded"] = {
+        "s3": int((base_added or {}).get("s3") or 0),
+        "satellite": int((base_added or {}).get("satellite") or 0) + added_no,
+    }
+    meta["poolRemoved"] = {
+        "s3": int((base_removed or {}).get("s3") or 0),
+        "satellite": int((base_removed or {}).get("satellite") or 0)
+        + sum(1 for x in remove_items if x.get("reason") == "satellite_exited"),
+    }
+
+    run_id = insert_automation_run(
+        trade_date=trade_date,
+        trigger_type=trigger,
+        skipped=False,
+        skip_reason=None,
+        remove_items=remove_items,
+        alpha_add=pool_add,
+        meta=meta,
+    )
+    applied = apply_pool_run(
+        run_id=run_id,
+        registry=registry,
+        remove_items=remove_items,
+        pool_add=pool_add,
+        satellite_symbols_today=satellite_symbols_today,
+    )
+    meta["applied"] = applied
+    logger.info(
+        "satellite pool refresh %s: legs=%d added=%d removed=%d (run %s)",
+        trade_date,
+        len(satellite_symbols_today),
+        added_no,
+        len(remove_items),
+        run_id,
+    )
+    return {
+        "ok": True,
+        "runId": run_id,
+        "tradeDate": trade_date,
+        "satellitePoolSize": len(satellite_symbols_today),
+        "added": added_no,
+        "removed": len(remove_items),
+        "applied": applied,
     }
 
 

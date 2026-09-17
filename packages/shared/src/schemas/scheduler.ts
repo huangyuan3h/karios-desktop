@@ -331,6 +331,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     { endpoint: '/sync/sleeve-etfs', method: 'POST', label: '立即同步' },
   ),
   meta(
+    'harbor_h2_shadow',
+    'indexMacro',
+    '港湾H2影子账本（验证线）',
+    '工作日 18:35 重算港湾 Timeline + H2 迟滞停车腿，向影子账本追加 paper 日（只看不动手；失败只进收件箱，不打电话）。',
+    '工作日 18:35',
+    '35 18 * * 1-5',
+    'cron',
+    true,
+    15,
+  ),
+  meta(
     'stock_daily_basic_sync',
     'indexMacro',
     '个股估值（市值）',
@@ -386,6 +397,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
   ),
 
   /* Watchlist automation -------------------------------------------------- */
+  meta(
+    'satellite_live_panel',
+    'watchlistAutomation',
+    '星舰 14:30 现场面板',
+    '工作日 14:30 抓全市场实时报价合成当日卫星候选面板（闸/广度/名单/wouldFill），落 satellite_live_panel_latest.json 供 watchlist 卡片展示；不完整（覆盖率过低/面板不可用）不落盘，只记失败。',
+    '工作日 14:30',
+    '30 14 * * 1-5',
+    'cron',
+    true,
+    4,
+  ),
   meta(
     'watchlist_automation',
     'watchlistAutomation',
@@ -694,6 +716,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
     2,
+  ),
+  meta(
+    'zt_pool_snapshot',
+    'factors',
+    '涨停池快照',
+    '工作日 17:45 抓取东财涨停/炸板/强势/昨日涨停池（封板资金/首封时间/炸板次数/连板数）落 data/zt_pool CSV。接口仅保留约 2 周，只能向前每日积累（P0-13 B18 遗留）。',
+    '工作日 17:45',
+    '45 17 * * 1-5',
+    'cron',
+    true,
+    3,
   ),
   meta(
     'risk_state_sync',

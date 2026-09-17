@@ -1,0 +1,216 @@
+{
+  "tag": "hotmoney-seat-flow-2026-09-15",
+  "prereg": "docs/designs/hotmoney-anatomy-prereg-2026-09-15.md#e1--h-flow-1席位净买的次日分解gap-vs-盘中",
+  "head_seats": [
+    "中国国际金融股份有限公司上海分公司",
+    "华鑫证券有限责任公司上海分公司",
+    "华泰证券股份有限公司总部",
+    "中信证券股份有限公司上海分公司",
+    "国泰海通证券股份有限公司总部",
+    "中国银河证券股份有限公司北京中关村大街证券营业部",
+    "开源证券股份有限公司西安西大街证券营业部",
+    "东方财富证券股份有限公司山南香曲东路证券营业部",
+    "高盛(中国)证券有限责任公司上海浦东新区世纪大道证券营业部",
+    "国泰君安证券股份有限公司总部",
+    "瑞银证券有限责任公司上海花园石桥路证券营业部",
+    "国信证券股份有限公司浙江互联网分公司",
+    "国盛证券有限责任公司宁波桑田路证券营业部",
+    "开源证券股份有限公司西安太华路证券营业部",
+    "招商证券交易单元(353800)",
+    "招商证券股份有限公司上海牡丹江路证券营业部",
+    "摩根大通证券(中国)有限公司上海银城中路证券营业部",
+    "财通证券股份有限公司杭州上塘路证券营业部",
+    "华宝证券股份有限公司上海东大名路证券营业部",
+    "东方财富证券股份有限公司昌都两江大道证券营业部"
+  ],
+  "summary": {
+    "head": {
+      "n": 24785,
+      "gap": 0.14,
+      "gap_ex": 0.22,
+      "gap_median": 0.0,
+      "intraday": 0.31,
+      "d3": -0.36,
+      "d3_ex": -0.46,
+      "unbuyable_pct": 3.64
+    },
+    "hot_other": {
+      "n": 28954,
+      "gap": 0.81,
+      "gap_ex": 0.87,
+      "gap_median": 0.04,
+      "intraday": 0.14,
+      "d3": -0.43,
+      "d3_ex": -0.55,
+      "unbuyable_pct": 5.38
+    },
+    "inst": {
+      "n": 17294,
+      "gap": 0.37,
+      "gap_ex": 0.43,
+      "gap_median": 0.0,
+      "intraday": 0.53,
+      "d3": -0.02,
+      "d3_ex": -0.11,
+      "unbuyable_pct": 2.2
+    },
+    "lhasa": {
+      "n": 17254,
+      "gap": -2.3,
+      "gap_ex": -2.23,
+      "gap_median": -2.3,
+      "intraday": 0.83,
+      "d3": -0.68,
+      "d3_ex": -0.78,
+      "unbuyable_pct": 1.55
+    },
+    "hk": {
+      "n": 11058,
+      "gap": 0.53,
+      "gap_ex": 0.6,
+      "gap_median": 0.04,
+      "intraday": 0.36,
+      "d3": 0.17,
+      "d3_ex": -0.07,
+      "unbuyable_pct": 2.49
+    },
+    "control": {
+      "n": 3871,
+      "gap": -1.27,
+      "gap_ex": -1.21,
+      "gap_median": -1.33,
+      "intraday": 0.41,
+      "d3": -0.42,
+      "d3_ex": -0.52,
+      "unbuyable_pct": 3.77
+    }
+  },
+  "by_window": {
+    "OOS2": {
+      "head": {
+        "gap_ex": 0.34,
+        "d3_ex": -0.57
+      },
+      "hot_other": {
+        "gap_ex": 1.2,
+        "d3_ex": -0.76
+      },
+      "inst": {
+        "gap_ex": 0.37,
+        "d3_ex": 0.0
+      },
+      "lhasa": {
+        "gap_ex": -2.31,
+        "d3_ex": -0.91
+      },
+      "hk": {
+        "gap_ex": 0.83,
+        "d3_ex": -0.22
+      },
+      "control": {
+        "gap_ex": -0.92,
+        "d3_ex": -0.19
+      }
+    },
+    "train": {
+      "head": {
+        "gap_ex": 0.46,
+        "d3_ex": -0.59
+      },
+      "hot_other": {
+        "gap_ex": 1.4,
+        "d3_ex": -0.54
+      },
+      "inst": {
+        "gap_ex": 0.71,
+        "d3_ex": -0.47
+      },
+      "lhasa": {
+        "gap_ex": -2.19,
+        "d3_ex": -1.02
+      },
+      "hk": {
+        "gap_ex": 1.14,
+        "d3_ex": -0.16
+      },
+      "control": {
+        "gap_ex": -1.52,
+        "d3_ex": -1.56
+      }
+    },
+    "valid": {
+      "head": {
+        "gap_ex": -0.01,
+        "d3_ex": -0.33
+      },
+      "hot_other": {
+        "gap_ex": 0.66,
+        "d3_ex": -0.36
+      },
+      "inst": {
+        "gap_ex": 0.42,
+        "d3_ex": -0.02
+      },
+      "lhasa": {
+        "gap_ex": -2.44,
+        "d3_ex": -0.95
+      },
+      "hk": {
+        "gap_ex": 0.47,
+        "d3_ex": 0.13
+      },
+      "control": {
+        "gap_ex": -1.38,
+        "d3_ex": -0.49
+      }
+    },
+    "long": {
+      "head": {
+        "gap_ex": 0.23,
+        "d3_ex": -0.46
+      },
+      "hot_other": {
+        "gap_ex": 0.88,
+        "d3_ex": -0.56
+      },
+      "inst": {
+        "gap_ex": 0.44,
+        "d3_ex": -0.1
+      },
+      "lhasa": {
+        "gap_ex": -2.24,
+        "d3_ex": -0.78
+      },
+      "hk": {
+        "gap_ex": 0.61,
+        "d3_ex": -0.08
+      },
+      "control": {
+        "gap_ex": -1.22,
+        "d3_ex": -0.55
+      }
+    }
+  },
+  "head_gap_ex_nb_by_window": {
+    "OOS2": -0.28,
+    "train": 0.03,
+    "valid": -0.25,
+    "long": -0.15
+  },
+  "head_minus_inst_gap_ex": {
+    "OOS2": -0.03,
+    "train": -0.25,
+    "valid": -0.43,
+    "long": -0.21
+  },
+  "overlap_head_inst_events": 6582,
+  "limit_source": "exact",
+  "limit_proxy_events": 0,
+  "verdict": {
+    "k1": true,
+    "k2": false,
+    "k3": false,
+    "call": "REJECT / close seam"
+  },
+  "as_of": "2026-09-15T11:59:07+00:00"
+}

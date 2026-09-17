@@ -4,6 +4,17 @@
 
 ---
 
+## 现行策略真值入口（2026-09-17）
+
+| 文档 | 用途 |
+|------|------|
+| [`strategy-recipes.md`](./strategy-recipes.md) | **五档现行配方（可重建 spec）**：港湾/母港/星港/双子星/星舰的 universe/信号/时点/仓位/出场/闲置现金/成本/闸 + 口径裁决 + 已知漂移 |
+| [`strategy-params.md`](./strategy-params.md) §1 | S-3 参数数值真值表 |
+| [`pick-strong-track.md`](./pick-strong-track.md) | 港湾产品策略真值（S-3 核心 + 闲置现金 ETF 停车场） |
+| [`trading-system.md`](./trading-system.md) | ⚠️ 部分过期（S-3 叙事/背景；现行值以上三份为准） |
+
+---
+
 ## 模块概览
 
 | 模块 | 定位 | 核心功能 |
@@ -198,6 +209,7 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 7. **弱市/DEFEND 尾盘时间锁（V6.2）**：`Gate.mode=DEFEND` 或 `marketRegime=Weak` 时，仅上海时间 **14:30–14:50** 允许新开/加仓；更早 → `TIME_LOCK_WEAK_REGIME`，更晚 → `MARKET_CLOSING_LOCK`。豁免：`ATTACK` + `Strong`。`WEAK_ATTACK` 已过 14:30 门槛，仍受 `>14:50` 收盘锁。
 8. **防守双轨袖子（V6.2）**：`DEFEND` 下白名单行业（石油石化/公用事业/煤炭/银行/有色金属）且 ∈ 5D 净流入 Top3、Score≥70、TrendOK=ok 时，可豁免全局禁开，Action=`BUY` Why=`DEFENSIVE_SLEEVE_ALLOW`；袖子合计上限 10%、单票 5%。防守持仓豁免 `GATE_DEFEND` TRIM。HardStop 收紧为 `max(EMA10, Current×0.965)`。**Beta&lt;0.8 硬条件本期未接（follow-up）**。
 9. **超大单日资金突破豁免（V6.3）**：单板块 1D 净流入 >500 亿 **且** 上涨家数 >4000 **且** ≥14:30 → Gate 升级为 `WEAK_ATTACK`（`allowNewEntries=true`，Suggest% 硬顶 5%，Why 含 `INTRADAY_OVERFLOW_OVERRIDE`）。不覆盖 `BREADTH_PANIC` / `RISK_*`。
+10. **非拉萨接盘（机构净卖 + 拉萨主买 + 日内急拉）**：`buyAction=avoid`，Why=`风险：机构净卖且拉萨主买，禁止追高`（`buyChecks.blocked_inst_retail_chase`；源码 `service/trendok.py::_apply_inst_flow_risk_buy_blocks`）。**证据（2026-09-15 · B18/H-FLOW-1）**：2021–26 席位级 17,254 个"拉萨净买"事件次日开盘超额 **−2.23%**（机构 +0.43%）——独立数据给该规则背书（仅补证据，行为不变），见 [`backtests/hotmoney/seat-flow-2026-09-15.md`](../backtests/hotmoney/seat-flow-2026-09-15.md)。
 
 否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `MOMENTUM_SURGE_ALLOW`（合法放行）/ `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK` / `TIME_LOCK_WEAK_REGIME` / `MARKET_CLOSING_LOCK` / `DEFENSIVE_SLEEVE_ALLOW`（合法放行）/ `TREND_RECOVERING`（V6.3 准买区）。与 Import 过滤正交。
 

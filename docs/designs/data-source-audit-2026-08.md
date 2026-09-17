@@ -244,3 +244,17 @@
 | 2026-08-15 | Tushare 调价公告 | 调价后 ROI 变 → 重算 |
 | 2027-Q1 | ego-lite 调研结论 | 如果能替代 Chrome → 启动迁移；否则降级 |
 | 任何 | 关键源连续 7 天失败率 > 5% | 立即调查 + 切 backup |
+
+---
+
+## 8. 增补（2026-09-15 · B18 游资解剖 / B19 地量 落的数据资产)
+
+> 这些不是新供应商，而是**已落库/落盘的研究资产**（供任意后续"日线 × 涨停价 / 5min / 席位"研究复用）；登记在此免得重复采集。
+
+| 资产 | 位置 | 说明 |
+|------|------|------|
+| 席位级龙虎榜 2021+ | `services/data-sync-service/data/lhb/lhb_seats.csv`（118.6 万行；`scripts/sync_lhb_seats.py`）| tushare `top_inst` 全市场营业部买卖明细（买卖双向/净额/上榜原因）；机构口径旧档 `lhb_inst.csv` 并存 |
+| 精确涨跌停价 2021+ | `.../data/limit/stk_limit.csv`（713.7 万行；`scripts/sync_stk_limit.py`）| 一字/开盘涨停/封板质量判定的基准（**注意 `daily` 是 qfq，须先重建 raw**，见 `first-principles §二.8`）|
+| 涨停池每日快照 | `.../data/zt_pool/zt_pool_YYYYMMDD.csv`（job `zt_pool_snapshot`，工作日 17:45）| 东财 涨停/炸板/强势/昨日涨停 四池：封板资金/首封时间/最后封板/炸板次数/连板数；接口仅保留 ~2 周，**只能向前积累** |
+| 全天 5min 事件集 | `bar_5min` source `ext_5min`（2024–26 涨停事件日 48 根/天，259 万行）· `baostock_full`（2021–23，待补）| `scripts/import_5min_event_days.py` / `backfill_5min_event_days.py` |
+| 基期工具 | `scripts/hotmoney_lib.py` | `latest_adj` / `raw_price`（qfq→raw 重建）；所有"日线 × 涨停价 / 5min"研究先过它 |

@@ -231,6 +231,18 @@ def test_get_latest_run(monkeypatch) -> None:
     assert wa.get_latest_run() is None
 
 
+def test_automation_applied_on_requires_applied_non_skipped(monkeypatch) -> None:
+    """2026-09-17: a skipped run is NOT 'done' — the pool was never built."""
+    cur = _patch(monkeypatch, [(1,)])
+    assert wa.automation_applied_on("2026-09-16") is True
+    sql, params = cur.executed[0]
+    assert "skipped = FALSE" in sql and "applied_at IS NOT NULL" in sql
+    assert params == ("2026-09-16",)
+
+    _ = _patch(monkeypatch, [])
+    assert wa.automation_applied_on("2026-09-16") is False
+
+
 def test_list_recent_runs(monkeypatch) -> None:
     rows = [_run_row(meta={"funnel": {"x": 1}}, applied=datetime(2026, 8, 7, 12, 0))]
     cur = _patch(monkeypatch, rows)

@@ -146,18 +146,35 @@ def _pct(entry: float, cur: float) -> float | None:
     return (cur - entry) / entry * 100.0
 
 
+def _is_parking_symbol(symbol: str) -> bool:
+    """True for the Harbor parking ETF family (ETF:513350 / 513350.SH / bare).
+
+    Parking legs are a separate strategy leg (reconciled by
+    ``sleeve_paper_recon``); the S-3 stock recon must not read them as
+    ``extra``. 2026-09-17 audit: the paper book tags sleeve ETF rows
+    ``market='CN'``, so every parked day looked like drift in the weekly
+    ``backtest_paper_recon`` CN bucket.
+    """
+    from data_sync_service.service.multi_asset_sleeve import multi_key_for_symbol
+
+    return multi_key_for_symbol(symbol) is not None
+
+
 def _paper_holdings_on(day: str) -> dict[str, dict]:
-    """symbol -> row for paper trades open on `day`."""
+    """symbol -> row for paper trades open on `day` (S-3 stock legs only)."""
     out: dict[str, dict] = {}
     for row in list_paper_trades():
+        sym = str(row.get("symbol"))
+        if _is_parking_symbol(sym):
+            continue
         if row.get("status") == "open" and _entry(row) <= day:
-            out[str(row.get("symbol"))] = row
+            out[sym] = row
         elif (
             row.get("status") == "closed"
             and _entry(row) <= day
             and (not row.get("closeDate") or str(row.get("closeDate")) > day)
         ):
-            out[str(row.get("symbol"))] = row
+            out[sym] = row
     return out
 
 
@@ -432,7 +449,9 @@ def reconcile_registry(
         in_market = {
             s: r
             for s, r in real.items()
-            if _resolve_ts_code(s) is not None and _resolve_ts_code(s)[0] == market
+            if not _is_parking_symbol(s)
+            and _resolve_ts_code(s) is not None
+            and _resolve_ts_code(s)[0] == market
         }
         extra_list: list[dict[str, Any]] = []
         for s in sorted(set(in_market) - expect):

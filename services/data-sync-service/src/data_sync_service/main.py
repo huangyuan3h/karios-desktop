@@ -25,6 +25,7 @@ from .api.news_routes import router as news_router
 from .api.notifications_routes import router as notifications_router
 from .api.query_routes import router as query_router
 from .api.research_routes import router as research_router
+from .api.settings_routes import router as settings_router
 from .api.sync_routes import router as sync_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.trade_review_routes import router as trade_review_router
@@ -133,6 +134,7 @@ app.include_router(user_trades_router)
 # api.auth.require_api_key.
 app.include_router(discovery_router)
 app.include_router(notifications_router)
+app.include_router(settings_router)
 app.include_router(backtest_router)
 app.include_router(decision_router)
 app.include_router(webhook_router)

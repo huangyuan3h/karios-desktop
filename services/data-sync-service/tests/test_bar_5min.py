@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from data_sync_service.scheduler import bar_5min_job
 from data_sync_service.service import bar_5min as b5
 
@@ -139,6 +141,8 @@ def test_bar_5min_job_run_ok(monkeypatch) -> None:  # noqa: ANN001
         "backfill_symbols",
         lambda **kw: {"ok": 2, "failed": 0, "skipped": 0, "stored": 14, "pending": 2},
     )
+    refreshed: list[str] = []
+    monkeypatch.setattr(bar_5min_job, "_refresh_satellite_pool", refreshed.append)
     records: list[dict] = []
     monkeypatch.setattr(
         bar_5min_job,
@@ -148,6 +152,34 @@ def test_bar_5min_job_run_ok(monkeypatch) -> None:  # noqa: ANN001
     bar_5min_job.run()
     assert records[0]["success"] is True
     assert records[0]["last_ts_code"] == "14"
+    assert refreshed  # OPT-219: pool refresh runs after the bars are stored
+
+
+def test_refresh_satellite_pool_isolated_from_failures(monkeypatch) -> None:  # noqa: ANN001
+    """A pool failure must never fail the bar job (wrapped + logged)."""
+    calls: list[str] = []
+
+    def boom(*, day: str):
+        calls.append(day)
+        raise RuntimeError("pool down")
+
+    monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
+    monkeypatch.setattr(
+        "data_sync_service.service.watchlist_automation.refresh_satellite_pool", boom
+    )
+    bar_5min_job._refresh_satellite_pool("2026-09-17")
+    assert calls == ["2026-09-17"]
+
+
+def test_refresh_satellite_pool_skips_non_session(monkeypatch) -> None:  # noqa: ANN001
+    calls: list[str] = []
+    monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: False)
+    monkeypatch.setattr(
+        "data_sync_service.service.watchlist_automation.refresh_satellite_pool",
+        lambda **kw: calls.append(kw),
+    )
+    bar_5min_job._refresh_satellite_pool("2026-09-17")
+    assert calls == []
 
 
 def test_backfill_skips_covered(monkeypatch) -> None:  # noqa: ANN001
@@ -214,3 +246,85 @@ def test_backfill_stores_filtered_rows(monkeypatch) -> None:  # noqa: ANN001
     assert out["ok"] == 1
     assert out["stored"] == 1
     assert stored == [("000001.SZ", 1, "baostock")]
+
+
+class _FakeCur:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def __enter__(self) -> _FakeCur:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def execute(self, sql: object, *args: object) -> None:
+        self.statements.append(str(sql))
+
+    def copy(self, sql: object) -> _FakeCopy:
+        self.statements.append(str(sql))
+        return _FakeCopy(self)
+
+
+class _FakeCopy:
+    def __init__(self, cur: _FakeCur) -> None:
+        self._cur = cur
+
+    def __enter__(self) -> _FakeCopy:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def write_row(self, row: object) -> None:
+        pass
+
+
+class _FakeConn:
+    def __init__(self) -> None:
+        self.cur = _FakeCur()
+
+    def cursor(self) -> _FakeCur:
+        return self.cur
+
+    def commit(self) -> None:
+        pass
+
+    def __enter__(self) -> _FakeConn:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+def _payload() -> list[tuple]:
+    return [("600000.SH", "2026-01-05", "1430", 10.0, 10.2, 9.9, 10.1, 100.0, 1000.0, "baostock")]
+
+
+def test_upsert_payload_defaults_to_ranked_update(monkeypatch: pytest.MonkeyPatch) -> None:
+    import data_sync_service.db.bar_5min as b5db
+
+    conn = _FakeConn()
+    monkeypatch.setattr(b5db, "get_connection", lambda: conn)
+    monkeypatch.setattr(b5db, "ensure_table", lambda: None)
+    assert b5db.upsert_5min_payload(_payload()) == 1
+    insert = next(s for s in conn.cur.statements if "INSERT INTO" in s)
+    assert "DO UPDATE SET" in insert and "ext_15min" in insert
+
+
+def test_upsert_payload_nothing_never_rewrites(monkeypatch: pytest.MonkeyPatch) -> None:
+    import data_sync_service.db.bar_5min as b5db
+
+    conn = _FakeConn()
+    monkeypatch.setattr(b5db, "get_connection", lambda: conn)
+    monkeypatch.setattr(b5db, "ensure_table", lambda: None)
+    assert b5db.upsert_5min_payload(_payload(), on_conflict="nothing") == 1
+    insert = next(s for s in conn.cur.statements if "INSERT INTO" in s)
+    assert "DO NOTHING" in insert and "DO UPDATE" not in insert
+
+
+def test_upsert_payload_rejects_unknown_mode() -> None:
+    import data_sync_service.db.bar_5min as b5db
+
+    with pytest.raises(ValueError, match="on_conflict"):
+        b5db.upsert_5min_payload(_payload(), on_conflict="overwrite")  # type: ignore[arg-type]

@@ -8,6 +8,7 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
+import { H2ShadowFollowCard } from '@/components/pages/H2ShadowFollowCard';
 import { StrategyCatalogPanel } from '@/components/pages/StrategyCatalogPanel';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
 import { HarborNavOverlay } from '@/components/pages/HarborNavOverlay';
@@ -16,10 +17,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { patchUserTrade } from '@/lib/queries/userTrades';
 import {
   buildHarborSegments,
+  buildParkingStrip,
+  buildRiskStrip,
   fitSegmentLabel,
   harborHoldLine,
+  hasBaseLeg,
+  hasParkedLeg,
+  hasRiskLeg,
   isSatelliteRow,
   SAT_CAPACITY,
+  stripPickColor,
   type HarborSegment,
 } from '@/lib/harbor-segments';
 import { cn } from '@/lib/utils';
@@ -47,6 +54,8 @@ import {
   type TimelineOpenPosition,
   type TimelineParkedBlotterRow,
   type TimelineParkedHeld,
+  type TimelineRiskEvent,
+  type TimelineRiskHeld,
   type TimelineStrategy,
 } from '@/lib/queries/backtest';
 
@@ -665,14 +674,80 @@ function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQue
   );
 }
 
+/** Thin per-leg strip under the main bar (satellite / parking / B3). Hover-free. */
+function LegStrip({
+  label,
+  segments: segs,
+  pxPerDay,
+  classFor,
+  styleFor,
+  textClassFor,
+}: {
+  label: string;
+  segments: HarborSegment[];
+  pxPerDay: number;
+  classFor: (seg: HarborSegment) => string;
+  styleFor?: (seg: HarborSegment) => React.CSSProperties;
+  textClassFor?: (seg: HarborSegment) => string;
+}) {
+  if (!segs.length) return null;
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-7 shrink-0 text-[10px] text-[var(--k-muted)]">{label}</span>
+      <div className="flex h-3.5 flex-1 gap-px overflow-hidden rounded border border-[var(--k-border)]/30">
+        {segs.map((seg) => {
+          const text = fitSegmentLabel(seg.labels, pxPerDay * seg.days);
+          return (
+            <div
+              key={`strip-${label}-${seg.start}-${seg.ident}`}
+              style={{ flexGrow: seg.days, flexBasis: 0, ...(styleFor?.(seg) ?? {}) }}
+              className={cn(
+                'flex min-w-0 items-center justify-center overflow-hidden',
+                classFor(seg),
+              )}
+              title={seg.title}
+            >
+              {text ? (
+                <span
+                  className={cn(
+                    'truncate px-0.5 text-[8px] font-medium leading-none',
+                    textClassFor?.(seg) ?? 'text-white',
+                  )}
+                >
+                  {text}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Catalog product slot -> timeline line (母港 tab shows the M30 defensive tier). */
+function catalogKeyToTimeline(k: StrategyCatalogKey): TimelineStrategy {
+  return k === 'homeport' ? 'homeport_m30' : k;
+}
+
+/** Timeline line -> catalog product slot (M30 line belongs to the 母港 slot;
+ * harbor_h2 validation line belongs to the 港湾 slot). */
+function timelineToCatalogKey(s: TimelineStrategy): StrategyCatalogKey {
+  if (s === 'homeport_m30') return 'homeport';
+  if (s === 'harbor_h2') return 'harbor';
+  return s;
+}
 function TimelineCard({
   strategy: controlledStrategy,
   onStrategyChange,
   showFundFlow = true,
+  extraStrategies = [],
 }: {
   strategy?: TimelineStrategy;
   onStrategyChange?: (strategy: TimelineStrategy) => void;
   showFundFlow?: boolean;
+  /** Extra research lines (e.g. harbor_h2 validation) appended to the tabs. */
+  extraStrategies?: TimelineStrategy[];
 } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
@@ -681,7 +756,9 @@ function TimelineCard({
   const start = selected.start;
   const end = selected.end;
   const [innerStrategy, setInnerStrategy] = React.useState<TimelineStrategy>(
-    () => getStrategyMode(),
+    // 母港 mode is the M30 defensive tier on the catalog side — the compare
+    // tab must open the same line, not the frozen M50 base (2026-09-17 audit).
+    () => catalogKeyToTimeline(getStrategyMode()),
   );
   const strategy = controlledStrategy ?? innerStrategy;
   const setStrategy = (next: TimelineStrategy) => {
@@ -695,6 +772,8 @@ function TimelineCard({
   const openPositions = q.data?.openPositions ?? [];
   const parkedBlotter = q.data?.parkedBlotter ?? [];
   const parkedHeld = q.data?.parkedHeld ?? null;
+  const riskBlotter = q.data?.riskBlotter ?? [];
+  const riskHeld = q.data?.riskHeld ?? null;
   const parkedEventsByDay = React.useMemo(() => {
     const byDay = new Map<string, string[]>();
     for (const e of q.data?.parkedBlotter ?? []) {
@@ -715,26 +794,55 @@ function TimelineCard({
   }, [q.data]);
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
   const strategySubtitle: Record<TimelineStrategy, string> = {
-    harbor: '选强股票 + 闲钱停 ETF 停车场',
-    homeport: '港湾一半 + 风险预算一半（回撤小、收益也小）',
-    starport: '母港 + 一点卫星（最多 1/3）· 全家最稳',
+    harbor: '选强股票 + 闲钱停 ETF 停车场 · Live（日落模式）',
+    harbor_h2: '港湾H2验证线（条件PASS待 paper，非产品档）',
+    homeport: '港湾一半 + 风险预算一半（M50 冻结口径，星港底座）',
+    homeport_m30: '港湾七成 + 风险预算三成（防守档 · 年化 21%）',
+    starport: '母港 + 卫星 0.2 曝露 · 全家最稳',
     starship: 'v2：卫星 + 闲钱停 ETF（收益高、回撤也大）',
-    twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）',
+    twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）· 并行对照',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
     harbor:
-      '港湾 = 买 A 股最强的一批股票 + 没买股票的钱去买趋势最好的一个 ETF（黄金/原油/纳指/国债里挑）。和 Watchlist「今日下单」是同一套配方。',
+      '港湾 = 买 A 股最强的一批股票 + 没买股票的钱去买趋势最好的一个 ETF（黄金/原油/纳指/国债里挑）。和 Watchlist「今日下单」是同一套配方。日落模式：维持运行，不再开发。',
     homeport:
-      '母港 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。回撤比港湾小一半，收益也差不多小一半。',
+      '母港 M50 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。冻结口径（星港底座）；防守档看 M30 tab。',
+    homeport_m30:
+      '母港 M30 防守档 = 港湾七成 + 风险预算三成（每月调一次）。回撤比港湾浅一截，长期年化 21%。',
+    harbor_h2:
+      '港湾H2 = S-3 核心冻结，闲置停车换 H2 迟滞套筒（H-HARBOR-H2 验证线）。只看曲线不下单；Live=港湾 canonical。',
     starport:
-      '星港 = 母港 + 一点卫星（卫星最多占 1/3 的钱）。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
+      '星港 = 母港 + 卫星 0.2 曝露。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
     starship:
-      '星舰 v2 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 没出手时的现金（平均 84%）去买趋势最好的 ETF。长期 +885%，但最大回撤 −28.5%（跌幅全部来自停车资产）。不进实盘（还差 paper 3/20 + 授权）。',
+      '星舰 v2 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 没出手时的现金（平均 84%）去买趋势最好的 ETF。长期 +975%，但最大回撤 −30.5%（跌幅全部来自停车资产）。不进实盘（还差 paper 3/20 + 授权）。',
     twin_star:
       '双子星 = 港湾一半 + 卫星一半。行情好的年份冲得最猛（2025 +67%），卫星不行的年份很平庸。保留作对照观察，不进实盘。',
   };
+  const TABLE_NOTE: Record<TimelineStrategy, string> = {
+    harbor: '港湾（S-3 核心 + 闲置现金 ETF 停车场）· 日落',
+    harbor_h2: '港湾H2（S-3 + H2 迟滞停车）· 验证线',
+    homeport: '母港M50（港湾 × 风险预算 50/50）· 冻结',
+    homeport_m30: '母港M30（港湾 70% × 风险预算 30%）· 防守档',
+    starport: '星港（母港 + 卫星 0.2）',
+    starship: '星舰 v2（卫星 + 闲置现金停 ETF）',
+    twin_star: '双子星（港湾 × 卫星 50/50）· 并行对照',
+  };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const satMode = rows.some((r) => isSatelliteRow(r));
+  // Overlay rows (星港/双子星) carry BOTH the base leg and the satellite leg;
+  // the bar/table render both instead of picking one branch.
+  const showBase = rows.some((r) => hasBaseLeg(r));
+  const isOverlay = satMode && showBase;
+  const riskUniverse = React.useMemo(() => q.data?.riskUniverse ?? [], [q.data]);
+  const riskNames = React.useMemo(
+    () => Object.fromEntries(riskUniverse.map((u) => [u.ts, u.name])),
+    [riskUniverse],
+  );
+  const showRisk = rows.some((r) => hasRiskLeg(r));
+  const showParkCol =
+    rows.some((r) => hasParkedLeg(r)) ||
+    (showBase && rows.some((r) => (r.parkedSides ?? 0) > 0 || r.parkedTrail));
+  const showParkStrip = strategy === 'starship' && rows.some((r) => hasParkedLeg(r));
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
     acc[k] = (acc[k] ?? 0) + 1;
@@ -743,6 +851,16 @@ function TimelineCard({
   const satDist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = `SAT:${r.satPositions ?? 0}`;
     acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const riskDist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = r.riskTop ?? '';
+    if (k) acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+  const parkDist = rows.reduce<Record<string, number>>((acc, r) => {
+    const k = r.parkedPick ?? '';
+    if (k) acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
   const satGateClosed = rows.filter((r) => r.gateOpen === false).length;
@@ -786,6 +904,24 @@ function TimelineCard({
     return { backgroundImage: sat.gateOpen ? fill : `${SAT_HATCH}, ${fill}` };
   };
   const segments = React.useMemo(() => buildHarborSegments(rows), [rows]);
+  // Overlay main bar = the base leg (stocks + parking); the satellite leg
+  // gets its own strip below so neither is hidden.
+  const mainSegments = React.useMemo(
+    () => (isOverlay ? buildHarborSegments(rows, { ignoreSat: true }) : segments),
+    [isOverlay, rows, segments],
+  );
+  const satStrip = React.useMemo(
+    () => (isOverlay ? segments.filter((s) => s.mode === 'SAT') : []),
+    [isOverlay, segments],
+  );
+  const parkStrip = React.useMemo(
+    () => (showParkStrip ? buildParkingStrip(rows) : []),
+    [showParkStrip, rows],
+  );
+  const riskStrip = React.useMemo(
+    () => (showRisk ? buildRiskStrip(rows, riskUniverse) : []),
+    [showRisk, rows, riskUniverse],
+  );
   const barRef = React.useRef<HTMLDivElement | null>(null);
   const [barWidth, setBarWidth] = React.useState(0);
   React.useEffect(() => {
@@ -841,13 +977,15 @@ function TimelineCard({
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last
             ? ` · ${strategyLabel} ${harborLast ?? '—'}%${
-                last.navBaseReturnPct != null ? ` · 基线 ${last.navBaseReturnPct}%` : ''
+                !satMode && last.navBaseReturnPct != null
+                  ? ` · 基线 ${last.navBaseReturnPct}%`
+                  : ''
               }`
             : ''}
           {strategy === 'homeport' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
             : ''}
-          {strategy === 'twin_star' && summary?.harborPct != null
+          {strategy === 'homeport_m30' && summary?.harborPct != null
             ? ` · 港湾 ${summary.harborPct}%`
             : ''}
           {strategy === 'starport' && summary?.homeportPct != null
@@ -856,6 +994,7 @@ function TimelineCard({
           {strategy === 'starship' && summary?.parkedAvgWeight != null
             ? ` · 停车均值 ${Math.round(summary.parkedAvgWeight * 100)}%`
             : ''}
+          {summary?.riskPct != null ? ` · B3 ${summary.riskPct}%` : ''}
         </span>
       </div>
       <div className="mb-2 flex flex-wrap items-center gap-1">
@@ -877,7 +1016,7 @@ function TimelineCard({
           </button>
         ))}
         <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
-        {(['harbor', 'homeport', 'starport', 'starship', 'twin_star'] as const).map((s) => (
+        {(['starship', 'starport', 'homeport_m30', 'harbor', 'twin_star', ...extraStrategies] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -924,7 +1063,7 @@ function TimelineCard({
                 className="flex h-5 w-full cursor-crosshair gap-px overflow-hidden rounded border border-[var(--k-border)]/30"
                 data-testid="harbor-hold-bar"
               >
-                {segments.map((seg) => {
+                {mainSegments.map((seg) => {
                   const width = pxPerDay * seg.days;
                   const text = fitSegmentLabel(seg.labels, width);
                   const sat = seg.mode === 'SAT';
@@ -979,7 +1118,7 @@ function TimelineCard({
                     data-testid="harbor-day-tip"
                   >
                     <div className="font-medium text-[var(--k-fg)]">
-                      {hoverRow.date} · {harborHoldLine(hoverRow)}
+                      {hoverRow.date} · {harborHoldLine(hoverRow, riskNames)}
                     </div>
                     <div className="text-[var(--k-muted)]">
                       基线{' '}
@@ -1010,6 +1149,39 @@ function TimelineCard({
                 </>
               ) : null}
             </div>
+            {isOverlay ? (
+              <LegStrip
+                label="卫星"
+                segments={satStrip}
+                pxPerDay={pxPerDay}
+                classFor={(seg) => satColor(seg)}
+                styleFor={(seg) => satStyle(seg)}
+                textClassFor={(seg) =>
+                  (seg.sat?.positions ?? 0) > 0
+                    ? 'text-white'
+                    : 'text-zinc-600 dark:text-zinc-200'
+                }
+              />
+            ) : null}
+            {parkStrip.length ? (
+              <LegStrip
+                label="停车"
+                segments={parkStrip}
+                pxPerDay={pxPerDay}
+                classFor={(seg) => stripPickColor(seg.pick)}
+                textClassFor={(seg) =>
+                  seg.pick === 'REPO' ? 'text-zinc-700 dark:text-zinc-100' : 'text-white'
+                }
+              />
+            ) : null}
+            {riskStrip.length ? (
+              <LegStrip
+                label="B3"
+                segments={riskStrip}
+                pxPerDay={pxPerDay}
+                classFor={(seg) => stripPickColor(seg.pick)}
+              />
+            ) : null}
             <HarborNavOverlay rows={rows} seriesLabel={strategyLabel} />
             {showFundFlow ? <FundFlowPanel className="mt-1.5" start={start} end={end} /> : null}
             <div className="flex justify-between text-[10px] text-[var(--k-muted)]">
@@ -1017,10 +1189,27 @@ function TimelineCard({
                 连续相同持仓合并为一块（宽度=天数，块内标持有）· 股票红（斜纹=股票+停车）/ 黄金amber
                 / 原油slate / 纳指blue / 国债emerald / 逆回购锌
                 {satMode ? ' · 卫星紫（实心=持仓/4槽，淡紫=空闲槽，斜纹=闸关，灰=空仓）' : ''}
+                {isOverlay ? ' · 主条=底座持仓（股票+停车），下方细条=卫星槽位' : ''}
+                {riskStrip.length ? ' · B3细条=篮子当月最大权重ETF' : ''}
+                {parkStrip.length ? ' · 停车细条=闲钱停的ETF' : ''}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
+            {showBase
+              ? ALL_PICKS.map((k) => {
+                  const v = dist[k] ?? 0;
+                  return (
+                    <span key={k} className="flex items-center gap-1">
+                      <span
+                        className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
+                      />
+                      {pickLabel[k] ?? k} {v}天 (
+                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                    </span>
+                  );
+                })
+              : null}
             {satMode
               ? [0, 1, 2, 3, 4].map((p) => {
                   const v = satDist[`SAT:${p}`] ?? 0;
@@ -1040,23 +1229,38 @@ function TimelineCard({
                     </span>
                   );
                 })
-              : ALL_PICKS.map((k) => {
-                  const v = dist[k] ?? 0;
-                  return (
-                    <span key={k} className="flex items-center gap-1">
-                      <span
-                        className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
-                      />
-                      {pickLabel[k] ?? k} {v}天 (
-                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
-                    </span>
-                  );
-                })}
+              : null}
             {satMode ? (
               <span className="flex items-center gap-1 text-[var(--k-muted)]">
                 闸关 {satGateClosed}天
               </span>
             ) : null}
+            {showRisk
+              ? riskUniverse.map((u) => {
+                  const v = riskDist[u.ts] ?? 0;
+                  if (!v) return null;
+                  return (
+                    <span key={`risk-${u.ts}`} className="flex items-center gap-1">
+                      <span
+                        className={cn('inline-block size-2 rounded-sm', stripPickColor(u.ts))}
+                      />
+                      B3·{u.name} {v}天 (
+                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                    </span>
+                  );
+                })
+              : null}
+            {showParkStrip
+              ? Object.entries(parkDist).map(([k, v]) => (
+                  <span key={`park-${k}`} className="flex items-center gap-1">
+                    <span
+                      className={cn('inline-block size-2 rounded-sm', stripPickColor(k))}
+                    />
+                    停车·{PICK_LABELS[k] ?? k} {v}天 (
+                    {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                  </span>
+                ))
+              : null}
             <span className="ml-auto text-[10px] text-[var(--k-muted)]">
               {`${strategyLabel}累计 ${harborLast ?? '—'}% / dd ${summary?.maxDdFusedPct ?? '—'}%${
                 last?.navBaseReturnPct != null ? ` · 基线累计 ${last.navBaseReturnPct}%` : ''
@@ -1075,6 +1279,8 @@ function TimelineCard({
                   <th className="py-1 pr-2">持仓</th>
                   <th className="py-1 pr-2">持有</th>
                   <th className="py-1 pr-2">卖出</th>
+                  {showParkCol ? <th className="py-1 pr-2">停车</th> : null}
+                  {showRisk ? <th className="py-1 pr-2">B3</th> : null}
                   <th className="py-1 pr-2">基线NAV%</th>
                   <th className="py-1 pr-2">{strategyLabel}NAV%</th>
                   <th className="py-1 pr-2">超额</th>
@@ -1086,9 +1292,10 @@ function TimelineCard({
                   const exits = r.exits ?? [];
                   const holdsStock = (r.positions ?? 0) > 0;
                   const sat = r.satPositions != null || r.pick === 'S-GAP';
+                  const baseRow = hasBaseLeg(r);
                   const satSells = sat ? (satelliteFills.get(r.date) ?? []) : [];
                   const isMixed = holdsStock && (r.idlePct ?? 0) >= 50;
-                  const badge = sat
+                  const badge = !baseRow
                     ? '卫星S-GAP'
                     : isMixed
                       ? `STOCK+${r.pick ?? 'REPO'}`
@@ -1109,11 +1316,16 @@ function TimelineCard({
                               ? 'GC001'
                               : (r.pick ?? 'REPO'));
                   const syms = holdsStock ? (r.stockSymbols ?? []).join(' ') || '—' : pickSym;
-                  const parkedKey = r.parkedPick;
-                  const parkedLabel =
-                    parkedKey && parkedKey !== 'REPO'
-                      ? (PICK_LABELS[parkedKey] ?? parkedKey)
-                      : parkedKey === 'REPO'
+                  // Unified parking leg: starship rows carry parked*; harbor-family
+                  // rows carry the same leg in pick/pickTs (+ idle weight + markers).
+                  const parkKey = r.parkedPick ?? (baseRow ? (r.pick ?? null) : null);
+                  const parkTs = r.parkedTs ?? (baseRow ? (r.pickTs ?? null) : null);
+                  const parkW =
+                    r.parkedWeight ?? (baseRow ? (r.idlePct ?? 0) / 100 : null);
+                  const parkLabel =
+                    parkKey && parkKey !== 'REPO'
+                      ? (PICK_LABELS[parkKey] ?? parkKey)
+                      : parkKey === 'REPO'
                         ? '现金'
                         : null;
                   const parkedSides = r.parkedSides ?? 0;
@@ -1124,18 +1336,31 @@ function TimelineCard({
                         ? '（回撤8%→现金）'
                         : parkedSides >= 2
                           ? '（换仓）'
-                          : parkedKey && parkedKey !== 'REPO'
+                          : parkKey && parkKey !== 'REPO'
                             ? '（建仓）'
                             : '（清仓转现金）';
                   const parkedTip = [
-                    parkedKey ? `停车 ${parkedLabel}` : '',
-                    r.parkedTs ? `代码 ${r.parkedTs}` : '',
-                    r.parkedWeight != null ? `权重 ${Math.round(r.parkedWeight * 100)}%` : '',
+                    parkKey ? `停车 ${parkLabel}` : '',
+                    parkTs ? `代码 ${parkTs}` : '',
+                    parkW != null ? `权重 ${Math.round(parkW * 100)}%` : '',
                     r.parkedRetPct != null ? `当日 ${r.parkedRetPct >= 0 ? '+' : ''}${r.parkedRetPct}%` : '',
                     ...(parkedEventsByDay.get(r.date) ?? []),
                   ]
                     .filter(Boolean)
                     .join(' · ');
+                  const parkCell =
+                    parkKey && parkW != null && parkW > 0
+                      ? `停车 ${parkLabel} ${Math.round(parkW * 100)}%${parkedNote}`
+                      : '—';
+                  const riskCell =
+                    r.riskTop && r.riskTopW != null
+                      ? `${riskNames[r.riskTop] ?? r.riskTop} ${Math.round(r.riskTopW * 100)}%`
+                      : '—';
+                  const base = r.navBaseReturnPct ?? null;
+                  const excess = base != null ? single - base : null;
+                  const sellParts: string[] = [];
+                  if (baseRow && exits.length) sellParts.push(exits.join(' '));
+                  if (sat && satSells.length) sellParts.push(satSells.join(' '));
                   return (
                     <tr key={r.date} className="border-t border-[var(--k-border)]/60">
                       <td className="py-1 pr-2 pl-2 font-mono">{r.date}</td>
@@ -1143,7 +1368,7 @@ function TimelineCard({
                         <span
                           className={cn(
                             'rounded px-1 py-px text-[10px] text-white',
-                            sat
+                            !baseRow
                               ? 'bg-violet-500'
                               : blockColor(
                                   isMixed ? 'MIXED' : holdsStock ? 'STOCK' : 'PARK',
@@ -1156,56 +1381,73 @@ function TimelineCard({
                       </td>
                       <td
                         className="py-1 pr-2 text-[var(--k-muted)]"
-                        title={sat ? parkedTip || undefined : undefined}
+                        title={sat && satSells.length ? satSells.join(' ') : undefined}
                       >
+                        {baseRow ? (
+                          <div>
+                            {holdsStock ? (
+                              <>
+                                {r.stockMarket ?? ''} {r.positions}票
+                                <span className="text-[10px]"> 闲{r.idlePct}%</span>
+                              </>
+                            ) : (
+                              <>{pickSym}</>
+                            )}
+                          </div>
+                        ) : null}
                         {sat ? (
-                          <>
+                          <div>
                             卫星 {r.satPositions ?? 0}仓
                             {r.idleSlots ? ` · 空${r.idleSlots}槽` : ''}
                             {r.gateOpen === false ? ' · 闸关' : ''}
-                            {r.parkedWeight != null && r.parkedWeight > 0
-                              ? ` · 停车 ${parkedLabel ? `${parkedLabel} ` : ''}${Math.round(
-                                  r.parkedWeight * 100,
-                                )}%${parkedNote}`
-                              : ''}
-                          </>
-                        ) : holdsStock ? (
-                          <>
-                            {r.stockMarket ?? ''} {r.positions}票
-                            <span className="text-[10px]"> 闲{r.idlePct}%</span>
-                          </>
-                        ) : (
-                          <>{pickSym}</>
-                        )}
+                          </div>
+                        ) : null}
+                        {!baseRow && !sat ? '—' : null}
                       </td>
                       <td
                         className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]"
-                        title={sat ? satSells.join(' ') : syms}
+                        title={[baseRow ? syms : '', sat ? satSells.join(' ') : '']
+                          .filter(Boolean)
+                          .join(' · ')}
                       >
-                        {sat
-                          ? `成交 ${r.filledToday ?? 0}${satSells.length ? ` · 卖 ${satSells.join(' ')}` : ''}`
-                          : syms}
+                        {baseRow ? <div className="truncate">{syms}</div> : null}
+                        {sat ? (
+                          <div className="truncate">
+                            {`成交 ${r.filledToday ?? 0}${satSells.length ? ` · 卖 ${satSells.join(' ')}` : ''}`}
+                          </div>
+                        ) : null}
+                        {!baseRow && !sat ? '—' : null}
                       </td>
                       <td
                         className="max-w-[140px] truncate py-1 pr-2 text-[10px] text-amber-700 dark:text-amber-300"
-                        title={sat ? satSells.join(' ') : exits.join(' ')}
+                        title={sellParts.join(' · ') || undefined}
                       >
-                        {sat
-                          ? satSells.length
-                            ? satSells.join(' ')
-                            : '—'
-                          : exits.length
-                            ? exits.join(' ')
-                            : '—'}
+                        {sellParts.length ? sellParts.join(' · ') : '—'}
                       </td>
-                      <td className={cn('py-1 pr-2', tone(r.navBaseReturnPct ?? 0))}>
-                        {sat ? '—' : `${(r.navBaseReturnPct ?? 0).toFixed(2)}%`}
+                      {showParkCol ? (
+                        <td
+                          className="max-w-[160px] truncate py-1 pr-2 text-[10px] text-[var(--k-muted)]"
+                          title={parkedTip || undefined}
+                        >
+                          {parkCell}
+                        </td>
+                      ) : null}
+                      {showRisk ? (
+                        <td
+                          className="py-1 pr-2 text-[10px] text-[var(--k-muted)]"
+                          title={r.riskTop ?? undefined}
+                        >
+                          {riskCell}
+                        </td>
+                      ) : null}
+                      <td className={cn('py-1 pr-2', tone(base ?? 0))}>
+                        {base != null ? `${base.toFixed(2)}%` : '—'}
                       </td>
                       <td className={cn('py-1 pr-2 font-semibold', tone(single))}>
                         {single.toFixed(2)}%
                       </td>
-                      <td className={cn('py-1 pr-2', tone(single - (r.navBaseReturnPct ?? 0)))}>
-                        {sat ? '—' : `${(single - (r.navBaseReturnPct ?? 0)).toFixed(2)}%`}
+                      <td className={cn('py-1 pr-2', tone(excess ?? 0))}>
+                        {excess != null ? `${excess.toFixed(2)}%` : '—'}
                       </td>
                     </tr>
                   );
@@ -1215,8 +1457,8 @@ function TimelineCard({
           </div>
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-[var(--k-muted)]">
-              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} · 港湾（S-3
-              核心 + 闲置现金 ETF 停车场）· 卖出=前日有今日无
+              {showAll ? `全部 ${rows.length} 日` : `近30日 / 共 ${rows.length} 日`} ·{' '}
+              {TABLE_NOTE[strategy]} · 卖出=前日有今日无
             </p>
             <button
               type="button"
@@ -1231,13 +1473,25 @@ function TimelineCard({
               blotter={blotter}
               openPositions={openPositions}
               showAll={showAll}
+              strategy={strategy}
+              satWeight={q.data?.satWeight ?? null}
             />
           ) : null}
-          {strategy === 'starship' && parkedBlotter.length > 0 ? (
+          {parkedBlotter.length > 0 ? (
             <ParkedLegDetail
               blotter={parkedBlotter}
               held={parkedHeld}
               trailExits={summary?.parkedTrailExits ?? null}
+              showAll={showAll}
+            />
+          ) : null}
+          {riskBlotter.length > 0 ? (
+            <RiskBudgetLegDetail
+              blotter={riskBlotter}
+              held={riskHeld}
+              universe={riskUniverse}
+              riskPct={summary?.riskPct ?? null}
+              riskMaxDdPct={summary?.riskMaxDdPct ?? null}
               showAll={showAll}
             />
           ) : null}
@@ -1580,8 +1834,8 @@ export function BacktestPage() {
         <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
           <StrategyCatalogPanel selectedKey={catalogKey} onSelect={setCatalogKey} />
           <TimelineCard
-            strategy={catalogKey}
-            onStrategyChange={setCatalogKey}
+            strategy={catalogKeyToTimeline(catalogKey)}
+            onStrategyChange={(s) => setCatalogKey(timelineToCatalogKey(s))}
             showFundFlow={false}
           />
         </TabsContent>
@@ -1589,7 +1843,8 @@ export function BacktestPage() {
           <CoreAuditCard q={coreQ} />
           <ReplicaGapCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
           <ReturnAttributionCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
-          <TimelineCard />
+          <TimelineCard extraStrategies={['harbor_h2']} />
+          <H2ShadowFollowCard />
           <RecentDailyCompareCard />
           <SleeveNavCard q={sleeveQ} />
           <PaperVsBacktestCard q={c4Q} />
@@ -2269,7 +2524,7 @@ function ParkedLegDetail({
   const sells = blotter.filter((b) => b.kind === 'sell').length;
   const trails = trailExits ?? blotter.filter((b) => b.reason === 'trail').length;
   const flow = [...blotter].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const visible = showAll ? flow : flow.slice(-30);
+  const visible = showAll ? flow : flow.slice(0, 30);
 
   return (
     <div className="rounded border border-sky-500/30 bg-sky-500/5">
@@ -2339,31 +2594,124 @@ function ParkedLegDetail({
   );
 }
 
+/** Homeport B3 leg: monthly inverse-vol rebalance audit (母港/星港). */
+function RiskBudgetLegDetail({
+  blotter,
+  held,
+  universe,
+  riskPct,
+  riskMaxDdPct,
+  showAll,
+}: {
+  blotter: TimelineRiskEvent[];
+  held: TimelineRiskHeld | null;
+  universe: Array<{ ts: string; name: string }>;
+  riskPct: number | null;
+  riskMaxDdPct: number | null;
+  showAll: boolean;
+}) {
+  const flow = [...blotter].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const visible = showAll ? flow : flow.slice(0, 30);
+  const heldRows = held ? universe.map((u) => ({ ...u, w: held.weights[u.ts] ?? 0 })) : [];
+  return (
+    <div className="rounded border border-emerald-500/30 bg-emerald-500/5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-emerald-500/20 px-2 py-1.5 text-[11px] font-medium">
+        B3篮子明细（风险预算）
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          逆波动加权 · 每月调仓 · 占组合一半
+        </span>
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          调仓 {blotter.length} 次
+          {riskPct != null ? ` · 篮子累计 ${riskPct}%` : ''}
+          {riskMaxDdPct != null ? ` / DD ${riskMaxDdPct}%` : ''}
+        </span>
+      </div>
+      <div className="px-2 py-1.5 text-[11px]">
+        {heldRows.length ? (
+          <span>
+            当前权重 {heldRows.map((h) => `${h.name} ${Math.round(h.w * 100)}%`).join(' · ')}{' '}
+            <span className="text-[10px] text-[var(--k-muted)]">（{held?.date ?? ''}）</span>
+          </span>
+        ) : (
+          <span className="text-[var(--k-muted)]">暂无权重数据</span>
+        )}
+      </div>
+      <div className="max-h-[220px] overflow-auto px-2 pb-1.5">
+        <table className="w-full text-left text-[11px] tabular-nums">
+          <thead className="sticky top-0 bg-[var(--k-surface)]">
+            <tr className="text-[10px] text-[var(--k-muted)]">
+              <th className="py-0.5 pr-2">调仓月</th>
+              {universe.map((u) => (
+                <th key={u.ts} className="py-0.5 pr-2" title={u.ts}>
+                  {u.name}
+                </th>
+              ))}
+              <th className="py-0.5 pr-2">换手%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((b, i) => (
+              <tr key={`${b.date}-${i}`} className="border-t border-emerald-500/10">
+                <td className="py-0.5 pr-2 font-mono">{b.date}</td>
+                {universe.map((u) => (
+                  <td key={u.ts} className="py-0.5 pr-2">
+                    {b.weights[u.ts] != null ? `${(b.weights[u.ts] * 100).toFixed(1)}` : '—'}
+                  </td>
+                ))}
+                <td className="py-0.5 pr-2 text-[var(--k-muted)]">
+                  {(b.turnover * 100).toFixed(1)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /** Satellite-leg detail: current legs + buy/sell blotter (starport/starship). */
+function fmtSatWeight(w: number | null | undefined): string {
+  if (w == null) return '—';
+  if (Math.abs(w - 0.2) < 0.01) return '0.2';
+  if (Math.abs(w - 1 / 3) < 0.01) return '1/3';
+  if (Math.abs(w - 0.5) < 0.001) return '1/2';
+  if (Math.abs(w - 1) < 0.001) return '100%';
+  return `${Math.round(w * 100)}%`;
+}
+
 function SatelliteLegDetail({
   blotter,
   openPositions,
   showAll,
+  strategy,
+  satWeight,
 }: {
   blotter: TimelineBlotterRow[];
   openPositions: TimelineOpenPosition[];
   showAll: boolean;
+  strategy: TimelineStrategy;
+  satWeight: number | null;
 }) {
   const opens = blotter.filter((b) => b.kind === 'open');
   const fills = blotter.filter((b) => b.kind === 'fill');
   const skipT1 = blotter.filter((b) => b.kind === 'skip_t1').length;
   const skipC1 = blotter.filter((b) => b.kind === 'skip_c1').length;
   const flow = [...opens, ...fills].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const visible = showAll ? flow : flow.slice(-30);
+  const visible = showAll ? flow : flow.slice(0, 30);
   const pct = (v: number | null | undefined) =>
     v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+  const legOnly = satWeight != null && Math.abs(satWeight - 1) > 0.001;
 
   return (
     <div className="rounded border border-violet-500/30 bg-violet-500/5">
       <div className="flex flex-wrap items-center gap-2 border-b border-violet-500/20 px-2 py-1.5 text-[11px] font-medium">
         卫星腿明细
         <span className="text-[10px] font-normal text-[var(--k-muted)]">
-          14:30 名单 · amp_1430 排名 · 3 日持有 · 4×25% 槽 · v2：闲置现金停 ETF 套筒
+          14:30 名单 · amp_1430 排名 · 3 日持有 · 4×25% 槽 ·{' '}
+          {strategy === 'starship'
+            ? 'v2：闲置现金停 ETF 套筒'
+            : `组合权重 ${fmtSatWeight(satWeight)}（卫星 v1 · 冻结口径）`}
         </span>
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
           当前持仓 {openPositions.length} · 买 {opens.length} / 卖 {fills.length} · 跳过{' '}
@@ -2420,7 +2768,7 @@ function SatelliteLegDetail({
               <th className="py-0.5 pr-2">排名</th>
               <th className="py-0.5 pr-2">入场→出场</th>
               <th className="py-0.5 pr-2">盈亏%</th>
-              <th className="py-0.5 pr-2">贡献%</th>
+              <th className="py-0.5 pr-2">{legOnly ? '贡献%（腿内）' : '贡献%'}</th>
               <th className="py-0.5 pr-2">原因</th>
             </tr>
           </thead>

@@ -415,3 +415,103 @@ def test_panic_cooldown_endpoint() -> None:
     assert isinstance(body["active"], bool)
     if body["lastPanicDate"]:
         assert body["cooldownEndDate"] is not None
+
+
+def test_timeline_endpoint_carries_all_legs_for_every_strategy(monkeypatch) -> None:
+    """GET /api/backtest/timeline passes every leg through (no DB: canned build).
+
+    The Timeline UI renders stocks + parking ETF + B3 + satellite from one
+    payload; this pins the route-level contract (top-level leg keys + per-row
+    leg markers) for all five product strategies.
+    """
+    from data_sync_service.api import backtest_routes as routes
+
+    payload = {
+        "ok": True,
+        "start": "2026-08-01",
+        "end": "2026-08-05",
+        "mode": "x",
+        "strategy": "y",
+        "summary": {"fusedPct": 1.0, "parkedTrailExits": 1, "riskPct": 2.0},
+        "rows": [
+            {
+                "date": "2026-08-05",
+                "positions": 1,
+                "pick": "GOLD",
+                "pickTs": "518880.SH",
+                "idlePct": 50,
+                "navSingle": 1.01,
+                "navMulti": 1.01,
+                "navSingleReturnPct": 1.0,
+                "navMultiReturnPct": 1.0,
+                "navBaseReturnPct": 0.5,
+                "parkedSides": 1,
+                "parkedRetPct": 0.8,
+                "parkedTrail": False,
+                "riskTop": "510300.SH",
+                "riskTopW": 0.3,
+                "satPositions": 2,
+                "satSlots": 4,
+                "gateOpen": True,
+            }
+        ],
+        "blotter": [],
+        "openPositions": [],
+        "parkedBlotter": [
+            {
+                "date": "2026-08-01",
+                "kind": "buy",
+                "key": "GOLD",
+                "name": "x",
+                "ts": "518880.SH",
+                "reason": "entry",
+            }
+        ],
+        "parkedHeld": None,
+        "riskBlotter": [
+            {"date": "2026-08-01", "weights": {"510300.SH": 0.2}, "turnover": 0.0}
+        ],
+        "riskHeld": None,
+        "riskUniverse": [{"ts": "510300.SH", "name": "沪深300"}],
+        "satWeight": 1 / 3,
+        "satCapacity": 4,
+        "baseKey": "homeportPct",
+    }
+    seen: set[str] = set()
+
+    def fake_builder(start, end, *, strategy="harbor", need_engine=False):
+        seen.add(strategy)
+        return dict(payload), None
+
+    monkeypatch.setattr(routes, "_get_or_build_timeline", fake_builder)
+    client = TestClient(app)
+    for strategy in ("harbor", "homeport", "starport", "starship", "twin_star"):
+        resp = client.get(
+            f"/api/backtest/timeline?start=2026-08-01&end=2026-08-05&strategy={strategy}"
+        )
+        assert resp.status_code == 200, strategy
+        body = resp.json()
+        assert set(body.keys()) >= {
+            "rows",
+            "summary",
+            "parkedBlotter",
+            "parkedHeld",
+            "riskBlotter",
+            "riskHeld",
+            "riskUniverse",
+            "blotter",
+            "openPositions",
+            "satWeight",
+            "satCapacity",
+            "baseKey",
+        }, strategy
+        row = body["rows"][0]
+        assert set(row.keys()) >= {
+            "parkedSides",
+            "parkedRetPct",
+            "parkedTrail",
+            "riskTop",
+            "riskTopW",
+            "satPositions",
+        }, strategy
+    assert seen == {"harbor", "homeport", "starport", "starship", "twin_star"}

@@ -1,0 +1,286 @@
+{
+  "generatedAt": "2026-09-16T07:25:38.072114+00:00",
+  "windows": {
+    "OOS2": {
+      "_diag": {
+        "sleeve_episode": {
+          "depth": -14.3,
+          "peak": "2024-08-01",
+          "trough": "2024-09-04"
+        },
+        "sat_x_regime": {
+          "up": [
+            73.2,
+            77
+          ],
+          "choppy": [
+            38.4,
+            117
+          ],
+          "down": [
+            3.1,
+            49
+          ],
+          "unknown": [
+            0,
+            0
+          ]
+        },
+        "sleeve_hi": [
+          -1.2,
+          140
+        ],
+        "sleeve_lo": [
+          14.0,
+          103
+        ],
+        "repo_equiv": 0.67,
+        "s_gate": false,
+        "p_gate": false,
+        "breadth_nones": 0
+      },
+      "A2_true": {
+        "n_days": 243,
+        "total_pct": 241.2,
+        "cagr": 258.91,
+        "max_dd": -9.2,
+        "sharpe": 5.11,
+        "delta_total": 0.0,
+        "delta_mdd": 0.0,
+        "delta_sharpe": 0.0
+      },
+      "_base": {
+        "n_days": 243,
+        "total_pct": 241.2,
+        "cagr": 258.91,
+        "max_dd": -9.2,
+        "sharpe": 5.11
+      }
+    },
+    "train": {
+      "_diag": {
+        "sleeve_episode": {
+          "depth": -13.1,
+          "peak": "2025-10-17",
+          "trough": "2025-11-05"
+        },
+        "sat_x_regime": {
+          "up": [
+            13.5,
+            63
+          ],
+          "choppy": [
+            19.1,
+            56
+          ],
+          "down": [
+            0.0,
+            4
+          ],
+          "unknown": [
+            0,
+            0
+          ]
+        },
+        "sleeve_hi": [
+          11.0,
+          63
+        ],
+        "sleeve_lo": [
+          11.8,
+          60
+        ],
+        "repo_equiv": 0.34,
+        "s_gate": false,
+        "p_gate": false,
+        "breadth_nones": 0
+      },
+      "A2_true": {
+        "n_days": 123,
+        "total_pct": 66.2,
+        "cagr": 185.45,
+        "max_dd": -9.6,
+        "sharpe": 4.05,
+        "delta_total": 0.0,
+        "delta_mdd": 0.0,
+        "delta_sharpe": 0.0
+      },
+      "_base": {
+        "n_days": 123,
+        "total_pct": 66.2,
+        "cagr": 185.45,
+        "max_dd": -9.6,
+        "sharpe": 4.05
+      }
+    },
+    "valid": {
+      "_diag": {
+        "sleeve_episode": {
+          "depth": -28.7,
+          "peak": "2026-03-26",
+          "trough": "2026-07-30"
+        },
+        "sat_x_regime": {
+          "up": [
+            -4.1,
+            16
+          ],
+          "choppy": [
+            5.5,
+            56
+          ],
+          "down": [
+            5.9,
+            38
+          ],
+          "unknown": [
+            0,
+            0
+          ]
+        },
+        "sleeve_hi": [
+          -2.3,
+          27
+        ],
+        "sleeve_lo": [
+          14.6,
+          83
+        ],
+        "repo_equiv": 0.31,
+        "s_gate": false,
+        "p_gate": false,
+        "breadth_nones": 0
+      },
+      "A2_true": {
+        "n_days": 110,
+        "total_pct": 0.0,
+        "cagr": 0.12,
+        "max_dd": -35.7,
+        "sharpe": 0.24,
+        "delta_total": 0.0,
+        "delta_mdd": 0.0,
+        "delta_sharpe": 0.0
+      },
+      "_base": {
+        "n_days": 110,
+        "total_pct": 0.0,
+        "cagr": 0.12,
+        "max_dd": -35.7,
+        "sharpe": 0.24
+      }
+    },
+    "long": {
+      "_diag": {
+        "sleeve_episode": {
+          "depth": -28.7,
+          "peak": "2026-03-26",
+          "trough": "2026-07-30"
+        },
+        "sat_x_regime": {
+          "up": [
+            74.7,
+            281
+          ],
+          "choppy": [
+            96.3,
+            674
+          ],
+          "down": [
+            6.6,
+            261
+          ],
+          "unknown": [
+            0,
+            0
+          ]
+        },
+        "sleeve_hi": [
+          16.2,
+          539
+        ],
+        "sleeve_lo": [
+          60.9,
+          677
+        ],
+        "repo_equiv": 3.38,
+        "s_gate": false,
+        "p_gate": false,
+        "breadth_nones": 0
+      },
+      "A2_true": {
+        "n_days": 1216,
+        "total_pct": 924.9,
+        "cagr": 62.04,
+        "max_dd": -29.9,
+        "sharpe": 2.12,
+        "delta_total": 0.0,
+        "delta_mdd": 0.0,
+        "delta_sharpe": 0.0
+      },
+      "_base": {
+        "n_days": 1216,
+        "total_pct": 924.9,
+        "cagr": 62.04,
+        "max_dd": -29.9,
+        "sharpe": 2.12
+      }
+    },
+    "holdout": {
+      "_diag": {
+        "sleeve_episode": {
+          "depth": -4.2,
+          "peak": "2026-08-31",
+          "trough": "2026-09-03"
+        },
+        "sat_x_regime": {
+          "up": [
+            0.9,
+            7
+          ],
+          "choppy": [
+            -1.4,
+            20
+          ],
+          "down": [
+            0,
+            0
+          ],
+          "unknown": [
+            0,
+            0
+          ]
+        },
+        "sleeve_hi": [
+          -2.8,
+          24
+        ],
+        "sleeve_lo": [
+          0.4,
+          3
+        ],
+        "repo_equiv": 0.07,
+        "s_gate": false,
+        "p_gate": false,
+        "breadth_nones": 1
+      },
+      "A2_true": {
+        "n_days": 27,
+        "total_pct": -2.2,
+        "cagr": -19.7,
+        "max_dd": -13.6,
+        "sharpe": -0.54,
+        "delta_total": 0.0,
+        "delta_mdd": 0.0,
+        "delta_sharpe": 0.0
+      },
+      "_base": {
+        "n_days": 27,
+        "total_pct": -2.2,
+        "cagr": -19.7,
+        "max_dd": -13.6,
+        "sharpe": -0.54
+      }
+    }
+  },
+  "prereg": "docs/designs/sat-offense-grid-prereg-2026-09-16.md"
+}

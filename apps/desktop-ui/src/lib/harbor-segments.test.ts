@@ -3,9 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { TimelineRow } from './queries/backtest';
 import {
   buildHarborSegments,
+  buildParkingStrip,
+  buildRiskStrip,
   estimateLabelPx,
   fitSegmentLabel,
   harborHoldLine,
+  hasBaseLeg,
+  hasParkedLeg,
+  hasRiskLeg,
+  isSatelliteRow,
 } from './harbor-segments';
 
 function row(over: Partial<TimelineRow>): TimelineRow {
@@ -251,5 +257,96 @@ describe('harbor-segments', () => {
     expect(fitSegmentLabel(labels, estimateLabelPx(labels.medium) + 1)).toBe(labels.medium);
     expect(fitSegmentLabel(labels, estimateLabelPx(labels.tiny) + 1)).toBe(labels.tiny);
     expect(fitSegmentLabel(labels, 2)).toBe('');
+  });
+
+  it('detects base / satellite / parked / risk legs per row', () => {
+    const base = row({ positions: 3, stockSymbols: ['a', 'b', 'c'] });
+    expect(hasBaseLeg(base)).toBe(true);
+    expect(isSatelliteRow(base)).toBe(false);
+    const overlay = row({
+      positions: 3,
+      stockSymbols: ['a'],
+      satPositions: 2,
+      satSlots: 4,
+      gateOpen: true,
+    });
+    expect(hasBaseLeg(overlay)).toBe(true);
+    expect(isSatelliteRow(overlay)).toBe(true);
+    const satOnly = row({ pick: 'S-GAP', satPositions: 1 });
+    expect(hasBaseLeg(satOnly)).toBe(false);
+    expect(isSatelliteRow(satOnly)).toBe(true);
+    expect(hasParkedLeg(row({ parkedPick: 'GOLD' }))).toBe(true);
+    expect(hasParkedLeg(row({}))).toBe(false);
+    expect(hasRiskLeg(row({ riskTop: '510300.SH', riskTopW: 0.3 }))).toBe(true);
+    expect(hasRiskLeg(row({}))).toBe(false);
+  });
+
+  it('builds the base strip for overlay rows with ignoreSat', () => {
+    const rows = [
+      row({ date: '2026-08-03', positions: 2, stockSymbols: ['a', 'b'], satPositions: 4 }),
+      row({ date: '2026-08-04', positions: 2, stockSymbols: ['a', 'b'], satPositions: 4 }),
+    ];
+    // Default: satellite wins (the old overlay-blind behavior for the main bar).
+    expect(buildHarborSegments(rows).map((s) => s.mode)).toEqual(['SAT']);
+    // Base strip: the stock leg survives next to the satellite strip.
+    const base = buildHarborSegments(rows, { ignoreSat: true });
+    expect(base.map((s) => s.mode)).toEqual(['STOCK']);
+    expect(base[0]).toMatchObject({ days: 2, positions: 2 });
+    expect(base[0].title).toContain('股票 2票');
+  });
+
+  it('builds the parking strip keyed by parkedPick', () => {
+    const rows = [
+      row({ date: '2026-08-03', pick: 'S-GAP', satPositions: 2, parkedPick: 'GOLD', parkedTs: '518880.SH' }),
+      row({ date: '2026-08-04', pick: 'S-GAP', satPositions: 2, parkedPick: 'GOLD', parkedTs: '518880.SH' }),
+      row({ date: '2026-08-05', pick: 'S-GAP', satPositions: 0, parkedPick: 'REPO', parkedTs: 'GC001' }),
+    ];
+    const strip = buildParkingStrip(rows);
+    expect(strip).toHaveLength(2);
+    expect(strip[0]).toMatchObject({ mode: 'PARK', pick: 'GOLD', days: 2, code: '518880' });
+    expect(strip[0].labels.short).toBe('黄金 518880');
+    expect(strip[1]).toMatchObject({ mode: 'PARK', pick: 'REPO', days: 1 });
+    expect(buildParkingStrip([row({})])).toEqual([]);
+  });
+
+  it('builds the B3 strip keyed by riskTop with universe names', () => {
+    const universe = [
+      { ts: '510300.SH', name: '沪深300' },
+      { ts: '518880.SH', name: '黄金' },
+    ];
+    const rows = [
+      row({ date: '2026-08-03', riskTop: '518880.SH', riskTopW: 0.3 }),
+      row({ date: '2026-08-04', riskTop: '518880.SH', riskTopW: 0.31 }),
+      row({ date: '2026-08-05', riskTop: '510300.SH', riskTopW: 0.28 }),
+    ];
+    const strip = buildRiskStrip(rows, universe);
+    expect(strip).toHaveLength(2);
+    expect(strip[0]).toMatchObject({ mode: 'PARK', pick: '518880.SH', days: 2 });
+    expect(strip[0].labels.short).toBe('黄金 518880');
+    expect(strip[1].labels.short).toBe('沪深300 510300');
+  });
+
+  it('names the parking ETF and appends the base leg on overlay hold lines', () => {
+    const satParked = row({
+      pick: 'S-GAP',
+      satPositions: 4,
+      idleSlots: 0,
+      gateOpen: true,
+      filledToday: 2,
+      parkedPick: 'GOLD',
+      parkedWeight: 1,
+    });
+    expect(harborHoldLine(satParked)).toBe('卫星 4/4仓 · 空0槽 · 成交2 · 停车 黄金 100%');
+    const overlay = row({
+      positions: 2,
+      stockSymbols: ['a', 'b'],
+      satPositions: 1,
+      idleSlots: 3,
+      gateOpen: true,
+    });
+    expect(harborHoldLine(overlay)).toContain('卫星 1/4仓 · 空3槽');
+    expect(harborHoldLine(overlay)).toContain('股票 2票 a b');
+    const risk = row({ riskTop: '510300.SH', riskTopW: 0.25 });
+    expect(harborHoldLine(risk, { '510300.SH': '沪深300' })).toContain('B3 沪深300 25%');
   });
 });

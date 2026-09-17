@@ -91,6 +91,7 @@ class TestExtraClosesHelpers:
         def _boom(ts, days=260):
             raise RuntimeError("db down")
 
+        monkeypatch.setattr(mas, "_adjusted_series", lambda ts: {})
         monkeypatch.setattr(mas, "fetch_last_bars", _boom)
         assert mas._closes("518880.SH") == []
 
@@ -103,8 +104,17 @@ class TestExtraClosesHelpers:
             {"close": 5.0},
             {},
         ]
+        monkeypatch.setattr(mas, "_adjusted_series", lambda ts: {})
         monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days=260: bars)
         assert mas._closes("518880.SH") == [5.0]
+
+    def test_extra_closes_prefers_adjusted_series(self, monkeypatch) -> None:
+        """Engine basis wins over the raw daily fallback (2026-09-17 audit)."""
+        monkeypatch.setattr(
+            mas, "_adjusted_series", lambda ts: {"2026-09-16": 12.5, "2026-09-17": 0}
+        )
+        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days=260: [{"close": 9.9}])
+        assert mas._closes("518880.SH") == [12.5]  # zero dropped, raw not used
 
     def test_extra_signal_closes_fetch_raises(self, monkeypatch) -> None:
         _extra_fix_today(monkeypatch)
@@ -112,6 +122,7 @@ class TestExtraClosesHelpers:
         def _boom(ts, days=260):
             raise RuntimeError("db down")
 
+        monkeypatch.setattr(mas, "_adjusted_series", lambda ts: {})
         monkeypatch.setattr(mas, "fetch_last_bars", _boom)
         assert mas._signal_closes("518880.SH") == []
 
@@ -124,6 +135,7 @@ class TestExtraClosesHelpers:
             {"date": "2026-08-23", "close": 5.0},
             {"date": "2026-08-31", "close": 9.0},
         ]
+        monkeypatch.setattr(mas, "_adjusted_series", lambda ts: {})
         monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days=260: bars)
         # Harbor clock: today's completed close is included (signal T close -> T+1 open).
         assert mas._signal_closes("518880.SH") == [5.0, 9.0]
@@ -939,14 +951,36 @@ class TestExtraLoadRowsMv:
             ("2026-01-06", "A.SH", None, None, None, None, None, None),
         ]
 
-        class _Cur:
-            def execute(self, *a, **k) -> None:
+        class _Copy:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a) -> None:
                 return None
 
-            def fetchall(self):
-                return rows
+            def set_types(self, types) -> None:
+                return None
+
+            def rows(self):
+                yield from rows
+
+        class _Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a) -> None:
+                return None
+
+            def copy(self, sql):
+                return _Copy()
 
         class _Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a) -> None:
+                return None
+
             def cursor(self):
                 return _Cur()
 

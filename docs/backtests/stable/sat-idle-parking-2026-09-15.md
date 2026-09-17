@@ -127,3 +127,15 @@ PYTHONPATH=src:scripts python3 scripts/eval_sat_idle_parking.py --windows long
 - 卫星 standalone 真值：[`sgap-habit-satellite-standalone-2026-09-14.md`](sgap-habit-satellite-standalone-2026-09-14.md) · 执行审计：[`../sat/sat-execution-audit-2026-09-14.md`](../sat/sat-execution-audit-2026-09-14.md)
 - 双子星 blend 内 idle（问题太小 + OOS2 −9.3）：[`../twin-residual-2026-09-12.md`](../twin-residual-2026-09-12.md) §3b · 港湾停车场真值：[`etf-parking-baseline-2026-09-13.md`](etf-parking-baseline-2026-09-13.md) · 套筒基准：[`etf-benchmark-parking-2026-09-13.md`](etf-benchmark-parking-2026-09-13.md)
 - DH-2「闲置入 beta 结构性逆势」：[`../dh1-s3-hybrid-2026-09-11.md`](../dh1-s3-hybrid-2026-09-11.md) §5–6（本档 §4.1 为其卫星版实锤）
+
+## 9. Addendum 2026-09-16：闲置套筒切 H2（A2_true → A2_H2，用户拍板）
+
+- 本档冻结的 A2_true（canonical 停车）数字全部保留作审计基线；产品线星舰配置更新为
+  **A2_H2**（换仓迟滞 2pt，`service/parking_sleeve.py`，共享函数未动）。
+- H2 混合成绩（[`sleeve-tune-2026-09-16.md`](sleeve-tune-2026-09-16.md) §3）：
+  OOS2 +258.3 / train +70.0 / valid +7.9 / long **+1062.6**（Δ +137.7）、MDD −29.9→−26.1、
+  15bps 同成本 +130.8。Timeline 星舰线与目录星舰行同步切换；卫星腿与 Live 港湾不受影响。
+- ⚠️ **2026-09-17 修正**：上述 A2_H2 数字来自"H2 阻断=清仓去 REPO"的实现 bug（预注册=持有旧腿，
+  与 V/B 同族）。修正后 A2_H2 = OOS2 +242.7 / train +76.8 / **valid −0.3** / long **+975.0**
+  （Δ +50.1，MDD −30.5，15bps 同成本 +47.6），本档 §9 的 +1062.6 行即日起作废；详见
+  [`sleeve-tune-2026-09-16.md`](sleeve-tune-2026-09-16.md) §5.4 与 `docs/optimization-checklist.md` OPT-218。

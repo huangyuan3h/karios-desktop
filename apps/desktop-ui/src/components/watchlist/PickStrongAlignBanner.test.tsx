@@ -27,16 +27,17 @@ describe('PickStrongAlignBanner', () => {
     mockHealth.mockReset();
   });
 
-  it('stays silent when the book is aligned', async () => {
+  it('shows a quiet aligned stamp (not silence) when the book is aligned', async () => {
     mockHealth.mockResolvedValue({
       multiAssetSleeve: { active: true, action: 'HOLD', pick: { key: 'OIL', symbol: 'ETF:513350' } },
       holdings: [],
       multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 100 }],
       hkHealth: { holdings: [] },
     } as never);
-    const { container } = renderBanner();
+    renderBanner();
     await waitFor(() => expect(mockHealth).toHaveBeenCalled());
-    expect(container.firstChild).toBeNull();
+    // Aligned is visible-but-quiet so users can tell it apart from "not loaded".
+    expect(await screen.findByText('✓ 已对齐')).toBeDefined();
   });
 
   it('shows the strategy-labeled banner and the unwired-legs note when diverged', async () => {
@@ -49,6 +50,6 @@ describe('PickStrongAlignBanner', () => {
     renderBanner('starport');
     expect(await screen.findByText('星港日对齐')).toBeDefined();
     expect(await screen.findByText(/偏离星港/)).toBeDefined();
-    expect(await screen.findByText(/卫星 1\/3 overlay.*OPT-186/)).toBeDefined();
+    expect(await screen.findByText(/卫星 0\.2 overlay.*OPT-186/)).toBeDefined();
   });
 });

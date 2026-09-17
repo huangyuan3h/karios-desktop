@@ -1,0 +1,220 @@
+{
+  "tag": "harbor-riskbudget-2026-09-13",
+  "prereg": "docs/designs/harbor-riskbudget-mix-prereg-2026-09-13.md",
+  "rp_universe": [
+    "510300.SH",
+    "510500.SH",
+    "518880.SH",
+    "513100.SH",
+    "511260.SH"
+  ],
+  "stress": {
+    "harbor": {
+      "total": 4.2,
+      "cagr": 4.47,
+      "mdd": -18.4,
+      "sharpe": 0.33
+    },
+    "m50": {
+      "total": 6.3,
+      "cagr": 3.51,
+      "mdd": -8.3,
+      "sharpe": 0.39
+    }
+  },
+  "results": {
+    "OOS2": {
+      "harbor": {
+        "total": 55.2,
+        "cagr": 58.04,
+        "mdd": -14.3,
+        "sharpe": 1.73
+      },
+      "rp": {
+        "total": 18.8,
+        "cagr": 19.61,
+        "mdd": -3.9,
+        "sharpe": 1.95
+      },
+      "m50": {
+        "total": 36.5,
+        "cagr": 38.28,
+        "mdd": -9.0,
+        "sharpe": 1.9
+      },
+      "m40": {
+        "total": 40.2,
+        "cagr": 42.15,
+        "mdd": -10.0,
+        "sharpe": 1.86
+      },
+      "m60": {
+        "total": 32.9,
+        "cagr": 34.45,
+        "mdd": -8.0,
+        "sharpe": 1.95
+      },
+      "md": {
+        "total": 36.7,
+        "cagr": 38.48,
+        "mdd": -9.1,
+        "sharpe": 1.92
+      },
+      "m50_cost20": {
+        "total": 36.4,
+        "cagr": 38.16,
+        "mdd": -9.0,
+        "sharpe": 1.9
+      },
+      "corr": 0.65,
+      "days": 243
+    },
+    "train": {
+      "harbor": {
+        "total": 52.2,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
+      },
+      "rp": {
+        "total": 16.8,
+        "cagr": 37.78,
+        "mdd": -2.2,
+        "sharpe": 4.27
+      },
+      "m50": {
+        "total": 35.0,
+        "cagr": 85.87,
+        "mdd": -5.0,
+        "sharpe": 3.52
+      },
+      "m40": {
+        "total": 38.5,
+        "cagr": 96.04,
+        "mdd": -5.7,
+        "sharpe": 3.37
+      },
+      "m60": {
+        "total": 31.4,
+        "cagr": 75.87,
+        "mdd": -4.3,
+        "sharpe": 3.7
+      },
+      "md": {
+        "total": 34.0,
+        "cagr": 82.94,
+        "mdd": -4.3,
+        "sharpe": 3.6
+      },
+      "m50_cost20": {
+        "total": 34.9,
+        "cagr": 85.67,
+        "mdd": -5.0,
+        "sharpe": 3.51
+      },
+      "corr": 0.43,
+      "days": 123
+    },
+    "valid": {
+      "harbor": {
+        "total": 50.3,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
+      },
+      "rp": {
+        "total": 1.5,
+        "cagr": 3.54,
+        "mdd": -10.1,
+        "sharpe": 0.33
+      },
+      "m50": {
+        "total": 25.6,
+        "cagr": 69.41,
+        "mdd": -11.4,
+        "sharpe": 2.26
+      },
+      "m40": {
+        "total": 30.5,
+        "cagr": 85.13,
+        "mdd": -13.6,
+        "sharpe": 2.22
+      },
+      "m60": {
+        "total": 20.7,
+        "cagr": 54.56,
+        "mdd": -9.1,
+        "sharpe": 2.29
+      },
+      "md": {
+        "total": 25.6,
+        "cagr": 69.51,
+        "mdd": -11.0,
+        "sharpe": 2.37
+      },
+      "m50_cost20": {
+        "total": 25.5,
+        "cagr": 69.14,
+        "mdd": -11.5,
+        "sharpe": 2.25
+      },
+      "corr": -0.35,
+      "days": 110
+    },
+    "long": {
+      "harbor": {
+        "total": 201.5,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
+      },
+      "rp": {
+        "total": 46.2,
+        "cagr": 8.2,
+        "mdd": -4.7,
+        "sharpe": 1.76
+      },
+      "m50": {
+        "total": 116.3,
+        "cagr": 17.36,
+        "mdd": -11.6,
+        "sharpe": 1.18
+      },
+      "m40": {
+        "total": 132.3,
+        "cagr": 19.1,
+        "mdd": -13.9,
+        "sharpe": 1.12
+      },
+      "m60": {
+        "total": 101.0,
+        "cagr": 15.58,
+        "mdd": -9.4,
+        "sharpe": 1.25
+      },
+      "md": {
+        "total": 118.0,
+        "cagr": 17.55,
+        "mdd": -11.6,
+        "sharpe": 1.2
+      },
+      "m50_cost20": {
+        "total": 115.7,
+        "cagr": 17.28,
+        "mdd": -11.6,
+        "sharpe": 1.17
+      },
+      "corr": 0.41,
+      "days": 1216
+    }
+  },
+  "verdict": {
+    "k1": true,
+    "k2": true,
+    "k3": true,
+    "k4": true,
+    "k5": true,
+    "pass": true
+  },
+  "as_of": "2026-09-14T05:32:59+00:00"
+}

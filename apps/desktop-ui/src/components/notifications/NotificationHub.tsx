@@ -11,6 +11,7 @@ import {
 } from '@/lib/queries/notifications';
 import { loadBuyReminders, BUY_REMINDERS_UPDATED_EVENT } from '@/lib/buy-reminders';
 import { groupNotifications, NOTIFICATION_LANE_META } from '@/lib/notification-lanes';
+import { useStrategyMode } from '@/lib/strategy-settings';
 
 const SEEN_KEY = 'karios_notifications_seen';
 const TOAST_MS = 6000;
@@ -45,6 +46,7 @@ const ANCHOR_LABEL: Record<string, string> = {
   scheduler: '调度状态',
   backtest: '回测结论',
   reminders: '买入提醒',
+  'satellite-leg': '卫星腿操作',
 };
 
 function anchorLabel(anchor: string): string {
@@ -86,13 +88,14 @@ function NotificationRow({
  * merged in so "提醒我操作" is one place.
  */
 export function NotificationHub() {
+  const mode = useStrategyMode();
   const [open, setOpen] = React.useState(false);
   const [seen, setSeen] = React.useState<Set<string>>(loadSeen);
   const [toast, setToast] = React.useState<NotificationItem | null>(null);
   const [localReminders, setLocalReminders] = React.useState(loadBuyReminders());
   const toastTimer = React.useRef<number | null>(null);
 
-  const q = useNotificationsQuery();
+  const q = useNotificationsQuery(true, mode);
   const items = React.useMemo(() => q.data?.items ?? [], [q.data]);
   const prevIdsRef = React.useRef<Set<string> | null>(null);
 

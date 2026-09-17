@@ -47,8 +47,11 @@ def test_baseline_ddl_includes_industry_fund_flow_taxonomy_fields() -> None:
 def test_baseline_ddl_includes_brin_daily_indexes() -> None:
     # OPT-009 follow-up: B-tree idx_daily_trade_date/idx_index_daily_trade_date were
     # replaced with BRIN variants in 0009. Empty-DB parity must reflect the change.
+    # OPT-221 (2026-09-17): daily's trade_date B-tree is back (date-family queries
+    # like MAX/DISTINCT cannot use the PK prefix or BRIN) — both indexes coexist.
     ddl = "\n".join(baseline_ddl_statements()).lower()
     assert "idx_daily_trade_date_brin" in ddl
+    assert "idx_daily_trade_date_btree" in ddl
     assert "idx_index_daily_trade_date_brin" in ddl
 
 
@@ -69,7 +72,7 @@ def test_baseline_ddl_statements_are_executable_sql() -> None:
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
-def test_brin_daily_indexes_exist_and_btree_gone(caplog) -> None:
+def test_daily_indexes_brin_and_btree_present(caplog) -> None:
     from alembic.config import Config
 
     from alembic import command
@@ -88,7 +91,7 @@ def test_brin_daily_indexes_exist_and_btree_gone(caplog) -> None:
                 FROM pg_indexes
                 WHERE schemaname = 'public'
                   AND indexname IN (
-                    'idx_daily_trade_date',
+                    'idx_daily_trade_date_btree',
                     'idx_index_daily_trade_date',
                     'idx_daily_trade_date_brin',
                     'idx_index_daily_trade_date_brin'
@@ -96,7 +99,8 @@ def test_brin_daily_indexes_exist_and_btree_gone(caplog) -> None:
                 """
             )
             names = {str(r[0]) for r in cur.fetchall()}
-    assert "idx_daily_trade_date" not in names
+    # OPT-221: daily's trade_date btree is back; index_daily's stays dropped.
+    assert "idx_daily_trade_date_btree" in names
     assert "idx_index_daily_trade_date" not in names
     assert "idx_daily_trade_date_brin" in names
     assert "idx_index_daily_trade_date_brin" in names

@@ -68,12 +68,49 @@ def warm_default_timelines() -> None:
 _timeline_cache: dict[tuple, dict[str, Any]] = {}
 # Engine context for stock-leg attribution (not file-persisted).
 _timeline_engine_cache: dict[tuple, dict[str, Any]] = {}
+# Write timestamps for the in-memory cache (TTL below): the warmup builds a
+# trailing-year window before the close sync, so without a TTL the evening UI
+# (and the 18:35 H2 shadow job) would keep reading pre-close rows all day.
+_timeline_cache_at: dict[tuple, float] = {}
 TIMELINE_CACHE_DIR = (
     Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "timeline_cache"
 )
 TIMELINE_CACHE_TTL_HOURS = 24
+TIMELINE_MEM_TTL_SECONDS = 15 * 60
 # Bump when pick / trail logic changes so stale file caches are ignored.
 _TIMELINE_MODE = "mom_compare_t8"
+
+
+def _timeline_mem_get(cache_key: tuple) -> dict[str, Any] | None:
+    """In-memory timeline hit honoring the TTL (engine ctx expires with it)."""
+    import time
+
+    cached = _timeline_cache.get(cache_key)
+    if cached is None:
+        return None
+    if time.time() - _timeline_cache_at.get(cache_key, 0.0) > TIMELINE_MEM_TTL_SECONDS:
+        _timeline_cache.pop(cache_key, None)
+        _timeline_engine_cache.pop(cache_key, None)
+        _timeline_cache_at.pop(cache_key, None)
+        return None
+    return cached
+
+
+def _timeline_mem_put(
+    cache_key: tuple, result: dict[str, Any], engine: dict[str, Any] | None = None
+) -> None:
+    import time
+
+    _timeline_cache[cache_key] = result
+    _timeline_cache_at[cache_key] = time.time()
+    if engine is not None:
+        _timeline_engine_cache[cache_key] = engine
+
+
+def _timeline_mem_drop(cache_key: tuple) -> None:
+    _timeline_cache.pop(cache_key, None)
+    _timeline_engine_cache.pop(cache_key, None)
+    _timeline_cache_at.pop(cache_key, None)
 
 
 def _timeline_file(start: str, end: str) -> Path:
@@ -215,6 +252,49 @@ def sleeve_recon_latest(day: str | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"sleeve recon failed: {exc}") from exc
     return {"ok": True, "recon": recon}
+
+
+@router.get("/satellite-signals/live")
+def satellite_signals_live(date: str | None = None) -> dict[str, Any]:
+    """OPT-186 slice 1: live 14:30 satellite candidate panel (read-only).
+
+    Same panel the backtest replay computes for the day (gap>3% ->
+    amp_1430 rank -> top-1/3 bucket -> skip_t1/C1/C2 + fillable guard ->
+    strict pool -> R-wide gate), but from the stored live panel instead of
+    a replay. Fills basis: 14:30 raw print; paper adds 30bps RT (slice 2).
+
+    Only serves days with a complete panel; otherwise
+    ``decisionAvailable: false`` with a reason (never a partial list).
+    Computed on demand — nothing is persisted.
+    """
+    from datetime import date as date_type
+
+    from data_sync_service.service.satellite_signals import load_live_satellite_signals
+
+    day = date or date_type.today().isoformat()
+    try:
+        signals = load_live_satellite_signals(day)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"satellite signals failed: {exc}") from exc
+    return {"ok": True, "signals": signals}
+
+
+@router.get("/satellite-signals/live-panel")
+def satellite_signals_live_panel() -> dict[str, Any]:
+    """OPT-222: today's 14:30 live snapshot (file), written by the 14:30 job.
+
+    ``panel=None`` when the snapshot has never been generated (or was not
+    persisted — an incomplete capture leaves the previous file untouched);
+    the card then shows "待 14:30 判定". The panel is produced by the same
+    ``satellite_signals_for_day`` code as the paper/replay books.
+    """
+    from data_sync_service.service.satellite_live import load_live_panel
+    from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
+
+    panel = load_live_panel()
+    today = shanghai_today_iso()
+    stale = bool(panel and str(panel.get("tradeDate") or "") != today)
+    return {"ok": True, "panel": panel, "stale": stale}
 
 
 @router.get("/behavior-audit/latest")
@@ -444,13 +524,34 @@ def backtest_sleeve_nav() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"report unreadable: {exc}") from exc
 
 
+@router.get("/harbor-h2-shadow/latest")
+def backtest_harbor_h2_shadow_latest() -> dict[str, Any]:
+    """H2 shadow paper ledger, latest report (OPT-216, display only).
+
+    Written daily by the ``harbor_h2_shadow`` job (weekdays 18:35); 404 until
+    the first run. Never touches Live/paper/real books.
+    """
+    from data_sync_service.service.harbor_h2_shadow import load_shadow_report
+
+    report = load_shadow_report()
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail="no H2 shadow ledger yet — wait for the 18:35 harbor_h2_shadow run",
+        )
+    return report
+
+
 @router.get("/timeline")
 def backtest_timeline(
     start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
         "harbor",
-        description="harbor | homeport | starport | starship | twin_star | pick_strong | state_bucket",
+        description=(
+            "harbor | harbor_h2 | homeport | homeport_m30 | starport | starship "
+            "| twin_star | pick_strong | state_bucket"
+        ),
     ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
@@ -459,7 +560,10 @@ def backtest_timeline(
     past-year vs OOS2/train/valid (gate) vs holdout (read-only).
 
     - strategy=harbor: 港湾 baseline (S-3 core + idle-cash ETF parking).
-    - strategy=homeport: 母港 = 港湾 x B3 risk-budget 50/50 (display only).
+    - strategy=harbor_h2: 港湾H2验证线 = S-3 core + H2 hysteresis parking
+      (H-HARBOR-H2, 条件PASS待 paper; NOT Live, NOT a product tier).
+    - strategy=homeport: 母港 M50 = 港湾 x B3 risk-budget 50/50 (frozen; starport's base).
+    - strategy=homeport_m30: 母港 M30 defensive tier = 港湾 70% x B3 30% (H-MIX-TUNE).
     - strategy=starport: 星港 = 母港 x satellite overlay w=1/3 (H-B3-SAT, display only).
     - strategy=starship: 星舰 = satellite standalone (research display; not audited).
     - strategy=twin_star: 双子星 = 港湾 x satellite overlay w=1/2 (parallel
@@ -477,7 +581,9 @@ def backtest_timeline(
     _validate_window(start, end)
     allowed = (
         "harbor",
+        "harbor_h2",
         "homeport",
+        "homeport_m30",
         "starport",
         "starship",
         "twin_star",
@@ -751,17 +857,24 @@ def _get_or_build_timeline(
     *,
     strategy: str = "harbor",
     need_engine: bool = False,
+    force: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing."""
+    """Return (timeline_result, engine_ctx|None). Rebuilds when engine needed but missing.
+
+    ``force=True`` (daily H2 shadow job) ignores every cache layer so the run
+    always sees the post-close sync.
+    """
     cache_key = (start, end, strategy)
-    cached = _timeline_cache.get(cache_key)
+    if force:
+        _timeline_mem_drop(cache_key)
+    cached = None if force else _timeline_mem_get(cache_key)
     engine = _timeline_engine_cache.get(cache_key)
     if cached is not None and (not need_engine or engine is not None):
         return cached, engine
     if cached is None and strategy == "pick_strong":
-        file_cached = _load_timeline_file(start, end)
+        file_cached = None if force else _load_timeline_file(start, end)
         if file_cached is not None and not need_engine:
-            _timeline_cache[cache_key] = file_cached
+            _timeline_mem_put(cache_key, file_cached)
             return file_cached, None
 
     # Standalone state-bucket: no S-3 / pick-strong dependency.
@@ -791,7 +904,7 @@ def _get_or_build_timeline(
                 "satWeight": 1.0,
                 "baseKey": "satellite",
             }
-        _timeline_cache[cache_key] = result
+        _timeline_mem_put(cache_key, result)
         return result, None
 
     # Homeport derives from the cached Harbor timeline (no second engine run).
@@ -807,7 +920,43 @@ def _get_or_build_timeline(
             raise HTTPException(
                 status_code=500, detail=f"timeline homeport failed: {exc}"
             ) from exc
-        _timeline_cache[cache_key] = result
+        _timeline_mem_put(cache_key, result)
+        return result, engine_ctx
+
+    # Homeport M30 defensive tier (H-MIX-TUNE 2026-09-16): same legs as
+    # homeport, harbor weight 0.7 instead of frozen 0.5. The M50 line above
+    # stays frozen (starport's base).
+    if strategy == "homeport_m30":
+        from data_sync_service.service.homeport import blend_homeport_timeline
+
+        harbor_result, engine_ctx = _get_or_build_timeline(
+            start, end, strategy="harbor", need_engine=need_engine
+        )
+        try:
+            result = blend_homeport_timeline(harbor_result, w_harbor=0.7)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline homeport_m30 failed: {exc}"
+            ) from exc
+        _timeline_mem_put(cache_key, result)
+        return result, engine_ctx
+
+    # Harbor H2 validation line (H-HARBOR-H2, 条件PASS待 paper): S-3 core
+    # frozen, idle parking switched to H2 hysteresis. Research only — Live,
+    # homeport/starport bases and frozen evals never route here.
+    if strategy == "harbor_h2":
+        from data_sync_service.service.parking_sleeve import blend_harbor_h2_timeline
+
+        harbor_result, engine_ctx = _get_or_build_timeline(
+            start, end, strategy="harbor", need_engine=need_engine
+        )
+        try:
+            result = blend_harbor_h2_timeline(harbor_result)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500, detail=f"timeline harbor_h2 failed: {exc}"
+            ) from exc
+        _timeline_mem_put(cache_key, result)
         return result, engine_ctx
 
     # Starport derives from the cached Homeport timeline + standalone satellite rows.
@@ -825,7 +974,7 @@ def _get_or_build_timeline(
             raise HTTPException(
                 status_code=500, detail=f"timeline starport failed: {exc}"
             ) from exc
-        _timeline_cache[cache_key] = result
+        _timeline_mem_put(cache_key, result)
         return result, engine_ctx
 
     # Twin Star (parallel comparison entry) derives from Harbor + satellite w=1/2.
@@ -843,7 +992,7 @@ def _get_or_build_timeline(
             raise HTTPException(
                 status_code=500, detail=f"timeline twin_star failed: {exc}"
             ) from exc
-        _timeline_cache[cache_key] = result
+        _timeline_mem_put(cache_key, result)
         return result, engine_ctx
 
     import sys
@@ -915,8 +1064,7 @@ def _get_or_build_timeline(
             "positions_by_day": run.positions_by_day,
             "close_by_ts_day": data.close_by_ts_day,
         }
-        _timeline_cache[cache_key] = result
-        _timeline_engine_cache[cache_key] = engine_ctx
+        _timeline_mem_put(cache_key, result, engine_ctx)
         if strategy == "pick_strong":
             _save_timeline_file(start, end, result)
         return result, engine_ctx

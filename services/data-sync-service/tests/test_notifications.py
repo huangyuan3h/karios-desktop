@@ -326,7 +326,13 @@ def test_route_ok(monkeypatch) -> None:
     r = TestClient(app).get("/api/notifications")
     assert r.status_code == 200
     assert r.json()["items"][0]["severity"] == "high"
-    assert calls == [((), {})]
+    # OPT-223: the UI's selected strategy is forwarded (default legacy mode).
+    assert calls == [(("single_track",), {})]
+
+    calls.clear()
+    r2 = TestClient(app).get("/api/notifications?mode=starship")
+    assert r2.status_code == 200
+    assert calls == [(("starship",), {})]
 
 
 def test_build_notifications_includes_recon(monkeypatch) -> None:
@@ -353,3 +359,50 @@ def test_build_notifications_includes_recon(monkeypatch) -> None:
         nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": "STOCK", "tradeDate": None}
     )
     assert len(nf.build_notifications()) == 1
+
+
+class TestSatelliteActionAlert:
+    """OPT-223: today's 14:30 action item for the selected strategy."""
+
+    PANEL = {
+        "tradeDate": "2026-09-17",
+        "decisionAvailable": True,
+        "gateOpen": False,
+        "breadth1430": 0.279,
+        "exits": [{"ts": "000978.SZ", "exitDue": "2026-09-17"}],
+        "heldLegs": [],
+        "ranked": [
+            {"ts": "002128.SZ", "inBucket": True, "skipReason": None, "fillable": True,
+             "gapPct": 3.04, "amp1430Pct": 2.92, "px1430": 27.7, "ampRank": 3},
+        ],
+    }
+
+    def _patch(self, monkeypatch, panel) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.service.satellite_live.load_live_panel", lambda: panel
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.shanghai_today_iso",
+            lambda: "2026-09-17",
+        )
+
+    def test_item_for_satellite_mode(self, monkeypatch) -> None:
+        self._patch(monkeypatch, dict(self.PANEL))
+        items = nf._satellite_action_alert("starship")
+        assert len(items) == 1
+        it = items[0]
+        assert it["id"] == "satellite_action:2026-09-17:starship"
+        assert it["type"] == "satellite_action" and it["anchor"] == "satellite-leg"
+        assert it["severity"] == "high"  # exits are actionable
+        assert "000978" in it["detail"] and "卖出资金停入 H2 停车腿" in it["detail"]
+        assert it["lane"] == "trade"
+
+    def test_skips_legacy_modes_and_stale_panels(self, monkeypatch) -> None:
+        self._patch(monkeypatch, dict(self.PANEL))
+        assert nf._satellite_action_alert("single_track") == []
+        assert nf._satellite_action_alert("harbor") == []
+        stale = {**self.PANEL, "tradeDate": "2026-09-16"}
+        self._patch(monkeypatch, stale)
+        assert nf._satellite_action_alert("starship") == []
+        self._patch(monkeypatch, {"tradeDate": "2026-09-17", "decisionAvailable": False})
+        assert nf._satellite_action_alert("starship") == []

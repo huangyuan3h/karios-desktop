@@ -21,7 +21,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-
 from eval_harbor_riskbudget import (  # noqa: E402
     COST,
     _blend_monthly,
@@ -52,6 +51,42 @@ def _corr(a: list[float], b: list[float]) -> float | None:
     if x.std() == 0 or y.std() == 0:
         return None
     return round(float(np.corrcoef(x, y)[0, 1]), 2)
+
+
+def _year_abs(dates: list[str], nav: list[float]) -> dict[str, dict[str, float]]:
+    """Per-year absolute total% + intra-year maxDD% (catalog evidence)."""
+    by_year: dict[str, list[float]] = {}
+    for d, v in zip(dates, nav, strict=True):
+        by_year.setdefault(d[:4], []).append(v)
+    out: dict[str, dict[str, float]] = {}
+    for y in sorted(by_year):
+        vs = by_year[y]
+        peak = vs[0]
+        dd = 0.0
+        for v in vs:
+            peak = max(peak, v)
+            dd = min(dd, v / peak - 1.0 if peak else 0.0)
+        out[y] = {
+            "total": round((vs[-1] / vs[0] - 1.0) * 100, 1) if vs[0] else 0.0,
+            "mdd": round(dd * 100, 1),
+        }
+    return out
+
+
+def _month_rets(dates: list[str], nav: list[float]) -> list[float]:
+    """Calendar-month simple returns (catalog monthly stats)."""
+    by_month: dict[str, list[float]] = {}
+    for d, v in zip(dates, nav, strict=True):
+        by_month.setdefault(d[:7], []).append(v)
+    months = sorted(by_month)
+    out: list[float] = []
+    prev = None
+    for m in months:
+        vs = by_month[m]
+        if prev is not None and prev:
+            out.append(vs[-1] / prev - 1.0)
+        prev = vs[-1]
+    return [round(r, 5) for r in out]
 
 
 def main() -> int:
@@ -108,6 +143,11 @@ def main() -> int:
                 "delta_sharpe": round(m["sharpe"] - m50_m["sharpe"], 2),
                 "delta_mdd": round(m["max_dd"] - m50_m["max_dd"], 1),
             }
+            if w == "long":
+                # Reporting only (no caliber change): yearly absolutes +
+                # calendar-month returns for catalog evidence (H-SAT-02).
+                grid[str(round(gw, 4))]["years"] = _year_abs(dates, nav)
+                grid[str(round(gw, 4))]["months"] = _month_rets(dates, nav)
         results[w] = {
             "harbor_ref": harbor_m, "m50": m50_m, "satellite": sat_m, "grid": grid,
             "pct_active": round(100 * sum(1 for a in active if a) / max(1, n), 1),

@@ -46,6 +46,8 @@ export function WatchlistToolbar({
   copyMdStatus,
   error,
   trendBusy,
+  trendUpdatedAt,
+  latestAutomation,
   itemsCount,
   sortedItemsCount,
   copyMdBusy,
@@ -55,10 +57,37 @@ export function WatchlistToolbar({
   onRunAutomation,
   onForceAutomationFromSkip,
 }: WatchlistToolbarProps) {
+  const freshnessLine = React.useMemo(() => {
+    const bits: string[] = [];
+    bits.push(
+      trendUpdatedAt
+        ? `趋势更新于 ${trendUpdatedAt}`
+        : '趋势尚未更新（点 Refresh 拉最新行情重算）',
+    );
+    if (latestAutomation) {
+      const when = latestAutomation.createdAt
+        ? new Date(latestAutomation.createdAt).toLocaleString('zh-CN', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+      bits.push(
+        latestAutomation.skipped
+          ? `自动化已跳过${latestAutomation.skipReason ? `（${latestAutomation.skipReason}）` : ''}${when ? ` · ${when}` : ''}`
+          : `自动化已跑${latestAutomation.tradeDate ? `（${latestAutomation.tradeDate}）` : ''}${when ? ` · ${when}` : ''}`,
+      );
+    } else {
+      bits.push('自动化今日未跑');
+    }
+    return bits.join(' · ');
+  }, [trendUpdatedAt, latestAutomation]);
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-lg font-semibold">Watchlist</div>
+        <div className="mt-1 text-[11px] text-[var(--k-muted)]">{freshnessLine}</div>
         {syncBusy && syncStage ? (
           <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
             <div className="flex items-center justify-between gap-2">
@@ -116,12 +145,17 @@ export function WatchlistToolbar({
           <div className="mt-2 text-xs text-[var(--k-muted)]">{automationMsg}</div>
         ) : null}
         {automationSkipRun ? (
-          <div className="mt-2 flex items-center gap-2 text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-[var(--k-muted)]">
-              Automation skipped ({automationSkipRun.skipReason || 'unknown'}).
+              自动化已跳过{automationSkipRun.skipReason ? `（${automationSkipRun.skipReason}）` : ''}。
             </span>
-            <Button size="sm" variant="secondary" onClick={onForceAutomationFromSkip}>
-              Force run
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onForceAutomationFromSkip}
+              title="忽略跳过原因，立即重做一次今日自动化（剔弱、导入、追加）"
+            >
+              强制跑一次
             </Button>
           </div>
         ) : null}

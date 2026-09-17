@@ -52,9 +52,33 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
 
   const actionable = report.reasons.filter((r) => r.severity !== 'info');
   const infos = report.reasons.filter((r) => r.severity === 'info');
-  // Aligned days stay silent; the banner surfaces only when the live book
-  // diverges from the core recipe (rendered above the strategy decision card).
-  if (report.verdict === 'aligned') return null;
+  // 加载中 vs 已对齐必须可区分：否则用户分不清"没事"还是"没加载完"。
+  if (healthQ.isPending) {
+    return (
+      <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 text-sm">
+        <div className="text-[12px] font-medium">{strategyName}日对齐</div>
+        <p className="mt-1 text-[11px] text-[var(--k-muted)]">对齐检查加载中…</p>
+      </div>
+    );
+  }
+  // Aligned days stay quiet but visible; the banner surfaces only when the
+  // live book diverges from the core recipe (rendered above the strategy
+  // decision card).
+  if (report.verdict === 'aligned')
+    return (
+      <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium">
+          <span className={cn('text-[11px] font-semibold', VERDICT_CLS.aligned)}>✓ 已对齐</span>
+          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 font-mono text-[10px]">
+            pick={report.pick}
+          </span>
+          <span className="ml-auto font-mono text-[10px] font-normal text-[var(--k-muted)]">
+            目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
+            {report.etfWeightPct}% · 闲置 {report.idlePct}%
+          </span>
+        </div>
+      </div>
+    );
   const verdictLabel = report.verdict === 'partial' ? '部分偏离' : `偏离${strategyName}`;
 
   return (
@@ -85,12 +109,14 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
           {mode === 'homeport'
             ? 'B3 月频再平衡'
             : mode === 'twin_star'
-              ? '卫星 1/2 overlay'
-              : 'B3 月频 + 卫星 1/3 overlay'}
+              ? '卫星 1/2 overlay（港湾核心之外）'
+              : mode === 'starship'
+                ? '卫星 standalone + 闲钱停车'
+                : 'B3 月频 + 卫星 0.2 overlay'}
           未接入日对齐（OPT-186）。
         </p>
       ) : null}
-      {healthQ.isLoading && !healthQ.data ? (
+      {healthQ.isFetching && !healthQ.data ? (
         <p className="mt-1 text-[11px] text-[var(--k-muted)]">加载持仓…</p>
       ) : null}
       {actionable.length === 0 ? (

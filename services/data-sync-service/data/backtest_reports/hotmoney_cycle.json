@@ -1,0 +1,71 @@
+{
+  "tag": "hotmoney-cycle-2026-09-15",
+  "prereg": "docs/designs/hotmoney-anatomy-prereg-2026-09-15.md",
+  "phase_counts": {
+    "ON": 677,
+    "MID": 594,
+    "OFF": 170
+  },
+  "summary": {
+    "ON": {
+      "n": 18975,
+      "gap_ex": 0.27,
+      "d3_ex": -0.34,
+      "one_line_pct": 5.52
+    },
+    "MID": {
+      "n": 13877,
+      "gap_ex": -0.27,
+      "d3_ex": -0.74,
+      "one_line_pct": 3.77
+    },
+    "OFF": {
+      "n": 4670,
+      "gap_ex": -0.91,
+      "d3_ex": -0.81,
+      "one_line_pct": 3.79
+    }
+  },
+  "by_window": {
+    "OOS2": {
+      "ON": 0.64,
+      "MID": -0.21,
+      "OFF": -0.85,
+      "ON_d3": -0.15,
+      "OFF_d3": -0.23,
+      "ON_minus_OFF": 1.49
+    },
+    "train": {
+      "ON": 0.55,
+      "MID": -0.02,
+      "OFF": -0.98,
+      "ON_d3": -0.98,
+      "OFF_d3": -0.24,
+      "ON_minus_OFF": 1.53
+    },
+    "valid": {
+      "ON": -0.08,
+      "MID": -0.37,
+      "OFF": -1.16,
+      "ON_d3": -0.52,
+      "OFF_d3": -0.03,
+      "ON_minus_OFF": 1.08
+    },
+    "long": {
+      "ON": 0.27,
+      "MID": -0.27,
+      "OFF": -0.9,
+      "ON_d3": -0.34,
+      "OFF_d3": -0.93,
+      "ON_minus_OFF": 1.17
+    }
+  },
+  "on_share_of_positive_gap_long": 56.8,
+  "verdict": {
+    "k1": true,
+    "k2": true,
+    "k3": false,
+    "call": "REJECT / phase does not explain"
+  },
+  "as_of": "2026-09-15T12:01:35+00:00"
+}

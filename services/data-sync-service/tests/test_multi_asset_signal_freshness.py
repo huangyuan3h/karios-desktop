@@ -3,6 +3,9 @@
 Harbor clock: the 18:20 job signals on the latest COMPLETED close (today
 included after the daily sync) and executes at T+1 open. During a session the
 daily table has no today bar, so the signal naturally stays on t-1.
+
+Basis (2026-09-17 audit): the signal now reads the engine-basis adjusted
+series (``harbor.load_etf_closes``); the raw ``daily`` path is only a fallback.
 """
 
 from __future__ import annotations
@@ -12,15 +15,23 @@ from types import SimpleNamespace
 from data_sync_service.service import multi_asset_sleeve as mas
 
 
+def _adj(bars):
+    return lambda ts: {b["date"]: float(b["close"]) for b in bars}
+
+
+def _bars(*pairs):
+    return [{"date": d, "trade_date": d, "close": c} for d, c in pairs]
+
+
 class TestSignalCloses:
     def test_includes_today_close(self, monkeypatch) -> None:
-        bars = [
-            {"date": "2026-08-26", "close": 4.7},
-            {"date": "2026-08-27", "close": 4.8},
-            {"date": "2026-08-28", "close": 4.9},
-            {"date": "2026-08-31", "close": 5.0},  # today (intraday / just closed)
-        ]
-        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        bars = _bars(
+            ("2026-08-26", 4.7),
+            ("2026-08-27", 4.8),
+            ("2026-08-28", 4.9),
+            ("2026-08-31", 5.0),  # today (intraday / just closed)
+        )
+        monkeypatch.setattr(mas, "_adjusted_series", _adj(bars))
         monkeypatch.setattr(
             "data_sync_service.service.trade_calendar_utils.shanghai_today",
             lambda: __import__("datetime").date(2026, 8, 31),
@@ -30,12 +41,8 @@ class TestSignalCloses:
         assert out[-1] == 5.0  # today's completed close is the signal
 
     def test_no_today_bar_keeps_last(self, monkeypatch) -> None:
-        bars = [
-            {"date": "2026-08-26", "close": 4.7},
-            {"date": "2026-08-27", "close": 4.8},
-            {"date": "2026-08-28", "close": 4.9},
-        ]
-        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        bars = _bars(("2026-08-26", 4.7), ("2026-08-27", 4.8), ("2026-08-28", 4.9))
+        monkeypatch.setattr(mas, "_adjusted_series", _adj(bars))
         monkeypatch.setattr(
             "data_sync_service.service.trade_calendar_utils.shanghai_today",
             lambda: __import__("datetime").date(2026, 8, 31),
@@ -45,11 +52,8 @@ class TestSignalCloses:
 
     def test_keeps_weekend_semantics(self, monkeypatch) -> None:
         # Monday: Saturday/Sunday bars do not exist; Friday close is t-1.
-        bars = [
-            {"date": "2026-08-27", "close": 4.8},
-            {"date": "2026-08-28", "close": 4.9},
-        ]
-        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        bars = _bars(("2026-08-27", 4.8), ("2026-08-28", 4.9))
+        monkeypatch.setattr(mas, "_adjusted_series", _adj(bars))
         monkeypatch.setattr(
             "data_sync_service.service.trade_calendar_utils.shanghai_today",
             lambda: __import__("datetime").date(2026, 8, 31),
@@ -58,16 +62,26 @@ class TestSignalCloses:
 
     def test_explicit_as_of_excludes_later_bars(self, monkeypatch) -> None:
         """Historical callers (recon / past-day views) must not leak later closes."""
-        bars = [
-            {"date": "2026-08-26", "close": 4.7},
-            {"date": "2026-08-27", "close": 4.8},
-            {"date": "2026-09-10", "close": 9.9},  # future vs as_of
-        ]
-        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        bars = _bars(
+            ("2026-08-26", 4.7),
+            ("2026-08-27", 4.8),
+            ("2026-09-10", 9.9),  # future vs as_of
+        )
+        monkeypatch.setattr(mas, "_adjusted_series", _adj(bars))
         assert mas._signal_closes("518880.SH", 260, as_of="2026-08-27") == [4.7, 4.8]
         series = mas._signal_series("518880.SH", 260, as_of="2026-08-27")
         assert max(series) == "2026-08-27"
         assert series["2026-08-27"] == 4.8
+
+    def test_raw_daily_fallback_when_panel_empty(self, monkeypatch) -> None:
+        bars = _bars(("2026-08-27", 4.8), ("2026-08-28", 4.9))
+        monkeypatch.setattr(mas, "_adjusted_series", lambda ts: {})
+        monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days: bars)
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.shanghai_today",
+            lambda: __import__("datetime").date(2026, 8, 31),
+        )
+        assert mas._signal_closes("518880.SH", 260)[-1] == 4.9
 
     def test_pick_passes_as_of_to_signal_series(self, monkeypatch) -> None:
         seen: list[str | None] = []

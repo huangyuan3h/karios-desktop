@@ -177,13 +177,23 @@ beforeEach(() => {
         valid: { total: 50.3, cagr: 156.6, mdd: -21.8, sharpe: 2.14 },
         long: { total: 201.5, cagr: 25.7, mdd: -22.8, sharpe: 1 },
       };
-      const entry = (key: string, name: string, status: string, statusLabel: string) => ({
+      const entry = (
+        key: string,
+        name: string,
+        status: string,
+        statusLabel: string,
+        role: string,
+        roleLabel: string,
+        timelineStrategy?: string,
+      ) => ({
         key,
         name,
         structure: `${name} structure`,
         status,
         statusLabel,
-        timelineStrategy: key,
+        role,
+        roleLabel,
+        timelineStrategy: timelineStrategy ?? key,
         doc: `docs/${key}.md`,
         tag: key,
         updated: '2026-09-14',
@@ -194,15 +204,28 @@ beforeEach(() => {
       return {
         ok: true,
         strategies: [
-          entry('harbor', '港湾', 'live', 'Live'),
-          entry('starport', '星港', 'product_candidate_increment', '产品候选增量'),
-          entry('twin_star', '双子星', 'parallel_candidate', '并行对照'),
-          entry('starship', '星舰', 'aggressive_pending', '激进 · 前置未满'),
+          entry('starship', '星舰', 'aggressive_pending', '激进 · 前置未满', 'offense', '进攻'),
+          entry('starport', '星港', 'product_candidate_increment', '产品候选增量', 'balanced', '均衡'),
+          entry(
+            'homeport',
+            '母港',
+            'product_candidate',
+            '产品候选',
+            'defense',
+            '防守',
+            'homeport_m30',
+          ),
+          entry('harbor', '港湾', 'live', 'Live · 日落', 'live', 'Live 底座'),
         ],
       };
     }
     if (String(path).includes('/api/backtest/timeline')) {
       const satelliteOnly = String(path).includes('strategy=starship');
+      // NOTE: 'strategy=homeport_m30' contains 'strategy=homeport' — the M30
+      // defensive tier intentionally shares the homeport risk-leg mock shape.
+      const isHomeport = String(path).includes('strategy=homeport');
+      const isStarport = String(path).includes('strategy=starport');
+      const satLeg = satelliteOnly || isStarport;
       const rows = [
           {
             date: '2026-08-01',
@@ -295,9 +318,22 @@ beforeEach(() => {
         ];
       const satRows = rows.map((r, i) => ({
         ...r,
-        navBaseReturnPct: undefined,
-        pick: 'S-GAP',
-        pickTs: '',
+        // Standalone satellite rows (starship) carry no base-leg columns —
+        // mirrors sgap_to_timeline_rows. Overlay rows (星港/双子星) keep the
+        // base leg (positions/symbols/pick/baseline) like the real blend.
+        ...(satelliteOnly
+          ? {
+              positions: 0,
+              cnPositions: 0,
+              hkPositions: 0,
+              stockMarket: '空仓',
+              stockSymbols: [],
+              exits: [],
+              navBaseReturnPct: undefined,
+              pick: 'S-GAP',
+              pickTs: '',
+            }
+          : {}),
         satNav: r.navSingle,
         satNavReturnPct: r.navSingleReturnPct,
         satActive: true,
@@ -317,10 +353,103 @@ beforeEach(() => {
         parkedTrail: i === 2,
         cashShare: i % 2 === 0 ? 1 : 0.5,
       }));
+      const day = (i: number) =>
+        new Date(Date.UTC(2026, 4, 1) + i * 86_400_000).toISOString().slice(0, 10);
+      // 32 older fills (2026-05-01 .. 2026-06-01) + the recent ones below →
+      // 34 flow rows; the "近 30" list must keep the NEWEST 30 (oldest 4 hidden).
+      const olderFills = Array.from({ length: 32 }, (_, i) => ({
+        kind: 'fill',
+        date: day(i),
+        ts: `T${String(i).padStart(4, '0')}.SZ`,
+        amp: 2 + (i % 5),
+        ampRank: 10 + i,
+        entryDate: day(i),
+        exitDate: day(i),
+        pnlPct: 1,
+        contribPct: 0.1,
+        closeReason: 'body_exit',
+      }));
+      // 15 older parked buy/sell pairs (2025-12-01 ..) — older than the 5 recent
+      // events; the "近 30" parked list must drop the OLDEST 5, not the newest.
+      const olderParked = Array.from({ length: 15 }, (_, i) => {
+        const d = new Date(Date.UTC(2025, 11, 1) + i * 86_400_000).toISOString().slice(0, 10);
+        return [
+          {
+            date: d,
+            kind: 'buy' as const,
+            key: 'GOLD',
+            name: '华安黄金ETF',
+            ts: `P${String(i).padStart(4, '0')}.SH`,
+            price: 4,
+            reason: 'entry' as const,
+          },
+          {
+            date: d,
+            kind: 'sell' as const,
+            key: 'GOLD',
+            name: '华安黄金ETF',
+            ts: `P${String(i).padStart(4, '0')}.SH`,
+            price: 4.1,
+            reason: 'rotate' as const,
+          },
+        ];
+      }).flat();
+      // Harbor-family rows carry the parking trade marker (08-05 OIL idle day builds).
+      const baseRows = rows.map((r) =>
+        r.date === '2026-08-05' ? { ...r, parkedSides: 1, parkedRetPct: 0.8 } : r,
+      );
+      const withRisk = isHomeport || isStarport;
+      const riskUniverse = [
+        { ts: '510300.SH', name: '沪深300' },
+        { ts: '510500.SH', name: '中证500' },
+        { ts: '518880.SH', name: '黄金' },
+        { ts: '513100.SH', name: '纳指100' },
+        { ts: '511260.SH', name: '10年国债' },
+      ];
+      const riskWeights = {
+        '510300.SH': 0.15,
+        '510500.SH': 0.15,
+        '518880.SH': 0.3,
+        '513100.SH': 0.2,
+        '511260.SH': 0.2,
+      };
+      const addRiskTop = (rs: typeof rows) =>
+        rs.map((r) => ({ ...r, riskTop: '518880.SH', riskTopW: 0.3 }));
+      const outRows = withRisk ? addRiskTop(satLeg ? satRows : baseRows) : satLeg ? satRows : baseRows;
+      // Harbor-family parking audit trail (harbor/homeport + overlays carry it).
+      const harborParkedBlotter = [
+        {
+          date: '2026-08-01',
+          kind: 'buy' as const,
+          key: 'GOLD',
+          name: '华安黄金ETF',
+          ts: '518880.SH',
+          price: 5.12,
+          reason: 'entry' as const,
+        },
+        {
+          date: '2026-08-04',
+          kind: 'sell' as const,
+          key: 'GOLD',
+          name: '华安黄金ETF',
+          ts: '518880.SH',
+          price: 5.24,
+          reason: 'trail' as const,
+        },
+      ];
+      const harborParkedHeld = {
+        key: 'GOLD',
+        name: '华安黄金ETF',
+        ts: '518880.SH',
+        since: '2026-08-01',
+        price: 5.31,
+        weight: 0.5,
+      };
       return {
         ok: true,
         strategy: satelliteOnly ? 'starship' : 'harbor',
         mode: 'mom_compare',
+        satWeight: satelliteOnly ? 1 : String(path).includes('strategy=starport') ? 0.2 : 0.5,
         summary: {
           fusedPct: 12.5,
           basePct: 3.2,
@@ -334,9 +463,10 @@ beforeEach(() => {
                 parkedTrailExits: 1,
               }
             : {}),
+          ...(withRisk ? { riskPct: 8.8, riskMaxDdPct: 5.5 } : {}),
         },
-        rows: satelliteOnly ? satRows : rows,
-        ...(satelliteOnly
+        rows: outRows,
+        ...(satLeg
           ? {
               openPositions: [
                 {
@@ -382,7 +512,12 @@ beforeEach(() => {
                   ampRank: 1,
                   closeReason: 'skip_t1_limit',
                 },
+                ...olderFills,
               ],
+            }
+          : {}),
+        ...(satelliteOnly
+          ? {
               parkedBlotter: [
                 {
                   date: '2026-08-01',
@@ -429,6 +564,7 @@ beforeEach(() => {
                   price: 5.3,
                   reason: 'entry',
                 },
+                ...olderParked,
               ],
               parkedHeld: {
                 key: 'GOLD',
@@ -438,6 +574,29 @@ beforeEach(() => {
                 price: 5.31,
                 weight: 0.75,
               },
+            }
+          : {}),
+        ...(!satelliteOnly
+          ? { parkedBlotter: harborParkedBlotter, parkedHeld: harborParkedHeld }
+          : {}),
+        ...(withRisk
+          ? {
+              riskUniverse,
+              riskBlotter: [
+                {
+                  date: '2026-08-01',
+                  weights: {
+                    '510300.SH': 0.2,
+                    '510500.SH': 0.2,
+                    '518880.SH': 0.2,
+                    '513100.SH': 0.2,
+                    '511260.SH': 0.2,
+                  },
+                  turnover: 0,
+                },
+                { date: '2026-09-01', weights: riskWeights, turnover: 0.1 },
+              ],
+              riskHeld: { date: '2026-09-30', weights: riskWeights },
             }
           : {}),
       };
@@ -489,9 +648,13 @@ describe('BacktestPage', () => {
     renderPage();
     expect(await screen.findByText(/Timeline（港湾/)).toBeDefined();
     expect(screen.queryByText(/资金流全景/)).toBeNull();
-    fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /均衡/ }));
     expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
-    fireEvent.click(await screen.findByRole('button', { name: /并行对照/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /进攻/ }));
+    expect(await screen.findByText(/Timeline（星舰/)).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: /防守/ }));
+    expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: '双子星' }));
     expect(await screen.findByText(/Timeline（双子星/)).toBeDefined();
   });
 
@@ -503,7 +666,7 @@ describe('BacktestPage', () => {
     const tip = await screen.findByTestId('harbor-day-tip');
     expect(tip.textContent).toContain('基线 —');
     expect(tip.textContent).toContain('卫星 4/4仓 · 空0槽');
-    expect(tip.textContent).toContain('停车 100%');
+    expect(tip.textContent).toContain('停车 黄金 100%');
   });
 
   it('labels the starship v2 parked-cash overlay', async () => {
@@ -547,20 +710,43 @@ describe('BacktestPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
     expect(await screen.findByText('卫星腿明细')).toBeDefined();
     expect((await screen.findAllByText('300906.SZ')).length).toBeGreaterThan(0);
-    expect(await screen.findByText('3 日到期')).toBeDefined();
+    expect((await screen.findAllByText('3 日到期')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('688155.SH')).length).toBeGreaterThan(0);
-    expect(await screen.findByText('当前持仓 1 · 买 1 / 卖 1 · 跳过 1')).toBeDefined();
+    expect(await screen.findByText('当前持仓 1 · 买 1 / 卖 33 · 跳过 1')).toBeDefined();
+  });
+
+  it('keeps the NEWEST 30 satellite flow rows (not the oldest)', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
+    await screen.findByText('卫星腿明细');
+    // 34 flow rows → "近 30" must show 2026-08-04 .. 2026-05-05, dropping the 4 oldest.
+    expect(await screen.findByText('T0004.SZ')).toBeDefined();
+    expect(screen.queryByText('T0000.SZ')).toBeNull();
+    expect(screen.queryByText('T0003.SZ')).toBeNull();
+  });
+
+  it('labels the satellite overlay weight and caliber per strategy', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
+    expect(
+      await screen.findByText(/组合权重 0\.2（卫星 v1 · 冻结口径）/),
+    ).toBeDefined();
+    expect(await screen.findByText(/贡献%（腿内）/)).toBeDefined();
   });
 
   it('records the parked-sleeve ETF trades in the starship audit', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /激进 · 前置未满/ }));
     expect(await screen.findByText('停车套筒明细（闲钱买 ETF）')).toBeDefined();
-    expect(await screen.findByText('买 3 / 卖 2 · 回撤出场 1')).toBeDefined();
+    expect(await screen.findByText('买 18 / 卖 17 · 回撤出场 1')).toBeDefined();
     expect(await screen.findByText(/当前持有 黄金 518880.SH/)).toBeDefined();
     expect(await screen.findByText(/停车权重 75%/)).toBeDefined();
     expect((await screen.findAllByText('513350.SH')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('回撤 8%')).length).toBeGreaterThan(0);
+    // 35 parked events → "近 30" must drop the OLDEST ones (P0000/P0001 hidden).
+    expect((await screen.findAllByText(/P0005\.SH/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/P0000\.SH/).length).toBe(0);
+    expect(screen.queryAllByText(/P0001\.SH/).length).toBe(0);
   });
 
   it('shows the harbor timeline on compare tab', async () => {
@@ -671,5 +857,56 @@ describe('BacktestPage', () => {
     fireEvent.click(screen.getByText(/高级：参数敏感度工具/));
     expect(screen.getByText('运行回测')).toBeDefined();
     expect(screen.getByText('敏感度网格 (36)')).toBeDefined();
+  });
+
+  it('shows the harbor parking leg in the day table and audit panel', async () => {
+    renderPage();
+    // 08-05 OIL idle day builds the parking leg (harbor rows carry pick/markers).
+    expect(await screen.findByText(/停车 原油 100%（建仓）/)).toBeDefined();
+    expect(await screen.findByText('停车套筒明细（闲钱买 ETF）')).toBeDefined();
+    expect(await screen.findByText('买 1 / 卖 1 · 回撤出场 1')).toBeDefined();
+  });
+
+  it('shows the B3 leg for 母港 (day column + rebalance panel)', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText('对比'));
+    fireEvent.click(await screen.findByRole('button', { name: '母港' }));
+    expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
+    expect(await screen.findByText('B3篮子明细（风险预算）')).toBeDefined();
+    expect(
+      await screen.findByText(/当前权重 沪深300 15% · 中证500 15% · 黄金 30%/),
+    ).toBeDefined();
+    expect((await screen.findAllByText(/黄金 30%/)).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(/B3 8.8%/)).toBeDefined();
+  });
+
+  it('shows both base and satellite legs for 星港', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
+    expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
+    // Base leg: stock tickets survive next to the satellite leg.
+    expect((await screen.findAllByText(/600519/)).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/卫星 4仓/)).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('卫星腿明细')).toBeDefined();
+    expect(await screen.findByText('停车套筒明细（闲钱买 ETF）')).toBeDefined();
+    expect(await screen.findByText('B3篮子明细（风险预算）')).toBeDefined();
+  });
+
+  it('shows base + parking + B3 but no satellite for 母港M30', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /防守/ }));
+    expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
+    expect((await screen.findAllByText(/600519/)).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('停车套筒明细（闲钱买 ETF）')).toBeDefined();
+    expect(await screen.findByText('B3篮子明细（风险预算）')).toBeDefined();
+    expect(screen.queryByText('卫星腿明细')).toBeNull();
+  });
+
+  it('shows the harbor_h2 validation line with its non-product subtitle', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /^对比$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^港湾H2$/ }));
+    expect(await screen.findByText(/Timeline（港湾H2/)).toBeDefined();
+    expect(await screen.findByText(/条件PASS待 paper，非产品档/)).toBeDefined();
   });
 });

@@ -1,0 +1,113 @@
+{
+  "tag": "hotmoney-exec-probe-2026-09-15",
+  "prereg": "docs/designs/hotmoney-anatomy-prereg-2026-09-15.md",
+  "range": [
+    "2024-01-01",
+    "2026-09-11"
+  ],
+  "results": {
+    "E5a_reopen_reseal": {
+      "n": 1856,
+      "x_overnight": {
+        "n": 1856,
+        "net_excess": -2.63
+      },
+      "x_d3": {
+        "n": 1856,
+        "net_excess": -2.92
+      },
+      "by_window": {
+        "OOS2": {
+          "n": 993,
+          "net_d3": -3.15,
+          "excess_d3": -2.51,
+          "excess_d3_15bp": -2.36,
+          "excess_d3_50bp": -2.71
+        },
+        "train": {
+          "n": 294,
+          "net_d3": -1.96,
+          "excess_d3": -2.59,
+          "excess_d3_15bp": -2.44,
+          "excess_d3_50bp": -2.79
+        },
+        "valid": {
+          "n": 197,
+          "net_d3": -0.72,
+          "excess_d3": -0.69,
+          "excess_d3_15bp": -0.54,
+          "excess_d3_50bp": -0.89
+        },
+        "long": {
+          "n": 1827,
+          "net_d3": -3.13,
+          "excess_d3": -2.97,
+          "excess_d3_15bp": -2.82,
+          "excess_d3_50bp": -3.17
+        }
+      },
+      "k3_large_amount_only": {
+        "OOS2": -2.3,
+        "train": -3.05,
+        "valid": -0.71,
+        "long": -2.65
+      },
+      "verdict": {
+        "k1": false,
+        "k2": false,
+        "k3": false,
+        "call": "REJECT"
+      }
+    },
+    "E5b_quality_nextday": {
+      "n": 12460,
+      "x_d3": {
+        "n": 12460,
+        "net_excess": -1.63
+      },
+      "by_window": {
+        "OOS2": {
+          "n": 4922,
+          "net_d3": -1.87,
+          "excess_d3": -1.83,
+          "excess_d3_15bp": -1.68,
+          "excess_d3_50bp": -2.03
+        },
+        "train": {
+          "n": 2484,
+          "net_d3": -0.89,
+          "excess_d3": -1.6,
+          "excess_d3_15bp": -1.45,
+          "excess_d3_50bp": -1.8
+        },
+        "valid": {
+          "n": 2599,
+          "net_d3": -0.69,
+          "excess_d3": -0.91,
+          "excess_d3_15bp": -0.76,
+          "excess_d3_50bp": -1.11
+        },
+        "long": {
+          "n": 11967,
+          "net_d3": -1.51,
+          "excess_d3": -1.67,
+          "excess_d3_15bp": -1.52,
+          "excess_d3_50bp": -1.87
+        }
+      },
+      "k3_large_amount_only": {
+        "OOS2": -1.71,
+        "train": -1.47,
+        "valid": -0.45,
+        "long": -1.37
+      },
+      "verdict": {
+        "k1": false,
+        "k2": false,
+        "k3": false,
+        "call": "REJECT"
+      }
+    }
+  },
+  "as_of": "2026-09-15T12:09:29+00:00"
+}

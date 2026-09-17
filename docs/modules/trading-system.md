@@ -1,5 +1,13 @@
 # 交易系统逻辑真值（重建手册 · S-3 定案）
 
+> ⚠️ **2026-09-17 更正（部分内容已过期，勿单独引用本文重建）**：
+> 现行五档配方与口径裁决 → [`strategy-recipes.md`](./strategy-recipes.md)；S-3 参数数值真值 →
+> [`strategy-params.md`](./strategy-params.md) §1。本文以下位置与现行不一致：
+> §3 入场表缺 `neutral_block` / `entry_style=auto` / `max_hold_env_shorten=45` / `env_position_scale` / `national_team_gate` / `drawdown_circuit` / Strong-only ATR；
+> §4 写了固定 −5/−8 但未含 ATR 分支；§6.2 的 `mp20` / 滑点 0.05 / 恐慌冷却 3 天 均已过期（现行 `mp10` / `slippage_pct=0` / `panic_cooldown_days=2`）。
+> 按 `AGENTS.md` 文档纪律，本文应整篇迁往 `docs/archive/modules-legacy/`（待办）。
+> §1–§2 数据层/信号层叙事仍可作背景阅读。
+
 > **目的**：本文件自包含描述当前交易系统的完整逻辑——数据、信号、闸门、仓位、退出、
 > 操作流程与验证证据。**即使系统全部丢失，凭本文 + 数据源即可重建。**
 > 回测引擎实现见 `backtest_engine.py`（OPT-070/071/072/073）；策略演进见

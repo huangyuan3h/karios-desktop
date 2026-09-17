@@ -7,7 +7,9 @@ const entry = {
   name: '港湾',
   structure: 'S-3 + 停车场',
   status: 'live',
-  statusLabel: 'Live',
+  statusLabel: 'Live · 日落',
+  role: 'live',
+  roleLabel: 'Live 底座',
   timelineStrategy: 'harbor',
   doc: 'docs/backtests/stable/etf-parking-baseline-2026-09-13.md',
   tag: 'harbor-p1-20260913',
@@ -38,20 +40,47 @@ describe('StrategyCatalogSchema', () => {
   it('accepts a null timelineStrategy for legacy rows', () => {
     const out = StrategyCatalogSchema.parse({
       ok: true,
-      strategies: [{ ...entry, key: 'twin_star', status: 'rejected', timelineStrategy: null }],
+      strategies: [{ ...entry, key: 'starport', status: 'rejected', timelineStrategy: null }],
     });
     expect(out.strategies[0]?.timelineStrategy).toBeNull();
   });
 
-  it('accepts the parallel twin_star entry with its timeline', () => {
+  it('accepts the defensive homeport row pointing at the M30 timeline', () => {
     const out = StrategyCatalogSchema.parse({
       ok: true,
       strategies: [
-        { ...entry, key: 'twin_star', status: 'parallel_candidate', timelineStrategy: 'twin_star' },
+        {
+          ...entry,
+          key: 'homeport',
+          status: 'product_candidate',
+          role: 'defense',
+          roleLabel: '防守',
+          timelineStrategy: 'homeport_m30',
+        },
       ],
     });
-    expect(out.strategies[0]?.timelineStrategy).toBe('twin_star');
+    expect(out.strategies[0]?.timelineStrategy).toBe('homeport_m30');
+    expect(out.strategies[0]?.role).toBe('defense');
+  });
+
+  it('accepts the parallel twin_star comparison entry', () => {
+    const out = StrategyCatalogSchema.parse({
+      ok: true,
+      strategies: [
+        {
+          ...entry,
+          key: 'twin_star',
+          name: '双子星',
+          status: 'parallel_candidate',
+          statusLabel: '并行对照',
+          role: 'balanced',
+          roleLabel: '对照',
+          timelineStrategy: 'twin_star',
+        },
+      ],
+    });
     expect(out.strategies[0]?.status).toBe('parallel_candidate');
+    expect(out.strategies[0]?.timelineStrategy).toBe('twin_star');
   });
 
   it('accepts an optional regime map and omits it for rows without one', () => {

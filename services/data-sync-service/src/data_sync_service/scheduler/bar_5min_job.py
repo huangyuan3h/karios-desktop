@@ -3,6 +3,10 @@
 After close_sync (17:10) today's daily exists, so we can restrict the
 pull to intraday gap names (open/pre_close > 3%) plus open CN paper holdings.
 Historical year backfill is scripts/backfill_bar_5min.py (baostock).
+
+2026-09-17 (OPT-219): after the bars are stored, refresh the 星舰 pool —
+the 17:30 watchlist_automation built it before today's 14:30 prints existed,
+so new satellite legs were mirrored a day late.
 """
 
 from __future__ import annotations
@@ -76,6 +80,37 @@ def run() -> None:
             res["failed"],
             res["skipped"],
         )
+        _refresh_satellite_pool(today)
     except Exception as exc:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])
         logger.warning("[bar_5min_close] failed: %s", exc)
+
+
+def _refresh_satellite_pool(day: str) -> None:
+    """Re-apply today's 星舰 pool now that the 14:30 prints are stored.
+
+    Isolated from the fetch result: a pool failure must not fail the bar job.
+    Skips non-trading days (no pool row should be written for a holiday).
+    """
+    try:
+        from datetime import date as _date
+
+        from data_sync_service.db.trade_calendar import is_trading_day
+
+        if is_trading_day("SSE", _date.fromisoformat(day)) is not True:
+            logger.info("[bar_5min_close] satellite pool refresh skipped: %s not a session", day)
+            return
+        from data_sync_service.service.watchlist_automation import refresh_satellite_pool
+
+        out = refresh_satellite_pool(day=day)
+        if out.get("ok"):
+            logger.info(
+                "[bar_5min_close] satellite pool refreshed: legs=%s added=%s removed=%s",
+                out.get("satellitePoolSize"),
+                out.get("added"),
+                out.get("removed"),
+            )
+        else:
+            logger.warning("[bar_5min_close] satellite pool refresh skipped: %s", out.get("error"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[bar_5min_close] satellite pool refresh failed: %s", exc)

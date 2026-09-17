@@ -71,3 +71,13 @@ PYTHONPATH=src:scripts python3 scripts/eval_harbor_b3_sat.py --save-report
 - 预注册：[`homeport-sat-prereg-2026-09-14.md`](../../designs/homeport-sat-prereg-2026-09-14.md) · 两腿版（REJECT）：[`harbor-sat-weight-2026-09-14.md`](harbor-sat-weight-2026-09-14.md)
 - 基座：母港 [`harbor-riskbudget-2026-09-13.md`](harbor-riskbudget-2026-09-13.md)（B15）· 港湾 [`etf-parking-baseline-2026-09-13.md`](etf-parking-baseline-2026-09-13.md)（B11）· B3 [`stable-core-2026-09-12.md`](stable-core-2026-09-12.md)
 - 卫星：[`sgap-habit-satellite-standalone-2026-09-14.md`](sgap-habit-satellite-standalone-2026-09-14.md) · 短板诊断：[`../sat/sat-valid-shortfall-diagnosis-2026-09-14.md`](../sat/sat-valid-shortfall-diagnosis-2026-09-14.md) · 审计：[`../audit-three-strategy-lookahead-2026-09-14.md`](../audit-three-strategy-lookahead-2026-09-14.md)
+
+## 8. 数据漂移复核 addendum（2026-09-15，不改上文冻结结论）
+
+上文数字 = 09-14 数据版本下的冻结裁决（PASS chosen=1/3，当时 valid Δ −4.9 踩线）。09-15 审计复跑发现：
+
+- 09-15 晚 baostock 5min 回填覆盖了 live 14:30 prints（`bar_5min` 同级 source 直接覆盖，`_load_bar5_closes` 无 source 过滤）→ 卫星腿 fills 重定价 → valid 星港 **20.7 → 18.0**（Δ −4.9 → **−7.6**），long 198.1 → 208.2；母港/港湾/S-3 基线纹丝不动（walk-forward 三窗小数点后三位全同），故排除代码因素（旧引擎 stash 对照同为 18.01）。
+- 按**同一 K1 门**（worst Δ ≥ −5）在今天数据下重判：chosen 应为 **0.2**（−4.6），1/3（−7.6）与 0.25（−5.7）不清 K1（K2/K3 仍过）。0.15（−3.5）亦过。
+- 附带修了一个真 bug（与本次漂移无关）：`blend_overlay_timeline` 从 i=1 起混、吞掉窗口首日收益（valid 首日恰为 M50 +4.2% 的原油日）——修后 Timeline 与 eval 在今天数据下逐数一致（17.99 vs 17.99）。
+- 防再犯：`upsert_5min_payload(on_conflict="nothing")`（历史回填只补缺不覆盖）+ 两回填脚本已切；冻结报告应记录 bar_5min 数据版本（待补）。
+- 本 addendum 不改变 09-14 的 PASS 记录（那是当时数据版本下的诚实裁决）；但 **1/3 不再是当前数据下的过线权重**——展示层/落地讨论改用 0.15–0.25（本就与本文 §4 稳健建议一致），重判需另起预注册。见 OPT-212。

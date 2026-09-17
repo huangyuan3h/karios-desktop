@@ -2,12 +2,13 @@
 """Verify Live Harbor decisions == frozen backtest decisions (PIT replay).
 
 Live side : `multi_asset_sleeve.build_multi_asset_sleeve` replayed day by day
-            with `fetch_last_bars` patched to a point-in-time cut (bars <= T),
+            with `_adjusted_series` patched to a point-in-time cut (dates <= T),
             maintaining the sleeve state (held leg / entry date) exactly like
             `sleeve_paper_auto` would.
 Backtest  : `service.harbor.build_harbor_timeline` rows over the same engine
-            calendar, with the SAME price series (DB `daily`) so differences
-            are logic/clock, not data source.
+            calendar, with the SAME price series (engine basis: adjusted CSV
+            panel + scaled DB tail), so differences are logic/clock, not data
+            source. Since OPT-219 the Live sleeve reads this basis too.
 
 Clock mapping: Live decision at T close -> held during T+1; backtest row
 (day = T+1).pick was also decided at T close -> held during T+1.
@@ -41,8 +42,8 @@ from data_sync_service.service.harbor import (  # noqa: E402
     MULTI_TS,
     NASDAQ_ALIASES,
     build_harbor_timeline,
+    load_etf_closes,
 )
-from data_sync_service.service.pick_strong_track import fetch_etf_closes  # noqa: E402
 from data_sync_service.service.portfolio_nav_sim import engine_nav_by_day_from_run  # noqa: E402
 
 NEUTRAL_BLOCK = {
@@ -54,32 +55,9 @@ NEUTRAL_BLOCK = {
 }
 
 
-def _daily_series() -> dict[str, dict[str, float]]:
-    """Same source the Live sleeve reads (`daily` table)."""
-    base = fetch_etf_closes()  # {key: {date: close}} for the 4 menu keys
-    out = {MULTI_TS[key]: {d: float(c) for d, c in series.items()} for key, series in base.items()}
-    for alias in NASDAQ_ALIASES:
-        if alias not in out:
-            import psycopg
-
-            from data_sync_service.config import get_settings
-
-            with psycopg.connect(get_settings().database_url) as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT trade_date, close FROM daily WHERE ts_code=%s ORDER BY trade_date",
-                    (alias,),
-                )
-                out[alias] = {str(d): float(c) for d, c in cur.fetchall() if c is not None}
-    return out
-
-
-def _bars_cut(series: dict[str, dict[str, float]], as_of: str) -> dict[str, list[dict[str, object]]]:
-    """Per-ts bars with date <= as_of (PIT cut), oldest first."""
-    cut: dict[str, list[dict[str, object]]] = {}
-    for ts, mp in series.items():
-        days = sorted(d for d in mp if d <= as_of)
-        cut[ts] = [{"date": d, "trade_date": d, "close": mp[d]} for d in days]
-    return cut
+def _basis_series() -> dict[str, dict[str, float]]:
+    """Engine basis: adjusted research panel + ratio-scaled DB tail."""
+    return load_etf_closes()
 
 
 def _key_for_symbol(symbol: str) -> str:
@@ -116,12 +94,12 @@ def replay_window(
     for i in range(0, len(cal) - 1):
         # Include the first decision (flat state) so window-start drift is caught.
         day = cal[i]
-        cut = _bars_cut(series, day)
+        cut = {ts: {d: c for d, c in mp.items() if d <= day} for ts, mp in series.items()}
 
-        def _fb(ts: str, days: int = 260, _cut=cut):
-            return _cut.get(ts, [])[-days:]
+        def _adj(ts: str, _cut=cut):
+            return dict(_cut.get(ts) or {})
 
-        with patch.object(mas, "fetch_last_bars", _fb):
+        with patch.object(mas, "_adjusted_series", _adj):
             out = mas.build_multi_asset_sleeve(
                 day=day,
                 cn_block=NEUTRAL_BLOCK,
@@ -165,14 +143,14 @@ def main() -> int:
     ap.add_argument("--single-nasdaq", action="store_true", help="use only 513110 for NASDAQ on both sides")
     args = ap.parse_args()
 
-    series = _daily_series()
+    series = _basis_series()
     if args.single_nasdaq:
         series.pop("513100.SH", None)
         mas.CANDIDATES = [c for c in mas.CANDIDATES if c["ts"] != "513100.SH"]
         import data_sync_service.service.harbor as _harbor
 
         _harbor.NASDAQ_ALIASES = ("513110.SH",)
-    print(f"PIT live-vs-backtest replay (daily closes; entry-clock={args.entry_clock})\n")
+    print(f"PIT live-vs-backtest replay (engine basis; entry-clock={args.entry_clock})\n")
     results = []
     for name in [w.strip() for w in args.windows.split(",") if w.strip()]:
         start, end = WINDOWS[name]

@@ -1,0 +1,120 @@
+{
+  "tag": "limitup-board-quality-phase1-2026-09-15",
+  "prereg": "docs/designs/hotmoney-anatomy-prereg-2026-09-15.md",
+  "phase": "phase1 descriptive 2024-2026 (no verdict; phase2 needs 2021-23 full-day backfill)",
+  "results": {
+    "events": 16907,
+    "skipped_bars": 559,
+    "first_seal_min": {
+      "T1": {
+        "n": 6137,
+        "gap_ex": 3.22,
+        "unbuyable_pct": 16.9,
+        "intraday": -0.6,
+        "d3_ex": -0.49
+      },
+      "T2": {
+        "n": 5089,
+        "gap_ex": 1.71,
+        "unbuyable_pct": 4.17,
+        "intraday": -0.05,
+        "d3_ex": -0.21
+      },
+      "T3": {
+        "n": 5365,
+        "gap_ex": 1.12,
+        "unbuyable_pct": 4.36,
+        "intraday": -0.1,
+        "d3_ex": -0.12
+      },
+      "spearman_vs_gap": -0.218
+    },
+    "sealed_share": {
+      "T1": {
+        "n": 5705,
+        "gap_ex": 0.72,
+        "unbuyable_pct": 4.57,
+        "intraday": -0.02,
+        "d3_ex": -0.12
+      },
+      "T2": {
+        "n": 6177,
+        "gap_ex": 1.77,
+        "unbuyable_pct": 4.71,
+        "intraday": -0.04,
+        "d3_ex": -0.14
+      },
+      "T3": {
+        "n": 5025,
+        "gap_ex": 3.84,
+        "unbuyable_pct": 19.56,
+        "intraday": -0.86,
+        "d3_ex": -0.65
+      },
+      "spearman_vs_gap": 0.298
+    },
+    "reopen": {
+      "0": {
+        "n": 12164,
+        "gap_ex": 2.46,
+        "unbuyable_pct": 10.41,
+        "intraday": -0.52,
+        "d3_ex": -0.54
+      },
+      "1-2": {
+        "n": 4206,
+        "gap_ex": 1.05,
+        "unbuyable_pct": 5.97,
+        "intraday": 0.36,
+        "d3_ex": 0.44
+      },
+      "3+": {
+        "n": 537,
+        "gap_ex": -0.06,
+        "unbuyable_pct": 3.35,
+        "intraday": 0.26,
+        "d3_ex": -0.22
+      }
+    },
+    "tail_sealed": {
+      "yes": {
+        "n": 16256,
+        "gap_ex": 2.15,
+        "unbuyable_pct": 9.06,
+        "intraday": -0.28,
+        "d3_ex": -0.28
+      },
+      "no": {
+        "n": 651,
+        "gap_ex": -0.9,
+        "unbuyable_pct": 9.52,
+        "intraday": -0.09,
+        "d3_ex": -0.41
+      }
+    },
+    "by_year": {
+      "2024": {
+        "n": 4724,
+        "gap_ex": 2.38,
+        "unbuyable_pct": 14.33,
+        "intraday": -0.44,
+        "d3_ex": -0.53
+      },
+      "2025": {
+        "n": 5282,
+        "gap_ex": 2.11,
+        "unbuyable_pct": 9.31,
+        "intraday": -0.29,
+        "d3_ex": -0.22
+      },
+      "2026": {
+        "n": 6901,
+        "gap_ex": 1.73,
+        "unbuyable_pct": 5.3,
+        "intraday": -0.15,
+        "d3_ex": -0.17
+      }
+    }
+  },
+  "as_of": "2026-09-15T11:44:42+00:00"
+}

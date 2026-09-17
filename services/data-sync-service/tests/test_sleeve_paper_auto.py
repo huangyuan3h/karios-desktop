@@ -312,7 +312,11 @@ def test_paper_holdings_feed_causal_trail(monkeypatch):
         "s3Candidates": [],
     }
     monkeypatch.setattr(mas, "_pick", lambda *, as_of=None: pick)
-    monkeypatch.setattr(mas, "fetch_last_bars", lambda ts, days=500: bars)
+    monkeypatch.setattr(
+        mas,
+        "_adjusted_series",
+        lambda ts: {b["date"]: float(b["close"]) for b in bars},
+    )
     out = mas.build_multi_asset_sleeve(
         day="2026-03-01",
         cn_block=cn,

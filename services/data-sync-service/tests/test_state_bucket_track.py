@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from data_sync_service.service import state_bucket_track as sbt
@@ -62,7 +64,7 @@ def _mk_data() -> tuple[list[str], dict, dict, dict]:
 
 def _patch_loaders(monkeypatch, dates, per_ts, mv):
     monkeypatch.setattr(sbt, "_load_calendar", lambda w_start, end: dates)
-    monkeypatch.setattr(sbt, "_load_rows", lambda w_start, end: per_ts)
+    monkeypatch.setattr(sbt, "_load_rows", lambda w_start, end, **kw: per_ts)
     monkeypatch.setattr(sbt, "_load_mv", lambda w_start, end: mv)
     monkeypatch.setattr(sbt, "_load_bar5_closes", lambda *_a, **_k: {})
     monkeypatch.setattr(sbt, "_load_1430_closes", lambda w_start, end: {})
@@ -1198,3 +1200,122 @@ class TestHkContainmentOPT147:
         _, breadth_cn = sbt._day_features(per_ts_cn, mv, dates, dates[20], date_idx_cn)
         assert breadth == breadth_cn
         assert breadth > 0.9  # rising CN names still counted (gate open side visible)
+
+
+class TestUniverseWhere:
+    """OPT-211 P3: universe SQL pins frozen defaults + sensitivity flags."""
+
+    def test_frozen_default_excludes_st_and_ever_delisted(self) -> None:
+        q = sbt._universe_where(include_st=False, include_listed_history=False)
+        assert "sb.delist_date IS NULL" in q
+        assert "sb.name NOT LIKE" in q
+        assert "d.ts_code NOT LIKE '%%.BJ'" in q
+
+    def test_listed_history_keeps_bars_while_listed(self) -> None:
+        q = sbt._universe_where(include_st=False, include_listed_history=True)
+        assert "d.trade_date <= sb.delist_date" in q
+        assert "sb.name NOT LIKE" in q
+
+    def test_include_st_drops_only_the_name_filter(self) -> None:
+        q = sbt._universe_where(include_st=True, include_listed_history=False)
+        assert "sb.delist_date IS NULL" in q
+        assert q.count("NOT LIKE") == 1  # only the BJ exclusion remains
+
+
+class _FakeCopy:
+    def __init__(self, cur: _FakeCur) -> None:
+        self._cur = cur
+
+    def __enter__(self) -> _FakeCopy:
+        return self
+
+    def __exit__(self, *a: object) -> None:
+        return None
+
+    def set_types(self, types: list) -> None:
+        self._cur.types = types
+
+    def rows(self):
+        yield from self._cur._rows
+
+
+class _FakeCur:
+    def __init__(self, rows: list) -> None:
+        self._rows = rows
+        self.sql = ""
+        self.params: object = None
+        self.types: list = []
+
+    def __enter__(self) -> _FakeCur:
+        return self
+
+    def __exit__(self, *a: object) -> None:
+        return None
+
+    def execute(self, sql: str, params: object = None) -> None:
+        self.sql = sql
+        self.params = params
+
+    def copy(self, sql: str) -> _FakeCopy:
+        self.sql = sql
+        return _FakeCopy(self)
+
+    def fetchall(self) -> list:
+        return self._rows
+
+
+class _FakeConn:
+    def __init__(self, rows: list) -> None:
+        self.cur = _FakeCur(rows)
+
+    def __enter__(self) -> _FakeConn:
+        return self
+
+    def __exit__(self, *a: object) -> None:
+        return None
+
+    def cursor(self) -> _FakeCur:
+        return self.cur
+
+    def close(self) -> None:
+        pass
+
+
+class TestLoadRowsUniverseFlags:
+    """_load_rows forwards the universe flags into SQL (fake connection)."""
+
+    ROWS = [
+        ("2024-01-02", "600000.SH", 10.0, 10.5, 9.8, 10.2, 10.0, 500000.0),
+        ("2024-01-03", "600000.SH", 10.2, 10.6, 10.0, 10.4, 10.2, 600000.0),
+    ]
+
+    def _load(self, monkeypatch: pytest.MonkeyPatch, **kw: object) -> tuple[dict, _FakeConn]:
+        conn = _FakeConn(list(self.ROWS))
+        monkeypatch.setattr(sbt.psycopg, "connect", lambda *a, **k: conn)
+        monkeypatch.setattr(sbt, "get_settings", lambda: SimpleNamespace(database_url="x"))
+        return sbt._load_rows("2024-01-02", "2024-01-03", **kw), conn  # type: ignore[arg-type]
+
+    def test_default_sql_matches_frozen_universe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out, conn = self._load(monkeypatch)
+        assert "sb.delist_date IS NULL" in conn.cur.sql
+        assert "sb.name NOT LIKE" in conn.cur.sql
+        # OPT-221: COPY has no bind params — the (validated) dates are inlined.
+        assert "'2024-01-02'" in conn.cur.sql and "'2024-01-03'" in conn.cur.sql
+        assert conn.cur.types[1] == "text"
+        assert out["600000.SH"][0]["close"] == 10.2
+        assert len(out["600000.SH"]) == 2
+
+    def test_rejects_non_iso_dates(self) -> None:
+        """COPY inlines the window → it must be ISO-validated first."""
+        with pytest.raises(ValueError):
+            sbt._load_rows("2024-1-2", "2024-01-03")
+        with pytest.raises(ValueError):
+            sbt._load_rows("2024-01-02", "2024/01/03")
+
+    def test_listed_history_flag_reaches_sql(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, conn = self._load(monkeypatch, include_listed_history=True)
+        assert "d.trade_date <= sb.delist_date" in conn.cur.sql
+
+    def test_include_st_flag_reaches_sql(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, conn = self._load(monkeypatch, include_st=True)
+        assert "sb.name NOT LIKE" not in conn.cur.sql

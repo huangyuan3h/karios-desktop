@@ -39,6 +39,12 @@ def _today() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
 
+def _cn_today() -> str:
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+
 def _run_ok(job: str) -> bool:
     """True when today's run for ``job`` succeeded.
 
@@ -46,6 +52,10 @@ def _run_ok(job: str) -> bool:
     must be checked. ``get_today_run`` compares in UTC — the close chain runs
     at 09:30-09:45 UTC (17:30-17:45 Beijing), same UTC day as this watchdog.
     close_sync is stored as stock_close_sync (plus legacy alias close_sync).
+
+    watchlist_automation: a SKIPPED run (close_sync late) records
+    ``success=True`` but built no pool, so the applied-run table is the
+    source of truth (2026-09-17 fix).
     """
     if job == "paper_s3_intake":
         for m in ("CN", "HK"):
@@ -59,6 +69,14 @@ def _run_ok(job: str) -> bool:
             if bool((rec or {}).get("success")):
                 return True
         return False
+    if job == "watchlist_automation":
+        try:
+            from data_sync_service.db.watchlist_automation import automation_applied_on
+
+            return automation_applied_on(_cn_today())
+        except Exception:  # noqa: BLE001
+            rec = get_today_run(job)
+            return bool((rec or {}).get("success"))
     rec = get_today_run(job)
     return bool((rec or {}).get("success"))
 

@@ -23,6 +23,7 @@
 | Alpha Incubator（V4 双核捕猎） | [`modules/alpha-incubator.md`](./modules/alpha-incubator.md) |
 | 下游 AI Prompt（V7.6） | [`modules/downstream-ai-prompt.md`](./modules/downstream-ai-prompt.md) |
 | S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
+| **五档策略现行配方（可重建 spec：港湾/母港/星港/双子星/星舰）** | [`modules/strategy-recipes.md`](./modules/strategy-recipes.md) |
 | **港湾 Harbor（产品策略真值 · S-3 核心 + 闲置现金 ETF 停车场）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
 | 回测结论 / 实验记录（2026-08-09 归档 · 现行真值见 strategy-params.md） | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) → [`archive/modules-legacy/backtest-strategy-legacy.md`](./archive/modules-legacy/backtest-strategy-legacy.md) |
 | **回测实验记录（最终指向港湾 Harbor）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 调策略先看 [B11 停车场基线](./backtests/stable/etf-parking-baseline-2026-09-13.md)（卫星 REJECT 见 [B12](./backtests/stable/twin-star-parking-refit-2026-09-13.md)） · **新想法先自查** [`first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md) |
@@ -92,7 +93,7 @@
 | 任务 | 按序读（读完再动手） |
 |------|---------------------|
 | 新开 agent 会话 | `AGENTS.md` → 本索引 → `todo.md` §0/§1 → `modules/README.md` |
-| 改策略参数 | 仓库根 `AGENTS.md` → Strategy / parameter changes（主源：自查 + 拒收总表 + 调参查找） |
+| 改策略参数 | 仓库根 `AGENTS.md` → Strategy / parameter changes（主源：自查 + 拒收总表 + 调参查找）→ `modules/strategy-recipes.md`（现行配方 + 口径裁决） |
 | 跑回测 / 加回测机制 | `backtests/README.md`（验证纪律） → `backtests/audit-2026-08-22.md` → `AGENTS.md`（Backtest walk-forward 章） |
 | 改 DB schema | `AGENTS.md`（Database 章） → `services/data-sync-service/README.md` → `optimization-checklist.md` |
 | 加 API 字段 | `AGENTS.md`（Shared API types 章） → `packages/shared/README.md` → `api/README.md` |

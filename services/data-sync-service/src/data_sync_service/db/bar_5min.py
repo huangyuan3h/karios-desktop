@@ -98,8 +98,18 @@ def upsert_5min_bars(
     return upsert_5min_payload(payload)
 
 
-def upsert_5min_payload(payload: list[tuple]) -> int:
-    """Bulk COPY into a temp table then ranked INSERT. Safe to rerun."""
+def upsert_5min_payload(payload: list[tuple], *, on_conflict: str = "update") -> int:
+    """Bulk COPY into a temp table then ranked INSERT. Safe to rerun.
+
+    ``on_conflict="update"`` (default): same-rank rows overwrite existing
+    prints (live sync corrections). ``on_conflict="nothing"``: historical
+    backfills only fill MISSING (ts, date, time) keys and never rewrite an
+    existing print — OPT-211 P3: a 09-15 baostock re-fetch overwrote live
+    14:30 prints and repriced satellite fills (starport valid 20.7→18.0
+    with no code change). Backfills must use "nothing".
+    """
+    if on_conflict not in ("update", "nothing"):
+        raise ValueError(f"on_conflict must be 'update'|'nothing', got {on_conflict!r}")
     if not payload:
         return 0
     ensure_table()
@@ -127,15 +137,10 @@ def upsert_5min_payload(payload: list[tuple]) -> int:
             ) as copy:
                 for row in payload:
                     copy.write_row(row)
-            cur.execute(
-                f"""
-                INSERT INTO {TABLE_NAME}(
-                    ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
-                )
-                SELECT ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
-                FROM _bar_5min_in
-                WHERE close IS NOT NULL
-                ON CONFLICT (ts_code, trade_date, trade_time) DO UPDATE SET
+            conflict_clause = (
+                "ON CONFLICT (ts_code, trade_date, trade_time) DO NOTHING"
+                if on_conflict == "nothing"
+                else f"""ON CONFLICT (ts_code, trade_date, trade_time) DO UPDATE SET
                     open = EXCLUDED.open,
                     high = EXCLUDED.high,
                     low = EXCLUDED.low,
@@ -144,7 +149,17 @@ def upsert_5min_payload(payload: list[tuple]) -> int:
                     amount = EXCLUDED.amount,
                     source = EXCLUDED.source
                 WHERE (CASE {TABLE_NAME}.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
-                    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
+                    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)"""
+            )
+            cur.execute(
+                f"""
+                INSERT INTO {TABLE_NAME}(
+                    ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
+                )
+                SELECT ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
+                FROM _bar_5min_in
+                WHERE close IS NOT NULL
+                {conflict_clause}
                 """
             )
         conn.commit()

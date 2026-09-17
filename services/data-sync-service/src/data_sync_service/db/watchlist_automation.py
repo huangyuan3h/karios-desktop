@@ -317,6 +317,29 @@ def get_latest_run() -> dict[str, Any] | None:
     return _row_to_run(row)
 
 
+def automation_applied_on(trade_date: str) -> bool:
+    """True when an applied, non-skipped automation run exists for ``trade_date``.
+
+    A SKIPPED run (``close_sync_not_ready`` after a late service start) is
+    recorded ``success=True`` in ``sync_job_record`` but did no work — the EOD
+    catch-up and the paper-chain watchdog must not treat it as done
+    (2026-09-17: 09-15/16 pools were lost this way; the chain never retried
+    once close_sync landed in the evening).
+    """
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT 1 FROM {RUNS_TABLE}
+                WHERE trade_date = %s AND skipped = FALSE AND applied_at IS NOT NULL
+                LIMIT 1
+                """,
+                (trade_date,),
+            )
+            return cur.fetchone() is not None
+
+
 def list_recent_runs(*, limit: int = 10) -> list[dict[str, Any]]:
     """Return the most recent acknowledged run per trade_date, newest first.
 

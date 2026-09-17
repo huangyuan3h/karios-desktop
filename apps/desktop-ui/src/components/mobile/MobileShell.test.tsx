@@ -36,6 +36,38 @@ vi.mock('@/lib/queries/industryFlow', async () => {
     useIndustryMainlineQuery: vi.fn(() => ({ data: null })),
   };
 });
+// OPT-222: the watchlist card mounts backtest queries (timeline + live panel).
+// Without this mock they fire real fetches whose teardown abort surfaces as an
+// unhandled rejection in jsdom.
+vi.mock('@/lib/queries/backtest', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/backtest')>('@/lib/queries/backtest');
+  const stub = () => ({ data: undefined, isError: false, isFetching: false });
+  return {
+    ...actual,
+    useTimelineQuery: vi.fn(stub),
+    useSatelliteLivePanelQuery: vi.fn(() => ({
+      data: { ok: true, panel: null, stale: false },
+      isError: false,
+      isFetching: false,
+    })),
+    useBacktestReconQuery: vi.fn(stub),
+    useSleeveReconQuery: vi.fn(stub),
+  };
+});
+vi.mock('@/lib/queries/sentiment', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/queries/sentiment')>('@/lib/queries/sentiment');
+  return {
+    ...actual,
+    useDashboardSentimentQuery: vi.fn(() => ({
+      data: undefined,
+      isError: false,
+      dataUpdatedAt: 0,
+      isFetching: false,
+    })),
+  };
+});
 
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 

@@ -373,12 +373,55 @@ def _third_asset_notification() -> list[dict[str, Any]]:
     ]
 
 
+def _satellite_action_alert(mode: str) -> list[dict[str, Any]]:
+    """OPT-223: today's 14:30 satellite action for the selected strategy.
+
+    Read-only: the 14:30 job persisted the panel; this composes the same
+    instruction the Bark push carries, so the in-app hub and the phone agree.
+    Only satellite-carrying strategies get the item.
+    """
+    try:
+        from data_sync_service.service.satellite_actions import (
+            SATELLITE_MODES,
+            action_severity,
+            compose_satellite_action,
+        )
+        from data_sync_service.service.satellite_live import load_live_panel
+        from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
+
+        if mode not in SATELLITE_MODES:
+            return []
+        panel = load_live_panel()
+        if not panel or not panel.get("decisionAvailable"):
+            return []
+        action = compose_satellite_action(panel, mode)
+        day = str(action.get("tradeDate") or "")
+        if day != shanghai_today_iso():
+            return []  # stale snapshot → the card shows the fallback instead
+        detail = "；".join(action.get("lines") or [])
+        return [
+            _note(
+                nid=f"satellite_action:{day}:{mode}",
+                type="satellite_action",
+                severity=action_severity(action),
+                title=f"{action.get('strategyLabel')} · 14:30 现场",
+                detail=detail,
+                anchor="satellite-leg",
+                lane="trade",
+                book="satellite",
+            )
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("satellite action alert failed: %s", exc)
+        return []
+
+
 def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
     """All actionable notifications, most severe first.
 
     S-3 pyramid/trail and paper-vs-backtest recon run on the single-track book.
-    ``mode`` is accepted for client compatibility and always resolves to
-    ``single_track``.
+    ``mode`` (the UI's selected strategy) additionally drives the OPT-223
+    satellite action item; legacy values like ``single_track`` skip it.
     """
     ctx = _load_health_ctx()
     items = (
@@ -388,6 +431,7 @@ def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
         + _recon_alerts()
         + _rolling_oos_warning()
         + _third_asset_notification()
+        + _satellite_action_alert(mode)
     )
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda x: order.get(str(x.get("severity")), 2))

@@ -28,8 +28,11 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     adj_factor NUMERIC,
     PRIMARY KEY (ts_code, trade_date)
 );
--- Note: idx_daily_trade_date B-tree was removed in 0009 (redundant vs PK prefix scans).
--- BRIN alternative retained as idx_daily_trade_date_brin for occasional date-range scans (e.g. count_rows_for_trade_date).
+-- Note: OPT-221 (2026-09-17) re-added the trade_date B-tree that 0009 dropped:
+-- MAX(trade_date) / DISTINCT / COUNT(DISTINCT) / date-range joins cannot use
+-- the PK prefix or the BRIN (measured 3.2s -> ~0s for MAX). The BRIN stays for
+-- large sequential range scans; the two indexes coexist.
+CREATE INDEX IF NOT EXISTS idx_daily_trade_date_btree ON {TABLE_NAME} (trade_date);
 CREATE INDEX IF NOT EXISTS idx_daily_trade_date_brin ON {TABLE_NAME} USING BRIN (trade_date) WITH (pages_per_range = 32);
 """
 

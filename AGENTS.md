@@ -128,6 +128,8 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 - `cn_industry_post_close_sync` — weekdays 17:35 Asia/Shanghai (`scheduler/cn_industry_post_close_job.py`). Runs `sync_cn_industry_fund_flow` + `sync_cn_industry_mainline` + `sync_cn_sentiment` after `close_sync` (17:10) and `watchlist_automation` (17:30). Aligns implementation with `docs/modules/industry-flow.md` and `market-sentiment.md` "盘后每日更新".
 - `factor_signals_sync` — weekdays 18:30 Asia/Shanghai (`scheduler/factor_signals_job.py`). Scans the latest open day for `strong_scoop_exhaustion` into `factor_signals` (direction-only; never touches S-3). Manual trigger: `POST /factors/sync`.
 - `sleeve_paper_auto` (18:20) is now in the startup **EOD catch-up chain** (`catchup_missed_eod_chain`, guard ≥18:25). 2026-09-14: a restart before 18:20 silently dropped the day's Harbor ETF parking mirror and the core recon went red (缺买) — the other chain steps self-healed, this one did not. If the paper book still diverges, backfill with `apply_sleeve_to_paper(day=<signal day>)` (idempotent by symbol/entry/side; next-open fill uses the real open when it exists).
+- `bar_5min_close` (18:40) is now in the EOD catch-up chain (guard ≥18:45) and, after storing the day's 14:30 prints, calls `watchlist_automation.refresh_satellite_pool` (`trigger=post_5min`) — the 17:30 run predates the fill panel, so new 星舰 legs used to be mirrored a day late (OPT-219). Replay failure is fail-open (`compute_satellite_pool → None`), never a wipe.
+- **Skipped ≠ done** (OPT-220, 2026-09-17): the EOD catch-up and `paper_chain_watchdog` check `watchlist_automation_runs` for an **applied non-skipped** run (`automation_applied_on`) — a skipped run (`close_sync_not_ready` after a late start) records `success=True` in `sync_job_record` but built no pool. 09-15/16 both lost their pool this way; the evening retry also re-runs the S-3 intake so it sees close-basis scores.
 - All job types above are added to `SYNC_JOB_TYPES` in `api/sync_routes.py` and to `SCHEDULER_JOB_CATALOG` (groups `cnIndustry` / `tvScreener` / `factors`) in `packages/shared/src/schemas/scheduler.ts`.
 
 ---
@@ -141,6 +143,23 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
   after each series' CSV end; frozen history stays byte-identical). Reading the CSV directly
   makes harbor-family timelines and the B3 card lag up to a month (bug found 2026-09-15).
 - Windows ending at/before the CSV's last date are unaffected — frozen backtests reproduce.
+
+## Price basis: qfq vs raw (2026-09-15 lesson)
+
+`daily` stores **qfq** (前复权) prices; `stk_limit` / `bar_5min` / `bar_minute` are **raw**.
+Never compare an adjusted series against a raw price level (涨停价 / 一字判定 / 成交价)
+without reconstructing raw first: `raw = value × adj_latest / adj`
+(`scripts/hotmoney_lib.py`: `latest_adj` / `raw_price`).
+Mixing symptom: per-day "limit-up" matches far below the known universe
+(20–40 vs 40–130/day) — stop and check the basis before looking at any PnL.
+Third strike of this family (OPT-177 / OPT-182); full rule + incident record in
+`docs/backtests/first-principles-2026-09-05.md` §二.8.
+
+ETF special case: ETF rows in `daily` are **raw** (`adj_factor` NULL) while the research
+panel is adjusted — Live parking (`multi_asset_sleeve`) therefore reads the merged engine
+basis (`harbor.load_etf_closes`; raw `daily` only as fallback), and its trail peak includes
+the session before the fill day to mirror `harbor.parking_replay`. Verify with
+`scripts/verify_harbor_live_vs_backtest.py` (must stay 100%).
 
 ## Frontend data fetching (OPT-012)
 
@@ -184,6 +203,7 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
    - ETF 基准 / 最佳拟合 → [`etf-benchmark-parking-2026-09-13.md`](docs/backtests/stable/etf-benchmark-parking-2026-09-13.md)（B13；港湾×风险预算 50/50，落地需另起预注册）
    - **产品候选（不进 Live）**：母港 = 港湾×B3 50/50 **PASS**（B15）→ [`harbor-riskbudget-2026-09-13.md`](docs/backtests/stable/harbor-riskbudget-2026-09-13.md)；三腿「**星港**」（Starport = 母港×卫星）**PASS chosen=1/3**（H-B3-SAT，2026-09-14；1/3 踩线、稳健 0.15–0.25）→ [`harbor-b3-sat-2026-09-14.md`](docs/backtests/stable/harbor-b3-sat-2026-09-14.md)；激进档「**星舰**」（Starship = 卫星 standalone，long +463.6%/SR 3.50/MDD −8.4，**不进 Live**，前置=paper 3/20+用户风险授权）→ [`sgap-habit-satellite-standalone-2026-09-14.md`](docs/backtests/stable/sgap-habit-satellite-standalone-2026-09-14.md)（**执行审计 ✅ 2026-09-14**：90bps 仍 +310%/SR 2.45、贴板 0、容量 ≤5M；见 [`sat-execution-audit-2026-09-14.md`](docs/backtests/sat/sat-execution-audit-2026-09-14.md)；余下前置=paper 3/20+用户风险授权）
    - **星舰 v2（2026-09-15 用户拍板，回测/展示层口径）** = 卫星 + 闲置现金停 ETF 套筒（A2_true：真实现金权重 `cashShare(T−1)`、5bps/边）；四窗 **+235.8/+67.7/+11.5/+884.9**（MDD −28.5/SR 2.09；15bps 仍 +829.5）→ 见 [`sat-idle-parking-2026-09-15.md`](docs/backtests/stable/sat-idle-parking-2026-09-15.md)。**Live 仍 = 港湾**；星舰进 Live 前置 = paper 3/20 + 用户风险授权；星港/双子星仍用卫星 v1 standalone（冻结验证口径）。
+   - **五档现行配方（可重建 spec）** → [`docs/modules/strategy-recipes.md`](docs/modules/strategy-recipes.md)：每档的 universe/信号/时点/仓位/出场/闲置现金/成本/闸 + 现行口径裁决（M30 vs M50、0.2 vs 1/3、H2 vs A2_true）+ 已知漂移；改参数/时点/权重必须同步此文件
    - S-3 参数真值 → [`docs/modules/strategy-params.md`](docs/modules/strategy-params.md) §1；拒收总表 → [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)
    - Live 现状：旧 `twin_star`/择强路径仍在且有前视/账本 bug → **OPT-178**（修完前不按旧卫星指令下单）。
 2. **历史（REJECT / 已下线，不要再当实盘方案提出）**：
@@ -192,7 +212,8 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
    - 旧卫星 / 14:30 / C1 各专题档（`sat-*`、`clip4-ops-decisions`、`state-bucket-algo` 等）仅作历史参考，索引见 [`docs/backtests/SUMMARY.md`](docs/backtests/SUMMARY.md)。
 3. **已 REJECT 的变体不要再当实盘方案提出**（除非新三窗相对冻结基线全过，且文档写明为何值得重开）。
 4. **Live 以冻结回测引擎为准**。把 Live 收到已经 PASS 的腿上（例如去掉引擎里没有的 overlay）可以做；把 REJECT 机制写进实盘不行。
-5. 任何新参数/机制必须过三窗 walk-forward（下一节）。单窗好看 = 过拟合。
+5. 任何新参数/机制必须过**验证门控 v2**（多窗 + 长窗 + 多角度裁决 PASS/条件PASS/REJECT/VOID；
+   三窗 walk-forward 只是其中一部分；前视 L 门挂一条 = VOID）。单窗好看 = 过拟合。
 6. 改完把结论写进 `docs/backtests/`（PASS 或 REJECT 都留档），不要只停在对话里。
 
 ---
@@ -212,9 +233,11 @@ PYTHONPATH=src python3 scripts/run_walk_forward.py --save-baseline       # 数�
 - 三窗固定切分与 holdout/long 口径：见 [backtests/README 验证纪律](docs/backtests/README.md)（OOS2/train/valid 日期 + holdout 只读 + long 说明 + no-op 警告）
 - 内置 S-3 定案配置（真值在 `docs/modules/strategy-params.md` §1）；`--param k=v` 覆盖任意
   `BacktestConfig` 字段（未知字段告警忽略）
-- 基线固化在 `data/backtest_reports/walk_forward_baseline.json`；三窗相对基线 >5pt 劣化
-  → 自动判"未通过/拒收"
-- 验收口径：改动后跑 `--param ...` 三窗对比，输出表 + 判定随实验记录
+- 基线固化在 `data/backtest_reports/walk_forward_baseline.json`；裁决口径见
+  [验证门控 v2](docs/backtests/validation-gates-v2-2026-09-16.md)（G1 收益主门 + G2 兑换 +
+  G3 一致性 + L 前视门；旧">5pt 自动拒收"已作废，工具 `--verdict v2` 待 OPT-213）
+- 验收口径：改动后跑 `--param ...` 三窗对比（+ 需要时含 long/holdout/stress），输出表 +
+  v2 计算行（G1a/余量/铰链）+ 判定随实验记录
 
 ## Scoped optimization tasks
 

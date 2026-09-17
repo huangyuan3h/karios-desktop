@@ -110,10 +110,11 @@ CCASS 0.0042%/边（2025-06 起无上下限）；模型 stamp 10+10bps 对上，
 
 1. **观察信号**（触发复核）：季度例行复核；或出现——回撤超预期（paper 实跑 DD 显著偏离
    回测 5%/10% 口径）、超额转负、胜率跌破 35%、候选池结构变化（scores 分布漂移）
-2. **提参 → 双窗验证**：候选参数必须训练窗 + 验证窗 + OOS2 三窗跑完，
-   双窗一致改善才采纳（三窗铁律：单窗好看=过拟合，见 [backtests/README 验证纪律](../backtests/README.md)）。
+2. **提参 → 门控 v2 验证**：候选参数必须训练窗 + 验证窗 + OOS2 三窗（+ 需要时 long/holdout/stress）跑完，
+   按 [验证门控 v2](../backtests/validation-gates-v2-2026-09-16.md) 出裁决（PASS/条件PASS/REJECT/VOID；
+   单窗好看=过拟合；前视 L 门挂一条 = VOID）。条件PASS 不进固化，需 holdout/paper 转正。
   **工具与基线**：见仓库根 `AGENTS.md` → Backtest walk-forward（命令 + 基线文件 + 验收口径）；窗口切分与 holdout 纪律见 [backtests/README 验证纪律](../backtests/README.md)。
-  三窗对比，>5pt 劣化自动拒收；`--save-baseline` 重固化基线。
+  旧">5pt 自动拒收"已作废，以 v2 为准；`--save-baseline` 重固化基线。
 3. **用户拍板**：数据表交用户，用户签字式拍板（对话确认）
 4. **固化**：改代码常量（`db/paper_trading.py` / `service/paper_s3.py`）+ 本文件版本历史 + 测试
 5. **生效观察**：paper 实跑对照（C4：≥20 笔样本）确认，回归预期则回滚

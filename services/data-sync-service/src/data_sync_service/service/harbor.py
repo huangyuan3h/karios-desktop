@@ -43,11 +43,19 @@ def merge_recent_db_closes(
 ) -> dict[str, dict[str, float]]:
     """Append DB ETF closes newer than each series' last research-panel date.
 
-    ``data/etf/etf_daily.csv`` is a monthly snapshot (full sync on the 1st),
-    while ``sleeve_etf_daily_sync`` (weekdays 17:25) writes the same ts_codes
-    into ``daily``. The frozen history stays untouched — only dates after each
-    series' last CSV date are appended, ``close × adj_factor`` (the CSV
-    ``close_adj`` convention). Failures are logged and ignored: this is a
+    ``data/etf/etf_daily.csv`` stores adjusted closes (``close_adj =
+    close × adj_factor``), but ``daily.close`` for ETFs is the RAW close and
+    ETF ``adj_factor`` is not synced (NULL) — appending raw closes used to
+    break the series basis (513100 −80%, 510500 +193% on 2026-09-14; the
+    fake jump poisoned parking picks, B3 NAV and every trailing Timeline).
+    The tail is therefore scaled onto the CSV basis:
+      - prefer the stored ``adj_factor`` of the anchor row when present
+        (raw × adj = CSV basis),
+      - otherwise use the same-date overlap ratio ``CSV(v) / DB(v)`` (the
+        frozen history and the DB share at least one date),
+      - no overlap → factor 1.0 (legacy behavior, logged).
+    Only dates after each series' last CSV date are appended; the frozen
+    history stays byte-identical. Failures are logged and ignored: this is a
     display-freshness path, never a gate.
     """
     want = sorted({str(t) for t in (wanted or ()) if t})
@@ -55,29 +63,62 @@ def merge_recent_db_closes(
         return out
     from data_sync_service.db import get_connection
 
+    def _dstr(day: object) -> str:
+        return day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)
+
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 for ts in want:
-                    last = max((out.get(ts) or {}), default="")
+                    series = out.get(ts) or {}
+                    last = max(series, default="")
+                    anchor_factor: float | None = None
+                    if last:
+                        cur.execute(
+                            """
+                            SELECT trade_date, close, adj_factor
+                            FROM daily
+                            WHERE ts_code = %s AND trade_date <= %s
+                            ORDER BY trade_date DESC
+                            LIMIT 1
+                            """,
+                            (ts, last),
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            v0, db_close, db_adj = row
+                            if db_adj and float(db_adj) > 0:
+                                anchor_factor = float(db_adj)
+                            elif db_close and float(db_close) > 0:
+                                csv_v0 = series.get(_dstr(v0))
+                                if csv_v0:
+                                    anchor_factor = float(csv_v0) / float(db_close)
+                        if anchor_factor is None:
+                            logger.warning(
+                                "merge_recent_db_closes: no common basis for %s "
+                                "(tail appended raw — expect a discontinuity)",
+                                ts,
+                            )
                     cur.execute(
                         """
-                        SELECT trade_date, close * COALESCE(adj_factor, 1)
+                        SELECT trade_date, close, adj_factor
                         FROM daily
                         WHERE ts_code = %s AND trade_date > %s
                         ORDER BY trade_date
                         """,
                         (ts, last or "1900-01-01"),
                     )
-                    for day, close in cur.fetchall():
+                    for day, close, adj in cur.fetchall():
                         try:
                             c = float(close)
                         except (TypeError, ValueError):
                             continue
                         if c <= 0:
                             continue
-                        d = day.strftime("%Y-%m-%d") if hasattr(day, "strftime") else str(day)
-                        out.setdefault(ts, {})[d] = c
+                        factor = float(adj) if adj and float(adj) > 0 else anchor_factor
+                        if factor is not None:
+                            c *= factor
+                        out.setdefault(ts, {})[_dstr(day)] = c
     except Exception as exc:  # noqa: BLE001
         logger.warning("merge_recent_db_closes failed: %s", exc)
     return out
@@ -336,8 +377,9 @@ def build_harbor_timeline(
         for pos in stock_poses:
             ts = str(pos.get("ts_code") or "")
             sym = str(pos.get("symbol") or ts)
-            if len(stock_syms) < 3:
-                stock_syms.append(sym)
+            # Full holding list (was capped at 3): the Timeline day table shows
+            # every ticket so multi-leg views (星港/双子星) don't hide names.
+            stock_syms.append(sym)
             if ts.endswith(".HK") or ts.startswith("HK"):
                 hk_cnt += 1
             else:
@@ -398,6 +440,12 @@ def build_harbor_timeline(
                 "pick": rec["pick_key"],
                 "pickTs": rec["pick_ts"],
                 "stockMom": None,
+                # Per-day parking trade markers (same contract as the starship
+                # parked rows): sides>0 = 建仓/换仓/清仓, trail = 回撤出场.
+                # ``pick``/``pickTs`` already name the held parking ETF.
+                "parkedSides": sides,
+                "parkedRetPct": round(parking_ret * 100, 2),
+                "parkedTrail": bool(rec["trail_exit"]),
                 "parkingPct": round(idle * parking_ret * 100, 2),
                 "navBase": round(nav_base, 6),
                 "navSingle": round(nav_harbor, 6),
@@ -407,6 +455,17 @@ def build_harbor_timeline(
                 "navMultiReturnPct": round((nav_harbor - 1) * 100, 2),
             }
         )
+
+    # Parking-leg audit trail (same contract as starship's parked display):
+    # ETF buys/sells + the leg held at the window end, so every Harbor-family
+    # Timeline (港湾/母港/星港/双子星) can render the parking detail panel.
+    # Lazy import: state_bucket_track must stay import-light at module load.
+    from data_sync_service.service.state_bucket_track import parked_blotter
+
+    parked_events, parked_held = parked_blotter(records, etf_close, names=NAMES)
+    if parked_held is not None and rows:
+        # The held ETF applies to the idle fraction (no idle floor in P1).
+        parked_held["weight"] = round(rows[-1]["idlePct"] / 100.0, 4)
 
     return {
         "ok": True,
@@ -418,11 +477,15 @@ def build_harbor_timeline(
         "trailExits": trail_exits,
         "parkingTrades": trades,
         "rows": rows,
+        "parkedBlotter": parked_events,
+        "parkedHeld": parked_held,
         "summary": {
             "fusedPct": round((nav_harbor - 1) * 100, 2),
             "basePct": round((nav_base - 1) * 100, 2),
             "maxDdFusedPct": round(max_dd * 100, 1),
             "parkingTrades": trades,
             "trailExits": trail_exits,
+            "parkedTrades": len(parked_events),
+            "parkedTrailExits": trail_exits,
         },
     }

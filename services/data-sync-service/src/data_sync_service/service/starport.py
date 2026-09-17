@@ -17,6 +17,10 @@ from typing import Any
 MODE = "starport"
 STRATEGY_LABEL = "星港"
 SAT_WEIGHT = 1.0 / 3.0
+STARPORT_DEFAULT_WEIGHT = 0.2
+# Display default (user decision 2026-09-16): the current-data K1-passing max
+# (valid Δ −4.6; 1/3 fails K1 at −7.6). SAT_WEIGHT stays frozen as the
+# H-B3-SAT audit reference; pass sat_weight explicitly for other dial stops.
 
 TWIN_STAR_MODE = "twin_star"
 TWIN_STAR_LABEL = "双子星"
@@ -51,6 +55,12 @@ def blend_overlay_timeline(
     out["satCapacity"] = satellite_result.get("satCapacity")
     out["openPositions"] = list(satellite_result.get("openPositions") or [])
     out["blotter"] = list(satellite_result.get("blotter") or [])
+    # Carry every base leg through so the overlay views (星港/双子星) render
+    # the full composition, not just the satellite: the Harbor parking audit
+    # trail (港湾/母港底座自带) and the B3 risk-budget sleeve (母港底座自带).
+    for key in ("parkedBlotter", "parkedHeld", "riskBlotter", "riskHeld", "riskUniverse"):
+        if base_result.get(key) is not None:
+            out[key] = base_result[key]
     if not rows:
         out["summary"] = {**src_summary}
         return out
@@ -71,8 +81,22 @@ def blend_overlay_timeline(
     sat_nav = [(v / base if (v and base) else 1.0) for v in aligned]
 
     hp = [float(r.get("navSingle") or 1.0) for r in rows]
-    navs = [1.0]
-    active_count = 0
+    # OPT-211 P3: seed the day-1 blended return. rows[0] already carries the
+    # base leg's day-1 return (base compounds from 1.0 at the window start);
+    # starting the loop at i=1 silently dropped the window's first session —
+    # a real +4.2% M50 day on 2026-03-03 was lost on the valid window.
+    r_hp_0 = hp[0] - 1.0 if hp else 0.0
+    sat_row_0 = sat_by_day.get(str(rows[0].get("date"))) or {} if rows else {}
+    active_0 = bool(sat_row_0.get("satActive"))
+    r_sat_0 = 0.0
+    if active_0 and rows:
+        prev_sat = [d for d in sat_days if d < str(rows[0].get("date"))]
+        if prev_sat:
+            nav_prev = float(sat_by_day[prev_sat[-1]].get("satNav") or 0.0)
+            nav_now = float(sat_row_0.get("satNav") or 0.0)
+            r_sat_0 = nav_now / nav_prev - 1.0 if nav_prev > 0 else 0.0
+    navs = [1.0 + r_hp_0 + (sat_weight * (r_sat_0 - r_hp_0) if active_0 else 0.0)]
+    active_count = 1 if active_0 else 0
     for i in range(1, len(rows)):
         r_hp = hp[i] / hp[i - 1] - 1.0 if hp[i - 1] else 0.0
         sat_row = sat_by_day.get(str(rows[i].get("date"))) or {}
@@ -115,9 +139,9 @@ def blend_starport_timeline(
     homeport_result: dict[str, Any],
     satellite_result: dict[str, Any],
     *,
-    sat_weight: float = SAT_WEIGHT,
+    sat_weight: float = STARPORT_DEFAULT_WEIGHT,
 ) -> dict[str, Any]:
-    """Starport = Homeport x satellite overlay (w=1/3, H-B3-SAT chosen)."""
+    """Starport = Homeport x satellite overlay (default w=0.2 display; 1/3 frozen)."""
     return blend_overlay_timeline(
         homeport_result,
         satellite_result,

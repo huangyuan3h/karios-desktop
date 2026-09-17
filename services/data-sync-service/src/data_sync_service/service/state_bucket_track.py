@@ -19,6 +19,7 @@ Clock unification: docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
@@ -45,9 +46,19 @@ FILL_SAME_1430 = "same_1430"
 VALID_FILL_MODES = (FILL_NEXT_OPEN, FILL_SAME_CLOSE, FILL_SAME_1430)
 SAME_DAY_FILL_MODES = (FILL_SAME_CLOSE, FILL_SAME_1430)
 HABIT_FILL_TIMES = ("1000", "1330", "1400", "1430", "1440", "1450", "1500")
+# Times the habit recipe actually reads: the 14:30 fill/exit/breadth print and
+# the 15:00 raw mark. Loading only these keeps the 5-min context ~3x cheaper
+# (the other slots were never read by the habit replay; OPT-221).
+HABIT_CTX_TIMES = ("1430", "1500")
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Two frozen recipes for the satellite replay. Timeline/product callers pass the
 # recipe explicitly; research scripts keep their explicit kwargs.
+# skip_t1_limit evidence (B18 / H-BOARD-1, 2021-26, corrected raw basis): board
+# quality is monotone in the next-open gap (first-seal early +3.7% vs late +1.2%;
+# sealed-share high +4.4% vs low +0.5%), but the best boards are exactly the
+# 17-20% unbuyable one-line opens; followers net negative (E5).
+# docs/backtests/hotmoney/board-quality-2026-09-15.md
 FROZEN_RECIPE: dict[str, Any] = {
     "skip_t1_limit": True,
     "pool_mode": "strict",
@@ -69,7 +80,33 @@ HABIT_RECIPE: dict[str, Any] = {
 }
 
 
-def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
+def _universe_where(*, include_st: bool, include_listed_history: bool) -> str:
+    """WHERE fragment for the satellite replay universe (OPT-211 P3).
+
+    Default (both False) = frozen behavior: full A-share minus today's ST /
+    ever-delisted / BJ names. ``include_listed_history`` keeps bars of
+    delisted names while they were listed (``trade_date <= delist_date`` —
+    point-in-time, strictly more correct). ``include_st`` also keeps today's
+    ST names (sensitivity only: the engine models 10/20% boards while ST
+    trades 5% bands, so fills on ST limit days overstate).
+    """
+    conds = ["d.ts_code NOT LIKE '%%.BJ'"]
+    if include_listed_history:
+        conds.append("(sb.delist_date IS NULL OR d.trade_date <= sb.delist_date)")
+    else:
+        conds.append("sb.delist_date IS NULL")
+    if not include_st:
+        conds.append("sb.name NOT LIKE '%%ST%%'")
+    return " AND ".join(conds)
+
+
+def _load_rows(
+    start: str,
+    end: str,
+    *,
+    include_st: bool = False,
+    include_listed_history: bool = False,
+) -> dict[str, list[dict[str, Any]]]:
     """Load daily OHLCV rows per ts_code for [start, end] (+ no extra warmup needed:
     features only need ~20 rows; caller adds warmup by extending `start`).
 
@@ -77,36 +114,52 @@ def _load_rows(start: str, end: str) -> dict[str, list[dict[str, Any]]]:
     state-bucket-algo-2026-08-31.md §2). The raw daily table contains ~570k
     rows outside this universe (BJ 30% limit, ST 5% limit) which used to leak
     into S-gap candidates and distorted the backtest (fixed 2026-08-31).
+
+    OPT-211 P3: the ST/delist exclusions read the CURRENT ``stock_basic``
+    snapshot (survivor bias — delisted-while-listed history never counts).
+    ``include_st`` / ``include_listed_history`` (both default False = frozen
+    numbers) open the universe for sensitivity measurement; see
+    ``_universe_where``.
+
+    2026-09-17 (OPT-221): fetch via ``COPY TO STDOUT`` (params inlined after
+    ISO-date validation) instead of ``fetchall`` — 1.68M rows 11.1s → ~4s.
+    Rows come unordered, so each series is sorted by date and the dict is
+    re-ordered by ts_code: downstream tie-breaks (stable sorts over
+    ``per_ts`` iteration order) must stay identical to the frozen runs.
     """
+    if not (_ISO_DATE_RE.match(start) and _ISO_DATE_RE.match(end)):
+        raise ValueError(f"load_sgap_context: bad window {start!r}..{end!r}")
     s = get_settings()
-    conn = psycopg.connect(s.database_url)
-    cur = conn.cursor()
-    cur.execute(
+    sql = (
         "SELECT d.trade_date, d.ts_code, d.open, d.high, d.low, d.close, d.pre_close, d.amount "
         "FROM daily d JOIN stock_basic sb ON sb.ts_code = d.ts_code "
-        "WHERE d.trade_date >= %s AND d.trade_date <= %s "
-        "AND sb.delist_date IS NULL "
-        "AND sb.name NOT LIKE '%%ST%%' "
-        "AND d.ts_code NOT LIKE '%%.BJ' "
-        "ORDER BY d.ts_code, d.trade_date",
-        (start, end),
+        f"WHERE d.trade_date >= '{start}' AND d.trade_date <= '{end}' AND "
+        + _universe_where(
+            include_st=include_st, include_listed_history=include_listed_history
+        )
     )
     per_ts: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for d, ts, o, h, low, c, pc, amt in cur.fetchall():
-        ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
-        per_ts[str(ts)].append(
-            {
-                "date": ds,
-                "open": float(o) if o is not None else None,
-                "high": float(h) if h is not None else None,
-                "low": float(low) if low is not None else None,
-                "close": float(c) if c is not None else None,
-                "pre_close": float(pc) if pc is not None else None,
-                "amount": float(amt) if amt is not None else None,
-            }
-        )
-    conn.close()
-    return per_ts
+    with psycopg.connect(s.database_url) as conn, conn.cursor() as cur:
+        with cur.copy("COPY (" + sql + ") TO STDOUT") as copy:
+            copy.set_types(
+                ["date", "text", "float8", "float8", "float8", "float8", "float8", "float8"]
+            )
+            for d, ts, o, h, low, c, pc, amt in copy.rows():
+                ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                per_ts[str(ts)].append(
+                    {
+                        "date": ds,
+                        "open": o,
+                        "high": h,
+                        "low": low,
+                        "close": c,
+                        "pre_close": pc,
+                        "amount": amt,
+                    }
+                )
+    for series in per_ts.values():
+        series.sort(key=lambda r: r["date"])
+    return dict(sorted(per_ts.items()))
 
 
 def _load_mv(start: str, end: str) -> dict[str, dict[str, float]]:
@@ -133,7 +186,16 @@ def _load_calendar(start: str, end: str) -> list[str]:
     returns the UNION of both calendars. HK-only dates are CN holidays: the
     replay would then treat them as sessions and force-close CN positions
     with no mark (PnL zeroed). CN-only is the correct satellite calendar.
+
+    Fast path (OPT-221): witness-symbol dates (PK index, ~ms) guarded by the
+    official SSE calendar — every open session in the window must be covered
+    by a witness, else fall back to the exact DISTINCT scan (4s). The witness
+    set is a superset check, never a subset: a gap for the witnesses means we
+    cannot trust the shortcut and pay the exact scan.
     """
+    fast = _load_calendar_witness(start, end)
+    if fast is not None:
+        return fast
     s = get_settings()
     conn = psycopg.connect(s.database_url)
     cur = conn.cursor()
@@ -149,6 +211,40 @@ def _load_calendar(start: str, end: str) -> list[str]:
     ]
     conn.close()
     return cal
+
+
+_CAL_WITNESSES = ("000001.SZ", "600000.SH", "600519.SH")
+
+
+def _load_calendar_witness(start: str, end: str) -> list[str] | None:
+    """Witness-based calendar; None when the shortcut cannot be trusted."""
+    try:
+        s = get_settings()
+        with psycopg.connect(s.database_url) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT cal_date FROM trade_calendar "
+                "WHERE exchange = 'SSE' AND is_open = 1 AND cal_date >= %s AND cal_date <= %s",
+                (start, end),
+            )
+            sessions = {r[0] for r in cur.fetchall() if r[0] is not None}
+            if not sessions:
+                return None  # no calendar coverage → exact scan
+            cur.execute(
+                "SELECT DISTINCT trade_date FROM daily "
+                "WHERE ts_code = ANY(%s) AND trade_date >= %s AND trade_date <= %s",
+                (list(_CAL_WITNESSES), start, end),
+            )
+            have = {r[0] for r in cur.fetchall() if r[0] is not None}
+        if not have:
+            return None  # no data at all → exact scan (mirrors the old result)
+        # Only sessions up to the data horizon are checkable: after it the old
+        # calendar had nothing either (e.g. today before the close sync).
+        horizon = max(have)
+        if not {d for d in sessions if d <= horizon} <= have:
+            return None  # witness gap (sync hole) → exact scan
+        return [d.isoformat() for d in sorted(have)]
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _day_features(
@@ -450,10 +546,27 @@ def _d3_trail_px(ctx: dict[str, Any], ts: str, day: str, pct: float) -> float | 
     return None
 
 
-def load_sgap_context(start: str, end: str) -> dict[str, Any]:
-    """Load OHLCV/MV/calendar once; replays with different pool modes reuse this."""
+def load_sgap_context(
+    start: str,
+    end: str,
+    *,
+    include_st: bool = False,
+    include_listed_history: bool = False,
+    times: tuple[str, ...] = HABIT_FILL_TIMES,
+) -> dict[str, Any]:
+    """Load OHLCV/MV/calendar once; replays with different pool modes reuse this.
+
+    ``include_st`` / ``include_listed_history`` open the universe for
+    survivor-bias sensitivity (OPT-211 P3); both default False = frozen.
+
+    ``times`` = 5-min print slots to load. The habit recipe reads only the
+    14:30 decision/fill/exit print and the 15:00 raw mark (OPT-221), so its
+    callers pass ``HABIT_CTX_TIMES`` instead of the legacy 7-slot set.
+    """
     w_start = (date.fromisoformat(start) - timedelta(days=WARMUP_CAL_DAYS)).isoformat()
-    per_ts = _load_rows(w_start, end)
+    per_ts = _load_rows(
+        w_start, end, include_st=include_st, include_listed_history=include_listed_history
+    )
     mv_map = _load_mv(w_start, end)
     cal = _load_calendar(w_start, end)
     date_idx = {ts: {r["date"]: i for i, r in enumerate(series)} for ts, series in per_ts.items()}
@@ -463,7 +576,7 @@ def load_sgap_context(start: str, end: str) -> dict[str, Any]:
         m = {r["date"]: r["close"] for r in series if r["date"] in cal_set and r["close"]}
         if m:
             close_by_ts[ts] = m
-    px_by_hhmm = _load_bar5_closes(w_start, end, HABIT_FILL_TIMES)
+    px_by_hhmm = _load_bar5_closes(w_start, end, times)
     return {
         "per_ts": per_ts,
         "mv_map": mv_map,
@@ -1285,6 +1398,9 @@ def build_sgap_timeline(
     gate_1430: bool = False,
     body_by_stage_tier: dict[int, int] | None = None,
     min_gap_pct: float = MIN_GAP_PCT,
+    include_st: bool = False,
+    include_listed_history: bool = False,
+    times: tuple[str, ...] = HABIT_FILL_TIMES,
 ) -> dict[str, Any]:
     """Replay S-gap satellite NAV (daily rows for UI) over [start, end].
 
@@ -1297,8 +1413,16 @@ def build_sgap_timeline(
     exit_hhmm="1430", max_open_to_1430_pct=0.03, rank_key="amp_1430",
     gate_1430=True.
     protect_stop_pct / trail_after_body_pct remain experiment-only.
+    include_st / include_listed_history: universe sensitivity (OPT-211 P3);
+    both default False = frozen universe.
     """
-    ctx = load_sgap_context(start, end)
+    ctx = load_sgap_context(
+        start,
+        end,
+        include_st=include_st,
+        include_listed_history=include_listed_history,
+        times=times,
+    )
     return replay_sgap_from_context(
         ctx,
         start=start,
@@ -1398,6 +1522,13 @@ def compose_parked_rows(
     ``port_ret_t = sat_ret_t + w_t * sleeve_ret_t - cost * |w_t - w_{t-1}|`` with
     ``w_t = cashShare_{t-1}`` (causal, true engine cash share: the frozen engine
     uses fixed 25% clips so idle cash grows as NAV compounds).
+
+    Cost convention (OPT-211 P2, verified correct as-is): the ``|w_t-w_{t-1}|``
+    transfer is ONE trade in a single account (resize the ETF sleeve; the sat
+    book trades on its own schedule with costs already inside ``sat_ret``),
+    so one-sided ``cost_bps`` is right. The sleeve's own rotates/trails are
+    charged inside ``sleeve_ret_by_day`` (``COST * sides``: 2 sides on a
+    rotate, 1 on entry/trail-exit).
 
     Pure function (no DB) — returns ``{"rows": [{date, parkedNav,
     parkedReturnPct, parkedWeight}], "summary": {...}}``.
@@ -1510,7 +1641,9 @@ def parked_blotter(
     }
 
 
-def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[str, Any]:
+def apply_parked_display(
+    out: dict[str, Any], *, cost_bps: float = 5.0, sleeve_mode: str = "canonical"
+) -> dict[str, Any]:
     """Overlay starship v2 (satellite + parked idle cash) onto a Timeline result.
 
     Display fields (``navSingle*``/``navMulti*``) switch to the parked series;
@@ -1518,6 +1651,11 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
     panel and all blend legs (starport/twin_star) keep the frozen v1 numbers.
     Adds ``parkedBlotter``/``parkedHeld`` so the audit trail records the sleeve's
     ETF buys/sells (e.g. 买黄金), not just the satellite book.
+
+    ``sleeve_mode="hysteresis"`` parks idle cash with the H2 hysteresis sleeve
+    (rotate only on >= 2pt mom60 leadership; H-SLEEVE-TUNE, approved 2026-09-16)
+    instead of canonical Harbor parking. Callers other than the starship
+    display path must keep the default.
     """
     from data_sync_service.service.harbor import (
         COST,
@@ -1531,7 +1669,12 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
         return out
     dates = [str(r["date"]) for r in rows]
     closes = load_etf_closes()
-    recs = parking_replay(closes, dates, idle_by_day=None)
+    if sleeve_mode == "hysteresis":
+        from data_sync_service.service.parking_sleeve import hysteresis_parking_replay
+
+        recs = hysteresis_parking_replay(closes, dates)
+    else:
+        recs = parking_replay(closes, dates, idle_by_day=None)
     sleeve_ret_by_day = {
         str(rec["date"]): float(rec["parking_ret"]) - COST * int(rec["sides"]) for rec in recs
     }
@@ -1572,28 +1715,40 @@ def apply_parked_display(out: dict[str, Any], *, cost_bps: float = 5.0) -> dict[
     out["parkedHeld"] = held
     out["mode"] = "starship_parked"
     out["note"] = (
-        "星舰 v2 = 卫星 standalone + 闲置现金停 ETF 停车场（H-SAT-IDLE A2_true，"
-        "真实现金权重 causal T-1，5bps/边）。展示/回测口径；Live=港湾，前置=paper 3/20+授权。"
+        "星舰 v2 = 卫星 standalone + 闲置现金停 H2 迟滞套筒（换仓需 2pt mom60 领先，"
+        "2026-09-16 起；真实现金权重 causal T−1，5bps/边）。展示/回测口径；"
+        "Live=港湾，前置=paper 3/20+授权。"
     )
     return out
 
 
 def build_state_bucket_timeline(
-    *, start: str, end: str, recipe: str = "frozen", parked_display: bool = False
+    *, start: str, end: str, recipe: str = "frozen", parked_display: bool = False,
+    include_st: bool = False, include_listed_history: bool = False,
 ) -> dict[str, Any]:
     """Product Timeline entry for the standalone state-bucket S-gap strategy.
 
     ``recipe="frozen"`` = next_open research baseline (legacy state_bucket view);
     ``recipe="habit"`` = Live 14:30 caliber (starship/starport product views).
     ``parked_display`` = starship v2 overlay (idle cash parked in the ETF sleeve).
+    ``include_st`` / ``include_listed_history`` = universe sensitivity
+    (OPT-211 P3); both default False = frozen universe.
     """
     kwargs = HABIT_RECIPE if recipe == "habit" else FROZEN_RECIPE
-    sat = build_sgap_timeline(start=start, end=end, **kwargs)
+    sat = build_sgap_timeline(
+        start=start,
+        end=end,
+        include_st=include_st,
+        include_listed_history=include_listed_history,
+        # habit reads only 14:30 + 15:00 prints (OPT-221)
+        times=HABIT_CTX_TIMES if recipe == "habit" else HABIT_FILL_TIMES,
+        **kwargs,
+    )
     out = sgap_to_timeline_rows(sat)
     out["start"] = start
     out["end"] = end
     if parked_display:
-        out = apply_parked_display(out)
+        out = apply_parked_display(out, sleeve_mode="hysteresis")
     return out
 
 

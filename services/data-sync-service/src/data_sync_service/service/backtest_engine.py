@@ -100,21 +100,32 @@ def _board_limit_pct(ts: str) -> float | None:
     return None
 
 
-def _at_limit(data, ts: str, day: str, close_px: float, *, up: bool) -> bool:
+def _at_limit(data, ts: str, day: str, close_px: float, *, up: bool, base_day: str | None = None) -> bool:
     """True when ``close_px`` closed pinned at the board limit (limit-up →
     cannot buy in; limit-down → cannot sell out). qfq prices scale the ratio,
-    so a 1-cent tolerance absorbs the rounding."""
+    so a 1-cent tolerance absorbs the rounding.
+
+    ``base_day`` (2026-09-17 audit): compare against the close of that day
+    instead of the close strictly before ``day``. The next_open entry check
+    passes the SIGNAL day — its close is the reference for the fill day's
+    limit price; using the prior close missed one-word boards after a down
+    signal day and falsely blocked fillable entries after an up day.
+    """
     limit_pct = _board_limit_pct(ts)
     if limit_pct is None:
         return False
     series = data.closes_by_ts.get(ts)
     if not series:
         return False
+    anchor = str(base_day) if base_day else str(day)
+    inclusive = base_day is not None
     prev: float | None = None
     for d, c in series:
-        if str(d) >= day:
+        ds = str(d)
+        if ds < anchor or (inclusive and ds == anchor):
+            prev = float(c)
+        else:
             break
-        prev = float(c)
     if prev is None or prev <= 0:
         return False
     limit_px = round(prev * (1.0 + (limit_pct if up else -limit_pct)), 2)
@@ -1041,22 +1052,32 @@ def _nav_for_day(
     positions: dict[str, dict[str, Any]],
     data: BacktestData,
     day: str,
+    *,
+    fresh_syms: frozenset[str] | set[str] | None = None,
 ) -> float:
     """Mark-to-market of all OPEN sleeves (incl. pyramid adds) at ``day``'s
     close (raw price ratio). The realised P&L of CLOSED trades is accumulated
     separately into ``nav_cash`` by the caller, so the full equity curve is
     ``nav_cash + _nav_for_day(...)``.
 
+    ``fresh_syms`` (``next_open`` fills pending on their signal day) are
+    marked AT COST (ratio 1.0): capital is committed but there is no market
+    exposure yet. Marking them at today's close against tomorrow's fill
+    price is mark noise; dropping them outright would plunge the curve by
+    the committed amount (fake drawdown).
+
     Used for honest Sharpe / MaxDD / CAGR — the previous per-close-day series
     ignored holding-period MTM and idle days → inflated Sharpe, understated DD.
     """
     mtm = 0.0
-    for pos in positions.values():
+    for sym, pos in positions.items():
         ts = pos["ts_code"]
         ep = pos.get("entry_price")
         closes = data.close_by_ts_day.get(ts)
         cp = closes.get(day) if closes else None
         ratio = (cp / ep) if (cp and ep and ep > 0) else 1.0
+        if fresh_syms and sym in fresh_syms:
+            ratio = 1.0
         mtm += pos["position_pct"] * ratio
         for a in pos.get("adds_list", []):
             aep = a.get("entry_price")
@@ -2115,6 +2136,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         # (fresh entries and swaps) while the rescue-flow state is ON.
         national_team_on = config.national_team_gate and bool(data.national_team_by_day.get(day))
         opened_today = 0
+        # OPT-211 P1: symbols opened today under next_open (fill pending).
+        fresh_today: set[str] = set()
         if settle_n > 0 and pending_settle:
             # T+N settlement: proceeds sold on day k become usable ON day k+N.
             due = sum(a for idx, a in pending_settle if idx <= day_index)
@@ -2760,7 +2783,17 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             # OPT-103: limit-up close = cannot buy in today (board pinned);
             # skip the signal — the engine re-evaluates next session, so a
             # still-qualified name re-enters naturally the following day.
-            if config.market == "CN" and _at_limit(data, ts, day, px, up=True):
+            # next_open fills at the NEXT session's open, so its limit
+            # reference is the signal day's close (base_day=day); close /
+            # last-hour fills stay on the prior close (base_day=None).
+            if config.market == "CN" and _at_limit(
+                data,
+                ts,
+                day,
+                px,
+                up=True,
+                base_day=day if config.entry_mode == "next_open" else None,
+            ):
                 gated_blocks["limit_up"] += 1
                 continue
             regime = data.regime_by_day.get(day)
@@ -2841,6 +2874,15 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             holding = _calendar_days_between(str(pos["entry_date"]), day, data.calendar)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
 
+            if config.entry_mode == "next_open" and holding == 0:
+                # OPT-211 P1: the fill lands on NEXT session's open — nothing
+                # about this sleeve is executable today. Running exit / peak /
+                # pyramid logic against today's close would read the future
+                # fill price (ghost same-day stop-outs on overnight gaps ≥5%).
+                # The sleeve still counts for snapshots + committed cash.
+                fresh_today.add(sym)
+                continue
+
             if close_px > float(pos["peak_price"]):
                 pos["peak_price"] = close_px
 
@@ -2895,6 +2937,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     else config.max_hold_days
                 ),
                 score_floor=config.score_floor,
+                # The engine injects historical as-of scores; a missing score
+                # must fail open (documented contract), never fall back to the
+                # live DB — that fallback can read scores from AFTER the
+                # simulated day (2026-09-17 audit lookahead fix).
+                skip_live_score_lookup=True,
             )
             if reason is None and trail_i != 0:
                 peak = float(pos["peak_price"])
@@ -2953,6 +3000,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             break
                     if streak >= config.industry_flow_exit_days:
                         reason = CLOSE_REASON_FLOW_EXIT
+            # A-share T+1 (2026-09-17 audit): the fill day for next_open is
+            # holding == 1 (entry_date = signal day) — shares bought at that
+            # morning's open cannot be sold at its close. Discard the computed
+            # exit reason; the next session re-evaluates (peak update above
+            # already ran, delist / window-end force reasons bypass below).
+            if (
+                reason is not None
+                and config.market == "CN"
+                and config.entry_mode == "next_open"
+                and holding <= 1
+            ):
+                reason = None
             if reason is None and force_reason is not None:
                 reason = force_reason
             if reason is not None:
@@ -3051,7 +3110,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
 
         # Continuous NAV (mark-to-market of all open sleeves) for honest
         # Sharpe / MaxDD / CAGR — replaces the old per-close-day proxy.
-        nav_curve.append(nav_cash + _nav_for_day(positions, data, day))
+        # OPT-211 P1: next_open fills pending on their signal day are marked
+        # at cost (committed capital, no market exposure yet).
+        nav_curve.append(nav_cash + _nav_for_day(positions, data, day, fresh_syms=fresh_today))
         # TIP-016 W2 bookkeeping (window-local).
         if opened_today > 0:
             sessions_since_entry = 0

@@ -21,6 +21,7 @@ States: Harbor parking — park the idle fraction in the mom60+MA200 ETF argmax
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import numpy as np
@@ -127,25 +128,34 @@ TRAILING_PCT = TRAIL_PCT
 
 
 def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
-    """If held ETF close < peak_since_entry × (1 − TRAILING_PCT%), return SELL_TO_REPO."""
+    """If held ETF close < peak × (1 − TRAILING_PCT%), return SELL_TO_REPO.
+
+    Peak reference = the frozen engine's: the parking replay holds the leg
+    from the rotation SIGNAL-day close (``parking_replay`` initialises peak at
+    ``prev``), while the paper/Live book fills at the NEXT open (entryDate =
+    fill day). Include the session before ``entryDate`` so Live reproduces the
+    engine's trail decisions (2026-09-17 audit: a 12.0% engine drawdown read
+    as 7.8% live on the fill-day reference and the leg was not exited).
+    """
     held_sym = str(held.get("symbol") or "").upper()
     held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
     entry = str(held.get("entryDate") or held.get("entry_date") or "")
     if not entry:
         return None
     try:
-        bars = fetch_last_bars(held_ts, days=500)
+        canon = _parking_ts_for(held)
+        mp = _series(canon, 500, as_of=day) if canon else {}
+        if not mp:
+            mp = _raw_series(held_ts, as_of=day, days=505)
+        dates = sorted(mp)
+        prior = [d for d in dates if d < entry[:10]]
+        start = prior[-1] if prior else entry[:10]
         peak = 0.0
         cur_close = 0.0
-        for b in bars:
-            d = str(b.get("trade_date") or b.get("date") or "")
-            if d < entry[:10]:
+        for d in dates:
+            if d < start:
                 continue
-            if d > day:
-                # As-of cutoff: closes after the decision day are not knowable
-                # at the 18:20 decision and must not enter the peak.
-                break
-            c = float(b.get("close") or 0)
+            c = float(mp[d])
             if c > peak:
                 peak = c
             if d == day:
@@ -163,21 +173,109 @@ def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
     return None
 
 
-def _closes(ts: str, days: int = 260) -> list[float]:
-    """Latest closes including today's bar if present (display layer)."""
+def _parking_ts_for(held: dict[str, Any]) -> str | None:
+    """Canonical parking ts_code for a holding (None = not a parking leg)."""
+    sym = str(held.get("symbol") or "").upper()
+    ts = str(held.get("ts_code") or "").upper()
+    for c in CANDIDATES:
+        if sym == c["symbol"] or ts == c["ts"]:
+            return c["ts"]
+    key = multi_key_for_symbol(sym) or multi_key_for_symbol(ts)
+    if key:
+        for c in CANDIDATES:
+            if c["key"] == key:
+                return c["ts"]
+    return None
+
+
+_MERGED_CACHE: dict[str, Any] = {"at": 0.0, "data": {}}
+_MERGED_TTL_SECONDS = 60.0
+
+
+def _merged_source() -> dict[str, dict[str, float]]:
+    """Engine-basis parking series: research panel + scaled DB tail.
+
+    ``daily`` ETF closes are RAW (ETF ``adj_factor`` is NULL), while the
+    frozen engine and every Harbor-family Timeline read
+    ``harbor.load_etf_closes()`` (CSV ``close_adj`` + ratio-scaled tail).
+    Feeding the raw series into ``pick_parking``/trail made Live decisions
+    diverge from the backtest on coupon-paying ETFs (2026-09-17 audit).
+
+    60s cache: the panel is a 4MB CSV read + one query, and the dashboard
+    hint calls this several times per request.
+    """
+    now = time.monotonic()
+    cached = _MERGED_CACHE.get("data") or {}
+    if cached and now - float(_MERGED_CACHE.get("at") or 0.0) < _MERGED_TTL_SECONDS:
+        return cached
+    try:
+        from data_sync_service.service.harbor import load_etf_closes
+
+        data = load_etf_closes() or {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("multi-sleeve adjusted series load failed: %s", exc)
+        data = {}
+    if data:
+        _MERGED_CACHE.update({"at": now, "data": data})
+    return data
+
+
+def _adjusted_series(ts: str) -> dict[str, float]:
+    """Adjusted {date: close} for one parking ts (empty on failure)."""
+    return dict(_merged_source().get(ts) or {})
+
+
+def _raw_series(ts: str, *, as_of: str, days: int) -> dict[str, float]:
+    """Raw ``daily`` fallback, cut at ``as_of`` (pre-2026-09-17 behavior)."""
     try:
         bars = fetch_last_bars(ts, days=days)
     except Exception:
-        return []
-    out = []
+        return {}
+    out: dict[str, float] = {}
     for b in bars:
+        d = str(b.get("date") or b.get("trade_date") or "")
+        if d and d > as_of:
+            continue
         try:
             c = float(b.get("close"))
-            if c > 0:
-                out.append(c)
-        except:
-            pass
+        except (TypeError, ValueError):
+            continue
+        if c > 0:
+            out[d] = c
     return out
+
+
+def _series(ts: str, days: int = 260, *, as_of: str | None = None) -> dict[str, float]:
+    """{date: close} through the latest COMPLETED bar at ``as_of``.
+
+    Engine basis first (adjusted panel + scaled tail); raw ``daily`` fallback
+    only when the panel has nothing for this ts.
+    """
+    from data_sync_service.service.trade_calendar_utils import shanghai_today
+
+    cutoff = str(as_of or shanghai_today().isoformat())[:10]
+    mp: dict[str, float] = {}
+    for d, c in (_adjusted_series(ts) or {}).items():
+        if not d or d > cutoff:
+            continue
+        try:
+            v = float(c)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            mp[d] = v
+    if not mp:
+        mp = _raw_series(ts, as_of=cutoff, days=days + 5)
+    if days and len(mp) > days:
+        for d in sorted(mp)[: len(mp) - days]:
+            mp.pop(d, None)
+    return mp
+
+
+def _closes(ts: str, days: int = 260) -> list[float]:
+    """Latest closes including today's bar if present (display layer)."""
+    mp = _series(ts, days)
+    return [mp[d] for d in sorted(mp)]
 
 
 def _signal_closes(ts: str, days: int = 260, *, as_of: str | None = None) -> list[float]:
@@ -188,25 +286,8 @@ def _signal_closes(ts: str, days: int = 260, *, as_of: str | None = None) -> lis
     falls back to the previous session. Historical callers (recon / past-day
     views) must pass ``as_of`` or they would leak the latest closes.
     """
-    from data_sync_service.service.trade_calendar_utils import shanghai_today
-
-    cutoff = str(as_of or shanghai_today().isoformat())[:10]
-    try:
-        bars = fetch_last_bars(ts, days=days + 5)
-    except Exception:
-        return []
-    out = []
-    for b in bars:
-        d = str(b.get("date") or b.get("trade_date") or "")
-        if d > cutoff:
-            continue
-        try:
-            c = float(b.get("close"))
-            if c > 0:
-                out.append(c)
-        except:
-            pass
-    return out
+    mp = _series(ts, days, as_of=as_of)
+    return [mp[d] for d in sorted(mp)]
 
 
 def _signal_series(ts: str, days: int = 260, *, as_of: str | None = None) -> dict[str, float]:
@@ -215,25 +296,7 @@ def _signal_series(ts: str, days: int = 260, *, as_of: str | None = None) -> dic
     Same source/cut as ``_signal_closes``; the series form lets the shared
     ``harbor.pick_parking`` rule run on the exact same data as the timeline.
     """
-    from data_sync_service.service.trade_calendar_utils import shanghai_today
-
-    cutoff = str(as_of or shanghai_today().isoformat())[:10]
-    try:
-        bars = fetch_last_bars(ts, days=days + 5)
-    except Exception:
-        return {}
-    out: dict[str, float] = {}
-    for b in bars:
-        d = str(b.get("date") or b.get("trade_date") or "")
-        if d > cutoff:
-            continue
-        try:
-            c = float(b.get("close"))
-        except (TypeError, ValueError):
-            continue
-        if c > 0:
-            out[d] = c
-    return out
+    return _series(ts, days, as_of=as_of)
 
 
 def _pick(*, as_of: str | None = None) -> dict[str, Any] | None:

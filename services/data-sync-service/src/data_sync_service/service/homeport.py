@@ -82,14 +82,20 @@ def _vol_at(series: list[float | None], i: int, lookback: int) -> float:
     return pstdev(rets) if len(rets) >= 2 else 0.0
 
 
-def risk_budget_nav(
+def risk_budget_run(
     closes: dict[str, dict[str, float]],
     cal: list[str],
     *,
     lookback: int = VOL_LOOKBACK,
     cost: float = COST,
-) -> list[float]:
-    """B3 sleeve NAV on ``cal`` (monthly inverse-vol rebalance, causal, costed)."""
+) -> dict[str, Any]:
+    """B3 sleeve NAV + monthly rebalance events + per-day weights (all causal).
+
+    Same loop as the legacy ``risk_budget_nav`` (NAV bit-identical); it also
+    records every rebalance event (initial + each month turn, with turnover)
+    and the weight vector held each day, so Timeline views (母港/星港) can
+    render the B3 leg instead of hiding half the portfolio.
+    """
     series = {ts: _series_on_cal(closes.get(ts) or {}, cal) for ts in RISK_UNIVERSE}
     w_by_i: dict[int, dict[str, float]] = {}
     for i in range(len(cal)):
@@ -100,8 +106,15 @@ def risk_budget_nav(
         else:
             vol = {ts: (_vol_at(series[ts], i, lookback) or 1e-9) for ts in RISK_UNIVERSE}
             w_by_i[i] = inverse_vol_weights(vol)
+
+    def _rounded(w: dict[str, float]) -> dict[str, float]:
+        return {ts: round(float(w.get(ts) or 0.0), 4) for ts in RISK_UNIVERSE}
+
     nav = [1.0]
     cur = w_by_i[0]
+    events: list[dict[str, Any]] = [
+        {"date": cal[0] if cal else "", "weights": _rounded(cur), "turnover": 0.0}
+    ]
     for i in range(1, len(cal)):
         r = sum(
             cur[ts]
@@ -116,8 +129,22 @@ def risk_budget_nav(
         if w_by_i[i] != cur:
             turn = sum(abs(w_by_i[i][ts] - cur[ts]) for ts in RISK_UNIVERSE) / 2.0
             nav[-1] *= 1.0 - cost * turn
+            events.append(
+                {"date": cal[i], "weights": _rounded(w_by_i[i]), "turnover": round(turn, 4)}
+            )
             cur = w_by_i[i]
-    return nav
+    return {"nav": nav, "events": events, "weights": [w_by_i[i] for i in range(len(cal))]}
+
+
+def risk_budget_nav(
+    closes: dict[str, dict[str, float]],
+    cal: list[str],
+    *,
+    lookback: int = VOL_LOOKBACK,
+    cost: float = COST,
+) -> list[float]:
+    """B3 sleeve NAV on ``cal`` (monthly inverse-vol rebalance, causal, costed)."""
+    return list(risk_budget_run(closes, cal, lookback=lookback, cost=cost)["nav"])
 
 
 def blend_monthly_nav(
@@ -128,7 +155,15 @@ def blend_monthly_nav(
     w_harbor: float = WEIGHT_HARBOR,
     cost: float = COST,
 ) -> list[float]:
-    """Homeport NAV: monthly reset back to ``w_harbor``, 5bp/side on the trade."""
+    """Homeport NAV: monthly reset back to ``w_harbor``, 5bp/side on the trade.
+
+    Cost convention (OPT-211 P2, pinned): the monthly reset is charged
+    ``cost * |w_harbor - w|`` — one-sided on the rebalanced amount, matching
+    the frozen eval caliber (``scripts/eval_harbor_riskbudget._blend_monthly``,
+    same formula). A literal two-ticket execution would cost ~2x; the gap is
+    ~0.1%/yr (monthly drift |Δ| is 1-3%), covered by the 15bp cost
+    sensitivity in the frozen docs. Do not "fix" one side without the other.
+    """
     n = min(len(harbor), len(passive))
     out = [1.0]
     w = w_harbor
@@ -149,8 +184,18 @@ def blend_homeport_timeline(
     harbor_result: dict[str, Any],
     *,
     risk_closes: dict[str, dict[str, float]] | None = None,
+    w_harbor: float = WEIGHT_HARBOR,
 ) -> dict[str, Any]:
-    """Derive the Homeport timeline from a built Harbor timeline (rows copy)."""
+    """Derive the Homeport timeline from a built Harbor timeline (rows copy).
+
+    Besides the blended NAV, every B3-leg detail the Timeline needs is
+    attached (the B3 sleeve must not stay invisible): ``riskUniverse``
+    (ts + display names), ``riskBlotter``
+    (monthly rebalance events with weights + turnover), ``riskHeld``
+    (weights at the window end), per-row ``riskTop``/``riskTopW`` (top
+    holding that day, for the bar strip + day table), and summary
+    ``riskPct``/``riskMaxDdPct`` (sleeve total / drawdown).
+    """
     out = dict(harbor_result)
     rows = [dict(r) for r in (harbor_result.get("rows") or [])]
     harbor_total = float(((harbor_result.get("summary") or {}).get("fusedPct")) or 0.0)
@@ -163,21 +208,50 @@ def blend_homeport_timeline(
     }
     if not rows:
         return out
+    # Display names stay single-sourced in strategy_today.B3_LABELS; lazy
+    # import here because strategy_today imports this module at top level.
+    from data_sync_service.service.strategy_today import B3_LABELS
+
     px = risk_closes if risk_closes is not None else load_risk_closes()
     if not px:
         raise RuntimeError("homeport risk panel unavailable (data/etf/etf_daily.csv missing)")
     cal = [str(rows[0]["prev"])] + [str(r["date"]) for r in rows]
-    passive = risk_budget_nav(px, cal)
+    run = risk_budget_run(px, cal)
+    passive = run["nav"]
     harbor_nav = [1.0] + [float(r["navSingle"]) for r in rows]
-    mix = blend_monthly_nav(harbor_nav, passive, cal)
+    mix = blend_monthly_nav(harbor_nav, passive, cal, w_harbor=w_harbor)
     for r, v in zip(rows, mix[1:], strict=True):
         r["navSingle"] = round(v, 6)
         r["navMulti"] = round(v, 6)
         r["navSingleReturnPct"] = round((v - 1) * 100, 2)
         r["navMultiReturnPct"] = round((v - 1) * 100, 2)
+    # B3 leg: per-day top holding (row i <-> cal index i+1: weights held that day).
+    day_weights = run["weights"][1:]
+    for r, w in zip(rows, day_weights, strict=True):
+        top = max(RISK_UNIVERSE, key=lambda ts: float(w.get(ts) or 0.0))
+        r["riskTop"] = top
+        r["riskTopW"] = round(float(w.get(top) or 0.0), 4)
+    risk_peak = 0.0
+    risk_dd = 0.0
+    for v in passive:
+        risk_peak = max(risk_peak, v)
+        if risk_peak > 0:
+            risk_dd = max(risk_dd, (risk_peak - v) / risk_peak)
+    last_w = run["weights"][-1] if run["weights"] else {}
+    out["riskUniverse"] = [
+        {"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in RISK_UNIVERSE
+    ]
+    out["riskBlotter"] = run["events"]
+    out["riskHeld"] = {
+        "date": cal[-1],
+        "weights": {ts: round(float(last_w.get(ts) or 0.0), 4) for ts in RISK_UNIVERSE},
+    }
     out["summary"] = {
         **out["summary"],
         "fusedPct": round((mix[-1] - 1) * 100, 2),
         "harborPct": round(harbor_total, 2),
+        "harborWeight": round(float(w_harbor), 2),
+        "riskPct": round((passive[-1] - 1) * 100, 2),
+        "riskMaxDdPct": round(risk_dd * 100, 1),
     }
     return out

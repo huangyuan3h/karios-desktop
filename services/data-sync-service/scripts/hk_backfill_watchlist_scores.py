@@ -41,18 +41,26 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger("hk_backfill_scores")
 
 
-def _load_hk_universe(end: str, top_n: int) -> list[tuple[str, str]]:
-    """[(symbol, ts_code)] — HK vol top N + registry HK union."""
+def _load_hk_universe(start: str, end: str, top_n: int) -> list[tuple[str, str]]:
+    """[(symbol, ts_code)] — HK vol top N + registry HK union.
+
+    Volume is measured INSIDE the backfill window (OPT-211 P4): selecting on
+    post-window volume (``trade_date >= end``) is textbook survivor bias —
+    names that died before ``end`` never enter history. Window-bounded is
+    still not per-day point-in-time, but removes the worst form. Existing
+    HK score history (backfilled 2026-08 with the old rule) keeps its bias;
+    reclaiming it needs a full re-backfill (not done here).
+    """
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT ts_code FROM daily
-                WHERE ts_code LIKE '%%.HK' AND vol > 0 AND trade_date >= %s
+                WHERE ts_code LIKE '%%.HK' AND vol > 0 AND trade_date BETWEEN %s AND %s
                 GROUP BY ts_code ORDER BY sum(vol) DESC LIMIT %s
                 """,
-                (end, top_n),
+                (start, end, top_n),
             )
             ts_set = {r[0] for r in cur.fetchall()}
     finally:
@@ -96,7 +104,7 @@ def main() -> None:
 
     t0 = time.time()
     calendar = _load_hk_calendar(args.start, args.end)
-    universe = _load_hk_universe(args.end, args.top)
+    universe = _load_hk_universe(args.start, args.end, args.top)
     print(f"calendar days: {len(calendar)}  HK universe: {len(universe)}")
     if not universe:
         print("no HK universe; nothing to do")

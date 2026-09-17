@@ -32,6 +32,7 @@ KNOWN_EVENT_TYPES = {
     "candidate_added",
     "execution_card",
     "audit_issues",
+    "satellite_action",
     "test",
 }
 

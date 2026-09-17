@@ -2,7 +2,9 @@
 
 `data/etf/etf_daily.csv` is a monthly snapshot; the daily sleeve sync writes
 the same ts_codes into `daily`. `merge_recent_db_closes` appends only the DB
-tail after each series' last CSV date (frozen history stays byte-identical).
+tail after each series' last CSV date (frozen history stays byte-identical),
+scaled onto the CSV `close_adj` basis (2026-09-17 audit: the DB stores raw
+ETF closes, so the tail must be multiplied by the overlap ratio).
 """
 
 from __future__ import annotations
@@ -15,15 +17,31 @@ from data_sync_service.service import harbor
 
 
 class _FakeCursor:
-    def __init__(self, rows: dict[str, list[tuple[Any, ...]]]) -> None:
-        self._rows = rows
-        self._current: list[tuple[Any, ...]] = []
+    """Serves the anchor row (`ORDER BY ... DESC` → fetchone) and the tail.
 
-    def execute(self, _sql: str, params: tuple[Any, ...]) -> None:
-        self._current = self._rows.get(str(params[0]), [])
+    The merge issues two queries per ts_code: the basis-anchor row at/before
+    the series' last CSV date, then the newer tail rows.
+    """
+
+    def __init__(
+        self,
+        anchors: dict[str, tuple[Any, ...] | None],
+        tails: dict[str, list[tuple[Any, ...]]],
+    ) -> None:
+        self._anchors = anchors
+        self._tails = tails
+        self._mode = ""
+        self._ts = ""
+
+    def execute(self, sql: str, params: tuple[Any, ...]) -> None:
+        self._ts = str(params[0])
+        self._mode = "anchor" if "DESC" in sql else "tail"
+
+    def fetchone(self) -> tuple[Any, ...] | None:
+        return self._anchors.get(self._ts) if self._mode == "anchor" else None
 
     def fetchall(self) -> list[tuple[Any, ...]]:
-        return self._current
+        return self._tails.get(self._ts, []) if self._mode == "tail" else []
 
     def __enter__(self) -> _FakeCursor:
         return self
@@ -33,11 +51,16 @@ class _FakeCursor:
 
 
 class _FakeConn:
-    def __init__(self, rows: dict[str, list[tuple[Any, ...]]]) -> None:
-        self._rows = rows
+    def __init__(
+        self,
+        anchors: dict[str, tuple[Any, ...] | None],
+        tails: dict[str, list[tuple[Any, ...]]],
+    ) -> None:
+        self._anchors = anchors
+        self._tails = tails
 
     def cursor(self) -> _FakeCursor:
-        return _FakeCursor(self._rows)
+        return _FakeCursor(self._anchors, self._tails)
 
     def __enter__(self) -> _FakeConn:
         return self
@@ -48,20 +71,41 @@ class _FakeConn:
 
 def test_merge_appends_only_newer_dates() -> None:
     out = {"518880.SH": {"2026-09-10": 9.0, "2026-09-11": 8.9}}
-    rows = {
-        "518880.SH": [(date(2026, 9, 10), 9.05), (date(2026, 9, 14), 9.2)],
+    anchors = {"518880.SH": (date(2026, 9, 11), 8.9, None)}  # ratio = 1.0
+    tails = {
+        "518880.SH": [
+            (date(2026, 9, 10), 9.05, None),  # older DB row must not be re-inserted
+            (date(2026, 9, 14), 9.2, None),
+        ],
     }
-    with patch("data_sync_service.db.get_connection", return_value=_FakeConn(rows)):
+    with patch(
+        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
+    ):
         merged = harbor.merge_recent_db_closes(out, {"518880.SH"})
     assert merged["518880.SH"]["2026-09-11"] == 8.9  # frozen CSV value kept
     assert merged["518880.SH"]["2026-09-14"] == 9.2
     assert len(merged["518880.SH"]) == 3  # older DB row not re-inserted
 
 
+def test_merge_scales_tail_onto_the_csv_basis() -> None:
+    """Raw DB close 2.2 vs CSV 11.0 must NOT append a −80% fake day."""
+    out = {"513100.SH": {"2026-09-11": 11.0}}
+    anchors = {"513100.SH": (date(2026, 9, 11), 2.2, None)}  # ratio 5.0
+    tails = {"513100.SH": [(date(2026, 9, 14), 2.191, None)]}
+    with patch(
+        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
+    ):
+        merged = harbor.merge_recent_db_closes(out, {"513100.SH"})
+    assert merged["513100.SH"]["2026-09-14"] == 2.191 * 5.0
+
+
 def test_merge_skips_bad_values_and_survives_db_error() -> None:
     out = {"513350.SH": {"2026-09-11": 1.39}}
-    rows = {"513350.SH": [(date(2026, 9, 14), None), (date(2026, 9, 15), 0.0)]}
-    with patch("data_sync_service.db.get_connection", return_value=_FakeConn(rows)):
+    anchors = {"513350.SH": (date(2026, 9, 11), 1.39, None)}
+    tails = {"513350.SH": [(date(2026, 9, 14), None, None), (date(2026, 9, 15), 0.0, None)]}
+    with patch(
+        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
+    ):
         merged = harbor.merge_recent_db_closes(out, {"513350.SH"})
     assert merged == {"513350.SH": {"2026-09-11": 1.39}}
 

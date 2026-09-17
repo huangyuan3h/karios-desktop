@@ -1,7 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { B3State, StrategyCatalog } from '@karios/shared';
+import type {
+  B3State,
+  SatelliteLivePanelResponse,
+  StrategyCatalog,
+} from '@karios/shared';
 
 import { apiGetJson } from '@/lib/api/client';
 
@@ -540,6 +544,9 @@ export type TimelineRow = {
   /** The parking leg's own close-to-close return that day (before costs). */
   parkedRetPct?: number | null;
   parkedTrail?: boolean | null;
+  /** Homeport B3 leg: top holding that day (ts_code) + its weight. */
+  riskTop?: string | null;
+  riskTopW?: number | null;
   /** Engine cash share at the close (fixed 25% clips -> grows as NAV compounds). */
   cashShare?: number | null;
 };
@@ -556,13 +563,34 @@ export type TimelineSummary = {
   satPct?: number;
   /** Starport only: satellite-active day count in the window. */
   activeDays?: number;
-  /** Starship v2 only: parked series total/DD and average parked weight. */
+  /** Parking-leg series total/DD and average parked weight (harbor family). */
   parkedPct?: number | null;
   parkedMaxDdPct?: number | null;
   parkedAvgWeight?: number | null;
-  /** Starship v2 only: parked-sleeve buy/sell event count + trail exits. */
+  /** Parking-leg buy/sell event count + trail exits (harbor family). */
   parkedTrades?: number | null;
   parkedTrailExits?: number | null;
+  /** Homeport B3 leg only: sleeve total/DD. */
+  riskPct?: number | null;
+  riskMaxDdPct?: number | null;
+};
+
+/** Homeport B3 leg: one monthly rebalance event (date + full weight vector). */
+export type TimelineRiskEvent = {
+  date: string;
+  weights: Record<string, number>;
+  turnover: number;
+};
+
+/** Homeport B3 leg: weights held at the window end. */
+export type TimelineRiskHeld = {
+  date: string;
+  weights: Record<string, number>;
+};
+
+export type TimelineRiskUniverseEntry = {
+  ts: string;
+  name: string;
 };
 
 /** Starship v2 parked sleeve (idle cash -> trend ETF) buy/sell record. */
@@ -630,11 +658,17 @@ export type TimelineResponse = {
   blotter?: TimelineBlotterRow[];
   /** Satellite strategies: open legs as of the window end. */
   openPositions?: TimelineOpenPosition[];
-  /** Starship v2: parked-sleeve ETF buy/sell audit trail. */
+  /** Parking-leg ETF buy/sell audit trail (harbor/homeport + overlays + starship). */
   parkedBlotter?: TimelineParkedBlotterRow[];
-  /** Starship v2: parked leg held at the window end (null = cash/REPO). */
+  /** Parking leg held at the window end (null = cash/REPO). */
   parkedHeld?: TimelineParkedHeld | null;
-  /** Overlay strategies: satellite capital weight (星港 1/3, 双子星 1/2, 星舰 1). */
+  /** Homeport B3 leg: monthly rebalance events (also carried by starport). */
+  riskBlotter?: TimelineRiskEvent[];
+  /** Homeport B3 leg: weights held at the window end. */
+  riskHeld?: TimelineRiskHeld | null;
+  /** Homeport B3 leg: ts_code + display names. */
+  riskUniverse?: TimelineRiskUniverseEntry[];
+  /** Overlay strategies: satellite capital weight (星港 0.2 display default, 1/3 frozen; 星舰 1). */
   satWeight?: number | null;
   /** Satellite slot capacity (MAX_POS=4) — never re-derive in the UI. */
   satCapacity?: number | null;
@@ -642,11 +676,20 @@ export type TimelineResponse = {
   baseKey?: string | null;
 };
 
-export type TimelineStrategy = 'harbor' | 'homeport' | 'starport' | 'starship' | 'twin_star';
+export type TimelineStrategy =
+  | 'harbor'
+  | 'harbor_h2'
+  | 'homeport'
+  | 'homeport_m30'
+  | 'starport'
+  | 'starship'
+  | 'twin_star';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   harbor: '港湾',
-  homeport: '母港',
+  harbor_h2: '港湾H2',
+  homeport: '母港M50',
+  homeport_m30: '母港',
   starport: '星港',
   starship: '星舰',
   twin_star: '双子星',
@@ -675,6 +718,21 @@ export function useStrategyCatalogQuery() {
     queryKey: ['backtest', 'strategy-catalog'],
     queryFn: () => apiGetJson<StrategyCatalog>('/api/backtest/strategy-catalog'),
     staleTime: 10 * 60_000,
+  });
+}
+
+/** OPT-222: today's 14:30 satellite snapshot (file written by the 14:30 job). */
+export function useSatelliteLivePanelQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'satellite-live-panel'],
+    queryFn: () =>
+      apiGetJson<SatelliteLivePanelResponse>('/api/backtest/satellite-signals/live-panel'),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    // 404 on an older backend = snapshot endpoint not deployed yet; the card
+    // falls back to the replay state, so retries only add console noise.
+    retry: false,
+    enabled,
   });
 }
 
@@ -793,6 +851,59 @@ export function usePaperVsBacktestQuery(enabled = true) {
     queryKey: ['backtest', 'paper-vs-backtest'],
     queryFn: () => apiGetJson<PaperVsBacktestResponse>('/api/backtest/paper-vs-backtest'),
     staleTime: 10 * 60_000,
+    enabled,
+  });
+}
+
+export type HarborH2ShadowStatus = 'tracking' | 'watch' | 'rollback';
+export type HarborH2ShadowAction = 'hold' | 'enter' | 'rotate' | 'trail_exit';
+
+export type HarborH2ShadowRow = {
+  date: string;
+  navLive: number;
+  navH2: number;
+  peakLive: number;
+  peakH2: number;
+  dayLivePct: number;
+  dayH2Pct: number;
+  spreadPt: number;
+  ddLivePct: number;
+  ddH2Pct: number;
+  mddGapPt: number;
+  pickLive: string;
+  pickH2: string;
+  actionH2: HarborH2ShadowAction;
+  idlePct: number;
+  status: HarborH2ShadowStatus;
+};
+
+export type HarborH2ShadowReport = {
+  ok: boolean;
+  inception: string;
+  generatedAt: string;
+  rows: HarborH2ShadowRow[];
+  latest: HarborH2ShadowRow;
+  appended: number;
+  thresholds: {
+    spreadWatchPt: number;
+    spreadRollbackPt: number;
+    mddGapWatchPt: number;
+    mddGapRollbackPt: number;
+  };
+  note: string;
+};
+
+/**
+ * H2 shadow paper ledger (OPT-216, display only): appended daily by the
+ * harbor_h2_shadow job (weekdays 18:35). 404 until the first run — the card
+ * treats any error as "not generated yet".
+ */
+export function useHarborH2ShadowQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'harbor-h2-shadow'],
+    queryFn: () => apiGetJson<HarborH2ShadowReport>('/api/backtest/harbor-h2-shadow/latest'),
+    staleTime: 5 * 60_000,
+    retry: false,
     enabled,
   });
 }

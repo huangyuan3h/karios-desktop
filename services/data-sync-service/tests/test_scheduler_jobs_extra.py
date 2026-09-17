@@ -184,9 +184,12 @@ class TestCreateScheduler:
             "minute_capture",
             "bar_5min_close",
             "sleeve_paper_auto",
+            "harbor_h2_shadow",
+            "satellite_live_panel",
             "factor_signals_sync",
             "risk_state_sync",
             "xq_follow_snapshot",
+            "zt_pool_snapshot",
         }
         assert ids == expected
 
@@ -1089,7 +1092,18 @@ def _monkey_cst(monkeypatch, h: int, m: int) -> None:
     )
 
 
-def _patch_today_runs(monkeypatch, *, close_ok=True, ran: set[str] | None = None) -> None:
+def _patch_today_runs(
+    monkeypatch,
+    *,
+    close_ok=True,
+    ran: set[str] | None = None,
+    automation_applied: bool | None = None,
+) -> dict:
+    """Patch the sync-record + applied-run seams.
+
+    Returns a mutable state so a fake ``watchlist_automation_job.run`` can flip
+    ``applied`` (mirrors the real retry applying a run).
+    """
     from data_sync_service.db import sync_job_record as sjr
 
     ran = ran or set()
@@ -1100,6 +1114,15 @@ def _patch_today_runs(monkeypatch, *, close_ok=True, ran: set[str] | None = None
         return {"success": True} if job_type in ran else None
 
     monkeypatch.setattr(sjr, "get_today_run", fake_today_run)
+    state = {
+        "applied": ("watchlist_automation" in ran)
+        if automation_applied is None
+        else automation_applied
+    }
+    monkeypatch.setattr(
+        scheduler_pkg, "_automation_applied_today", lambda day: bool(state["applied"])
+    )
+    return state
 
 
 def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
@@ -1134,6 +1157,74 @@ def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
     )
     scheduler_pkg.catchup_missed_eod_chain()
     assert calls == {"wa": 1, "s3": 0, "cn": 0, "mirror": 0, "sleeve": 0}
+
+
+def test_catchup_retries_skipped_watchlist_automation(monkeypatch) -> None:
+    """2026-09-17: a SKIPPED 17:30 run (close_sync late) is retried in the
+    evening, and the S-3 intake re-runs even though its own record exists —
+    it must see the refreshed close scores."""
+    _monkey_cst(monkeypatch, 19, 40)
+    state = _patch_today_runs(
+        monkeypatch,
+        ran={"watchlist_automation", "paper_s3_intake_CN"},
+        automation_applied=False,
+    )
+    calls: dict[str, int] = {"wa": 0, "s3": 0}
+
+    def wa_run() -> None:
+        calls["wa"] += 1
+        state["applied"] = True  # the retry applies the pool
+
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", wa_run)
+    monkeypatch.setattr(
+        scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1)
+    )
+    # Isolate the remaining chain steps (their slots are already past at 19:40).
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.paper_backtest_mirror_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.sleeve_paper_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.harbor_h2_shadow_job, "run", lambda: None)
+    monkeypatch.setattr(scheduler_pkg.bar_5min_job, "run", lambda: None)
+
+    scheduler_pkg.catchup_missed_eod_chain()
+
+    assert calls["wa"] == 1
+    assert calls["s3"] == 1  # stale pre-close run re-executed
+
+
+def test_catchup_does_not_retry_skipped_before_close(monkeypatch) -> None:
+    """Before the 17:35 guard a skipped run is left alone (close not ready)."""
+    _monkey_cst(monkeypatch, 17, 20)
+    _patch_today_runs(
+        monkeypatch, ran={"watchlist_automation"}, automation_applied=False
+    )
+    calls: dict[str, int] = {"wa": 0}
+    monkeypatch.setattr(
+        scheduler_pkg.watchlist_automation_job,
+        "run",
+        lambda: calls.__setitem__("wa", calls["wa"] + 1),
+    )
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls["wa"] == 0
+
+
+def test_watchdog_treats_skipped_watchlist_run_as_missing(monkeypatch) -> None:
+    """paper_chain_watchdog: the skipped run's sync record says success, but
+    the applied-run table says no pool → it must count as missing."""
+    from data_sync_service.scheduler import paper_chain_watchdog_job as pcw
+
+    monkeypatch.setattr(pcw, "get_today_run", lambda job: {"success": True})
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.automation_applied_on",
+        lambda day: False,
+    )
+    assert pcw._run_ok("watchlist_automation") is False
+
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.automation_applied_on",
+        lambda day: True,
+    )
+    assert pcw._run_ok("watchlist_automation") is True
 
 
 def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:

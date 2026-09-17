@@ -42,7 +42,7 @@ import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
 import { SatelliteLegBlock } from '@/components/watchlist/SatelliteLegBlock';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
 import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
-import { useTimelineQuery, type TimelineStrategy } from '@/lib/queries/backtest';
+import { useTimelineQuery, useSatelliteLivePanelQuery, type TimelineStrategy } from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
@@ -375,10 +375,34 @@ function BuyList({
   const shown = expanded ? candidates : candidates.slice(0, 5);
   const hidden = candidates.length - shown.length;
   const envScale = envScaleToday ?? 1;
+  // 时间感知标题：上午/盘中看到"14:30前决定"，尾盘看到"执行"，周末不催单。
+  const buyWindowLabel = React.useMemo(() => {
+    try {
+      const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          hour: '2-digit',
+          minute: '2-digit',
+          weekday: 'short',
+          hour12: false,
+        })
+          .formatToParts(new Date())
+          .map((p) => [p.type, p.value]),
+      ) as Record<string, string>;
+      const [h, m] = String(parts.hour ?? '0').split(':');
+      const mins = Number(h) * 60 + Number(m ?? 0);
+      const wd = String(parts.weekday ?? '');
+      if (wd === '周六' || wd === '周日') return '周末 · 股票篮候选（先看，不下单）';
+      if (mins < 14 * 60 + 30) return '今日 14:30 前 · 股票篮买入';
+      return '尾盘执行 · 股票篮买入';
+    } catch {
+      return '股票篮买入';
+    }
+  }, []);
   return (
-    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+    <div id="buy-list" className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>下午 2 点 · 股票篮买入（S-3 核心 · score 前 5）</span>
+        <span>{buyWindowLabel}（S-3 核心 · score 前 5）</span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -486,11 +510,14 @@ function ReconBlock({
   onRemind,
   remindedSymbols,
   blockId,
+  buyable = true,
 }: {
   recon: ReconItem | undefined;
   onRemind: (c: PortfolioCandidate, sizePct: number) => void;
   remindedSymbols: Set<string>;
   blockId: string;
+  /** 闸门关闭时只看缺口，不开"提醒买入"（弱市不新开）。 */
+  buyable?: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   if (!recon) return null;
@@ -565,7 +592,7 @@ function ReconBlock({
                   <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
                     已提醒
                   </span>
-                ) : (
+                ) : buyable ? (
                   <button
                     type="button"
                     onClick={() => onRemind({ symbol, name: null }, pct)}
@@ -575,7 +602,7 @@ function ReconBlock({
                     <Bell size={9} className="mr-0.5 inline-block" />
                     提醒买入
                   </button>
-                )}
+                ) : null}
               </div>
             );
           })}
@@ -862,14 +889,14 @@ function HealthPanel({
           分数截至 {block.scoreDataAsOfDate ?? '—'}
         </span>
       ) : null}
-      {allowStockBuys ? (
-        <ReconBlock
-          recon={recon}
-          onRemind={onRemind}
-          remindedSymbols={remindedSymbols}
-          blockId={`recon${idSuffix}`}
-        />
-      ) : null}
+      {/* 对账缺口闸门关闭时也可见：只看不买（弱市的缺口多为"不该买"，同样要确认）。 */}
+      <ReconBlock
+        recon={recon}
+        onRemind={onRemind}
+        remindedSymbols={remindedSymbols}
+        blockId={`recon${idSuffix}`}
+        buyable={allowStockBuys}
+      />
       {holdings.length === 0 ? (
         <div className="text-xs text-[var(--k-muted)]">
           当前无持仓（未录入成本/仓位的 watchlist 票不算持仓）
@@ -1002,6 +1029,11 @@ export function PortfolioHealthCard({
     satStrategy,
     mode === 'starport' || mode === 'starship' || mode === 'twin_star',
   );
+  // OPT-222: today's 14:30 live snapshot (card prefers it over the replay day).
+  // Only the satellite modes render the block — don't poll in harbor/homeport.
+  const satLiveQ = useSatelliteLivePanelQuery(
+    mode === 'starport' || mode === 'starship' || mode === 'twin_star',
+  );
   const satLast = satQ.data?.rows?.[satQ.data.rows.length - 1];
   /** Parking pick (ETF key / null=REPO). */
   const pickKey = sleeve?.pick?.key ?? null;
@@ -1126,17 +1158,23 @@ export function PortfolioHealthCard({
     });
   }
 
-  const [stockOpen, setStockOpen] = React.useState(allowStockBuys);
-
-  React.useEffect(() => {
-    setStockOpen(allowStockBuys);
-  }, [allowStockBuys]);
+  // 股票区默认展开：闸门关闭时买入虽停，但持仓 EXIT 与对账缺口仍需可见
+  // （弱市下折叠会把"该卖"和"缺口"一起藏掉）。用户可手动收起。
+  const [stockOpen, setStockOpen] = React.useState(true);
 
   if (q.isError && !data) {
     return (
       <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-2.5 text-xs text-[var(--k-muted)]">
         <ShieldAlert size={13} className="mr-1 inline-block" />
         港湾暂无数据（data-sync-service 未响应）
+        <button
+          type="button"
+          onClick={() => void q.refetch()}
+          disabled={q.isFetching}
+          className="ml-2 rounded border border-[var(--k-border)] px-2 py-0.5 text-[11px] hover:bg-[var(--k-surface-2)]"
+        >
+          重试
+        </button>
       </div>
     );
   }
@@ -1174,7 +1212,7 @@ export function PortfolioHealthCard({
       </div>
 
       {coreView && reminders.length > 0 && (
-        <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+        <div id="buy-reminders" className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
             <BellRing size={11} className="inline-block" />
             买入提醒（{reminders.length}）
@@ -1293,6 +1331,9 @@ export function PortfolioHealthCard({
             satWeight={satQ.data?.satWeight ?? null}
             openPositions={satQ.data?.openPositions ?? []}
             parkedHeld={satQ.data?.parkedHeld ?? null}
+            livePanel={satLiveQ.data?.panel ?? null}
+            livePanelStale={satLiveQ.data?.stale === true}
+            stockGateClosed={gateClosedToday}
           />
         ) : null}
       </div>

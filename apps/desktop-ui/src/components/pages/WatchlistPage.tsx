@@ -6,6 +6,7 @@ import { PoolHistoryTable } from '@/components/watchlist/PoolHistoryTable';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
+import { TodayTodoCard } from '@/components/watchlist/TodayTodoCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
@@ -32,9 +33,15 @@ import {
 import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 import { useStrategyMode } from '@/lib/strategy-settings';
+import { pushStrategyModeToServer } from '@/lib/strategy-settings';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const strategyMode = useStrategyMode();
+  // OPT-223: keep the backend's copy of the selected strategy in sync (it
+  // writes the Bark/notification copy for the 14:30 action).
+  React.useEffect(() => {
+    pushStrategyModeToServer(strategyMode);
+  }, [strategyMode]);
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();
@@ -331,6 +338,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         <StrategyModeBar />
+        <TodayTodoCard />
         <PickStrongAlignBanner mode={strategyMode} />
         <PortfolioHealthCard mode={strategyMode} onOpenStock={onOpenStock} />
         <WatchlistToolbar

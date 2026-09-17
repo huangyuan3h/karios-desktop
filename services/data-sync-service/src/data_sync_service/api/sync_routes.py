@@ -373,8 +373,14 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     # OPT-151: core-leg sleeve mirror + daily expected-vs-actual recon
     "sleeve_paper_auto",
     "sleeve_paper_recon",
+    # OPT-216: H2 shadow ledger daily updater (display only)
+    "harbor_h2_shadow",
+    # OPT-222: live 14:30 satellite panel snapshot (watchlist card)
+    "satellite_live_panel",
     # P0-13 attention: Snowball follow daily snapshot (forward-only panel)
     "xq_follow_snapshot",
+    # P0-13 B18: EM limit-up pools daily snapshot (forward-only panel)
+    "zt_pool_snapshot",
 )
 
 

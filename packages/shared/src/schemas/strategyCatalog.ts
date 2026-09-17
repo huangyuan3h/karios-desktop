@@ -39,14 +39,21 @@ export const StrategyCatalogRegimeSchema = z.object({
 });
 export type StrategyCatalogRegime = z.infer<typeof StrategyCatalogRegimeSchema>;
 
+export const StrategyCatalogRoleSchema = z.enum(['offense', 'balanced', 'defense', 'live']);
+export type StrategyCatalogRole = z.infer<typeof StrategyCatalogRoleSchema>;
+
 export const StrategyCatalogEntrySchema = z.object({
   key: StrategyCatalogKeySchema,
   name: z.string(),
   structure: z.string(),
   status: StrategyCatalogStatusSchema,
   statusLabel: z.string(),
+  role: StrategyCatalogRoleSchema,
+  roleLabel: z.string(),
   /** Timeline API strategy when one exists; null only for legacy rows. */
-  timelineStrategy: z.enum(['harbor', 'homeport', 'starport', 'starship', 'twin_star']).nullable(),
+  timelineStrategy: z
+    .enum(['harbor', 'harbor_h2', 'homeport', 'homeport_m30', 'starport', 'starship', 'twin_star'])
+    .nullable(),
   doc: z.string(),
   tag: z.string(),
   updated: z.string(),

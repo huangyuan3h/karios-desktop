@@ -31,6 +31,7 @@ from data_sync_service.scheduler import (
     etf_daily_job,
     factor_signals_job,
     fund_basic_job,
+    harbor_h2_shadow_job,
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
@@ -51,6 +52,7 @@ from data_sync_service.scheduler import (
     research_report_job,
     risk_state_sync_job,
     rolling_oos_job,
+    satellite_live_job,
     sleeve_paper_job,
     stock_basic_job,
     timeline_warmup_job,
@@ -59,6 +61,7 @@ from data_sync_service.scheduler import (
     webhook_delivery_job,
     weekly_review_job,
     xq_follow_job,
+    zt_pool_snapshot_job,
 )
 
 
@@ -235,6 +238,23 @@ def create_scheduler() -> BackgroundScheduler:
         id=sleeve_paper_job.JOB_ID,
         replace_existing=True,
     )
+    # OPT-216: H2 shadow ledger (18:35 — after the 18:20 sleeve mirror; display
+    # only, never touches the paper/real books).
+    scheduler.add_job(
+        harbor_h2_shadow_job.run,
+        harbor_h2_shadow_job.build_trigger(),
+        id=harbor_h2_shadow_job.JOB_ID,
+        replace_existing=True,
+    )
+    # OPT-222: live 14:30 satellite panel snapshot (watchlist card). No startup
+    # catch-up: the print is time-sensitive, a late rerun would capture the
+    # wrong window — a missed day simply shows "待 14:30 判定" on the card.
+    scheduler.add_job(
+        satellite_live_job.run,
+        satellite_live_job.build_trigger(),
+        id=satellite_live_job.JOB_ID,
+        replace_existing=True,
+    )
     scheduler.add_job(
         minute_capture_job.run,
         minute_capture_job.build_trigger(),
@@ -332,6 +352,14 @@ def create_scheduler() -> BackgroundScheduler:
         id=xq_follow_job.JOB_ID,
         replace_existing=True,
     )
+    # EM limit-up pools daily snapshot (17:45 weekdays — 封单/首封/炸板/连板
+    # panel; pool API keeps only ~2 weeks, forward-only accumulation).
+    scheduler.add_job(
+        zt_pool_snapshot_job.run,
+        zt_pool_snapshot_job.build_trigger(),
+        id=zt_pool_snapshot_job.JOB_ID,
+        replace_existing=True,
+    )
     # Trading-session briefs (10:00 / 12:00 / 14:30 weekdays — user's rhythm).
     for _bt in ("open", "midday", "action"):
         scheduler.add_job(
@@ -425,6 +453,22 @@ def create_scheduler() -> BackgroundScheduler:
 
 def _cst_now() -> datetime:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+
+
+def _automation_applied_today(day_iso: str) -> bool:
+    """True when the pool automation applied a non-skipped run for ``day_iso``.
+
+    A SKIPPED run (``close_sync_not_ready`` after a late start) records
+    ``success=True`` in ``sync_job_record`` but never built the pool — the
+    chain used to stop there and never retry once close_sync landed in the
+    evening (2026-09-17 fix: 09-15/16 lost both days' pools).
+    """
+    try:
+        from data_sync_service.db.watchlist_automation import automation_applied_on
+
+        return bool(automation_applied_on(day_iso))
+    except Exception:  # noqa: BLE001
+        return False  # DB error → treat as not done; the retry is idempotent
 
 
 def catchup_missed_eod_chain() -> None:
@@ -596,21 +640,28 @@ def catchup_missed_eod_chain() -> None:
 
     # watchlist_automation cron: 17:30 — catch up only after its slot
     # (17:35 avoids racing the normal 17:30 fire when started just before).
-    # Each step is isolated: one failure must not silently skip the rest of
-    # the chain (2026-08-12 robustness audit).
-    if (now.hour, now.minute) >= (17, 35) and not already("watchlist_automation"):
-        logger.info("eod chain catchup: watchlist_automation missed (restart) — re-running")
+    # A SKIPPED run (close_sync late) counts as NOT done: the chain must retry
+    # once close lands late in the evening (09-15/16 both lost the day's pool
+    # because the 17:30 pass skipped and the catch-up trusted its record).
+    watchlist_retried = False
+    if (now.hour, now.minute) >= (17, 35) and not _automation_applied_today(
+        now.date().isoformat()
+    ):
+        logger.info("eod chain catchup: watchlist_automation missed/skipped (restart) — re-running")
         try:
             watchlist_automation_job.run()
+            watchlist_retried = _automation_applied_today(now.date().isoformat())
         except Exception:  # noqa: BLE001
             logger.warning("eod chain catchup: watchlist_automation run failed", exc_info=True)
     # paper_s3_intake cron: 17:42 — needs today's scores from the step above;
     # 17:45 avoids racing the normal 17:42 fire. Idempotent re-runs are safe
-    # (per-symbol/day dedupe) even in the 17:42-17:45 double-run window.
+    # (per-symbol/day dedupe) even in the 17:42-17:45 double-run window. When
+    # the automation was just retried, re-run the intake even if a (stale,
+    # pre-close-scores) run exists — it must see the refreshed scores.
     if (
         (now.hour, now.minute) >= (17, 45)
-        and already("watchlist_automation")
-        and not already("paper_s3_intake_CN")
+        and (watchlist_retried or already("watchlist_automation"))
+        and (watchlist_retried or not already("paper_s3_intake_CN"))
     ):
         logger.info("eod chain catchup: paper_s3_intake missed (restart) — re-running")
         try:
@@ -645,3 +696,20 @@ def catchup_missed_eod_chain() -> None:
             sleeve_paper_job.run()
         except Exception:  # noqa: BLE001
             logger.warning("eod chain catchup: sleeve_paper_auto run failed", exc_info=True)
+    # harbor_h2_shadow cron: 18:35 — 18:40 avoids the race; append-only and
+    # idempotent, safe to re-run.
+    if (now.hour, now.minute) >= (18, 40) and not already("harbor_h2_shadow"):
+        logger.info("eod chain catchup: harbor_h2_shadow missed (restart) — re-running")
+        try:
+            harbor_h2_shadow_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: harbor_h2_shadow run failed", exc_info=True)
+    # bar_5min_close cron: 18:40 — 18:45 avoids the race. Fetches the day's
+    # 14:30 prints and then refreshes the 星舰 pool (OPT-219): the 17:30
+    # automation ran before the fill panel existed.
+    if (now.hour, now.minute) >= (18, 45) and not already("bar_5min_close"):
+        logger.info("eod chain catchup: bar_5min_close missed (restart) — re-running")
+        try:
+            bar_5min_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: bar_5min_close run failed", exc_info=True)

@@ -125,6 +125,15 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
             ),
         }
 
+    if event_type == "satellite_action":
+        label = str(p.get("strategyLabel") or "卫星")
+        lines = list(p.get("lines") or [])
+        day = str(p.get("tradeDate") or "").replace("-", ".")
+        return {
+            "title": f"🛰 {label} · {day} 14:30",
+            "body": _lines(*lines) or "无",
+        }
+
     if event_type == "candidate_added":
         added = p.get("added") or []
         market = str(p.get("market") or "")

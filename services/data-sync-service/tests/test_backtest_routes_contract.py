@@ -14,7 +14,7 @@ def test_timeline_rejects_unknown_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
         br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="no_such_strategy")
     assert exc.value.status_code == 400
-    assert "harbor|homeport|starport|starship|twin_star|pick_strong|state_bucket" in exc.value.detail
+    assert "harbor|harbor_h2|homeport|homeport_m30|starport|starship|twin_star|pick_strong|state_bucket" in exc.value.detail
 
 
 def test_timeline_accepts_twin_star(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,3 +135,43 @@ def test_timeline_file_cache_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     p.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(br, "TIMELINE_CACHE_TTL_HOURS", -1)
     assert br._load_timeline_file("2026-01-01", "2026-02-01") is None
+
+
+def test_timeline_mem_cache_ttl_and_force_drop() -> None:
+    """2026-09-17 audit: the in-memory timeline cache must expire (a morning
+    warmup otherwise serves pre-close rows all day) and support force-drop."""
+    key = ("2026-01-01", "2026-01-31", "harbor")
+    br._timeline_mem_put(key, {"ok": True}, {"ctx": 1})
+    assert br._timeline_mem_get(key) == {"ok": True}
+    assert br._timeline_engine_cache[key] == {"ctx": 1}
+
+    # TTL expiry drops the timeline AND its engine ctx (heavy rebuild path).
+    br._timeline_cache_at[key] = 0.0
+    assert br._timeline_mem_get(key) is None
+    assert key not in br._timeline_cache and key not in br._timeline_engine_cache
+    assert key not in br._timeline_cache_at
+
+    # force path used by the daily H2 shadow job.
+    br._timeline_mem_put(key, {"ok": True}, {"ctx": 2})
+    br._timeline_mem_drop(key)
+    assert br._timeline_mem_get(key) is None and key not in br._timeline_engine_cache
+
+
+def test_satellite_live_panel_route_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OPT-222: file-backed snapshot route — panel + stale flag, no DB work."""
+    panel = {"tradeDate": "2026-09-17", "decisionAvailable": True, "gateOpen": False}
+    import data_sync_service.service.satellite_live as sl
+
+    monkeypatch.setattr(sl, "load_live_panel", lambda: panel)
+    monkeypatch.setattr(
+        "data_sync_service.service.trade_calendar_utils.shanghai_today_iso",
+        lambda: "2026-09-17",
+    )
+    out = br.satellite_signals_live_panel()
+    assert out == {"ok": True, "panel": panel, "stale": False}
+
+    monkeypatch.setattr(sl, "load_live_panel", lambda: {**panel, "tradeDate": "2026-09-16"})
+    assert br.satellite_signals_live_panel()["stale"] is True
+
+    monkeypatch.setattr(sl, "load_live_panel", lambda: None)
+    assert br.satellite_signals_live_panel() == {"ok": True, "panel": None, "stale": False}

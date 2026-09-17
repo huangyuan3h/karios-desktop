@@ -75,6 +75,8 @@
 | [`scoop-exhaustion-oos-check-2026-09-04.md`](factors/scoop-exhaustion-oos-check-2026-09-04.md) | 形态独立验证首跑 | ✅ 目录核查，不进 S-3 |
 | [`vendor-minute-compare-2026-09-05.md`](vendor/vendor-minute-compare-2026-09-05.md) · [`vendor-adj-compare-2026-09-05.md`](vendor/vendor-adj-compare-2026-09-05.md) | 外购分钟/复权对拍 | ✅ 有条件过 / 只报不修 |
 | [`first-principles-2026-09-05.md`](./first-principles-2026-09-05.md) | 基础规律与不变量（新想法先自查） | ✅ §一–§六 |
+| [`validation-gates-v2-2026-09-16.md`](./validation-gates-v2-2026-09-16.md) | **验证门控 v2（唯一裁决标准 · 多窗+长窗+多角度 + 前视 L 门）** | ✅ **新预注册必读** |
+| [`stable/five-strategy-v2-scorecard-2026-09-16.md`](stable/five-strategy-v2-scorecard-2026-09-16.md) | 五策略 v2 记分卡（当前数据横向比较 · 只读） | ✅ 09-16 |
 | [`leg-fingerprints-2026-09-06.md`](./leg-fingerprints-2026-09-06.md) | 各腿指纹表（胜率×单笔×周转×右尾×方差） | ✅ 右尾/月度待补 |
 | [`sat-body1-2026-09-07.md`](sat/sat-body1-2026-09-07.md) | 持有 1/2 天 vs 3 天（OOS2+train，valid 未碰） | ❌ 全拒；body=1 退化为 body=2 |
 | [`sat-score-segment-2026-09-08.md`](sat/sat-score-segment-2026-09-08.md) | 分数分段诊断关闭（D3/D4 as-of 门，前瞻 paper 接棒） | ⛔ 未出数；0=真零值无setup |
@@ -131,18 +133,30 @@
 
 ---
 
-## 验证纪律（三窗铁律 · 2026-08-22 审计后）
+## 验证纪律（门控 v2 · 2026-09-16 用户拍板；旧三窗铁律升级）
 
-> 任何参数/机制改动必须过 **三窗 walk-forward + hold-out**：单窗好看 = 过拟合，拒收。
+> 唯一裁决标准 → **[`validation-gates-v2-2026-09-16.md`](./validation-gates-v2-2026-09-16.md)**
+>（多窗 + 长窗 + 多角度：收益主门 G1 / 风险兑换 G2 / 一致性 G3 / 前视 L 门；裁决分
+> PASS / 条件PASS / REJECT / VOID）。本节只留窗口切分与纪律，**判定数字以 v2 文档为准**。
+> 只管未来：已冻结实验的 K1–K5 与 PASS/REJECT 维持不变，不重判。
 
 1. **三窗切分（固定）**：
     - `OOS2` = 2024-08-01 ~ 2025-08-01（弱市年 · 资金流 fail-open → 实为 regime 窗）
     - `train` = 2025-08-01 ~ 2026-02-01
-    - `valid` = 2026-03-01 ~ 2026-08-07（当前实盘对照窗 · n=55 已复用 4 次，见审计 §3）
-2. **hold-out（新增 2026-08-22）**：`2026-08-08 ~ 2027-02-08` 只读不调参，`n≥100` 前不改参；三窗 `>5pt劣化` 判定不含 hold-out，hold-out 只作确认
-3. **判定标准**：**三窗 0 劣化 + 单窗收益提升** 且 `hold-out` 不跌。单一窗好看 = 过拟合拒收。
-    > 相对固化基线 >5pt 劣化 → 自动判"未通过/拒收"（run_walk_forward 内置）；`n<100` 标 `⚠️ underpowered`。
-4. **长窗补充**（2021-08-01 ~ 2026-08-07）：跨周期价格路径检查，非三窗审计；`2021-08~2024-07` 无 sentiment/flow/scores 全 `fail-open`，与 valid 非同分布，拆 `long_price_only` vs `long_full(2024-08~)`。
+    - `valid` = 2026-03-01 ~ 2026-08-07（当前实盘对照窗 · n=55；**复用计数已到 4**，
+      v2 G3e：新候选上限条件PASS，直到 holdout n≥50 或窗口重切）
+2. **hold-out（2026-08-22 起）**：`2026-08-08 ~ 2027-02-08` 只读不调参，`n≥100` 前不改参；
+   v2 下 holdout 承担**条件PASS 转正**（n≥50、`Δ ≥ −2` 且无破地板）与 n≥100 后 binding。
+   旧"三窗 `>5pt劣化` 判定不含 hold-out"作废，以 v2 为准。
+3. **判定标准（v2 摘要；执行以 v2 文档为准）**：**收益最重要但不是唯一**——
+   G1a 三窗等权合计 `≥ 0` 且单窗地板 `−5`（维持）且 `long ≥ −5`；
+   余量 `< 2pt` → 条件PASS（踩线制度化）；`−3 ≤ G1a < 0` 可用风险按价兑换
+   （1pt 收益 ⇔ long MDD +2pt 或 Sharpe +0.08，上限条件PASS）；`G1a < −3` 或破地板 → REJECT；
+   M50 级大额买保险走保险通道（预注册明示 + 用户拍板），不走自动门。
+   单一窗好看 = 过拟合拒收（维持）。
+4. **长窗**（2021-08-01 ~ 2026-08-07）：v2 起**进裁决**（G1c：`long Δ ≥ 0` 干净，`[−5,0)` 条件；
+   MDD/Sharpe 主战场 + 2021–23 熊市覆盖）。`2021-08~2024-07` 无 sentiment/flow/scores 全
+   `fail-open`，与 valid 非同分布，仍拆 `long_price_only` vs `long_full(2024-08~)` 披露。
 5. **验收工具**:
     ```bash
     cd services/data-sync-service

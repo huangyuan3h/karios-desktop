@@ -147,3 +147,25 @@ def test_job_failed_includes_error_body() -> None:
     )
     assert "连败 3 次" in streak["body"]
 
+
+
+def test_satellite_action_push_lines() -> None:
+    """OPT-223: the 14:30 push carries the selected strategy's action."""
+    r = format_bark(
+        "satellite_action",
+        {
+            "tradeDate": "2026-09-17",
+            "strategyLabel": "星舰 v2",
+            "gateOpen": False,
+            "breadth1430": 0.279,
+            "lines": [
+                "卖出：000978、301024（14:30 到期）",
+                "卖出资金停入 H2 停车腿（富国油气QDII 513350.SH）",
+                "闸关（广度 27.9%）→ 只卖不买（若开闸会买：002128、000338）",
+                "闲钱停车：持有 富国油气QDII 513350.SH（H2 迟滞，2pt 领先才换）",
+            ],
+        },
+    )
+    assert r["title"] == "🛰 星舰 v2 · 2026.09.17 14:30"
+    assert "卖出资金停入 H2 停车腿" in r["body"]
+    assert "闸关" in r["body"]

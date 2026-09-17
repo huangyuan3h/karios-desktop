@@ -96,6 +96,48 @@ def test_reconcile_day_entry_skew_and_extra(monkeypatch) -> None:
     assert m["missing"] == 1
 
 
+def test_reconcile_day_ignores_parking_etf(monkeypatch) -> None:
+    """Parking legs are a separate sleeve, not S-3 drift (2026-09-17 audit).
+
+    The paper book tags sleeve ETF rows market='CN'; before the fix every
+    parked day showed as extra=1 in the weekly CN recon.
+    """
+    paper = [
+        {
+            "symbol": "CN:600001",
+            "status": "open",
+            "entryDate": "2026-08-05",
+            "market": "CN",
+            "source": "S3",
+        },
+        {
+            "symbol": "ETF:513350",
+            "status": "open",
+            "entryDate": "2026-08-05",
+            "market": "CN",
+            "source": "multi_sleeve",
+        },
+        {
+            "symbol": "513110.SH",
+            "status": "open",
+            "entryDate": "2026-08-05",
+            "market": "CN",
+            "source": "multi_sleeve",
+        },
+    ]
+    monkeypatch.setattr(recon, "list_paper_trades", lambda: paper)
+    with (
+        patch.object(recon, "simulate", return_value=_fake_run()),
+        patch.object(recon, "BacktestData", return_value=None),
+    ):
+        out = recon.reconcile_day("2026-08-07")
+    m = out["markets"]["CN"]
+    assert m["expected"] == 2
+    assert m["actual"] == 1  # CN:600001 only — both parking legs excluded
+    assert m["extra"] == 0
+    assert m["missing"] == 1
+
+
 def test_reconcile_day_hk_market(monkeypatch) -> None:
     """HK line runs its own market block."""
     paper = [

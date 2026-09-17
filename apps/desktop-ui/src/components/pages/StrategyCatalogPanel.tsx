@@ -31,6 +31,13 @@ function statusTone(status: StrategyCatalogEntry['status']): string {
   return 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
 }
 
+function roleTone(role: StrategyCatalogEntry['role']): string {
+  if (role === 'offense') return 'bg-red-500/10 text-red-700 dark:text-red-300';
+  if (role === 'balanced') return 'bg-violet-500/10 text-violet-700 dark:text-violet-300';
+  if (role === 'defense') return 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
+  return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+}
+
 export function StrategyCatalogPanel({
   selectedKey,
   onSelect,
@@ -65,7 +72,7 @@ export function StrategyCatalogPanel({
         <div className="flex items-center gap-2 text-[12px] font-medium">
           策略族总览
           <span className="text-[10px] font-normal text-[var(--k-muted)]">
-            2026-09-14 clean 口径（含成本）· 参考数字，不进 Live（Live 恒为港湾）
+            2026-09-14 clean 口径（母港为 M30 防守档，2026-09-16）· 参考数字，不进 Live（Live 恒为港湾）
           </span>
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -85,6 +92,9 @@ export function StrategyCatalogPanel({
               )}
             >
               {s.name}
+              <span className={cn('ml-1.5 rounded px-1 py-0.5 text-[9px]', roleTone(s.role))}>
+                {s.roleLabel}
+              </span>
               <span
                 className={cn(
                   'ml-1.5 rounded px-1 py-0.5 text-[9px]',
@@ -101,6 +111,9 @@ export function StrategyCatalogPanel({
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold">{selected.name}</span>
+          <span className={cn('rounded px-1.5 py-0.5 text-[10px]', roleTone(selected.role))}>
+            {selected.roleLabel}
+          </span>
           <span className={cn('rounded px-1.5 py-0.5 text-[10px]', statusTone(selected.status))}>
             {selected.statusLabel}
           </span>

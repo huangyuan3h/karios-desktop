@@ -38,6 +38,13 @@ const backtestMock = vi.hoisted(() => ({
       isFetching: false,
     }),
   ),
+  useSatelliteLivePanelQuery: vi.fn(
+    (): QueryStub => ({
+      data: { ok: true, panel: null, stale: false },
+      isError: false,
+      isFetching: false,
+    }),
+  ),
 }));
 vi.mock('@/lib/queries/backtest', async () => {
   const actual =
@@ -47,6 +54,7 @@ vi.mock('@/lib/queries/backtest', async () => {
     useBacktestReconQuery: backtestMock.useBacktestReconQuery,
     useSleeveReconQuery: backtestMock.useSleeveReconQuery,
     useTimelineQuery: backtestMock.useTimelineQuery,
+    useSatelliteLivePanelQuery: backtestMock.useSatelliteLivePanelQuery,
   };
 });
 
@@ -103,6 +111,11 @@ beforeEach(() => {
     isError: false,
     isFetching: false,
   });
+  backtestMock.useSatelliteLivePanelQuery.mockReturnValue({
+    data: { ok: true, panel: null, stale: false },
+    isError: false,
+    isFetching: false,
+  });
 });
 
 describe('PortfolioHealthCard (harbor)', () => {
@@ -138,6 +151,51 @@ describe('PortfolioHealthCard (harbor)', () => {
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
   });
 
+  it('keeps the recon gap visible (read-only) when the gate is closed', async () => {
+    backtestMock.useBacktestReconQuery.mockReturnValue({
+      data: {
+        ok: true,
+        items: [
+          {
+            reconDate: '2026-09-16',
+            market: 'CN',
+            expected: 5,
+            actual: 3,
+            aligned: 3,
+            missing: 2,
+            extra: 0,
+            detail: [
+              { type: 'missing', symbol: 'CN:600519', score: 80, positionPct: 0.1 },
+            ],
+          },
+        ],
+      },
+      isError: false,
+      isFetching: false,
+    });
+    fetchPortfolioHealth.mockResolvedValue({
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        label: '持有',
+        message: '弱市',
+        pick: { key: 'REPO', mom60: 0, symbol: 'REPO' },
+      },
+      tradeDate: '2026-09-16',
+      regime: 'Weak',
+      panicCooldown: { active: false },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    // No expand click: the stock section stays open so gaps/EXITs survive 弱市.
+    expect(await screen.findByText(/股票篮对账 · 2026-09-16/)).toBeDefined();
+    expect(await screen.findByText(/缺 2/)).toBeDefined();
+    // Gate closed: no 提醒买入 buttons anywhere, gaps are view-only.
+    expect(screen.queryByRole('button', { name: /提醒买入/ })).toBeNull();
+  });
+
   it('shows stock candidates with the core 10% sizing when pick=STOCK', async () => {
     fetchPortfolioHealth.mockResolvedValue({
       multiAssetSleeve: {
@@ -160,7 +218,9 @@ describe('PortfolioHealthCard (harbor)', () => {
       hkHealth: { regime: 'Diverging', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText(/股票篮买入/)).toBeDefined();
+    // BuyList title (the ops-panel guidance above mentions 股票篮买入 too,
+    // so pin the BuyList-specific suffix).
+    expect(await screen.findByText(/S-3 核心 · score 前 5/)).toBeDefined();
     expect(await screen.findByText(/每票建议 10%/)).toBeDefined();
     expect(screen.getAllByText('买 10%').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('贵州茅台')).toBeDefined();
@@ -260,13 +320,13 @@ describe('PortfolioHealthCard (harbor)', () => {
     expect(await screen.findByText(/港湾暂无数据（data-sync-service 未响应）/)).toBeDefined();
   });
 
-  it('renders the satellite leg from the twin_star timeline for twin_star mode', async () => {
-    renderCard({ mode: 'twin_star' });
+  it('renders the satellite leg from the starport timeline for starport mode', async () => {
+    renderCard({ mode: 'starport' });
     expect(await screen.findByTestId('satellite-leg-block')).toBeDefined();
     expect(backtestMock.useTimelineQuery).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
-      'twin_star',
+      'starport',
       true,
     );
     expect(screen.queryByTestId('b3-leg-block')).toBeNull();
@@ -286,7 +346,7 @@ describe('PortfolioHealthCard (harbor)', () => {
           },
         ],
         summary: { fusedPct: 1 },
-        satWeight: 1 / 3,
+        satWeight: 0.2,
         satCapacity: 4,
         openPositions: [
           {
@@ -302,7 +362,53 @@ describe('PortfolioHealthCard (harbor)', () => {
     });
     renderCard({ mode: 'starport' });
     expect(await screen.findByText(/操作提示（研究档 · 不进 Live）/)).toBeDefined();
-    expect(screen.getByText(/星港：母港 2\/3 \+ 卫星 1\/3/)).toBeDefined();
+    expect(screen.getByText(/星港：母港 0\.8 \+ 卫星 0\.2/)).toBeDefined();
     expect(screen.getByText(/14:30 到期卖出（余 1 日）：/)).toBeDefined();
+  });
+
+  it('prefers today’s 14:30 live panel over the replay day', async () => {
+    backtestMock.useTimelineQuery.mockReturnValue({
+      data: {
+        rows: [
+          {
+            date: '2026-09-16',
+            satActive: true,
+            satPositions: 4,
+            satSlots: 4,
+            satCapacity: 4,
+            gateOpen: true,
+          },
+        ],
+        satWeight: 1,
+        satCapacity: 4,
+        openPositions: [],
+      },
+      isError: false,
+      isFetching: false,
+    });
+    backtestMock.useSatelliteLivePanelQuery.mockReturnValue({
+      data: {
+        ok: true,
+        stale: false,
+        panel: {
+          tradeDate: '2026-09-17',
+          generatedAt: '2026-09-17T14:30:12+08:00',
+          decisionAvailable: true,
+          gateOpen: false,
+          breadth1430: 0.28,
+          gapCount: 34,
+          bucketSize: 11,
+          poolSize: 11,
+          ranked: [],
+          wouldFill: [],
+        },
+      },
+      isError: false,
+      isFetching: false,
+    });
+    renderCard({ mode: 'starship' });
+    expect(await screen.findByTestId('satellite-live-panel')).toBeDefined();
+    expect(screen.getByText('闸 关 · 今日只卖不买')).toBeDefined();
+    expect(screen.getByText(/今日 2026-09-17 现场/)).toBeDefined();
   });
 });

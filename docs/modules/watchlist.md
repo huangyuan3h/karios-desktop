@@ -349,9 +349,11 @@ B_momentum 模式：
 2. **星舰池**（`source=satellite`，研究档）：习惯 replay（`state_bucket_track`, `recipe="habit"`）当前持有的 14:30 卫星腿（持 3 个交易日），带 `entryDate/exitDue/daysLeft` 元数据。
 3. **失效自动移除**（持仓豁免，`positionPct>0` 不删）：S-3 = **连续 2 日**（`S3_POOL_FAIL_DAYS`）不再出现在池里；星舰 = replay 已出场（不再持有）。
 4. **自动应用**：run 写入 registry 即生效（`apply_pool_run` → `upsert_registry` → `ack_run`），前端不再有 pending/ack 步骤，只在下一次 hydrate 时刷新。
-5. **Alpha / 研报渠道已停用**（`ALPHA_CHANNEL_ENABLED=False`）：不再从催化/研报提名；历史 `alpha_radar`/`screener*` 行保留不动（手动清理）。
+5. **盘后补齐（18:40+，OPT-219）**：`bar_5min_close` 存入当日 14:30 分时后自动调用 `refresh_satellite_pool`（run `trigger=post_5min`）重算星舰池——17:30 那次跑在成交面板落地之前，**当日新进的卫星腿原本要迟到一天**才进池。refresh 幂等、只动 `source=satellite` 行（S-3 移除判定跳过），并把当日 17:30 run 的 S-3 计数累加进自己的 meta（UI 每日只显示最新一条已应用 run）。
+6. **Fail-open 纪律**：replay 失败时 `compute_satellite_pool` 返回 `None`（区别于"当日无腿"）→ 移除层整段跳过，绝不因一次失败清空星舰行；`post_5min` refresh 失败同样只记日志、不触碰 registry。
+7. **Alpha / 研报渠道已停用**（`ALPHA_CHANNEL_ENABLED=False`）：不再从催化/研报提名；历史 `alpha_radar`/`screener*` 行保留不动（手动清理）。
 
-**池变动历史**：`GET /watchlist/automation/runs` 返回每个交易日的 run（`meta.poolAdded/poolRemoved{s3,satellite}` + `meta.s3PoolSize/satellitePoolSize`），Watchlist 诊断面板渲染为「S-3 池 / 星舰 / 加入 / 移除」表。
+**池变动历史**：`GET /watchlist/automation/runs` 返回每个交易日的 run（`meta.poolAdded/poolRemoved{s3,satellite}` + `meta.s3PoolSize/satellitePoolSize`），Watchlist 诊断面板渲染为「S-3 池 / 星舰 / 加入 / 移除」表。18:40+ 的 `post_5min` refresh 会**累加**当日计数并继承 S-3 尺寸字段（每个交易日仍只有最新一条已应用 run 展示）。
 
 ```text
 Last pool automation: {time} ({trigger}) | S-3 池 10 (+3 / −2) · 星舰 4 (+4 / −0)
@@ -359,12 +361,13 @@ Last pool automation: {time} ({trigger}) | S-3 池 10 (+3 / −2) · 星舰 4 (+
 
 | meta 字段 | 摘要展示 | 说明 |
 |-----------|----------|------|
-| `poolAdded` / `poolRemoved` | `(+a / −r)` 分腿 | 本日新增 / 失效移除数 |
+| `poolAdded` / `poolRemoved` | `(+a / −r)` 分腿 | 本日新增 / 失效移除数（含 18:40+ refresh 累加） |
 | `s3PoolSize` / `s3PoolPrevSize` | `S-3 池 N` | 今日 / 前一交易日（两日失效判定用） |
-| `satellitePoolSize` | `星舰 N` | 当前卫星腿数 |
+| `satellitePoolSize` | `星舰 N` | 当前卫星腿数（refresh 后为收盘口径） |
 | `poolCaliber` | — | 口径字符串（审计用） |
 | `alphaChannel` | — | `off`（渠道停用标记） |
 | `industrySync` | `sync ind✓/✗` | 行业流同步失败只进 meta，不中断 run |
+| `satellitePoolError` | — | `true` = replay 失败，当日星舰增减整段跳过（fail-open） |
 
 ### 历史渠道（2026-09-15 前，已停用）
 

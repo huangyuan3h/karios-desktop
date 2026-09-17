@@ -158,7 +158,14 @@ def _blend_daily(a: list[float], b: list[float], w_a: float) -> list[float]:
 def _blend_monthly(
     a: list[float], b: list[float], w_a: float, cal: list[str], cost: float
 ) -> list[float]:
-    """Monthly rebalance back to ``w_a``; 5bp per side on the traded fraction."""
+    """Monthly rebalance back to ``w_a``; 5bp per side on the traded fraction.
+
+    Cost convention (OPT-211 P2, pinned — mirrors
+    ``service/homeport.blend_monthly_nav``): one-sided charge
+    ``cost * |w_a - wa|`` on the rebalanced amount. A literal two-ticket
+    execution would cost ~2x; the gap is ~0.1%/yr, covered by the 15bp cost
+    sensitivity. Keep both copies in sync; do not change one alone.
+    """
     n = min(len(a), len(b))
     out = [1.0]
     wa = w_a
@@ -206,9 +213,16 @@ def main() -> int:
         m50 = _blend_monthly(harbor, rp, 0.5, cal, COST)
         m40 = _blend_monthly(harbor, rp, 0.6, cal, COST)
         m60 = _blend_monthly(harbor, rp, 0.4, cal, COST)
+        # H-MIX-TUNE (2026-09-16 prereg): extend the M-band harbor-ward.
+        # M{N} = N% B3 + (100-N)% harbor; M30/M20 buy annualized return
+        # with B3 cushion. Cost20 arms mirror m50_cost20 for K5-equivalence.
+        m30 = _blend_monthly(harbor, rp, 0.7, cal, COST)
+        m20 = _blend_monthly(harbor, rp, 0.8, cal, COST)
         md = _blend_daily(harbor, rp, 0.5)
         rp_hi = _rp_nav(px, cal, COST_HIGH)
         m50_hi = _blend_monthly(harbor, rp_hi, 0.5, cal, COST_HIGH)
+        m30_hi = _blend_monthly(harbor, rp_hi, 0.7, cal, COST_HIGH)
+        m20_hi = _blend_monthly(harbor, rp_hi, 0.8, cal, COST_HIGH)
         legs[w] = (cal, harbor, rp, m50)
         results[w] = {
             "harbor": _row(harbor),
@@ -216,12 +230,17 @@ def main() -> int:
             "m50": _row(m50),
             "m40": _row(m40),
             "m60": _row(m60),
+            "m30": _row(m30),
+            "m20": _row(m20),
             "md": _row(md),
             "m50_cost20": _row(m50_hi),
+            "m30_cost20": _row(m30_hi),
+            "m20_cost20": _row(m20_hi),
             "corr": _corr(harbor, rp),
             "days": len(cal),
         }
-        for key in ("harbor", "rp", "m50", "m40", "m60", "md", "m50_cost20"):
+        for key in ("harbor", "rp", "m50", "m40", "m60", "m30", "m20", "md",
+                    "m50_cost20", "m30_cost20", "m20_cost20"):
             r = results[w][key]
             print(
                 f"  {w:<6} {key:<10} {r['total']:+7.1f}  cagr {r['cagr']:>7.2f}  mdd {r['mdd']:>6.1f}  sr {r['sharpe']:.2f}"

@@ -9,12 +9,20 @@ afterEach(() => {
 });
 
 describe('StrategyModeBar', () => {
-  it('renders the five strategy views with the default selected', () => {
+  it('renders the three tiers plus sunset baseline in role order, default selected', () => {
     render(<StrategyModeBar />);
-    for (const name of ['港湾', '母港', '星港', '星舰', '双子星']) {
+    for (const name of ['星舰', '星港', '母港', '港湾', '双子星']) {
       expect(screen.getByRole('button', { name: new RegExp(name) })).toBeDefined();
     }
     expect(screen.getByRole('button', { name: /星港/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /进攻/ })).toBeDefined();
+    expect(screen.getByRole('button', { name: /防守/ })).toBeDefined();
+    expect(screen.getByRole('button', { name: /均衡/ })).toBeDefined();
+    const order = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent ?? '')
+      .map((t) => ['星舰', '星港', '母港', '港湾', '双子星'].find((n) => t.startsWith(n)));
+    expect(order).toEqual(['星舰', '星港', '母港', '港湾', '双子星']);
   });
 
   it('switches the view and persists the selection', () => {

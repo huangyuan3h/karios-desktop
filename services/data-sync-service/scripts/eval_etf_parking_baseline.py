@@ -48,7 +48,7 @@ from data_sync_service.service.portfolio_nav_sim import engine_nav_by_day_from_r
 
 LB, COST, FLOOR = 60, 0.0005, 0.20
 WINS = {k: WINDOWS[k] for k in ("OOS2", "train", "valid", "long")}
-VARIANTS = ("V0", "P1", "R1", "R2", "R3")
+VARIANTS = ("V0", "P1", "P1_H2", "R1", "R2", "R3")
 
 
 def _load_etf_closes() -> dict[str, dict[str, float]]:
@@ -149,8 +149,13 @@ def main() -> int:
 
         # One shared parking state machine (service.harbor.parking_replay) per
         # variant — same code as the timeline / Live decision.
+        # H-HARBOR-H2 (2026-09-16 prereg): P1_H2 = S-3 core + H2 hysteresis
+        # sleeve (service/parking_sleeve.py, research-only machine). Frozen
+        # P1/R-arms untouched.
+        from data_sync_service.service.parking_sleeve import hysteresis_parking_replay
         records = {
             "P1": parking_replay(px, cal, idle_by_day=idle_by_day),
+            "P1_H2": hysteresis_parking_replay(px, cal),
             "R1": parking_replay(px, cal, idle_by_day=idle_by_day, min_idle_pct=FLOOR),
             "R2": parking_replay(
                 px, cal, idle_by_day=idle_by_day, stock_gate=True, stock_mom_by_day=stock_mom_by_day
@@ -191,6 +196,24 @@ def main() -> int:
     print(f"  K2 {'ok' if k2 else 'FAIL'} sum={sum(res[w]['P1']['delta'] for w in ('OOS2','train','valid')):.1f}")
     print(f"  K3 {'ok' if k3 else 'FAIL'} long={res['long']['P1']['delta']}")
     print(f"  P1 {'PASS → new baseline = S-3 + parking' if (k1 and k2 and k3) else 'NOT PASSED'}")
+    # H-HARBOR-H2 verdict (2026-09-16 prereg §2; frozen block above untouched).
+    h = {w: res[w]["P1_H2"] for w in WINS}
+    hp = {w: res[w]["P1"] for w in WINS}
+    hk1 = all(h[w]["total"] - hp[w]["total"] >= -1.0 for w in ("OOS2", "train", "valid"))
+    hk2 = (sum(h[w]["total"] - hp[w]["total"] for w in ("OOS2", "train", "valid")) / 3 > 0
+           and h["long"]["total"] - hp["long"]["total"] > 0)
+    hk3 = (h["long"]["mdd"] >= hp["long"]["mdd"] - 1.0
+           and h["valid"]["mdd"] >= hp["valid"]["mdd"] - 2.0)
+    print("## verdict (H-HARBOR-H2: K1 devΔ>=-1 ea / K2 mean>0 & long>0 / K3 MDD guard)")
+    print(f"  HK1 {'ok' if hk1 else 'FAIL'} "
+          f"{[round(h[w]['total'] - hp[w]['total'], 1) for w in ('OOS2', 'train', 'valid')]}")
+    print(f"  HK2 {'ok' if hk2 else 'FAIL'} "
+          f"mean={sum(h[w]['total'] - hp[w]['total'] for w in ('OOS2', 'train', 'valid')) / 3:.1f} "
+          f"long={h['long']['total'] - hp['long']['total']:+.1f}")
+    print(f"  HK3 {'ok' if hk3 else 'FAIL'} "
+          f"longMDD {h['long']['mdd']:+.1f} vs {hp['long']['mdd']:+.1f} / "
+          f"validMDD {h['valid']['mdd']:+.1f} vs {hp['valid']['mdd']:+.1f}")
+    print(f"  P1_H2 {'PASS → harbor-H2 candidate (Live track: paper + auth)' if (hk1 and hk2 and hk3) else 'REJECT → harbor stays canonical'}")
     for v in ("R1", "R2", "R3"):
         print(f"  {v} delta by window: {{{', '.join(f'{w}: {res[w][v]['delta']}' for w in WINS)}}}")
 

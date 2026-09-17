@@ -1,0 +1,176 @@
+{
+  "tag": "etf-parking-baseline-2026-09-13",
+  "prereg": "docs/designs/etf-parking-baseline-prereg-2026-09-13.md",
+  "results": {
+    "OOS2": {
+      "V0": {
+        "total": 38.0,
+        "delta": 0.0,
+        "trades": 0,
+        "cagr": 39.8,
+        "mdd": -11.6,
+        "sharpe": 1.67
+      },
+      "P1": {
+        "total": 55.2,
+        "delta": 17.2,
+        "trades": 30,
+        "cagr": 58.04,
+        "mdd": -14.3,
+        "sharpe": 1.73
+      },
+      "R1": {
+        "total": 54.5,
+        "delta": 16.5,
+        "trades": 30,
+        "cagr": 57.29,
+        "mdd": -14.3,
+        "sharpe": 1.72
+      },
+      "R2": {
+        "total": 48.8,
+        "delta": 10.9,
+        "trades": 34,
+        "cagr": 51.31,
+        "mdd": -14.3,
+        "sharpe": 1.59
+      },
+      "R3": {
+        "total": 55.2,
+        "delta": 17.2,
+        "trades": 30,
+        "cagr": 58.04,
+        "mdd": -14.3,
+        "sharpe": 1.73
+      }
+    },
+    "train": {
+      "V0": {
+        "total": 39.2,
+        "delta": 0.0,
+        "trades": 0,
+        "cagr": 97.93,
+        "mdd": -9.7,
+        "sharpe": 2.86
+      },
+      "P1": {
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
+      },
+      "R1": {
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
+      },
+      "R2": {
+        "total": 43.5,
+        "delta": 4.3,
+        "trades": 16,
+        "cagr": 110.89,
+        "mdd": -9.5,
+        "sharpe": 2.9
+      },
+      "R3": {
+        "total": 52.2,
+        "delta": 13.0,
+        "trades": 23,
+        "cagr": 138.16,
+        "mdd": -8.0,
+        "sharpe": 3.01
+      }
+    },
+    "valid": {
+      "V0": {
+        "total": 38.7,
+        "delta": 0.0,
+        "trades": 0,
+        "cagr": 113.18,
+        "mdd": -6.1,
+        "sharpe": 3.27
+      },
+      "P1": {
+        "total": 50.3,
+        "delta": 11.6,
+        "trades": 21,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
+      },
+      "R1": {
+        "total": 49.0,
+        "delta": 10.2,
+        "trades": 19,
+        "cagr": 151.26,
+        "mdd": -21.8,
+        "sharpe": 2.1
+      },
+      "R2": {
+        "total": 48.0,
+        "delta": 9.3,
+        "trades": 21,
+        "cagr": 147.49,
+        "mdd": -20.0,
+        "sharpe": 2.09
+      },
+      "R3": {
+        "total": 50.3,
+        "delta": 11.6,
+        "trades": 21,
+        "cagr": 156.59,
+        "mdd": -21.8,
+        "sharpe": 2.14
+      }
+    },
+    "long": {
+      "V0": {
+        "total": 82.7,
+        "delta": 0.0,
+        "trades": 0,
+        "cagr": 13.31,
+        "mdd": -32.0,
+        "sharpe": 0.72
+      },
+      "P1": {
+        "total": 201.5,
+        "delta": 118.8,
+        "trades": 127,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
+      },
+      "R1": {
+        "total": 197.5,
+        "delta": 114.8,
+        "trades": 125,
+        "cagr": 25.37,
+        "mdd": -22.8,
+        "sharpe": 0.99
+      },
+      "R2": {
+        "total": 119.6,
+        "delta": 37.0,
+        "trades": 145,
+        "cagr": 17.73,
+        "mdd": -35.0,
+        "sharpe": 0.77
+      },
+      "R3": {
+        "total": 201.5,
+        "delta": 118.8,
+        "trades": 127,
+        "cagr": 25.72,
+        "mdd": -22.8,
+        "sharpe": 1.0
+      }
+    }
+  },
+  "P1_pass": true,
+  "as_of": "2026-09-14T05:22:02+00:00"
+}

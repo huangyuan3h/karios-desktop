@@ -11,15 +11,16 @@ const STORAGE_KEY = 'karios.strategyMode.v2';
 const LEGACY_STORAGE_KEY = 'karios.strategyMode';
 
 export const STRATEGY_MODES: readonly StrategyMode[] = [
-  'harbor',
-  'homeport',
-  'starport',
   'starship',
+  'starport',
+  'homeport',
+  'harbor',
   'twin_star',
 ];
 
 /**
- * Data-collection default (user decision 2026-09-14): 星港 w=1/3.
+ * Data-collection default (user decision 2026-09-16): 星港 w=0.2
+ * (current-data K1-passing max; 1/3 frozen as audit reference).
  * Display only — Live orders stay 港湾 (S-3 + parking).
  */
 export const DEFAULT_STRATEGY_MODE: StrategyMode = 'starport';
@@ -33,19 +34,19 @@ export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
 };
 
 export const STRATEGY_MODE_TAGS: Record<StrategyMode, string> = {
-  harbor: 'Live',
-  homeport: '产品候选',
-  starport: '默认',
-  starship: '激进 · 前置未满',
+  harbor: 'Live · 日落',
+  homeport: '防守 · 产品候选',
+  starport: '均衡 · 默认',
+  starship: '进攻 · 前置未满',
   twin_star: '并行对照',
 };
 
 export const STRATEGY_MODE_DESCRIPTIONS: Record<StrategyMode, string> = {
-  harbor: 'S-3 择强核心 + 闲置现金 ETF 停车场。实盘基线。',
-  homeport: '港湾 × B3 风险预算 50/50（月初再平衡 5bp/边）。回撤减半、收益近半。',
-  starport: '母港 × 卫星 1/3 曝露（H-B3-SAT PASS，K1 余量薄）。数据收集默认档。',
+  harbor: 'S-3 择强核心 + 闲置现金 ETF 停车场。实盘基线（日落模式：维持运行，不再开发）。',
+  homeport: '港湾 70% × B3 风险预算 30%（M30 防守档，月初再平衡 5bp/边）。回撤浅、长期年化 21%。',
+  starport: '母港 × 卫星 0.2 曝露（当前数据验收最大权重）。数据收集默认档。',
   starship:
-    'v2 = 卫星 + 闲置现金停 ETF 停车场（long +884.9% / MDD −28.5 / SR 2.09；15bps 仍 +829.5）。卫星执行审计 ✅（90bps +310%、容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',
+    'v2 = 卫星 + 闲置现金停 ETF 停车场（H2 迟滞换仓；long +975.0% / MDD −30.5 / SR 2.15；15bps 仍 +921.4）。卫星执行审计 ✅（90bps +310%、容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',
   twin_star: '港湾核心 × 卫星 50/50（无仓日 100% 港湾）。并行对照档，保留不退役。',
 };
 
@@ -68,7 +69,22 @@ export function getStrategyMode(): StrategyMode {
 
 export function setStrategyMode(mode: StrategyMode): void {
   saveJson(STORAGE_KEY, mode);
+  pushStrategyModeToServer(mode);
   window.dispatchEvent(new Event('karios:strategy-mode'));
+}
+
+/**
+ * OPT-223: mirror the selected mode to the backend so Bark/notification copy
+ * is written for the strategy the user is watching. Fire-and-forget — the UI
+ * stays usable when the backend is down (it will re-sync on the next change
+ * or mount).
+ */
+export function pushStrategyModeToServer(mode: StrategyMode = getStrategyMode()): void {
+  void import('@/lib/api/client')
+    .then(({ apiPutJson }) => apiPutJson('/api/settings/strategy-mode', { mode }))
+    .catch(() => {
+      // best-effort mirror; the backend falls back to the UI default
+    });
 }
 
 export function useStrategyMode(): StrategyMode {

@@ -636,6 +636,7 @@ def _pick_close_reason(
     max_hold_days: int | None = None,
     score_floor: float | None = None,
     exclude_pool_exit: bool = False,
+    skip_live_score_lookup: bool = False,
 ) -> str | None:
     """Choose the close reason for an open trade, or None to keep it open.
 
@@ -655,6 +656,14 @@ def _pick_close_reason(
     injects the historical score recorded on that day — reading live data
     would be a look-ahead bias. Live callers pass None (default) and keep
     the existing ``fetch_latest_score_since`` behaviour.
+
+    ``skip_live_score_lookup`` (2026-09-17 audit): the BACKTEST engine must
+    always pass True — if its injected as-of score is missing, the documented
+    contract is "fail open", not "read the live DB". The fallback query
+    returns the latest score since entry with no upper bound at the simulated
+    day, i.e. a future-data leak on any day the injected score map lacks the
+    symbol (the red test ``test_simulate_score_floor_uses_as_of_score`` was
+    reporting exactly this).
     """
     stop = stop_loss_pct if stop_loss_pct is not None else pt_db.STOP_LOSS_PCT
     target = target_pnl_pct if target_pnl_pct is not None else pt_db.TARGET_PNL_PCT
@@ -666,7 +675,7 @@ def _pick_close_reason(
     if pnl_pct >= target:
         return pt_db.CLOSE_REASON_TARGET_HIT
 
-    if score is None:
+    if score is None and not skip_live_score_lookup:
         try:
             score = wa_db.fetch_latest_score_since(
                 str(t.get("symbol") or ""),

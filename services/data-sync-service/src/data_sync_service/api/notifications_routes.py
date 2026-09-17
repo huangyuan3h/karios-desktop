@@ -18,7 +18,10 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("")
 def notifications_list(mode: str = Query("single_track")) -> dict[str, Any]:
-    """Actionable notifications (high first). Live default is ``single_track``
-    so S-3 pyramid/recon appear. ``mode`` is accepted for client compatibility.
-    Each item: id/type/severity/title/detail/anchor/lane/book/createdAt."""
-    return {"ok": True, "items": build_notifications()}
+    """Actionable notifications (high first).
+
+    ``mode`` = the UI's selected strategy (drives the OPT-223 satellite action
+    item); the legacy ``single_track`` value keeps the S-3 pyramid/recon feed.
+    Each item: id/type/severity/title/detail/anchor/lane/book/createdAt.
+    """
+    return {"ok": True, "items": build_notifications(mode)}
