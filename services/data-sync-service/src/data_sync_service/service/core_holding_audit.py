@@ -244,7 +244,7 @@ def _judge_open(
 
 def _etf_trend_state(symbol: str) -> dict[str, Any]:
     """MA200 / above flags for a sleeve ETF (from the production state machine)."""
-    from data_sync_service.service.third_asset_sleeve import (
+    from data_sync_service.service.multi_asset_sleeve import (
         _etf_market_data,
         _etf_symbol_to_ts,
     )
@@ -253,7 +253,7 @@ def _etf_trend_state(symbol: str) -> dict[str, Any]:
         md = _etf_market_data(_etf_symbol_to_ts(symbol))
         if not md.get("ok"):
             return {}
-        return {"ma200": md.get("ma200"), "aboveMa200": bool(md.get("above_ma200"))}
+        return {"ma200": md.get("ma200"), "aboveMa200": bool(md.get("above"))}
     except Exception:  # noqa: BLE001
         return {}
 

@@ -37,6 +37,16 @@ CREATE INDEX IF NOT EXISTS ix_bar_5min_ts_date ON {TABLE_NAME} (ts_code, trade_d
 CREATE INDEX IF NOT EXISTS ix_bar_5min_date_time ON {TABLE_NAME} (trade_date, trade_time);
 """
 
+
+# Source priority (higher rank wins on conflict, OPT-224): real 5-minute bars
+# ('baostock'/'tushare.stk_mins'/'ext_*') always beat 'live_1430' — a
+# close-only 14:30 snapshot written by the live panel job. The snapshot exists
+# so the replay's breadth gate has a market-wide 14:30 sample and held legs get
+# a 14:30 exit print; it must never clobber a real bar's OHLC (amp_1430).
+def _source_rank(col: str) -> str:
+    return f"(CASE {col} WHEN 'live_1430' THEN -1 WHEN 'ext_15min' THEN 0 ELSE 1 END)"
+
+
 UPSERT_SQL = f"""
 INSERT INTO {TABLE_NAME}(
     ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
@@ -49,8 +59,8 @@ ON CONFLICT (ts_code, trade_date, trade_time) DO UPDATE SET
     vol = EXCLUDED.vol,
     amount = EXCLUDED.amount,
     source = EXCLUDED.source
-WHERE (CASE {TABLE_NAME}.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
-    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
+WHERE {_source_rank(f"{TABLE_NAME}.source")}
+    <= {_source_rank("EXCLUDED.source")}
 """
 
 
@@ -148,8 +158,8 @@ def upsert_5min_payload(payload: list[tuple], *, on_conflict: str = "update") ->
                     vol = EXCLUDED.vol,
                     amount = EXCLUDED.amount,
                     source = EXCLUDED.source
-                WHERE (CASE {TABLE_NAME}.source WHEN 'ext_15min' THEN 0 ELSE 1 END)
-                    <= (CASE EXCLUDED.source WHEN 'ext_15min' THEN 0 ELSE 1 END)"""
+                WHERE {_source_rank(f"{TABLE_NAME}.source")}
+                    <= {_source_rank("EXCLUDED.source")}"""
             )
             cur.execute(
                 f"""
@@ -190,3 +200,41 @@ def count_rows() -> int:
         with conn.cursor() as cur:
             cur.execute(f"SELECT count(*) FROM {TABLE_NAME}")
             return int(cur.fetchone()[0])
+
+
+def fetch_1430_closes(
+    ts_codes: list[str], start_date: str, end_date: str
+) -> dict[str, dict[str, float]]:
+    """Raw 14:30 close per ts_code/day over [start, end] (H-CLOCK-1430).
+
+    ``bar_5min`` stores **raw** prints; the ``source='live_1430'`` snapshot rows
+    written by the live panel job are the same 14:30 print (close only) and are
+    accepted. A missing row means "no 14:30 print that day" — callers must skip
+    the fill, never guess a price.
+    """
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return {}
+    ensure_table()
+    out: dict[str, dict[str, float]] = {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, trade_date, close
+                FROM {TABLE_NAME}
+                WHERE ts_code = ANY(%s)
+                  AND trade_time = '1430'
+                  AND trade_date >= %s AND trade_date <= %s
+                  AND close IS NOT NULL AND close > 0
+                """,
+                (codes, start_date, end_date),
+            )
+            for ts_code, trade_date, close in cur.fetchall():
+                d = (
+                    trade_date.strftime("%Y-%m-%d")
+                    if hasattr(trade_date, "strftime")
+                    else str(trade_date)
+                )
+                out.setdefault(str(ts_code), {})[d] = float(close)
+    return out

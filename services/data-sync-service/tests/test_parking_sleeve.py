@@ -5,8 +5,6 @@ Synthetic panels, hand-computed expectations. No DB, no network.
 
 from __future__ import annotations
 
-import datetime
-
 import pytest
 
 from data_sync_service.service.parking_sleeve import HYST_BAND, hysteresis_parking_replay
@@ -143,95 +141,3 @@ def test_trail_exit_parks_repo_then_rotates_next_day() -> None:
     assert by_day["2026-03-21"]["trail_exit"] is True
     assert by_day["2026-03-21"]["pick_key"] == "REPO"
     assert by_day["2026-03-22"]["pick_key"] == "OIL"
-
-
-def _harbor_result(px: dict[str, dict[str, float]], days: list[str]) -> dict:
-    # days[0] is the prev session (a weekday); rows cover days[1:].
-    rows = [
-        {
-            "date": d,
-            "prev": days[i - 1],
-            "navBase": round(1.0 + 0.001 * i, 6),
-            "navSingle": round(1.0 + 0.001 * i, 6),
-            "idlePct": 100.0,
-            "deployedPct": 0.0,
-        }
-        for i, d in enumerate(days)
-        if i > 0
-    ]
-    return {"ok": True, "rows": rows, "summary": {"fusedPct": 1.0, "basePct": 1.0}}
-
-
-def test_blend_harbor_h2_matches_standalone_sleeve_when_fully_parked() -> None:
-    from data_sync_service.service.parking_sleeve import (
-        blend_harbor_h2_timeline,
-        hysteresis_parking_replay,
-    )
-
-    px = _px()
-    days = sorted({d for m in px.values() for d in m})
-    wk = [d for d in days if d >= "2026-03-02"]
-    cal = [d for d in wk if datetime.date.fromisoformat(d).weekday() < 5][:9]
-    harbor_result = _harbor_result(px, cal)
-    for r in harbor_result["rows"]:
-        r["navBase"] = 1.0  # flat engine: blend must equal the sleeve alone
-    out = blend_harbor_h2_timeline(harbor_result, closes=px)
-    assert out["mode"] == "harbor_h2" and out["strategy"] == "港湾H2"
-    assert out["summary"]["fusedPct"] != 1.0
-    # Fully parked: blend NAV == standalone H2 sleeve NAV on the same panel.
-    recs = hysteresis_parking_replay(px, cal)
-    nav = 1.0
-    for r in recs:
-        nav *= 1.0 + float(r["parking_ret"]) - 0.0005 * int(r["sides"])
-    assert abs(out["summary"]["fusedPct"] - round((nav - 1) * 100, 2)) < 0.05
-    assert out["parkedBlotter"] and out["parkedHeld"] is not None
-    assert all("pick" in r and "parkedSides" in r for r in out["rows"])
-
-
-def test_blend_harbor_h2_zero_idle_tracks_engine_only() -> None:
-    from data_sync_service.service.parking_sleeve import blend_harbor_h2_timeline
-
-    px = _px()
-    days = sorted({d for m in px.values() for d in m})
-    wk = [d for d in days if d >= "2026-03-02"]
-    cal = [d for d in wk if datetime.date.fromisoformat(d).weekday() < 5][:6]
-    harbor_result = _harbor_result(px, cal)
-    for r in harbor_result["rows"]:
-        r["idlePct"] = 0.0
-    out = blend_harbor_h2_timeline(harbor_result, closes=px)
-    # No idle cash: blend NAV == engine NAV exactly (parking irrelevant).
-    for r_in, r_out in zip(harbor_result["rows"], out["rows"], strict=True):
-        assert r_out["navSingle"] == r_in["navBase"]
-    assert out["summary"]["fusedPct"] == round(
-        (harbor_result["rows"][-1]["navBase"] - 1) * 100, 2
-    )
-
-
-class TestHarborH2Route:
-    """Route dispatch for the harbor_h2 validation line (mocked Harbor leg)."""
-
-    def test_harbor_h2_uses_hysteresis_sleeve(self, monkeypatch) -> None:  # noqa: ANN001
-        from data_sync_service.api import backtest_routes as br
-
-        harbor_result = {
-            "ok": True,
-            "rows": [
-                {"date": "2026-03-03", "prev": "2026-03-02", "navBase": 1.001,
-                 "navSingle": 1.001, "idlePct": 100.0, "deployedPct": 0.0},
-                {"date": "2026-03-04", "prev": "2026-03-03", "navBase": 1.002,
-                 "navSingle": 1.002, "idlePct": 100.0, "deployedPct": 0.0},
-            ],
-            "summary": {"fusedPct": 0.2, "basePct": 0.2},
-        }
-        orig = br._get_or_build_timeline
-
-        def _fake(start: str, end: str, *, strategy: str = "harbor", **kw: object) -> object:
-            if strategy == "harbor":
-                return harbor_result, None
-            return orig(start, end, strategy=strategy, **kw)  # type: ignore[arg-type]
-
-        monkeypatch.setattr(br, "_get_or_build_timeline", _fake)
-        out, _ = br._get_or_build_timeline("2026-03-03", "2026-03-04", strategy="harbor_h2")
-        assert out["mode"] == "harbor_h2" and out["strategy"] == "港湾H2"
-        assert "H-HARBOR-H2" in out["note"]
-        assert len(out["rows"]) == 2

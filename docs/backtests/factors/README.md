@@ -21,6 +21,11 @@
 
 ---
 
+### 综合结论档（先看）
+| 档 | 是什么 | 判定 | 为什么 |
+|----|--------|------|--------|
+| [second-engine-search-2026-09-18](second-engine-search-2026-09-18.md) | 「有没有第二个 S-gap 级引擎」三层普查（层内 12 臂 + 9 事件族 + 全台账） | 🧱 **结论级** | **没有第二个**；跳空/形态/涨停族要么弱、要么 regime 依赖、要么不可跟；唯一引擎 = S-gap |
+
 ## 1. 全部因子档（一眼判定）
 
 ### 技术 / 价量 / 动量 / 反转
@@ -37,6 +42,9 @@
 | [bollinger-trend-study.md](bollinger-trend-study.md) | 布林 %b/带宽 | 📝 | 目标依赖，无统一 edge |
 | [indicator-supertrend-fibonacci-priceaction-notes.md](indicator-supertrend-fibonacci-priceaction-notes.md) | SuperTrend/Fib/PA | 📝 | 已被 MA+ATR/trail 族覆盖 |
 | [uptrend-pullback-study.md](uptrend-pullback-study.md) | 上升趋势回调 | 🟡 | 有信号、可交易性弱 |
+| [bull-ma10-pullback-2026-09-18](bull-ma10-pullback-2026-09-18.md) | 多头排列+量能+回踩MA10（民间战法，次日/3日卖） | ❌ **REJECT** | 毛利 <30bp 成本；量能排名 #1 四窗全负；4槽3日 long −74% vs S-gap +464% |
+| [sgap-alt-manifestations-2026-09-18](sgap-alt-manifestations-2026-09-18.md) | 隔夜跳空层的其他 14:30 排序（位置/回踩/回吐，双向） | ❌ **REJECT** | 真引擎 A/B：无一臂接近 `amp_1430`（OOS2 +93% vs +209%）；tercile 均值代理被证伪（+3.14%/笔 vs 桶 −1.8%） |
+| [sgap-alt2-bar-features-2026-09-18](sgap-alt2-bar-features-2026-09-18.md) | 隔夜跳空层 bar 级量额排序（VWAP偏离/午后量占比/量价重心，双向） | ❌ **REJECT** | 4 臂全输 OOS2（最好 +134% vs +209%），train 小胜但选参窗崩；两轮共 12 臂无第二形态 |
 | [support-resistance-box-study.md](support-resistance-box-study.md) | 箱体支撑阻力 | 🟡 | 同上 |
 | [long-consolidation-breakout-study.md](long-consolidation-breakout-study.md) | 长调整突破 | 🟡 | 同上 |
 | [scoop-exhaustion-oos-check-2026-09-04](scoop-exhaustion-oos-check-2026-09-04.md) | 强股勺型耗尽（做空） | 🧱 | 方法缺失，不下结论 |
@@ -79,12 +87,13 @@
 |-----------|------|------|------|
 | 价量相关/协方差反向 | ❌ | Alpha101 A13/A16、GTJA099/062/… | 成本（换手 0.6–0.9）；S1 独立但 S2 死 |
 | 短反转 / 日内 | ❌ | GTJA071、Alpha101 A33/A101、5min | 毛收益 <30bp 成本 |
-| 均线 / 突破 / 趋势形态 | ❌ | P1–P8、MA/MACD/KDJ | 与 RS/主线共线 |
+| 均线 / 突破 / 趋势形态 | ❌ | P1–P8、MA/MACD/KDJ、多头排列回踩MA10（H-PB-1） | 与 RS/主线共线；1–3 日尺度毛利 <30bp 成本 |
 | 量/额波动（低波反向） | ❌ | GTJA070/097、`vol20` | 流动性/市值代理 |
 | 基本面质量（ROE/现金流/杠杆/F-score） | ❌ | F1/F2/F4/G1–G3 | 被市值/价值吸收 |
 | 基本面价值/低投资/应计（长周期） | ⚠️ smart-beta | 慢价值 V1、X3 投资/应计 | 真实 +2%/年，但满仓 beta、非引擎 |
 | 另类数据（股东户数/北向/大单） | ❌ | X1 | 噪音或小市值代理 |
 | 情绪/研报/热点事件 | ❌ | 研报覆盖、人气榜、趋势卡 | 注意力峰值 = 追高税 |
+| 隔夜跳空 / 事件微结构 | ⚠️ **仅 S-gap** | S-gap `amp_1430` | 本层唯一可用排序；同层其他排序全输（H-SGAP-ALT-1），涨停跟买不可吃（board-quality） |
 
 ---
 

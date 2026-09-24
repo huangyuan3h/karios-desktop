@@ -19,6 +19,7 @@ Clock unification: docs/backtests/sat/sat-clock-unify-1430-2026-09-11.md
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from datetime import date, timedelta
@@ -30,6 +31,8 @@ import psycopg
 from data_sync_service.config import get_settings
 from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 
+logger = logging.getLogger(__name__)
+
 POSITION_PCT = 0.25
 # Single source for live + backtest (OPT-172): the satellite round-trip cost is
 # the CN paper-cost model (30bps), never a local copy that can drift.
@@ -38,6 +41,14 @@ BUCKET_Q = 3
 MAX_POS = 4
 BODY = 3
 R_WIDE_THRESHOLD = 0.5
+# The 14:30 R-wide gate must be a market-wide sample. bar_5min is a targeted
+# store (the 18:40 job pulls the day's gap names + paper holdings), so a day
+# whose only prints are the gap names (~20-50) yields a meaningless breadth
+# (2026-09-17: 29/36 = 80.6% "open" vs the real 27.9% full-market "closed" →
+# phantom buys in the starship/starport Timeline from 2026-09-11). Below this
+# share of the day's known universe the gate falls back to the close-based
+# breadth (the historical parity path), never the thin sample (OPT-224).
+MIN_BREADTH_COVERAGE = 0.2
 MIN_GAP_PCT = 0.03
 WARMUP_CAL_DAYS = 120
 FILL_NEXT_OPEN = "next_open"
@@ -79,6 +90,19 @@ HABIT_RECIPE: dict[str, Any] = {
     "gate_1430": True,
 }
 
+A25_SLEEVE_WEIGHT = 0.25
+A25_B3_WEIGHT = 0.75
+A25_TRANSFER_BPS = 5.0
+A25_PARKING_MODE = "h2_a25"
+A25_TAG = "sat-h2-a25-v1-20260924"
+
+# 星舰 B (2026-09-24): idle cash 100% parked in a 3-leg inverse-vol blend
+# {BOND10, GOLD, NASDAQ} (single source = homeport-style monthly risk budget).
+# vs H2-a25: lower long return, shallower drawdown, stronger 2022-23 stress.
+STARSIP_B_PARKING_MODE = "starship_b"
+STARSIP_B_UNIVERSE: tuple[str, ...] = ("511260.SH", "518880.SH", "513100.SH")
+STARSIP_B_TAG = "starship-b-20260924"
+
 
 def _universe_where(*, include_st: bool, include_listed_history: bool) -> str:
     """WHERE fragment for the satellite replay universe (OPT-211 P3).
@@ -90,7 +114,7 @@ def _universe_where(*, include_st: bool, include_listed_history: bool) -> str:
     ST names (sensitivity only: the engine models 10/20% boards while ST
     trades 5% bands, so fills on ST limit days overstate).
     """
-    conds = ["d.ts_code NOT LIKE '%%.BJ'"]
+    conds = ["d.ts_code NOT LIKE '%%.BJ'", "d.ts_code NOT LIKE '%%.HK'"]
     if include_listed_history:
         conds.append("(sb.delist_date IS NULL OR d.trade_date <= sb.delist_date)")
     else:
@@ -134,9 +158,7 @@ def _load_rows(
         "SELECT d.trade_date, d.ts_code, d.open, d.high, d.low, d.close, d.pre_close, d.amount "
         "FROM daily d JOIN stock_basic sb ON sb.ts_code = d.ts_code "
         f"WHERE d.trade_date >= '{start}' AND d.trade_date <= '{end}' AND "
-        + _universe_where(
-            include_st=include_st, include_listed_history=include_listed_history
-        )
+        + _universe_where(include_st=include_st, include_listed_history=include_listed_history)
     )
     per_ts: dict[str, list[dict[str, Any]]] = defaultdict(list)
     with psycopg.connect(s.database_url) as conn, conn.cursor() as cur:
@@ -480,11 +502,17 @@ def _breadth_at_1430(ctx: dict[str, Any], day: str) -> float | None:
     per_ts = ctx["per_ts"]
     mv_map = ctx.get("mv_map") or {}
     date_idx = ctx["date_idx"]
+    eligible = 0
     above = 0
     tot = 0
     for ts, series in per_ts.items():
         idx = date_idx.get(ts, {}).get(day, -1)
-        if idx < 20 or ts not in (mv_map.get(day) or {}):
+        if idx < 20:
+            continue
+        # Names the day knows about at all (before the print check) — the guard
+        # denominator. A full-market day has ~5000; a gap-only day ~30-50.
+        eligible += 1
+        if ts not in (mv_map.get(day) or {}):
             continue
         px = (px1430.get(ts) or {}).get(day)
         if not px or px <= 0:
@@ -502,6 +530,8 @@ def _breadth_at_1430(ctx: dict[str, Any], day: str) -> float | None:
         ma20 = (sum(prior) + float(px)) / 20.0
         if float(px) > ma20:
             above += 1
+    if eligible and tot < MIN_BREADTH_COVERAGE * eligible:
+        return None
     return (above / tot) if tot else None
 
 
@@ -773,6 +803,7 @@ def replay_sgap_from_context(
     max_t1_turnover_mult: float | None = None,
     body_by_stage_tier: dict[int, int] | None = None,
     min_gap_pct: float = MIN_GAP_PCT,
+    allow_lookahead: bool = False,
 ) -> dict[str, Any]:
     """Replay S-gap on a preloaded context. Positions start empty at ``start``.
 
@@ -865,6 +896,19 @@ def replay_sgap_from_context(
         raise ValueError(f"r_wide must be in (0, 1), got {r_wide!r}")
     if gate_1430 and fill_mode != FILL_SAME_1430:
         raise ValueError("gate_1430 requires fill_mode=same_1430")
+    # Look-ahead guard (2026-09-24 ledger B3): a same_1430 replay with the OLD
+    # full-day amplitude key (rank_key=None) or the 15:00 close-basis gate
+    # (gate_1430=False) is look-ahead-tinted. Live/production must pass
+    # rank_key="amp_1430" + gate_1430=True; frozen old-arm experiments opt out
+    # explicitly with allow_lookahead=True.
+    if fill_mode == FILL_SAME_1430 and (rank_key is None or not gate_1430) and not allow_lookahead:
+        logger.warning(
+            "replay_sgap_from_context: same_1430 with rank_key=%r gate_1430=%r uses "
+            "the OLD look-ahead key/gate; pass rank_key='amp_1430' + gate_1430=True "
+            "for the causal Live habit, or allow_lookahead=True for a frozen old arm.",
+            rank_key,
+            gate_1430,
+        )
     if pool_mode is None:
         pool_mode = "fallback" if limit_fallback else "strict"
     clip = float(position_pct)
@@ -899,6 +943,7 @@ def replay_sgap_from_context(
     realized = 0.0
     rows: list[dict[str, Any]] = []
     blotter: list[dict[str, Any]] = []
+    decision_unavailable_days: set[str] = set()
     for day in cal:
         if day < start or day > end:
             continue
@@ -907,6 +952,8 @@ def replay_sgap_from_context(
             b1430 = _breadth_at_1430(ctx, day)
             if b1430 is not None:
                 breadth = b1430
+            else:
+                decision_unavailable_days.add(day)
         r_wide = breadth > r_wide_threshold
         to_close: list[tuple[str, str]] = []
         for ts, p in list(positions.items()):
@@ -1262,9 +1309,7 @@ def replay_sgap_from_context(
         # (entry-time uses the requested `end`, so an in-flight leg shows the real
         # next session instead of being clamped to the last loaded data day).
         exit_due = (
-            cal[ei + p_body - 1]
-            if ei >= 0 and ei + p_body - 1 < len(cal)
-            else p.get("exit_due")
+            cal[ei + p_body - 1] if ei >= 0 and ei + p_body - 1 < len(cal) else p.get("exit_due")
         )
         open_positions.append(
             {
@@ -1339,8 +1384,12 @@ def replay_sgap_from_context(
         fill_src_entry[es] = fill_src_entry.get(es, 0) + 1
         xs = str(b.get("exitPxSrc") or "unknown")
         fill_src_exit[xs] = fill_src_exit.get(xs, 0) + 1
+    unavailable_days = sorted(decision_unavailable_days)
+    row_days = {str(r.get("date")) for r in rows}
     return {
         "rows": rows,
+        "decisionAvailable": end in row_days and end not in decision_unavailable_days,
+        "decisionUnavailableDays": unavailable_days,
         "openPositions": open_positions,
         "blotter": blotter,
         "summary": {
@@ -1485,9 +1534,12 @@ def sgap_to_timeline_rows(sat: dict[str, Any]) -> dict[str, Any]:
     summary = sat.get("summary") or {}
     sat_pct = float(summary.get("satPct") or 0.0)
     sat_dd = float(summary.get("satMaxDdPct") or 0.0)
+    unavailable_days = sat.get("decisionUnavailableDays") or []
     return {
         "ok": True,
         "mode": "state_bucket_sgap",
+        "decisionAvailable": bool(sat.get("decisionAvailable", True)),
+        "decisionUnavailableDays": list(unavailable_days),
         "strategy": "状态分桶 S-gap (可执行)",
         "rows": rows,
         "satCapacity": int(sat.get("satCapacity") or MAX_POS),
@@ -1515,7 +1567,7 @@ def compose_parked_rows(
     rows: list[dict[str, Any]],
     sleeve_ret_by_day: dict[str, float],
     *,
-    cost_bps: float = 5.0,
+    cost_bps: float = A25_TRANSFER_BPS,
 ) -> dict[str, Any]:
     """Starship v2 composition (H-SAT-IDLE `A2_true`, user-approved 2026-09-15).
 
@@ -1569,9 +1621,7 @@ def compose_parked_rows(
         "summary": {
             "parkedPct": round((nav - 1) * 100, 2),
             "parkedMaxDdPct": round(max_dd * 100, 1),
-            "avgParkedWeight": round(
-                sum(r["parkedWeight"] for r in out_rows) / len(out_rows), 3
-            ),
+            "avgParkedWeight": round(sum(r["parkedWeight"] for r in out_rows) / len(out_rows), 3),
         },
     }
 
@@ -1642,7 +1692,11 @@ def parked_blotter(
 
 
 def apply_parked_display(
-    out: dict[str, Any], *, cost_bps: float = 5.0, sleeve_mode: str = "canonical"
+    out: dict[str, Any],
+    *,
+    cost_bps: float = A25_TRANSFER_BPS,
+    sleeve_mode: str = "canonical",
+    parked_mode: str = "sleeve",
 ) -> dict[str, Any]:
     """Overlay starship v2 (satellite + parked idle cash) onto a Timeline result.
 
@@ -1652,13 +1706,13 @@ def apply_parked_display(
     Adds ``parkedBlotter``/``parkedHeld`` so the audit trail records the sleeve's
     ETF buys/sells (e.g. 买黄金), not just the satellite book.
 
-    ``sleeve_mode="hysteresis"`` parks idle cash with the H2 hysteresis sleeve
-    (rotate only on >= 2pt mom60 leadership; H-SLEEVE-TUNE, approved 2026-09-16)
-    instead of canonical Harbor parking. Callers other than the starship
-    display path must keep the default.
+    Since H-H2-UNIFY (2026-09-18) the idle parking is H2 everywhere (rotate
+    only on >= 2pt mom60 leadership); ``sleeve_mode`` is retained for API
+    compatibility and ignored — every caller gets the unified machine.
     """
     from data_sync_service.service.harbor import (
         COST,
+        HYST_BAND,
         NAMES,
         load_etf_closes,
         parking_replay,
@@ -1669,15 +1723,92 @@ def apply_parked_display(
         return out
     dates = [str(r["date"]) for r in rows]
     closes = load_etf_closes()
-    if sleeve_mode == "hysteresis":
-        from data_sync_service.service.parking_sleeve import hysteresis_parking_replay
-
-        recs = hysteresis_parking_replay(closes, dates)
-    else:
-        recs = parking_replay(closes, dates, idle_by_day=None)
+    # Unified H2 (H-H2-UNIFY, 2026-09-18): one machine, product band.
+    recs = parking_replay(closes, dates, idle_by_day=None, hyst_band=HYST_BAND)
     sleeve_ret_by_day = {
         str(rec["date"]): float(rec["parking_ret"]) - COST * int(rec["sides"]) for rec in recs
     }
+    if parked_mode == STARSIP_B_PARKING_MODE:
+        # 星舰 B (2026-09-24): idle cash 100% parked in the 3-leg inverse-vol
+        # blend {国债, 黄金, 纳指}. Reuses homeport.starship_b_run (single source).
+        from data_sync_service.service.homeport import (
+            STARSIP_B_UNIVERSE,
+            load_starship_b_closes,
+            starship_b_run,
+        )
+
+        b_run = starship_b_run(load_starship_b_closes(), dates)
+        b_nav = b_run["nav"]
+        b_ret_by_day: dict[str, float] = {}
+        for i in range(1, len(dates)):
+            a, b = b_nav[i - 1], b_nav[i]
+            b_ret_by_day[dates[i]] = (b / a - 1.0) if a else 0.0
+        # 100% parked in B leg (no H2 sleeve, no B3).
+        sleeve_ret_by_day = {
+            d: b_ret_by_day.get(d, 0.0) for d in sleeve_ret_by_day
+        }
+        from data_sync_service.service.strategy_today import B3_LABELS
+
+        b_weights = b_run.get("weights") or []
+        for row, weights in zip(rows, b_weights, strict=False):
+            top = max(STARSIP_B_UNIVERSE, key=lambda ts: float(weights.get(ts) or 0.0))
+            row["riskTop"] = top
+            row["riskTopW"] = round(float(weights.get(top) or 0.0), 4)
+        b_peak = 1.0
+        b_max_dd = 0.0
+        for value in b_nav:
+            b_peak = max(b_peak, float(value))
+            if b_peak > 0:
+                b_max_dd = max(b_max_dd, (b_peak - float(value)) / b_peak)
+        last_weights = b_weights[-1] if b_weights else {}
+        out["riskUniverse"] = [{"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in STARSIP_B_UNIVERSE]
+        out["riskBlotter"] = b_run.get("events") or []
+        out["riskHeld"] = {
+            "date": dates[-1] if dates else "",
+            "weights": {ts: round(float(last_weights.get(ts) or 0.0), 4) for ts in STARSIP_B_UNIVERSE},
+        }
+        out.setdefault("summary", {})["riskPct"] = round((b_nav[-1] - 1.0) * 100, 2) if b_nav else 0.0
+        out["summary"]["riskMaxDdPct"] = round(b_max_dd * 100, 1)
+    if parked_mode in ("a25", A25_PARKING_MODE):
+        # 星舰稳健版 (H-SAT-A25): idle parked 25% sleeve + 75% B3 risk-budget.
+        from data_sync_service.service.homeport import (
+            RISK_UNIVERSE,
+            load_risk_closes,
+            risk_budget_run,
+        )
+
+        b3_run = risk_budget_run(load_risk_closes(), dates)
+        b3_nav = b3_run["nav"]
+        b3_ret_by_day: dict[str, float] = {}
+        for i in range(1, len(dates)):
+            a, b = b3_nav[i - 1], b3_nav[i]
+            b3_ret_by_day[dates[i]] = (b / a - 1.0) if a else 0.0
+        sleeve_ret_by_day = {
+            d: A25_SLEEVE_WEIGHT * v + A25_B3_WEIGHT * b3_ret_by_day.get(d, 0.0)
+            for d, v in sleeve_ret_by_day.items()
+        }
+        from data_sync_service.service.strategy_today import B3_LABELS
+
+        b3_weights = b3_run.get("weights") or []
+        for row, weights in zip(rows, b3_weights, strict=False):
+            top = max(RISK_UNIVERSE, key=lambda ts: float(weights.get(ts) or 0.0))
+            row["riskTop"] = top
+            row["riskTopW"] = round(float(weights.get(top) or 0.0), 4)
+        b3_peak = 1.0
+        b3_max_dd = 0.0
+        for value in b3_nav:
+            b3_peak = max(b3_peak, float(value))
+            if b3_peak > 0:
+                b3_max_dd = max(b3_max_dd, (b3_peak - float(value)) / b3_peak)
+        last_weights = b3_weights[-1] if b3_weights else {}
+        out["riskUniverse"] = [{"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in RISK_UNIVERSE]
+        out["riskBlotter"] = b3_run.get("events") or []
+        out["riskHeld"] = {
+            "date": dates[-1] if dates else "",
+            "weights": {ts: round(float(last_weights.get(ts) or 0.0), 4) for ts in RISK_UNIVERSE},
+        }
+        out.setdefault("summary", {})["riskPct"] = round((b3_nav[-1] - 1.0) * 100, 2) if b3_nav else 0.0
+        out["summary"]["riskMaxDdPct"] = round(b3_max_dd * 100, 1)
     parked = compose_parked_rows(rows, sleeve_ret_by_day, cost_bps=cost_bps)
     by_day = {r["date"]: r for r in parked["rows"]}
     rec_by_day = {str(rec["date"]): rec for rec in recs}
@@ -1713,18 +1844,39 @@ def apply_parked_display(
     summary["maxDdFusedPct"] = -abs(parked["summary"]["parkedMaxDdPct"])
     out["parkedBlotter"] = events
     out["parkedHeld"] = held
-    out["mode"] = "starship_parked"
-    out["note"] = (
-        "星舰 v2 = 卫星 standalone + 闲置现金停 H2 迟滞套筒（换仓需 2pt mom60 领先，"
-        "2026-09-16 起；真实现金权重 causal T−1，5bps/边）。展示/回测口径；"
-        "Live=港湾，前置=paper 3/20+授权。"
-    )
+    if parked_mode == STARSIP_B_PARKING_MODE:
+        out["mode"] = "starship_b"
+        out["note"] = (
+            "星舰 B = 卫星 standalone + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，"
+            "因果 T−1，5bps/边）。研究/展示/人工操作口径；Live=港湾。"
+            "报告见 starship-b-2026-09-24。"
+        )
+    elif parked_mode in ("a25", A25_PARKING_MODE):
+        out["mode"] = "starship_robust"
+        out["note"] = (
+            "星舰稳健版 a25 = 卫星 standalone + 闲置现金 25% 停 H2 迟滞套筒 / 75% 停 B3 风险预算"
+            "（逆波动率 5 资产月频；真实现金权重 causal T−1，转移 5bps/边）。"
+            "展示/回测口径；Live=港湾，前置=paper 3/20+授权。K3 风险见 sat-h2-a25-2026-09-24。"
+        )
+    else:
+        out["mode"] = "starship_parked"
+        out["note"] = (
+            "星舰 v2 = 卫星 standalone + 闲置现金停 H2 迟滞套筒（换仓需 2pt mom60 领先，"
+            "2026-09-16 起；真实现金权重 causal T−1，5bps/边）。展示/回测口径；"
+            "Live=港湾，前置=paper 3/20+授权。"
+        )
     return out
 
 
 def build_state_bucket_timeline(
-    *, start: str, end: str, recipe: str = "frozen", parked_display: bool = False,
-    include_st: bool = False, include_listed_history: bool = False,
+    *,
+    start: str,
+    end: str,
+    recipe: str = "frozen",
+    parked_display: bool = False,
+    parked_mode: str = "sleeve",
+    include_st: bool = False,
+    include_listed_history: bool = False,
 ) -> dict[str, Any]:
     """Product Timeline entry for the standalone state-bucket S-gap strategy.
 
@@ -1748,7 +1900,7 @@ def build_state_bucket_timeline(
     out["start"] = start
     out["end"] = end
     if parked_display:
-        out = apply_parked_display(out, sleeve_mode="hysteresis")
+        out = apply_parked_display(out, sleeve_mode="hysteresis", parked_mode=parked_mode)
     return out
 
 

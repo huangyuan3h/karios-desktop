@@ -40,6 +40,30 @@ const CATALOG = {
       },
     },
     {
+      key: 'starship_robust',
+      name: '稳健星舰 H2-a25',
+      structure: '卫星 + cashShare(T−1) × (25% H2 ETF + 75% B3)',
+      status: 'product_candidate',
+      statusLabel: '现行 canonical · K3 风险',
+      role: 'balanced',
+      roleLabel: '稳健',
+      timelineStrategy: 'starship_robust',
+      doc: 'docs/backtests/stable/sat-h2-a25-2026-09-24.md',
+      tag: 'sat-h2-a25-v1-20260924',
+      updated: '2026-09-24',
+      canonical: true,
+      variant: {
+        sleeveMode: 'h2',
+        hystBand: 0.02,
+        sleeveWeight: 0.25,
+        b3Weight: 0.75,
+      },
+      risk: 'K3 failed: long MDD delta -1.6pt',
+      windows: WINDOWS,
+      pros: ['现行稳健研究/展示口径'],
+      cons: ['K3 风险未过'],
+    },
+    {
       key: 'starport',
       name: '星港',
       structure: '母港 × 卫星 0.2 曝露（H-B3-SAT chosen=0.2）',
@@ -147,8 +171,8 @@ describe('StrategyCatalogPanel', () => {
   it('renders the three tiers plus sunset baseline and the parallel twin-star entry', async () => {
     renderPanel();
     expect(await screen.findByText('策略族总览')).toBeDefined();
-    for (const name of ['星舰', '星港', '母港', '港湾', '双子星']) {
-      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeDefined();
+    for (const name of ['星舰', '稳健星舰 H2-a25', '星港', '母港', '港湾', '双子星']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${name}`) })).toBeDefined();
     }
     // Role badges: one per tier tab, plus one in the selected-strategy header
     // (default selection = starship, so 进攻 appears twice).

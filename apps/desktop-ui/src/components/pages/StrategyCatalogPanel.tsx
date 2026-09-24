@@ -72,7 +72,8 @@ export function StrategyCatalogPanel({
         <div className="flex items-center gap-2 text-[12px] font-medium">
           策略族总览
           <span className="text-[10px] font-normal text-[var(--k-muted)]">
-            2026-09-14 clean 口径（母港为 M30 防守档，2026-09-16）· 参考数字，不进 Live（Live 恒为港湾）
+             2026-09-24 H2-a25 现行口径（Live 恒为港湾；canonical 不等于全门 PASS）
+
           </span>
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -121,9 +122,20 @@ export function StrategyCatalogPanel({
             {selected.tag} · 更新 {selected.updated}
           </span>
         </div>
-        <p className="mt-1 text-xs text-[var(--k-muted)]">{selected.structure}</p>
+         <p className="mt-1 text-xs text-[var(--k-muted)]">{selected.structure}</p>
+         {selected.canonical ? (
+           <div className="mt-1 text-[10px] font-medium text-sky-700 dark:text-sky-300">
+             canonical · {selected.variant?.sleeveMode} · H2 {selected.variant?.hystBand} · {selected.variant?.sleeveWeight}/{selected.variant?.b3Weight}
+           </div>
+         ) : null}
+         {selected.risk ? (
+           <div className="mt-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+             风险：{selected.risk}
+           </div>
+         ) : null}
 
-        <div className="mt-3 overflow-hidden rounded border border-[var(--k-border)]">
+         <div className="mt-3 overflow-hidden rounded border border-[var(--k-border)]">
+
           <table className="w-full text-left text-xs tabular-nums">
             <thead className="bg-[var(--k-surface)] text-[10px] text-[var(--k-muted)]">
               <tr>

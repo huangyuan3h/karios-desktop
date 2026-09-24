@@ -1,0 +1,235 @@
+{
+  "weights": {
+    "ret": 0.5,
+    "sharpe": 0.3,
+    "mdd": 0.2
+  },
+  "is_holdout": false,
+  "windows": [
+    {
+      "window": "21H2-22H1",
+      "start": "2021-08-01",
+      "end": "2022-08-01",
+      "leg_canon": {
+        "cagr": -2.6,
+        "mdd": -9.4,
+        "sharpe": -0.16
+      },
+      "leg_h2": {
+        "cagr": 1.43,
+        "mdd": -6.5,
+        "sharpe": 0.18
+      },
+      "har_canon": {
+        "cagr": 19.9,
+        "mdd": -16.0,
+        "sharpe": 1.0
+      },
+      "har_h2": {
+        "cagr": 20.53,
+        "mdd": -15.4,
+        "sharpe": 1.03
+      }
+    },
+    {
+      "window": "22H2-23H1",
+      "start": "2022-08-01",
+      "end": "2023-08-01",
+      "leg_canon": {
+        "cagr": 22.14,
+        "mdd": -7.3,
+        "sharpe": 1.62
+      },
+      "leg_h2": {
+        "cagr": 17.5,
+        "mdd": -11.2,
+        "sharpe": 1.22
+      },
+      "har_canon": {
+        "cagr": -12.81,
+        "mdd": -16.4,
+        "sharpe": -0.62
+      },
+      "har_h2": {
+        "cagr": -14.64,
+        "mdd": -18.8,
+        "sharpe": -0.73
+      }
+    },
+    {
+      "window": "23H2-24H1",
+      "start": "2023-08-01",
+      "end": "2024-08-01",
+      "leg_canon": {
+        "cagr": 11.05,
+        "mdd": -10.3,
+        "sharpe": 0.69
+      },
+      "leg_h2": {
+        "cagr": 4.87,
+        "mdd": -10.3,
+        "sharpe": 0.36
+      },
+      "har_canon": {
+        "cagr": 3.34,
+        "mdd": -12.2,
+        "sharpe": 0.26
+      },
+      "har_h2": {
+        "cagr": 0.99,
+        "mdd": -13.6,
+        "sharpe": 0.15
+      }
+    },
+    {
+      "window": "24H2-25H1",
+      "start": "2024-08-01",
+      "end": "2025-08-01",
+      "leg_canon": {
+        "cagr": 11.49,
+        "mdd": -14.3,
+        "sharpe": 0.61
+      },
+      "leg_h2": {
+        "cagr": 14.83,
+        "mdd": -13.5,
+        "sharpe": 0.74
+      },
+      "har_canon": {
+        "cagr": 58.05,
+        "mdd": -14.3,
+        "sharpe": 1.73
+      },
+      "har_h2": {
+        "cagr": 60.63,
+        "mdd": -13.5,
+        "sharpe": 1.77
+      }
+    },
+    {
+      "window": "25H2-26H1",
+      "start": "2025-08-01",
+      "end": "2026-02-01",
+      "leg_canon": {
+        "cagr": 54.99,
+        "mdd": -13.1,
+        "sharpe": 1.88
+      },
+      "leg_h2": {
+        "cagr": 87.69,
+        "mdd": -12.0,
+        "sharpe": 2.66
+      },
+      "har_canon": {
+        "cagr": 138.1,
+        "mdd": -8.1,
+        "sharpe": 3.01
+      },
+      "har_h2": {
+        "cagr": 169.2,
+        "mdd": -8.0,
+        "sharpe": 3.44
+      }
+    },
+    {
+      "window": "26H1-26H2",
+      "start": "2026-03-01",
+      "end": "2026-08-07",
+      "leg_canon": {
+        "cagr": 16.37,
+        "mdd": -28.7,
+        "sharpe": 0.55
+      },
+      "leg_h2": {
+        "cagr": 13.75,
+        "mdd": -29.4,
+        "sharpe": 0.51
+      },
+      "har_canon": {
+        "cagr": 156.35,
+        "mdd": -21.8,
+        "sharpe": 2.13
+      },
+      "har_h2": {
+        "cagr": 154.27,
+        "mdd": -22.0,
+        "sharpe": 2.12
+      }
+    },
+    {
+      "window": "cycle21-23",
+      "start": "2021-08-01",
+      "end": "2023-08-01",
+      "leg_canon": {
+        "cagr": 9.15,
+        "mdd": -9.4,
+        "sharpe": 0.77
+      },
+      "leg_h2": {
+        "cagr": 9.23,
+        "mdd": -14.5,
+        "sharpe": 0.74
+      },
+      "har_canon": {
+        "cagr": 4.19,
+        "mdd": -16.0,
+        "sharpe": 0.31
+      },
+      "har_h2": {
+        "cagr": 3.35,
+        "mdd": -18.8,
+        "sharpe": 0.27
+      }
+    },
+    {
+      "window": "recent23-26",
+      "start": "2023-08-01",
+      "end": "2026-08-07",
+      "leg_canon": {
+        "cagr": 17.53,
+        "mdd": -28.7,
+        "sharpe": 0.71
+      },
+      "leg_h2": {
+        "cagr": 19.82,
+        "mdd": -29.4,
+        "sharpe": 0.78
+      },
+      "har_canon": {
+        "cagr": 41.01,
+        "mdd": -21.9,
+        "sharpe": 1.34
+      },
+      "har_h2": {
+        "cagr": 43.51,
+        "mdd": -22.5,
+        "sharpe": 1.4
+      }
+    },
+    {
+      "window": "full21-26",
+      "start": "2021-08-01",
+      "end": "2026-08-07",
+      "leg_canon": {
+        "cagr": 14.13,
+        "mdd": -28.7,
+        "sharpe": 0.68
+      },
+      "leg_h2": {
+        "cagr": 15.5,
+        "mdd": -29.4,
+        "sharpe": 0.73
+      },
+      "har_canon": {
+        "cagr": 26.55,
+        "mdd": -22.5,
+        "sharpe": 1.04
+      },
+      "har_h2": {
+        "cagr": 27.5,
+        "mdd": -23.8,
+        "sharpe": 1.07
+      }
+    }
+  ]
+}

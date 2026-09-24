@@ -457,24 +457,8 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
         # the user's phone gets the buy list + exit flags + gate state at
         # their actual trading time (once per day via dedupe_key).
         from data_sync_service.db.webhook import emit_event
-        from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve_for_paper
 
-        try:
-            _sleeve = build_third_asset_sleeve_for_paper(day=_now().split("T")[0])
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("trading_brief execution-card sleeve failed: %s", exc)
-            _sleeve = {}
-        # Only actionable sleeve actions reach the phone push; DONT_BUY stays
-        # on the watchlist banner (a closed-gate day must never push "buy").
-        _sleeve_pushed = (
-            {
-                k: _sleeve.get(k)
-                for k in ("action", "label", "message", "price", "ma200", "idlePct", "asOfDate")
-            }
-            if _sleeve.get("active") and _sleeve.get("action") not in ("NONE", "DONT_BUY")
-            else None
-        )
-        # T6 pyramid trigger (2026-08-20): remind via the phone push when a held
+        # Pyramid trigger (2026-08-20): remind via the phone push when a held
         # symbol's close crossed the +2.5% trigger and has not been added yet.
         pyramid_triggers = []
         for h in sections:
@@ -536,7 +520,6 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
                     if h.get("type") == "holding" and h.get("action") == "EXIT"
                 ],
                 "pyramidTriggers": pyramid_triggers,
-                "thirdAssetSleeve": _sleeve_pushed,
             },
             dedupe_key=f"execution_card:{_now().split('T')[0]}",
         )

@@ -6,6 +6,8 @@ export const B3WeightSchema = z.object({
   targetPct: z.number(),
   driftPct: z.number(),
   deltaPct: z.number(),
+  /** Tradable (raw) last close for lot sizing; null when unavailable. */
+  px: z.number().nullable().optional(),
 });
 export type B3Weight = z.infer<typeof B3WeightSchema>;
 

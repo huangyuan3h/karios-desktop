@@ -41,6 +41,11 @@ LIVE_PANEL_NAME = "satellite_live_panel_latest.json"
 MIN_QUOTE_COVERAGE = 0.5
 # Compact ranked entries persisted for the card (the full panel can be ~40).
 RANKED_KEEP = 15
+# OPT-224: the 14:30 quote snapshot is also stored in bar_5min as the day's raw
+# 14:30 print — market-wide, so the replay's R-wide breadth gate is computed on
+# the real cross-section (not just the gap names) and held legs get a 14:30 exit
+# print. Close-only and lowest priority: a real 5-minute bar always wins.
+QUOTE_SOURCE = "live_1430"
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -200,7 +205,36 @@ def _inject_day(ctx: dict[str, Any], day: str, quotes: dict[str, dict[str, Any]]
     return injected
 
 
-def build_live_panel(day: str | None = None, *, quotes: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def _due_key(leg: dict[str, Any]) -> str:
+    """Sortable due date; a leg with no due date is treated as held (far future)."""
+    return str(leg.get("exitDue") or "9999-99-99")
+
+
+def _recompute_exit_due(legs: list[dict[str, Any]]) -> None:
+    """Repair ``exitDue`` against the exchange calendar (in place).
+
+    The replay's calendar only holds days that already have a ``daily`` row, so
+    on the panel day (before the close sync) an in-flight leg's ``exitDue``
+    collapses to the panel day — the exits/held split then degenerates
+    (2026-09-23 incident: 4 held legs reported as due, the panel advertised a
+    phantom fill and the card under-counted the occupied slots).
+    ``heldDays + daysLeft`` is the leg's frozen body in data-day counts, so the
+    body-th open session from the entry session is the true due date.
+    """
+    from data_sync_service.service.trade_calendar_utils import nth_open_date_from
+
+    for leg in legs:
+        held, left = leg.get("heldDays"), leg.get("daysLeft")
+        if held is None or left is None or not leg.get("entryDate"):
+            continue
+        due = nth_open_date_from(str(leg.get("entryDate")), int(held) + int(left))
+        if due:
+            leg["exitDue"] = due
+
+
+def build_live_panel(
+    day: str | None = None, *, quotes: dict[str, dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """Build today's 14:30 panel. ``quotes`` is the injection seam for tests.
 
     Runs the frozen habit replay on the pre-injection context first: today has
@@ -228,8 +262,9 @@ def build_live_panel(day: str | None = None, *, quotes: dict[str, dict[str, Any]
     except Exception as exc:  # noqa: BLE001
         logger.warning("live panel: replay legs failed: %s", exc)
         legs = []
-    exits = [x for x in legs if str(x.get("exitDue") or "") == day]
-    held = [x for x in legs if str(x.get("exitDue") or "") != day]
+    _recompute_exit_due(legs)
+    exits = [x for x in legs if _due_key(x) <= day]
+    held = [x for x in legs if _due_key(x) > day]
 
     injected = _inject_day(ctx, day, quotes)
     panel = satellite_signals_for_day(ctx, day, today=day)
@@ -239,6 +274,7 @@ def build_live_panel(day: str | None = None, *, quotes: dict[str, dict[str, Any]
     ranked = [
         {
             "ts": e.get("ts"),
+            "name": e.get("name"),
             "ampRank": e.get("ampRank"),
             "inBucket": e.get("inBucket"),
             "gapPct": e.get("gapPct"),
@@ -266,7 +302,11 @@ def build_live_panel(day: str | None = None, *, quotes: dict[str, dict[str, Any]
         "wouldFill": [e["ts"] for e in ranked_all if e.get("wouldFill")],
         "ranked": ranked,
         "exits": [
-            {"ts": str(x.get("ts") or ""), "entryDate": x.get("entryDate"), "exitDue": x.get("exitDue")}
+            {
+                "ts": str(x.get("ts") or ""),
+                "entryDate": x.get("entryDate"),
+                "exitDue": x.get("exitDue"),
+            }
             for x in exits
             if x.get("ts")
         ],
@@ -285,13 +325,56 @@ def build_live_panel(day: str | None = None, *, quotes: dict[str, dict[str, Any]
             "可成交 → strict 池；14:30 广度 >0.5 开闸）；mv 用昨收（实时报价无市值）；"
             "与 paper/回测同源 satellite_signals_for_day"
         ),
+        # Private: raw snapshot for the bar_5min print persistence (OPT-224).
+        # The job pops it before persisting the panel file.
+        "_quotes": quotes,
     }
+
+
+def persist_quotes(
+    day: str, quotes: dict[str, dict[str, Any]], *, source: str = QUOTE_SOURCE
+) -> int:
+    """Store the day's 14:30 snapshot as raw 14:30 prints in ``bar_5min`` (OPT-224).
+
+    Close-only rows: the snapshot's open/high/low are *session* values, not the
+    14:25-14:30 bar — writing them would corrupt the ``amp_1430`` amplitude. The
+    ``live_1430`` source has the lowest priority, so a real baostock/tushare bar
+    always wins (and can overwrite this row). Returns the rows sent.
+    """
+    from data_sync_service.db.bar_5min import upsert_5min_payload
+
+    payload: list[tuple] = []
+    for ts, q in quotes.items():
+        price = _num(q.get("price"))
+        if not price or price <= 0:
+            continue
+        payload.append(
+            (
+                str(ts),
+                day,
+                "1430",
+                None,
+                None,
+                None,
+                float(price),
+                None,
+                _num(q.get("amount")),
+                source,
+            )
+        )
+    if not payload:
+        return 0
+    upsert_5min_payload(payload, on_conflict="update")
+    return len(payload)
 
 
 def persist_if_complete(panel: dict[str, Any]) -> tuple[bool, str]:
     """Persist only a complete panel. Returns (saved, reason)."""
+    panel.pop("_quotes", None)  # never write the raw quote snapshot into the file
     if not panel.get("decisionAvailable"):
         return False, f"panel unavailable: {panel.get('reason') or 'unknown'}"
+    if panel.get("quotePersisted") is False:
+        return False, "14:30 quote persistence incomplete"
     if float(panel.get("coverage") or 0.0) < MIN_QUOTE_COVERAGE:
         return False, f"quote coverage too low: {panel.get('coverage')}"
     save_live_panel(panel)

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "stock_daily_basic_sync"
 # Weekdays 17:20 Asia/Shanghai (after index_basic_sync 17:15).
-CRON_EXPRESSION = "20 17 * * 1-5"
+CRON_EXPRESSION = "20 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

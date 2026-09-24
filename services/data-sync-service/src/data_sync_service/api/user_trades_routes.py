@@ -21,6 +21,8 @@ from data_sync_service.db.user_trades import (
     LEG_S3,
     LEGS,
     SIDES,
+    STRATEGY_MODE_LEGACY,
+    STRATEGY_MODES,
     delete_trade,
     ensure_tables,
     insert_trade,
@@ -49,7 +51,8 @@ class TradeLegRequest(BaseModel):
     source: str | None = None
     market: str | None = None
     note: str | None = None
-    leg: str | None = None  # OPT-149: 's3' (S-3 core) | 'parking' (idle-cash ETF)
+    leg: str | None = None
+    strategyMode: str | None = None
 
 
 def _validate_leg(req: TradeLegRequest) -> dict:
@@ -67,6 +70,8 @@ def _validate_leg(req: TradeLegRequest) -> dict:
         raise HTTPException(status_code=400, detail="tradeDate must be YYYY-MM-DD")
     if req.leg is not None and req.leg not in LEGS:
         raise HTTPException(status_code=400, detail=f"invalid leg: {req.leg}")
+    if req.strategyMode is not None and req.strategyMode not in STRATEGY_MODES:
+        raise HTTPException(status_code=400, detail=f"invalid strategyMode: {req.strategyMode}")
     return {}
 
 
@@ -75,7 +80,12 @@ def record_trade(req: TradeLegRequest) -> dict:
     _validate_leg(req)
     try:
         ensure_tables()
-        trade_date = req.tradeDate or datetime.now().astimezone().strftime("%Y-%m-%d")
+        if req.tradeDate is None:
+            from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
+
+            trade_date = shanghai_today_iso()
+        else:
+            trade_date = req.tradeDate
         pnl_pct = None
         holding_days = None
         if req.side == "SELL" and req.costBasis is not None and req.costBasis > 0:
@@ -98,9 +108,12 @@ def record_trade(req: TradeLegRequest) -> dict:
             market=req.market or "CN",
             note=req.note,
             alpha_snapshot=_alpha_snapshot_for(req.symbol, trade_date),
-            # OPT-149: SELL/ADD without an explicit leg inherit the open
-            # position's leg so exits can't be misfiled into the wrong book.
-            leg=req.leg or (latest_buy_leg(req.symbol) if req.side in ("SELL", "ADD") else LEG_S3),
+            leg=req.leg or (
+                latest_buy_leg(req.symbol, strategy_mode=req.strategyMode)
+                if req.side in ("SELL", "ADD")
+                else LEG_S3
+            ),
+            strategy_mode=req.strategyMode or STRATEGY_MODE_LEGACY,
         )
         return {"ok": True, "trade": row}
     except HTTPException:
@@ -124,11 +137,19 @@ def _alpha_snapshot_for(symbol: str, trade_date: str) -> dict | None:
 def get_trades(
     limit: int = Query(default=50, ge=1, le=500),
     symbol: str | None = Query(default=None),
+    leg: str | None = Query(default=None),
+    strategyMode: str | None = Query(default=None),
 ) -> dict:
+    if leg is not None and leg not in LEGS:
+        raise HTTPException(status_code=400, detail=f"invalid leg: {leg}")
+    if strategyMode is not None and strategyMode not in STRATEGY_MODES:
+        raise HTTPException(status_code=400, detail=f"invalid strategyMode: {strategyMode}")
     try:
         ensure_tables()
-        rows = list_trades(limit=limit, symbol=symbol)
+        rows = list_trades(limit=limit, symbol=symbol, leg=leg, strategy_mode=strategyMode)
         return {"ok": True, "trades": rows, "count": len(rows)}
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -159,22 +180,31 @@ def remove_trade(trade_id: str) -> dict:
 
 class TradePatchRequest(BaseModel):
     leg: str | None = None
+    strategyMode: str | None = None
     positionPct: float | None = None
     note: str | None = None
 
 
 @router.patch("/trades/{trade_id}")
 def patch_trade(trade_id: str, req: TradePatchRequest) -> dict:
-    """Correct a journal leg (OPT-150): leg / positionPct / note only."""
+    """Correct a journal leg: leg / strategyMode / positionPct / note only."""
     if req.leg is not None and req.leg not in LEGS:
         raise HTTPException(status_code=400, detail=f"invalid leg: {req.leg}")
+    if req.strategyMode is not None and req.strategyMode not in STRATEGY_MODES:
+        raise HTTPException(status_code=400, detail=f"invalid strategyMode: {req.strategyMode}")
     if req.positionPct is not None and not req.positionPct > 0:
         raise HTTPException(status_code=400, detail="positionPct must be positive")
-    if req.leg is None and req.positionPct is None and req.note is None:
+    if req.leg is None and req.strategyMode is None and req.positionPct is None and req.note is None:
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
         ensure_tables()
-        row = update_trade(trade_id, leg=req.leg, position_pct=req.positionPct, note=req.note)
+        row = update_trade(
+            trade_id,
+            leg=req.leg,
+            strategy_mode=req.strategyMode,
+            position_pct=req.positionPct,
+            note=req.note,
+        )
         if row is None:
             raise HTTPException(status_code=404, detail=f"trade not found: {trade_id}")
         return {"ok": True, "trade": row}

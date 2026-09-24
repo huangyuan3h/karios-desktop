@@ -16,7 +16,7 @@ from data_sync_service.db.sync_job_record import insert_record
 
 logger = logging.getLogger(__name__)
 JOB_ID = "timeline_warmup"
-CRON_EXPRESSION = "20 8 * * 1-5"  # weekdays 08:20
+CRON_EXPRESSION = "20 8 * * mon-fri"  # weekdays 08:20
 TIMEZONE = "Asia/Shanghai"
 
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { lotRuleFor, rankSizeBoost, roundToLot, suggestLotSizing } from './lot-sizing';
+import { lotRuleFor, rankSizeBoost, roundToLot, slotLotShares, suggestLotSizing } from './lot-sizing';
 
 describe('lotRuleFor', () => {
   it('沪深主板/创业板：100 股整数倍', () => {
@@ -127,6 +127,27 @@ describe('suggestLotSizing', () => {
     expect(
       suggestLotSizing({ symbol: 'CN:600519', price: 10, targetPct: 10, capital: 0 }),
     ).toBeNull();
+  });
+});
+
+describe('slotLotShares (satellite equal-weight slots)', () => {
+  it('sizes a 25% slot in 100-lots without the 15% stock cap', () => {
+    // ¥1,000,000 * 25% = ¥250,000; / 27.7 = 9025 → 9,000 shares.
+    const r = slotLotShares({ symbol: 'CN:002128', price: 27.7, capital: 1_000_000, slotPct: 25 });
+    expect(r).not.toBeNull();
+    expect(r?.shares).toBe(9000);
+    expect(r?.valueCny).toBe(250_000);
+  });
+
+  it('respects the STAR (200 + 1) rule', () => {
+    const r = slotLotShares({ symbol: 'CN:688008', price: 210.28, capital: 1_000_000, slotPct: 25 });
+    // 250,000 / 210.28 = 1188.9 → round → 1189 (no 100-step)
+    expect(r?.shares).toBe(1189);
+  });
+
+  it('returns null without capital or price', () => {
+    expect(slotLotShares({ symbol: 'CN:002128', price: 27.7, capital: 0, slotPct: 25 })).toBeNull();
+    expect(slotLotShares({ symbol: 'CN:002128', price: 0, capital: 1_000_000, slotPct: 25 })).toBeNull();
   });
 });
 

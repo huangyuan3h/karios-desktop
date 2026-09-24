@@ -14,7 +14,7 @@ def test_timeline_rejects_unknown_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
         br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="no_such_strategy")
     assert exc.value.status_code == 400
-    assert "harbor|harbor_h2|homeport|homeport_m30|starport|starship|twin_star|pick_strong|state_bucket" in exc.value.detail
+    assert "harbor|homeport|homeport_m30|starport|starship|starship_robust|starship_b|twin_star|pick_strong|state_bucket" in exc.value.detail
 
 
 def test_timeline_accepts_twin_star(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,10 +151,23 @@ def test_timeline_mem_cache_ttl_and_force_drop() -> None:
     assert key not in br._timeline_cache and key not in br._timeline_engine_cache
     assert key not in br._timeline_cache_at
 
-    # force path used by the daily H2 shadow job.
+    # force path used by explicit cache invalidation.
     br._timeline_mem_put(key, {"ok": True}, {"ctx": 2})
     br._timeline_mem_drop(key)
     assert br._timeline_mem_get(key) is None and key not in br._timeline_engine_cache
+
+
+def test_timeline_accepts_h2_a25_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    def fake_build(start: str, end: str, *, strategy: str, need_engine: bool = False):
+        seen["strategy"] = strategy
+        return {"ok": True, "strategy": "稳健星舰 H2-a25"}, None
+
+    monkeypatch.setattr(br, "_get_or_build_timeline", fake_build)
+    out = br.backtest_timeline("2026-01-01", "2026-01-02", strategy="starship_robust")
+    assert out["strategy"] == "稳健星舰 H2-a25"
+    assert seen["strategy"] == "starship_robust"
 
 
 def test_satellite_live_panel_route_shape(monkeypatch: pytest.MonkeyPatch) -> None:

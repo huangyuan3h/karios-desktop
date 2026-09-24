@@ -20,7 +20,7 @@ from data_sync_service.db.sync_job_record import insert_record
 logger = logging.getLogger(__name__)
 
 JOB_ID = "weekly_review"
-CRON_EXPRESSION = "40 7 * * 1"  # Monday 07:40 Asia/Shanghai
+CRON_EXPRESSION = "40 7 * * mon"  # Monday 07:40 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 BRIEF_TYPE = "weekly-review"
 

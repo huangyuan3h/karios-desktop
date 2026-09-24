@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "daily_full_sync"
 # Redirected to close_sync (legacy per-stock daily_full deprecated).
-CRON_EXPRESSION = "0 17 * * 5"
+CRON_EXPRESSION = "0 17 * * fri"
 TIMEZONE = "Asia/Shanghai"
 
 

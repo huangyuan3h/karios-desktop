@@ -16,7 +16,7 @@ JOB_ID = "adj_factor_full_sync"
 # daily_sync (both hammered the shared tushare quota and both failed with
 # "频率超限" every Friday since 2026-07-11). close_sync (17:10 daily) already
 # refreshes adj_factor incrementally; this job is the historical backfill.
-CRON_EXPRESSION = "30 18 * * 5"
+CRON_EXPRESSION = "30 18 * * fri"
 TIMEZONE = "Asia/Shanghai"
 
 

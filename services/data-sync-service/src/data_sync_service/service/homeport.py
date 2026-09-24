@@ -53,6 +53,17 @@ def load_risk_closes() -> dict[str, dict[str, float]]:
     return merge_recent_db_closes(out, wanted)
 
 
+def load_starship_b_closes() -> dict[str, dict[str, float]]:
+    """Adjusted closes for the 星舰 B park universe (国债/黄金/纳指).
+
+    Reuses the B3 research panel (``data/etf/etf_daily.csv``, adjusted basis)
+    and merges the fresh DB tail the same way ``load_risk_closes`` does, so the
+    display/backtest leg matches Live. 513100 is present in the panel; its DB
+    rows are raw, so ``merge_recent_db_closes`` applies the adj anchor.
+    """
+    return load_risk_closes()
+
+
 def inverse_vol_weights(vol: dict[str, float]) -> dict[str, float]:
     """w_i ∝ 1/sigma_i (B3 risk budget); equal weight when vols are unusable."""
     inv = {k: 1.0 / v for k, v in vol.items() if v and v > 0}
@@ -145,6 +156,66 @@ def risk_budget_nav(
 ) -> list[float]:
     """B3 sleeve NAV on ``cal`` (monthly inverse-vol rebalance, causal, costed)."""
     return list(risk_budget_run(closes, cal, lookback=lookback, cost=cost)["nav"])
+
+
+# 星舰 B parking universe (2026-09-24): BOND10 + GOLD + NASDAQ inverse-vol.
+# Reuses the B3 risk-budget math (monthly 60d inverse-vol, causal, 5bp/side).
+STARSIP_B_UNIVERSE: tuple[str, ...] = ("511260.SH", "518880.SH", "513100.SH")
+
+
+def starship_b_run(
+    closes: dict[str, dict[str, float]],
+    cal: list[str],
+    *,
+    lookback: int = VOL_LOOKBACK,
+    cost: float = COST,
+) -> dict[str, Any]:
+    """星舰 B park-leg NAV (3-leg inverse vol: 国债 + 黄金 + 纳指), causal monthly.
+
+    Single source for the Live/display/backtest parking leg. Same loop shape as
+    ``risk_budget_run`` but over ``STARSIP_B_UNIVERSE``. ``closes`` must be the
+    adjusted ETF panel (adj basis) merged with the fresh DB tail.
+    """
+    universe = STARSIP_B_UNIVERSE
+    series = {ts: _series_on_cal(closes.get(ts) or {}, cal) for ts in universe}
+    w_by_i: dict[int, dict[str, float]] = {}
+    for i in range(len(cal)):
+        if i < lookback:
+            w_by_i[i] = {ts: 1.0 / len(universe) for ts in universe}
+        elif cal[i][:7] == cal[i - 1][:7]:
+            w_by_i[i] = w_by_i[i - 1]
+        else:
+            vol = {ts: (_vol_at(series[ts], i, lookback) or 1e-9) for ts in universe}
+            w_by_i[i] = inverse_vol_weights(vol)
+    nav = [1.0]
+    cur = w_by_i[0]
+    events: list[dict[str, Any]] = [
+        {"date": cal[0] if cal else "", "weights": {ts: round(cur[ts], 4) for ts in universe}, "turnover": 0.0}
+    ]
+    for i in range(1, len(cal)):
+        r = sum(
+            cur[ts] * (series[ts][i] / series[ts][i - 1] - 1.0)
+            for ts in universe
+            if series[ts][i - 1] and series[ts][i]
+        )
+        nav.append(nav[-1] * (1.0 + r))
+        if w_by_i[i] != cur:
+            turn = sum(abs(w_by_i[i][ts] - cur[ts]) for ts in universe) / 2.0
+            nav[-1] *= 1.0 - cost * turn
+            events.append({"date": cal[i], "weights": {ts: round(w_by_i[i][ts], 4) for ts in universe}, "turnover": round(turn, 4)})
+            cur = w_by_i[i]
+    return {"nav": nav, "events": events, "weights": [w_by_i[i] for i in range(len(cal))]}
+
+
+def starship_b_nav(
+    closes: dict[str, dict[str, float]],
+    cal: list[str],
+    *,
+    lookback: int = VOL_LOOKBACK,
+    cost: float = COST,
+) -> list[float]:
+    """星舰 B park-leg NAV series (see ``starship_b_run``)."""
+    return list(starship_b_run(closes, cal, lookback=lookback, cost=cost)["nav"])
 
 
 def blend_monthly_nav(

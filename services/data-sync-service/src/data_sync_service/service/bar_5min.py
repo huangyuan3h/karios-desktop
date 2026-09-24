@@ -15,7 +15,12 @@ import threading
 import time
 from typing import Any
 
-from data_sync_service.db.bar_5min import coverage_by_ts_code, upsert_5min_bars
+from data_sync_service.db import get_connection
+from data_sync_service.db.bar_5min import (
+    coverage_by_ts_code,
+    upsert_5min_bars,
+    upsert_5min_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,7 @@ LAST_HOUR_TIMES = frozenset({"1430", "1435", "1440", "1445", "1450", "1455", "15
 DECISION_TIMES = frozenset({"1000", "1330", "1400"}) | LAST_HOUR_TIMES
 SOURCE_BAOSTOCK = "baostock"
 SOURCE_TUSHARE = "tushare.stk_mins"
+SOURCE_DERIVED_1500 = "derived_1500"
 BAOSTOCK_SLEEP_SECONDS = 0.2
 TUSHARE_SLEEP_SECONDS = 61.0
 COVERAGE_RATIO = 0.85
@@ -328,3 +334,55 @@ def backfill_symbols(
                 out["failed"],
             )
     return out
+
+
+def derived_1500_marks(trade_date: str) -> int:
+    """Fill the day's raw 15:00 mark for the full market (insert-only, OPT-224).
+
+    ``daily`` stores qfq closes while ``bar_5min`` stores raw prints. The 18:40
+    pull only covers the day's gap names (plus paper holdings), so a replay on a
+    recent day silently mixes qfq closes into raw comparisons — both the 14:30
+    breadth's prior MA20 and the exit mark of held names. This derives the raw
+    close (``close × adj_latest / adj``, ETFs pass through) and inserts it as a
+    15:00 mark; ``on_conflict="nothing"`` guarantees a real bar is never touched.
+    """
+    if not trade_date:
+        return 0
+    payload: list[tuple] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH latest AS (
+                    SELECT DISTINCT ON (ts_code) ts_code, adj_factor AS adj_latest
+                    FROM daily
+                    WHERE adj_factor IS NOT NULL AND adj_factor > 0
+                    ORDER BY ts_code, trade_date DESC
+                )
+                SELECT d.ts_code,
+                       d.close * COALESCE(l.adj_latest / NULLIF(d.adj_factor, 0), 1.0)
+                FROM daily d
+                LEFT JOIN latest l USING (ts_code)
+                WHERE d.trade_date = %s AND d.close IS NOT NULL AND d.close > 0
+                  AND d.ts_code NOT LIKE '%%.HK'
+                """,
+                (trade_date,),
+            )
+            for ts_code, raw_close in cur.fetchall():
+                if not raw_close or float(raw_close) <= 0:
+                    continue
+                payload.append(
+                    (
+                        str(ts_code),
+                        trade_date,
+                        "1500",
+                        None,
+                        None,
+                        None,
+                        float(raw_close),
+                        None,
+                        None,
+                        SOURCE_DERIVED_1500,
+                    )
+                )
+    return upsert_5min_payload(payload, on_conflict="nothing")

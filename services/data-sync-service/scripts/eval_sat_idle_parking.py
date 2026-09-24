@@ -97,15 +97,19 @@ def _sat_book(start: str, end: str) -> dict:
     }
 
 
-def _true_cash_share(sat: dict) -> list[float]:
-    """Engine cash share of NAV = (1 + realized - n*clip) / nav.
+def _true_cash_share(sat: dict, *, from_rows: bool = False) -> list[float]:
+    """Return the cash-share series used by the selected composition path.
 
-    The frozen engine uses FIXED 25% clips (profits are never reinvested), so
-    ``1 - 0.25*n`` (the initial-capital cash share) understates the true cash
-    later in the window. Reconstruct realized from the closed fills'
-    ``contribPct`` (= (trade_ret - costs) * clip * 100).
+    ``from_rows=True`` mirrors the product Timeline's rounded ``cashShare``.
+    The default keeps the older blotter reconstruction for frozen research
+    callers that predate the shared Timeline path.
     """
     rows = sat["rows"]
+    if from_rows:
+        return [
+            min(1.0, max(0.0, float(r.get("cashShare") or 0.0)))
+            for r in rows
+        ]
     blotter = sat["blotter"]
     realized_by_day: dict[str, float] = {}
     for b in blotter:
@@ -153,9 +157,14 @@ def _align_day_nav(day_nav: dict[str, float], dates: list[str]) -> list[float]:
     return out
 
 
-def _sleeve_nav(px: dict[str, dict[str, float]], dates: list[str]) -> list[float]:
-    """Parking sleeve only: idle = 1 every session, canonical state machine."""
-    recs = parking_replay(px, dates, idle_by_day=None)
+def _sleeve_nav(
+    px: dict[str, dict[str, float]],
+    dates: list[str],
+    *,
+    hyst_band: float = 0.0,
+) -> list[float]:
+    """Parking sleeve only: idle = 1 every session."""
+    recs = parking_replay(px, dates, idle_by_day=None, hyst_band=hyst_band)
     day_nav = {dates[0]: 1.0} if dates else {}
     nav = 1.0
     for rec in recs:

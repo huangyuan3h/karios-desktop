@@ -169,7 +169,6 @@ beforeEach(() => {
         },
       };
     }
-    if (String(path).includes('/api/backtest/sleeve-nav')) return {};
     if (String(path).includes('/api/backtest/strategy-catalog')) {
       const windows = {
         OOS2: { total: 55.2, cagr: 58, mdd: -14.3, sharpe: 1.73 },
@@ -675,7 +674,8 @@ describe('BacktestPage', () => {
     expect((await screen.findAllByText(/停车 黄金 100%/)).length).toBeGreaterThanOrEqual(1);
     expect((await screen.findAllByText(/停车 原油 50%/)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/停车均值 75%/)).toBeDefined();
-    expect(await screen.findByText(/v2：卫星 \+ 闲钱停 ETF/)).toBeDefined();
+     expect(await screen.findByText(/激进对照：卫星 \+ 闲钱 100% 停 H2 ETF/)).toBeDefined();
+
   });
 
   it('records the parking ETF per day (建仓/换仓/回撤转现金) in the starship day table', async () => {
@@ -769,11 +769,11 @@ describe('BacktestPage', () => {
     expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
   });
 
-  it('defaults the timeline to the configured strategy (星港)', async () => {
+  it('defaults the timeline to the configured 星舰 B strategy', async () => {
     window.localStorage.removeItem('karios.strategyMode.v2');
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
-    expect(await screen.findByText(/Timeline（星港/)).toBeDefined();
+    expect(await screen.findByText(/Timeline（星舰 B/)).toBeDefined();
   });
 
   it('renders auto-segmented holding blocks and per-day hover details', async () => {
@@ -902,11 +902,4 @@ describe('BacktestPage', () => {
     expect(screen.queryByText('卫星腿明细')).toBeNull();
   });
 
-  it('shows the harbor_h2 validation line with its non-product subtitle', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /^对比$/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /^港湾H2$/ }));
-    expect(await screen.findByText(/Timeline（港湾H2/)).toBeDefined();
-    expect(await screen.findByText(/条件PASS待 paper，非产品档/)).toBeDefined();
-  });
 });

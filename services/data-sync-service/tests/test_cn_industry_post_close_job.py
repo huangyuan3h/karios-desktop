@@ -25,7 +25,7 @@ def test_constants() -> None:
     assert cn_industry_post_close_job.JOB_ID == "cn_industry_post_close_sync"
     # 18:15 — 17:35 was too early for eastmoney's daily industry data
     # (every weekday run failed with no data yet; 2026-08-09 audit).
-    assert cn_industry_post_close_job.CRON_EXPRESSION == "15 18 * * 1-5"
+    assert cn_industry_post_close_job.CRON_EXPRESSION == "15 18 * * mon-fri"
     assert cn_industry_post_close_job.TIMEZONE == "Asia/Shanghai"
 
 

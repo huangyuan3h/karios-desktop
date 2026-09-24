@@ -19,7 +19,7 @@ from data_sync_service.service.cn_risk_state_sync import catch_up
 logger = logging.getLogger(__name__)
 
 JOB_ID = "risk_state_sync"
-CRON_EXPRESSION = "50 18 * * 1-5"
+CRON_EXPRESSION = "50 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

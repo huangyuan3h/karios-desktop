@@ -114,6 +114,27 @@ export function rankSizeBoost(rank?: number | null): number {
 
 export const POSITION_SIZE_CEILING_PCT = 15;
 
+/** Integer order size for a fixed equal-weight slot (satellite 4×25%).
+ *
+ * Unlike ``suggestLotSizing`` there is NO rank tilt and NO concentration cap:
+ * the satellite slots are equal-weight by design, so 25% > the 15% stock
+ * ceiling must not bind. Pure/display-only. */
+export function slotLotShares(opts: {
+  symbol: string;
+  price: number;
+  capital: number;
+  slotPct: number;
+}): { shares: number; valueCny: number; rule: LotRule } | null {
+  const price = Number(opts.price);
+  const capital = Number(opts.capital);
+  const slotPct = Number(opts.slotPct);
+  if (!(price > 0) || !(capital > 0) || !(slotPct > 0)) return null;
+  const rule = lotRuleFor(opts.symbol);
+  const valueCny = (capital * slotPct) / 100;
+  const shares = roundToLot(valueCny / price, rule);
+  return { shares, valueCny, rule };
+}
+
 export type LotSizing = {
   shares: number;
   valueLocal: number;

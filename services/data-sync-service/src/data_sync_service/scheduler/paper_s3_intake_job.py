@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "paper_s3_intake"
 # Weekdays 17:42 Asia/Shanghai (after paper_trading_intake 17:40).
-CRON_EXPRESSION = "42 17 * * 1-5"
+CRON_EXPRESSION = "42 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

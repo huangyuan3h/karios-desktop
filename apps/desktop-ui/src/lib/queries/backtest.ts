@@ -3,7 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import type {
   B3State,
+  SatelliteExitDueResponse,
   SatelliteLivePanelResponse,
+  SatellitePaper,
+  SatellitePaperResponse,
   StrategyCatalog,
 } from '@karios/shared';
 
@@ -400,36 +403,6 @@ export function useBacktestOverviewQuery(enabled = true) {
   });
 }
 
-export type SleeveNavWindow = {
-  window?: string | null;
-  totalBasePct?: number | null;
-  totalSleevePct?: number | null;
-  deltaPct?: number | null;
-  maxDdBasePct?: number | null;
-  maxDdSleevePct?: number | null;
-  holdDays?: number | null;
-  idleDays?: number | null;
-  avgIdlePct?: number | null;
-};
-
-export type SleeveNavReport = {
-  ok: boolean;
-  report?: {
-    generatedAt?: string | null;
-    results?: Record<string, SleeveNavWindow> | null;
-  } | null;
-};
-
-/** T6 third-asset sleeve NAV report (scripts/sleeve_nav_sim.py). */
-export function useSleeveNavQuery(enabled = true) {
-  return useQuery({
-    queryKey: ['backtest', 'sleeve-nav'],
-    queryFn: () => apiGetJson<SleeveNavReport>('/api/backtest/sleeve-nav'),
-    staleTime: 10 * 60_000,
-    enabled,
-  });
-}
-
 export type CoreAuditOp = {
   id?: string | null;
   date?: string | null;
@@ -650,6 +623,7 @@ export type TimelineResponse = {
   end: string;
   strategy?: string;
   mode?: string;
+  parkingMode?: 'h2' | 'h2_a25';
   opportunity?: boolean;
   trailPct?: number;
   summary?: TimelineSummary;
@@ -678,20 +652,22 @@ export type TimelineResponse = {
 
 export type TimelineStrategy =
   | 'harbor'
-  | 'harbor_h2'
   | 'homeport'
   | 'homeport_m30'
   | 'starport'
   | 'starship'
+  | 'starship_robust'
+  | 'starship_b'
   | 'twin_star';
 
 export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   harbor: '港湾',
-  harbor_h2: '港湾H2',
   homeport: '母港M50',
   homeport_m30: '母港',
   starport: '星港',
   starship: '星舰',
+  starship_robust: '稳健星舰 H2-a25',
+  starship_b: '星舰 B',
   twin_star: '双子星',
 };
 
@@ -736,12 +712,73 @@ export function useSatelliteLivePanelQuery(enabled = true) {
   });
 }
 
+/** OPT-228: forward satellite paper book (frozen replay since inception). */
+/**
+ * The user's REAL satellite forward book — same shape as the replay book but
+ * sourced from the journal (`user_trades` leg='satellite'), so the `paper 20 笔`
+ * prerequisite counts trades the user actually made.
+ */
+export function useUserSatelliteBookQuery(
+  strategyMode = 'starship_b',
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['backtest', 'satellite-paper-user', strategyMode],
+    queryFn: () =>
+      apiGetJson<SatellitePaper>(
+        `/api/backtest/satellite-paper/user?strategyMode=${encodeURIComponent(strategyMode)}`,
+      ),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export function useSatellitePaperQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'satellite-paper'],
+    queryFn: () => apiGetJson<SatellitePaperResponse>('/api/backtest/satellite-paper'),
+    // Forward book changes once a session; the card does not need to poll hard.
+    staleTime: 30 * 60_000,
+    refetchInterval: 30 * 60_000,
+    retry: false,
+    enabled,
+  });
+}
+
 export function useB3StateQuery(enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'b3-state'],
     queryFn: () => apiGetJson<B3State>('/api/backtest/b3-state'),
     staleTime: 10 * 60_000,
     enabled,
+  });
+}
+
+/** 星舰 B park-leg state ({国债,黄金,纳指} inverse-vol); same shape as B3. */
+export function useStarshipBStateQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'starship-b-state'],
+    queryFn: () => apiGetJson<B3State>('/api/backtest/starship-b-state'),
+    staleTime: 10 * 60_000,
+    enabled,
+  });
+}
+
+/**
+ * Rule-based satellite exit due dates for arbitrary entry dates (entry + BODY
+ * sessions, 14:30 exit). Used for a held leg the engine never booked — a fill
+ * taken on a live-panel signal while all slots were full.
+ */
+export function useSatelliteExitDueQuery(entries: string[], enabled = true) {
+  const key = [...entries].filter(Boolean).sort().join(',');
+  return useQuery({
+    queryKey: ['backtest', 'satellite-exit-due', key],
+    queryFn: () =>
+      apiGetJson<SatelliteExitDueResponse>(
+        `/api/backtest/satellite-signals/exit-due?entries=${encodeURIComponent(key)}`,
+      ),
+    staleTime: 60 * 60_000,
+    enabled: enabled && key.length > 0,
   });
 }
 
@@ -851,59 +888,6 @@ export function usePaperVsBacktestQuery(enabled = true) {
     queryKey: ['backtest', 'paper-vs-backtest'],
     queryFn: () => apiGetJson<PaperVsBacktestResponse>('/api/backtest/paper-vs-backtest'),
     staleTime: 10 * 60_000,
-    enabled,
-  });
-}
-
-export type HarborH2ShadowStatus = 'tracking' | 'watch' | 'rollback';
-export type HarborH2ShadowAction = 'hold' | 'enter' | 'rotate' | 'trail_exit';
-
-export type HarborH2ShadowRow = {
-  date: string;
-  navLive: number;
-  navH2: number;
-  peakLive: number;
-  peakH2: number;
-  dayLivePct: number;
-  dayH2Pct: number;
-  spreadPt: number;
-  ddLivePct: number;
-  ddH2Pct: number;
-  mddGapPt: number;
-  pickLive: string;
-  pickH2: string;
-  actionH2: HarborH2ShadowAction;
-  idlePct: number;
-  status: HarborH2ShadowStatus;
-};
-
-export type HarborH2ShadowReport = {
-  ok: boolean;
-  inception: string;
-  generatedAt: string;
-  rows: HarborH2ShadowRow[];
-  latest: HarborH2ShadowRow;
-  appended: number;
-  thresholds: {
-    spreadWatchPt: number;
-    spreadRollbackPt: number;
-    mddGapWatchPt: number;
-    mddGapRollbackPt: number;
-  };
-  note: string;
-};
-
-/**
- * H2 shadow paper ledger (OPT-216, display only): appended daily by the
- * harbor_h2_shadow job (weekdays 18:35). 404 until the first run — the card
- * treats any error as "not generated yet".
- */
-export function useHarborH2ShadowQuery(enabled = true) {
-  return useQuery({
-    queryKey: ['backtest', 'harbor-h2-shadow'],
-    queryFn: () => apiGetJson<HarborH2ShadowReport>('/api/backtest/harbor-h2-shadow/latest'),
-    staleTime: 5 * 60_000,
-    retry: false,
     enabled,
   });
 }

@@ -495,9 +495,8 @@ def _build_holdings_block(
             # holding — it is a separate "third asset / US" region tracked by
             # the sleeve rules (200d MA), not the CN S-3 exit rules.
             from data_sync_service.service.multi_asset_sleeve import is_multi_asset_symbol
-            from data_sync_service.service.third_asset_sleeve import is_third_asset_symbol
 
-            if market == "CN" and (is_third_asset_symbol(sym) or is_multi_asset_symbol(sym)):
+            if market == "CN" and is_multi_asset_symbol(sym):
                 continue
             payload = r.get("payload") or {}
             pct = payload.get("positionPct", r.get("positionPct"))
@@ -818,12 +817,8 @@ def build_portfolio_health(
 
     cn = blocks.get("CN") or _health_block(market="CN", day=day)
     from data_sync_service.service.multi_asset_sleeve import build_multi_asset_sleeve
-    from data_sync_service.service.third_asset_sleeve import (
-        build_third_asset_holding,
-        build_third_asset_sleeve,
-    )
 
-    # T6 (2026-08-20): the sleeve functions must see the RAW registry holdings
+    # Sleeve functions must see the RAW registry holdings
     # INCLUDING the NASDAQ-100 ETF (it is excluded from the CN A-share holdings
     # block above, so the filtered block can't reveal the held ETF).
     raw_holdings = [
@@ -838,20 +833,6 @@ def build_portfolio_health(
         for r in list_registry()
         if str(r.get("symbol") or "").upper().startswith(("CN:", "HK:", "ETF:"))
     ]
-    try:
-        third_asset_sleeve = build_third_asset_sleeve(
-            day=day, cn_block=cn, holdings_override=raw_holdings
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("portfolio health third-asset sleeve failed: %s", exc)
-        third_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
-    try:
-        third_asset_holding = build_third_asset_holding(
-            day=day, cn_block=cn, holdings_override=raw_holdings
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("portfolio health third-asset holding failed: %s", exc)
-        third_asset_holding = None
     try:
         multi_asset_sleeve = build_multi_asset_sleeve(
             day=day, cn_block=cn, holdings_override=raw_holdings
@@ -907,8 +888,6 @@ def build_portfolio_health(
         "tradeDate": day,
         **cn,
         "hkHealth": blocks.get("HK"),
-        "thirdAssetSleeve": third_asset_sleeve,
-        "thirdAssetHolding": third_asset_holding,
         "multiAssetSleeve": multi_asset_sleeve,
         "multiAssetHoldings": multi_holdings,
         "pulseHints": pulse_hints,

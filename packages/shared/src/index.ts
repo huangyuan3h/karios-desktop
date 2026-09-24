@@ -1,7 +1,6 @@
 export * from './schemas/artifact';
 export * from './schemas/b3State';
 export * from './schemas/health';
-export * from './schemas/harborH2Shadow';
 export * from './schemas/orderRecipe';
 export * from './schemas/portfolio';
 export * from './schemas/trendok';
@@ -11,6 +10,7 @@ export * from './schemas/executionGate';
 export * from './schemas/executionJournal';
 export * from './schemas/scheduler';
 export * from './schemas/satelliteSignals';
+export * from './schemas/satellitePaper';
 export * from './schemas/strategyCatalog';
 export * from './schemas/userTrades';
 export * from './schemas/factors';

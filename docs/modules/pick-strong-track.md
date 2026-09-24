@@ -1,9 +1,10 @@
 # 「港湾」（Harbor）核心腿真值
 
 > **核心腿真值（2026-09-13 起）**：**港湾 = S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；[B11 实验档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。  
-> 旧「择强单轨（全资产同权 100% argmax）」已被 OPT-177 证伪；「机会双子星」卫星腿已被 B12 拒收——两段仅作历史档，**不再作实盘默认**。  
-> **Live 已于 2026-09-13 切换港湾**：前端 / 后端 / paper / 调度全走港湾；旧 `twin_star` 路径与 OPT-178 修复已落地（残余 T6 展示收敛 = OPT-179）。  
+> 旧「择强单轨（全资产同权 100% argmax）」已被 OPT-177 证伪；旧「机会双子星」4×12.5% 路径已被 B12 拒收——两段仅作历史档，**不再作实盘默认**。当前默认 `starship_b`（星舰 B）是独立的稳健星舰研究/展示/人工操作档，不改变港湾 Live；`starship_robust`（H2-a25）仍可选。
+> **Live 已于 2026-09-13 切换港湾**：前端 / 后端 / paper / 调度全走港湾；旧 `twin_star` 路径与 OPT-178 修复已落地；**2026-09-18 起停车统一到 H2（H-H2-UNIFY），冗余（`harbor_h2` 线 / H2 影子 / 旧 T6）已清理（OPT-226 / OPT-179 ✅）**。
 > S-3 / 停车场 / 套筒等是**子组件**，不是并列的「主策略」。
+> **稳健星舰边界（2026-09-24）**：`starship_robust` 的现行配方是卫星 + `cashShare(T−1)` ×（25% H2 套筒 + 75% B3），报告为 `sat_h2_a25_2026-09-24`；K3 风险未过，不能写成全门 PASS，也不接 Live 下单。
 
 ---
 
@@ -24,17 +25,17 @@
 规则（冻结口径 · **P1 闲置即停** · 2026-09-13 定案）：
 
 1. 用 **t-1** 收盘算 ETF `mom60`；须站上 `MA200`（防前视）。  
-2. 只在 **S-3 闲置现金**上执行：**14:30 口径**（回测用收盘代理，差 0.5h）、取 **`argmax mom60`** 停泊一只。  
+2. 只在 **S-3 闲置现金**上执行：**14:30 口径**（回测用收盘代理，差 0.5h）、取 **`argmax mom60`** 停泊一只；**换仓需新目标领先现持 ≥2pt（H2 迟滞，2026-09-18 起，H-H2-UNIFY）**，否则维持原腿。
 3. **因果 trail8**：ETF 峰值回撤 −8% 以 **t-1 收盘**触发 → 出场回现金；再入场无冷却；含 **0.05%/边**成本。  
 4. **不做**「股票 vs ETF 谁 mom 强」的切换——那是旧择强 overlay：`ETF>STOCK` 门槛 long **+20.8 vs P1 +90.0（−69pt）**，落地应去掉。
 
 > ⚠️ **2026-09-12 审计（OPT-177）**：trail8 的回测实现曾用**当日收盘**触发 trail、却把**当日收益记 0**（1 日前视）。实测 long 窗 `fusedPct 40.2%(含前视) → 0.8%(因果)`、valid `56.9% → 20.0%`——**文档中 trail8 的 `+75/+82pt` 增量几乎全为前视幻觉**。已把 `build_nav_from_cache`/`build_mom_compare_timeline` 改为 **t-1 收盘触发（因果）**；trail8 的**真实**增量仅 valid +8.5pt / long +7.5pt（见 [`audit-trail8-2026-09-12.md`](../backtests/audit-trail8-2026-09-12.md)）。**双子星相关过往前视口径数字作废、待重验**。
 >
-> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗增量 **+17.2/+13.0/+11.6**、long **+118.8**（2026-09-14 日历修正 clean 口径；幻影日 + 决策单源）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；卫星腿重拟合 REJECT（B12 旧口径已作废 → [2026-09-14 修正审计](../backtests/audit-three-strategy-lookahead-2026-09-14.md)：仍 REJECT，只挂 valid 单窗）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）+ **OPT-182/183**；旧 T6 展示收敛 **OPT-179**。
+> ⚠️ **2026-09-13 新基线「港湾」（Harbor, `harbor-p1-20260913` · Live 已切 2026-09-13）**：ETF 层正确定位 = **闲置现金停车场**（闲置即停、14:30 口径、含成本）：三窗增量 **+17.2/+13.0/+11.6**、long **+118.8**（2026-09-14 日历修正 clean 口径；幻影日 + 决策单源）（[`etf-parking-baseline-2026-09-13.md`](../backtests/stable/etf-parking-baseline-2026-09-13.md)）。**"100% argmax 硬切"作废**；旧 4×12.5% 卫星腿重拟合 REJECT（B12 旧口径已作废 → [2026-09-14 修正审计](../backtests/audit-three-strategy-lookahead-2026-09-14.md)：仍 REJECT，只挂 valid 单窗）；Live 前视/账本修复与旧路径删除见 **OPT-178**（✅ 已完成）+ **OPT-182/183**；**停车统一 H2 + 旧 T6/影子清理 = OPT-226 / OPT-179（✅ 2026-09-18）**。
 
 历史拒收（旧择强层，保留备查）：短/长 lookback、risk-adj、Top2、Nasdaq-first、袖侧 hold5 外推 —— 见 [`pick-strong-hardening-2026-08-29.md`](../backtests/core/pick-strong-hardening-2026-08-29.md)；trail8 旧绝对 NAV 证据 [`pick-strong-trail8-and-stock-pool-2026-08-29.md`](../backtests/core/pick-strong-trail8-and-stock-pool-2026-08-29.md)（valid +82pt / long +75pt；**已因 OPT-177 作废**）。
 
-> **Live / Watchlist（2026-09-13 已切）**：港湾（S-3 核心 + 闲置停车场）；`twin_star`/卫星路径已从代码删除（OPT-178 ✅）。
+> **Live / Watchlist（2026-09-13 已切）**：Live 下单为港湾（S-3 核心 + 闲置停车场）；旧 `twin_star` 下单路径已删除（OPT-178 ✅）。Watchlist 另保留 `starship_robust` H2-a25 的研究/展示/人工操作卡，不写 Harbor paper 账本。
 
 > ~~**机会双子星 v3.1（2026-09-02 · 实盘默认）**~~ **→ 已 REJECT / 历史（2026-09-13 · B12）**：卫星腿重拟合停车场核心 **OOS2 +36.5 / train −11.8 / valid −28.8 / long −55.6**（long 回撤 −23.6 → −48.3）；40/60、60/40 全不过。~~根因：卫星 standalone 2022 −34.8% / 2023 −48.0%、long MDD −80.6%（boom-bust）~~ **⚠️ 2026-09-14：以上数字与根因叙事作废**——B12 实跑用了全天振幅旧前视键、缺 C1/14:30 卖、核心为旧本地循环。修正口径（Live 习惯 + `gate_1430` + 单源核心 + **qfq/raw 基期统一** + **市场日历过滤**）重跑：卫星 long **+463.6%/MDD −8.4%**、双子星 50/50 **OOS2 +149.7 / train +52.2 / valid +29.1 / long +291.9**（Δcore +94.5/+0.0/**−21.2**/+90.4）→ **仍 REJECT，只挂 valid 单窗（K1/K2），K3 过**。卫星仍**不进新基线、禁止调参重扫**；要救须带全周期门槛另起预注册。修正真值：[`audit-three-strategy-lookahead-2026-09-14.md`](../backtests/audit-three-strategy-lookahead-2026-09-14.md)；B12 旧档（已加修正横幅）[`twin-star-parking-refit-2026-09-13.md`](../backtests/stable/twin-star-parking-refit-2026-09-13.md)、旧档 [`state-bucket-algo-2026-08-31.md`](../backtests/core/state-bucket-algo-2026-08-31.md)。  
 > **Timeline 图口径（2026-09-09 起 · OPT-152 · 历史）**：双子星 Timeline 主曲线 = 旧实盘口径；100% 押注基准 = 灰虚线对照。卫星线随 B12 一并作废。见 `optimization-checklist/archive/2026-09-09-opt-152-timeline-product-curve.md`。

@@ -89,12 +89,35 @@ def test_idle_cash_earns_etf_when_above_ma200():
         repo_rate_by_day={},
     )
     s = out["summary"]
-    # Hold begins once MA200 is computable (day 200): the final 21 days of
-    # +1/day moves idle cash from 100 -> 120 (+20%).
+    # Causal: hold is decided from the PREVIOUS close, so it begins on day 200
+    # (prev=day 199 close 100 >= MA200 100): 20 sessions earn 100 -> 120 (+20%).
     assert s["totalSleevePct"] == pytest.approx(20.0, abs=1.0)
     assert s["totalBasePct"] == pytest.approx(0.0, abs=0.01)
-    assert s["holdDays"] == 21
+    assert s["holdDays"] == 20
     assert s["avgIdlePct"] == pytest.approx(100.0, abs=0.01)
+
+
+def test_no_lookahead_on_exit_day():
+    """Causal: a crash on day D is *earned* by the sleeve because the exit is
+    decided from D-1's close (still above MA200), not skipped using D's own close
+    (the OPT-177 family look-ahead that zeroed the exit-day loss)."""
+    days = _days(214)
+    closes = [100.0] * 200 + [100.0 + (i - 199) for i in range(200, 212)] + [80.0, 80.0]
+    etf = {d: c for d, c in zip(days, closes, strict=False)}
+    out = _run(
+        positions_by_day=[],
+        close_by_ts_day={},
+        calendar=days,
+        etf_close_by_day=etf,
+        repo_rate_by_day={},
+    )
+    rows = out["rows"]
+    crash_day = days[212]
+    crash_row = next(r for r in rows if r["date"] == crash_day)
+    assert crash_row["holding"] is True  # decided at day 211 close (112 >= MA200)
+    # The crash is realized in the sleeve NAV (no look-ahead skip).
+    prev_nav = next(r for r in rows if r["date"] == days[211])["navSleeve"]
+    assert crash_row["navSleeve"] < prev_nav
 
 
 def test_break_below_ma200_cuts_to_repo():
@@ -112,9 +135,11 @@ def test_break_below_ma200_cuts_to_repo():
     holding_days = [r for r in rows if r["holding"]]
     repo_after_break = [r for r in rows[-5:] if not r["holding"]]
     assert 10 <= len(holding_days) <= 20  # rising + early-crash segment held
-    assert len(repo_after_break) >= 3  # deep-crash days sit in repo
-    # Rising days earn, crash days give back most of it.
-    assert 0.0 < out["summary"]["totalSleevePct"] < 5.0
+    assert len(repo_after_break) >= 2  # deep-crash days sit in repo (causal: +1 day lag)
+    # Causal: the first crash day is still held (exit decided at the prior close),
+    # so the sleeve realizes the drop rather than skipping it with same-day info;
+    # the run ends roughly flat-to-negative, not +.
+    assert out["summary"]["totalSleevePct"] < 1.0
 
 
 def test_deployed_cash_not_charged_to_sleeve():

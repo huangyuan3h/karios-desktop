@@ -46,7 +46,10 @@ from data_sync_service.service.env_label import (
     ENV_WEAK,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
-from data_sync_service.service.paper_cost_model import entry_cost_frac, round_trip_cost_pct
+from data_sync_service.service.paper_cost_model import (
+    entry_cost_frac,
+    round_trip_cost_pct_at,
+)
 from data_sync_service.service.paper_trading import _holding_days_for, _resolve_ts_code
 from data_sync_service.service.trendok import _lookup_stock_basic
 
@@ -725,7 +728,10 @@ def _swap_holds_for_candidates(
         if entry_px <= 0:
             continue
         gross = (close_px - entry_px) / entry_px * 100.0
-        costs = round_trip_cost_pct(market if market in ("CN", "HK") else "CN") * 100.0
+        costs = (
+            round_trip_cost_pct_at(market if market in ("CN", "HK") else "CN", entry_px, close_px)
+            * 100.0
+        )
         close_paper_trade(
             trade_id=str(hold.get("id") or ""),
             close_date=day,
@@ -1108,7 +1114,7 @@ def run_intake_s3(
             )
             continue
         if market == "HK" and settle_ok:
-            need = float(sleeve) * (1.0 + entry_cost_frac("HK"))
+            need = float(sleeve) * (1.0 + entry_cost_frac("HK", float(px)))
             if settled_cash + 1e-9 < need:
                 summary["skipped"] += 1
                 summary["skippedReasons"]["settle-lock"] = (

@@ -83,6 +83,29 @@ describe('StrategyCatalogSchema', () => {
     expect(out.strategies[0]?.timelineStrategy).toBe('twin_star');
   });
 
+  it('accepts the canonical H2-a25 variant metadata', () => {
+    const out = StrategyCatalogSchema.parse({
+      ok: true,
+      strategies: [
+        {
+          ...entry,
+          key: 'starship_robust',
+          canonical: true,
+          variant: {
+            sleeveMode: 'h2',
+            hystBand: 0.02,
+            sleeveWeight: 0.25,
+            b3Weight: 0.75,
+          },
+          risk: 'K3 failed: long MDD delta -1.6pt',
+        },
+      ],
+    });
+    expect(out.strategies[0]?.canonical).toBe(true);
+    expect(out.strategies[0]?.variant?.hystBand).toBe(0.02);
+    expect(out.strategies[0]?.risk).toContain('K3');
+  });
+
   it('accepts an optional regime map and omits it for rows without one', () => {
     const out = StrategyCatalogSchema.parse({
       ok: true,
@@ -98,7 +121,8 @@ describe('StrategyCatalogSchema', () => {
     expect(() =>
       StrategyCatalogSchema.parse({ ok: true, strategies: [{ ...entry, status: 'maybe' }] }),
     ).toThrow();
-    const { windows: _windows, ...rest } = entry;
+    const { windows, ...rest } = entry;
+    expect(windows.OOS2.total).toBe(55.2);
     expect(() => StrategyCatalogSchema.parse({ ok: true, strategies: [rest] })).toThrow();
   });
 });

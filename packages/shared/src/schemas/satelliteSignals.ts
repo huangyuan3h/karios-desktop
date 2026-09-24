@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const SatelliteSignalNameSchema = z.object({
   ts: z.string(),
+  name: z.string().nullable().optional(),
   gapPct: z.number().nullable(),
   amp1430Pct: z.number().nullable(),
   px1430: z.number().nullable(),
@@ -40,6 +41,8 @@ export type SatelliteSignalsResponse = z.infer<typeof SatelliteSignalsResponseSc
 /** OPT-222: one ranked row of the persisted 14:30 live snapshot. */
 export const SatelliteLivePanelNameSchema = z.object({
   ts: z.string(),
+  /** Stock display name (best-effort; null when the lookup missed). */
+  name: z.string().nullable().optional(),
   ampRank: z.number(),
   inBucket: z.boolean(),
   gapPct: z.number().nullable(),
@@ -89,3 +92,12 @@ export const SatelliteLivePanelResponseSchema = z.object({
   stale: z.boolean().optional(),
 });
 export type SatelliteLivePanelResponse = z.infer<typeof SatelliteLivePanelResponseSchema>;
+
+/** Rule-based satellite exit due dates (entry date -> body-th SSE open session). */
+export const SatelliteExitDueResponseSchema = z.object({
+  ok: z.boolean(),
+  /** Frozen habit hold body in sessions (entry counts as session 1). */
+  body: z.number(),
+  exitDue: z.record(z.string(), z.string().nullable()),
+});
+export type SatelliteExitDueResponse = z.infer<typeof SatelliteExitDueResponseSchema>;

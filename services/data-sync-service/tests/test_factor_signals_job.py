@@ -10,7 +10,7 @@ from data_sync_service.scheduler import factor_signals_job
 def test_constants() -> None:
     assert factor_signals_job.JOB_ID == "factor_signals_sync"
     # 18:30 — after close_sync 17:10 (needs today's daily bars).
-    assert factor_signals_job.CRON_EXPRESSION == "30 18 * * 1-5"
+    assert factor_signals_job.CRON_EXPRESSION == "30 18 * * mon-fri"
     assert factor_signals_job.TIMEZONE == "Asia/Shanghai"
 
 

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "close_sync_catchup"
 # Every 10 minutes after close time on weekdays (Asia/Shanghai).
-CRON_EXPRESSION = "*/10 17-23 * * 1-5"
+CRON_EXPRESSION = "*/10 17-23 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

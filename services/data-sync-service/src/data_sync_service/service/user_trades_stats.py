@@ -21,8 +21,11 @@ from statistics import fmean
 from typing import Any
 
 from data_sync_service.db.user_trades import fetch_sell_rows
+from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 
-ROUND_TRIP_COST_PCT = 0.3
+# Derived from the single-source cost model (never a local copy that can drift).
+# Static CN round trip: explicit fees + base slippage, in pct points.
+ROUND_TRIP_COST_PCT = round(round_trip_cost_pct("CN") * 100.0, 4)
 
 
 def _bucket_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:

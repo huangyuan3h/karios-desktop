@@ -47,7 +47,7 @@ from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.service.execution_gate import REGIME_STRONG
 from data_sync_service.service.paper_cost_model import (
     MARKETS,
-    round_trip_cost_pct,
+    round_trip_cost_pct_at,
 )
 from data_sync_service.service.trendok import _symbol_to_ts_code  # CN/HK resolution
 
@@ -433,7 +433,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         # v0.2: round-trip cost applies once, at close time. For open trades
         # we keep showing the gross pnl (costs not yet incurred); the NET
         # value is what close conditions and the final pnl_pct use.
-        costs_pct = round_trip_cost_pct(market) * 100.0
+        costs_pct = round_trip_cost_pct_at(market, entry_price, close_price) * 100.0
         net_pnl = gross_pnl_pct - costs_pct
         holding_days = _holding_days_for(
             str(_row_str(t, "entryDate", "entry_date") or ""), today_iso

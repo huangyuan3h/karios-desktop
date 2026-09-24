@@ -50,7 +50,15 @@ def _mini_ctx() -> _FakeCtx:
     )
 
 
-def _quote(ts: str, *, price: float = 11.0, open_px: float = 10.8, high: float = 11.2, low: float = 10.7, pre_close: float = 10.5) -> dict:
+def _quote(
+    ts: str,
+    *,
+    price: float = 11.0,
+    open_px: float = 10.8,
+    high: float = 11.2,
+    low: float = 10.7,
+    pre_close: float = 10.5,
+) -> dict:
     return {
         "ts_code": ts,
         "price": str(price),
@@ -89,7 +97,15 @@ class TestInjectDay:
     def test_overwrites_existing_day_row(self) -> None:
         ctx = _mini_ctx()
         ctx["per_ts"]["AAA.SZ"].append(
-            {"date": "2026-09-17", "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "pre_close": 1.0, "amount": 1.0}
+            {
+                "date": "2026-09-17",
+                "open": 1.0,
+                "high": 1.0,
+                "low": 1.0,
+                "close": 1.0,
+                "pre_close": 1.0,
+                "amount": 1.0,
+            }
         )
         n = sl._inject_day(ctx, "2026-09-17", {"AAA.SZ": _quote("AAA.SZ", price=12.0)})
         assert n == 1
@@ -112,16 +128,33 @@ class TestBuildLivePanel:
                 "bucketSize": 1,
                 "poolSize": 1,
                 "ranked": [
-                    {"ts": "AAA.SZ", "ampRank": 1, "inBucket": True, "gapPct": 3.1,
-                     "amp1430Pct": 2.0, "px1430": 11.0, "skipReason": None,
-                     "fillable": True, "wouldFill": False},
+                    {
+                        "ts": "AAA.SZ",
+                        "name": "测试股",
+                        "ampRank": 1,
+                        "inBucket": True,
+                        "gapPct": 3.1,
+                        "amp1430Pct": 2.0,
+                        "px1430": 11.0,
+                        "skipReason": None,
+                        "fillable": True,
+                        "wouldFill": False,
+                    },
                 ],
             }
 
         with (
-            patch.object(sl, "_fetch_quotes", return_value={"AAA.SZ": _quote("AAA.SZ"), "BBB.SZ": _quote("BBB.SZ")}),
-            patch("data_sync_service.service.state_bucket_track.load_sgap_context", return_value=ctx),
-            patch("data_sync_service.service.satellite_signals.satellite_signals_for_day", fake_panel),
+            patch.object(
+                sl,
+                "_fetch_quotes",
+                return_value={"AAA.SZ": _quote("AAA.SZ"), "BBB.SZ": _quote("BBB.SZ")},
+            ),
+            patch(
+                "data_sync_service.service.state_bucket_track.load_sgap_context", return_value=ctx
+            ),
+            patch(
+                "data_sync_service.service.satellite_signals.satellite_signals_for_day", fake_panel
+            ),
         ):
             panel = sl.build_live_panel(day="2026-09-17")
         assert panel["tradeDate"] == "2026-09-17"
@@ -129,6 +162,49 @@ class TestBuildLivePanel:
         assert panel["coverage"] == round(2 / 3, 4)
         assert panel["wouldFill"] == []
         assert panel["ranked"][0]["ts"] == "AAA.SZ"
+        # Display name must survive the build_live_panel re-map (2026-09-21).
+        assert panel["ranked"][0]["name"] == "测试股"
+
+
+class TestRecomputeExitDue:
+    def test_uses_the_frozen_body_against_the_calendar(self, monkeypatch) -> None:
+        calls: list[tuple[str, int]] = []
+
+        def fake(entry: str, body: int) -> str:
+            calls.append((entry, body))
+            return "2026-09-23"
+
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.nth_open_date_from", fake
+        )
+        legs = [
+            {
+                "ts": "300220.SZ",
+                "entryDate": "2026-09-21",
+                "heldDays": 2,
+                "daysLeft": 1,
+                "exitDue": "2026-09-22",  # clamped to the panel day
+            },
+        ]
+        sl._recompute_exit_due(legs)
+        assert calls == [("2026-09-21", 3)]  # body = heldDays + daysLeft
+        assert legs[0]["exitDue"] == "2026-09-23"
+
+    def test_keeps_the_replay_value_when_the_calendar_cannot_answer(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "data_sync_service.service.trade_calendar_utils.nth_open_date_from",
+            lambda entry, body: None,
+        )
+        legs = [
+            {"ts": "300220.SZ", "entryDate": "2026-09-21", "heldDays": 2, "daysLeft": 1,
+             "exitDue": "2026-09-22"},
+        ]
+        sl._recompute_exit_due(legs)
+        assert legs[0]["exitDue"] == "2026-09-22"
+
+    def test_due_key_treats_missing_as_held(self) -> None:
+        assert sl._due_key({"exitDue": "2026-09-22"}) == "2026-09-22"
+        assert sl._due_key({}) > "2026-09-30"
 
 
 class TestPersistIfComplete:
@@ -152,6 +228,56 @@ class TestPersistIfComplete:
         assert saved2 is False and "coverage" in note2
         assert sl.load_live_panel() is None  # nothing written
 
+    def test_never_persists_the_private_quote_snapshot(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
+        panel = {
+            "decisionAvailable": True,
+            "coverage": 0.9,
+            "gateOpen": False,
+            "wouldFill": [],
+            "_quotes": {"AAA.SZ": {"price": "11.0"}},
+        }
+        saved, _ = sl.persist_if_complete(panel)
+        assert saved is True
+        assert "_quotes" not in sl.load_live_panel()
+
+
+class TestPersistQuotes:
+    """OPT-224: the 14:30 snapshot lands in bar_5min as raw prints."""
+
+    def _capture(self, monkeypatch):
+        import data_sync_service.db.bar_5min as b5db
+
+        captured: dict = {}
+
+        def fake(payload, *, on_conflict: str = "update"):
+            captured["payload"] = payload
+            captured["on_conflict"] = on_conflict
+            return len(payload)
+
+        monkeypatch.setattr(b5db, "upsert_5min_payload", fake)
+        return captured
+
+    def test_stores_close_only_rows(self, monkeypatch) -> None:
+        captured = self._capture(monkeypatch)
+        n = sl.persist_quotes("2026-09-17", {"AAA.SZ": _quote("AAA.SZ")})
+        assert n == 1
+        assert captured["on_conflict"] == "update"
+        ts, day, hhmm, o, h, low, close, vol, amount, source = captured["payload"][0]
+        assert (ts, day, hhmm) == ("AAA.SZ", "2026-09-17", "1430")
+        # open/high/low stay NULL: the snapshot's OHLC is session-wide, not the
+        # 14:25-14:30 bar, and would corrupt amp_1430 if written.
+        assert (o, h, low, vol) == (None, None, None, None)
+        assert close == 11.0
+        assert source == sl.QUOTE_SOURCE == "live_1430"
+
+    def test_skips_unusable_quotes(self, monkeypatch) -> None:
+        captured = self._capture(monkeypatch)
+        assert (
+            sl.persist_quotes("2026-09-17", {"AAA.SZ": {**(_quote("AAA.SZ")), "price": None}}) == 0
+        )
+        assert captured == {}
+
 
 class TestSatelliteLiveJob:
     def test_skips_non_trading_day(self, monkeypatch) -> None:
@@ -159,11 +285,37 @@ class TestSatelliteLiveJob:
 
         records: list[dict] = []
         monkeypatch.setattr(job, "insert_record", lambda *a, **kw: records.append(kw))
-        monkeypatch.setattr(
-            "data_sync_service.db.trade_calendar.is_trading_day", lambda *a: False
-        )
+        monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: False)
         out = job.run()
         assert out["skipped"] == "not_trading_day"
+        assert records[0]["success"] is True
+
+    def test_skips_when_today_already_captured(self, monkeypatch, tmp_path) -> None:
+        """Idempotent: the 14:33/14:37 retries no-op once today's panel exists."""
+        import json
+
+        from data_sync_service.scheduler import satellite_live_job as job
+        from data_sync_service.service.trade_calendar_utils import shanghai_today
+
+        records: list[dict] = []
+        monkeypatch.setattr(job, "insert_record", lambda *a, **kw: records.append(kw))
+        monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
+        monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
+        (tmp_path / "panel.json").write_text(
+            json.dumps({"tradeDate": shanghai_today().isoformat()}), encoding="utf-8"
+        )
+        called = {"n": 0}
+
+        def _boom(day: str) -> dict:
+            called["n"] += 1
+            raise AssertionError("must not rebuild when today's panel already exists")
+
+        monkeypatch.setattr(
+            "data_sync_service.service.satellite_live.build_live_panel", _boom
+        )
+        out = job.run()
+        assert out["skipped"] == "already_captured"
+        assert called["n"] == 0
         assert records[0]["success"] is True
 
     def test_persists_complete_panel(self, monkeypatch, tmp_path) -> None:
@@ -176,14 +328,96 @@ class TestSatelliteLiveJob:
         monkeypatch.setattr(job, "_emit_action", lambda panel: None)  # no webhook/DB writes
         monkeypatch.setattr(
             "data_sync_service.service.satellite_live.build_live_panel",
-            lambda day: {"tradeDate": day, "decisionAvailable": True, "coverage": 0.9,
-                         "gateOpen": False, "wouldFill": [], "gapCount": 1, "poolSize": 1,
-                         "breadth1430": 0.3},
+            lambda day: {
+                "tradeDate": day,
+                "decisionAvailable": True,
+                "coverage": 0.9,
+                "gateOpen": False,
+                "wouldFill": [],
+                "gapCount": 1,
+                "poolSize": 1,
+                "breadth1430": 0.3,
+            },
         )
         out = job.run()
         assert out["ok"] is True
         assert records[0]["success"] is True and "gate=closed" in records[0]["error_message"]
         assert (tmp_path / "panel.json").exists()
+
+    def test_persists_1430_prints_from_the_panel_snapshot(self, monkeypatch, tmp_path) -> None:
+        """OPT-224: the job pops _quotes and stores them; the file stays clean."""
+        import json
+
+        from data_sync_service.scheduler import satellite_live_job as job
+
+        persisted: dict = {}
+        monkeypatch.setattr(job, "insert_record", lambda *a, **kw: None)
+        monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
+        monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
+        monkeypatch.setattr(job, "_emit_action", lambda panel: None)
+        monkeypatch.setattr(
+            sl,
+            "persist_quotes",
+            lambda day, quotes, **kw: (
+                persisted.update({"day": day, "quotes": quotes}) or len(quotes)
+            ),
+        )
+        monkeypatch.setattr(
+            "data_sync_service.service.satellite_live.build_live_panel",
+            lambda day: {
+                "tradeDate": day,
+                "decisionAvailable": True,
+                "coverage": 0.9,
+                "gateOpen": False,
+                "wouldFill": [],
+                "gapCount": 1,
+                "poolSize": 1,
+                "breadth1430": 0.3,
+                "quoted": 1,
+                "_quotes": {"AAA.SZ": {"price": "11.0"}},
+            },
+        )
+        out = job.run()
+        assert out["ok"] is True
+        assert len(str(persisted["day"])) == 10
+        assert persisted["quotes"] == {"AAA.SZ": {"price": "11.0"}}
+        saved = json.loads((tmp_path / "panel.json").read_text(encoding="utf-8"))
+        assert "_quotes" not in saved
+        assert saved["quotePersisted"] is True
+
+    def test_does_not_persist_panel_when_quote_storage_fails(self, monkeypatch, tmp_path) -> None:
+        from data_sync_service.scheduler import satellite_live_job as job
+
+        records: list[dict] = []
+        monkeypatch.setattr(job, "insert_record", lambda *a, **kw: records.append(kw))
+        monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
+        monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
+        monkeypatch.setattr(job, "_emit_action", lambda panel: None)
+
+        def fail_persist(*, day, quotes, **kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(sl, "persist_quotes", fail_persist)
+        monkeypatch.setattr(
+            "data_sync_service.service.satellite_live.build_live_panel",
+            lambda day: {
+                "tradeDate": day,
+                "decisionAvailable": True,
+                "coverage": 0.9,
+                "quoted": 1,
+                "gateOpen": False,
+                "wouldFill": [],
+                "gapCount": 1,
+                "poolSize": 1,
+                "breadth1430": 0.3,
+                "_quotes": {"AAA.SZ": {"price": "11.0"}},
+            },
+        )
+        out = job.run()
+        assert out["ok"] is False
+        assert "persistence incomplete" in out["note"]
+        assert not (tmp_path / "panel.json").exists()
+        assert records[0]["success"] is False
 
     def test_emit_action_pushes_for_selected_mode(self, monkeypatch) -> None:
         """OPT-223: the push carries the selected strategy's action."""
@@ -204,8 +438,11 @@ class TestSatelliteLiveJob:
             mas,
             "_pick",
             lambda *, as_of=None: {
-                "key": "OIL", "ts": "513350.SH", "symbol": "ETF:513350",
-                "name": "富国油气QDII", "mom60": 31.7,
+                "key": "OIL",
+                "ts": "513350.SH",
+                "symbol": "ETF:513350",
+                "name": "富国油气QDII",
+                "mom60": 31.7,
             },
         )
         panel = {
@@ -216,8 +453,16 @@ class TestSatelliteLiveJob:
             "exits": [{"ts": "000978.SZ", "exitDue": "2026-09-17"}],
             "heldLegs": [],
             "ranked": [
-                {"ts": "002128.SZ", "inBucket": True, "skipReason": None, "fillable": True,
-                 "gapPct": 3.04, "amp1430Pct": 2.92, "px1430": 27.7, "ampRank": 3},
+                {
+                    "ts": "002128.SZ",
+                    "inBucket": True,
+                    "skipReason": None,
+                    "fillable": True,
+                    "gapPct": 3.04,
+                    "amp1430Pct": 2.92,
+                    "px1430": 27.7,
+                    "ampRank": 3,
+                },
             ],
         }
         job._emit_action(panel)
@@ -244,20 +489,38 @@ class TestSatelliteLiveJob:
         job._emit_action({"tradeDate": "2026-09-17", "decisionAvailable": True})
         assert emitted == []
 
-    def test_incomplete_panel_records_failure(self, monkeypatch) -> None:
+    def test_incomplete_panel_records_failure(self, monkeypatch, tmp_path) -> None:
         from data_sync_service.scheduler import satellite_live_job as job
 
         records: list[dict] = []
         monkeypatch.setattr(job, "insert_record", lambda *a, **kw: records.append(kw))
         monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
+        # Isolate from the real panel file (else the idempotency guard could skip).
+        monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
         monkeypatch.setattr(
             "data_sync_service.service.satellite_live.build_live_panel",
-            lambda day: {"tradeDate": day, "decisionAvailable": False, "reason": "no prints",
-                         "coverage": 0.0},
+            lambda day: {
+                "tradeDate": day,
+                "decisionAvailable": False,
+                "reason": "no prints",
+                "coverage": 0.0,
+            },
         )
         out = job.run()
         assert out["ok"] is False
         assert records[0]["success"] is False
+
+
+@pytest.mark.requires_postgres
+def test_in_flight_legs_are_not_reported_as_due_today() -> None:
+    """2026-09-23 incident: the panel's replay calendar ends at the panel day
+    (no daily row yet), so every in-flight leg's exitDue collapsed to "today"
+    and the held set came back empty — the card then under-counted the slots."""
+    panel = sl.build_live_panel(day="2026-09-22", quotes={})
+    assert panel["heldLegs"], "held legs must not be empty on a mid-hold day"
+    assert all(str(leg["exitDue"]) > "2026-09-22" for leg in panel["heldLegs"])
+    assert all(str(leg["exitDue"]) == "2026-09-23" for leg in panel["heldLegs"])
+    assert panel["exits"] == []
 
 
 @pytest.mark.requires_postgres
@@ -281,8 +544,8 @@ def test_live_panel_matches_replay_for_historical_day() -> None:
     #    (mv / px1430 / px1500 / hl1430) pin every input to the stored values,
     #    so the synthetic path must reproduce the replay panel exactly.
     ctx_prev = load_sgap_context(prev, prev, times=HABIT_CTX_TIMES)
-    px1430 = (ctx_full.get("px_1430") or {})
-    px1500 = ((ctx_full.get("px_by_hhmm") or {}).get("1500") or {})
+    px1430 = ctx_full.get("px_1430") or {}
+    px1500 = (ctx_full.get("px_by_hhmm") or {}).get("1500") or {}
     hl1430 = ctx_full.get("px_hl_1430") or {}
     quote_row: dict[str, dict] = {}
     for ts, series in ctx_full["per_ts"].items():
@@ -313,3 +576,20 @@ def test_live_panel_matches_replay_for_historical_day() -> None:
     assert [e["wouldFill"] for e in live_panel["ranked"]] == [
         e["wouldFill"] for e in replay_panel["ranked"]
     ]
+
+
+def test_exit_due_endpoint_uses_the_frozen_body(monkeypatch) -> None:
+    """The card's off-book sell time = entry + BODY sessions (habit recipe)."""
+    from data_sync_service.api.backtest_routes import satellite_signals_exit_due
+
+    monkeypatch.setattr(
+        "data_sync_service.service.trade_calendar_utils.nth_open_date_from",
+        lambda entry, body: f"due:{entry}:{body}",
+    )
+    out = satellite_signals_exit_due(entries="2026-09-22, 2026-09-21")
+    assert out["ok"] is True
+    assert out["body"] == 3
+    assert out["exitDue"] == {
+        "2026-09-22": "due:2026-09-22:3",
+        "2026-09-21": "due:2026-09-21:3",
+    }

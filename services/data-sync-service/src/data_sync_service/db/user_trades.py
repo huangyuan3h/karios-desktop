@@ -42,7 +42,21 @@ SIDES = (SIDE_BUY, SIDE_ADD, SIDE_SELL)
 
 LEG_S3 = "s3"
 LEG_PARKING = "parking"
-LEGS = (LEG_S3, LEG_PARKING)
+LEG_SATELLITE = "satellite"
+LEG_H2 = "h2"
+LEG_B3 = "b3"
+LEGS = (LEG_S3, LEG_PARKING, LEG_SATELLITE, LEG_H2, LEG_B3)
+
+STRATEGY_MODE_LEGACY = "legacy_unknown"
+STRATEGY_MODES = (
+    "harbor",
+    "homeport",
+    "starport",
+    "starship",
+    "starship_robust",
+    "twin_star",
+    STRATEGY_MODE_LEGACY,
+)
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
@@ -61,9 +75,13 @@ CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     note          TEXT,
     alpha_snapshot JSONB,
     leg           TEXT NOT NULL DEFAULT 's3',
+    strategy_mode TEXT NOT NULL DEFAULT 'legacy_unknown',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'parking'))
+    CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'parking', 'satellite', 'h2', 'b3')),
+    CONSTRAINT user_trades_strategy_mode_check CHECK (
+        strategy_mode IN ('harbor', 'homeport', 'starport', 'starship', 'starship_robust', 'twin_star', 'legacy_unknown')
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_trades_symbol_date
@@ -100,6 +118,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "market": row["market"],
         "note": row["note"],
         "leg": row.get("leg") or LEG_S3,
+        "strategyMode": row.get("strategy_mode") or STRATEGY_MODE_LEGACY,
         "alphaSnapshot": row["alpha_snapshot"],
         "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
     }
@@ -121,12 +140,15 @@ def insert_trade(
     note: str | None = None,
     alpha_snapshot: dict[str, Any] | None = None,
     leg: str = LEG_S3,
+    strategy_mode: str = STRATEGY_MODE_LEGACY,
 ) -> dict[str, Any]:
     """Insert one trade leg and return the normalized row."""
     if side not in SIDES:
         raise ValueError(f"invalid side: {side}")
     if leg not in LEGS:
         raise ValueError(f"invalid leg: {leg}")
+    if strategy_mode not in STRATEGY_MODES:
+        raise ValueError(f"invalid strategy_mode: {strategy_mode}")
     trade_id = str(uuid.uuid4())
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -134,8 +156,8 @@ def insert_trade(
             INSERT INTO {USER_TRADES_TABLE} (
                 id, symbol, side, trade_date, price, position_pct,
                 cost_basis, entry_date, pnl_pct, holding_days, source, market,
-                note, alpha_snapshot, leg
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                note, alpha_snapshot, leg, strategy_mode
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -154,6 +176,7 @@ def insert_trade(
                 note,
                 Json(alpha_snapshot) if alpha_snapshot else None,
                 leg,
+                strategy_mode,
             ),
         )
         row = cur.fetchone()
@@ -161,18 +184,33 @@ def insert_trade(
     return _normalize_row(dict(row))
 
 
-def list_trades(*, limit: int = 50, symbol: str | None = None) -> list[dict[str, Any]]:
+def list_trades(
+    *,
+    limit: int = 50,
+    symbol: str | None = None,
+    leg: str | None = None,
+    strategy_mode: str | None = None,
+) -> list[dict[str, Any]]:
     """List legs newest first. Use dict_row so column order never matters."""
     limit = max(1, min(int(limit), 500))
+    clauses: list[str] = []
+    params: list[Any] = []
+    if symbol:
+        clauses.append("symbol = %s")
+        params.append(symbol)
+    if leg:
+        clauses.append("leg = %s")
+        params.append(leg)
+    if strategy_mode:
+        clauses.append("strategy_mode = %s")
+        params.append(strategy_mode)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"""
         SELECT * FROM {USER_TRADES_TABLE}
-        {("WHERE symbol = %s" if symbol else "")}
+        {where}
         ORDER BY trade_date DESC, created_at DESC
         LIMIT %s
     """
-    params: list[Any] = []
-    if symbol:
-        params.append(symbol)
     params.append(limit)
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(sql, params)
@@ -191,10 +229,11 @@ def update_trade(
     trade_id: str,
     *,
     leg: str | None = None,
+    strategy_mode: str | None = None,
     position_pct: float | None = None,
     note: str | None = None,
 ) -> dict[str, Any] | None:
-    """Correct a journal leg (OPT-150). Only leg/position_pct/note are mutable —
+    """Correct a journal leg. Only leg/strategy/position_pct/note are mutable —
     side/symbol/trade_date never change so audit pairing stays intact.
     Returns the normalized row, or None if the id does not exist.
     """
@@ -205,6 +244,11 @@ def update_trade(
             raise ValueError(f"invalid leg: {leg}")
         sets.append("leg = %s")
         params.append(leg)
+    if strategy_mode is not None:
+        if strategy_mode not in STRATEGY_MODES:
+            raise ValueError(f"invalid strategy_mode: {strategy_mode}")
+        sets.append("strategy_mode = %s")
+        params.append(strategy_mode)
     if position_pct is not None:
         if not position_pct > 0:
             raise ValueError("position_pct must be positive")
@@ -232,18 +276,28 @@ def update_trade(
     return _normalize_row(dict(row))
 
 
-def latest_buy_leg(symbol: str) -> str:
+def latest_buy_leg(symbol: str, *, strategy_mode: str | None = None) -> str:
     """Leg of the newest BUY for symbol (SELL/ADD inherit it when leg is omitted)."""
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         try:
-            cur.execute(
-                f"""
-                SELECT leg FROM {USER_TRADES_TABLE}
-                WHERE symbol = %s AND side = 'BUY'
-                ORDER BY trade_date DESC, created_at DESC LIMIT 1
-                """,
-                (symbol,),
-            )
+            if strategy_mode:
+                cur.execute(
+                    f"""
+                    SELECT leg FROM {USER_TRADES_TABLE}
+                    WHERE symbol = %s AND side = 'BUY' AND strategy_mode = %s
+                    ORDER BY trade_date DESC, created_at DESC LIMIT 1
+                    """,
+                    (symbol, strategy_mode),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT leg FROM {USER_TRADES_TABLE}
+                    WHERE symbol = %s AND side = 'BUY'
+                    ORDER BY trade_date DESC, created_at DESC LIMIT 1
+                    """,
+                    (symbol,),
+                )
             row = cur.fetchone()
         except Exception:
             return LEG_S3  # pre-0041 DBs have no leg column

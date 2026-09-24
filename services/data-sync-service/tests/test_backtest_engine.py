@@ -669,7 +669,7 @@ def test_trailing_stop_closes_on_peak_pullback() -> None:
     assert t.close_date == "2026-06-23"
     assert t.entry_price == 10.0
     assert t.close_price == 11.3
-    assert abs(t.pnl_pct - (13.0 - 0.3)) < 0.01
+    assert abs(t.pnl_pct - (13.0 - 0.32282)) < 0.01
 
 
 def test_limit_up_blocks_entry_then_enters_next_day_opt103() -> None:

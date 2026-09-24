@@ -331,17 +331,6 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     { endpoint: '/sync/sleeve-etfs', method: 'POST', label: '立即同步' },
   ),
   meta(
-    'harbor_h2_shadow',
-    'indexMacro',
-    '港湾H2影子账本（验证线）',
-    '工作日 18:35 重算港湾 Timeline + H2 迟滞停车腿，向影子账本追加 paper 日（只看不动手；失败只进收件箱，不打电话）。',
-    '工作日 18:35',
-    '35 18 * * 1-5',
-    'cron',
-    true,
-    15,
-  ),
-  meta(
     'stock_daily_basic_sync',
     'indexMacro',
     '个股估值（市值）',

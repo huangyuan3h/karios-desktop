@@ -61,7 +61,7 @@ def test_insert_rejects_invalid_side() -> None:
         )
 
 
-def test_leg_defaults_s3_and_accepts_parking() -> None:
+def test_leg_defaults_s3_and_accepts_parking_and_satellite() -> None:
     ut.ensure_tables()
     core = ut.insert_trade(
         symbol=TEST_SYMBOL,
@@ -82,6 +82,15 @@ def test_leg_defaults_s3_and_accepts_parking() -> None:
     assert parking["leg"] == "parking"
     rows = ut.list_trades(symbol=f"{TEST_PREFIX}sat1")
     assert any(r["id"] == parking["id"] and r["leg"] == "parking" for r in rows)
+    satellite = ut.insert_trade(
+        symbol=f"{TEST_PREFIX}sate1",
+        side="BUY",
+        trade_date="2026-09-21",
+        price=18.56,
+        position_pct=25.0,
+        leg="satellite",
+    )
+    assert satellite["leg"] == "satellite"
     with pytest.raises(ValueError):
         ut.insert_trade(
             symbol=TEST_SYMBOL,

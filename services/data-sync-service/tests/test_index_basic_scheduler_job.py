@@ -32,7 +32,7 @@ def _capture_logs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def test_constants() -> None:
     assert index_basic_job.JOB_ID == "index_basic_sync"
-    assert index_basic_job.CRON_EXPRESSION == "15 17 * * 1-5"
+    assert index_basic_job.CRON_EXPRESSION == "15 17 * * mon-fri"
     assert index_basic_job.TIMEZONE == "Asia/Shanghai"
 
 

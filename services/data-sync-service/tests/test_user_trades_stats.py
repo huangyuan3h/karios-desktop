@@ -38,8 +38,8 @@ def test_bucket_stats_mixed() -> None:
     assert s["avgLossPct"] == 5.0
     # expectancy = 0.5*6 - 0.5*5 = 0.5
     assert s["expectancyPct"] == pytest.approx(0.5)
-    # net = 0.5 - 0.3 cost
-    assert s["netExpectancyPct"] == pytest.approx(0.2)
+    # net = 0.5 - round-trip cost (stats rounds to 3 decimals)
+    assert s["netExpectancyPct"] == pytest.approx(round(0.5 - st.ROUND_TRIP_COST_PCT, 3))
     # profit factor = (10+2) / (4+6) = 1.2
     assert s["profitFactor"] == pytest.approx(1.2)
     assert s["avgHoldingDays"] == pytest.approx(2.8)
@@ -101,7 +101,7 @@ def test_compute_trade_stats_by_source_and_symbol() -> None:
         # symbols, never whole-source counts.
         assert f"{TEST_PREFIX}a" in stats["bySymbol"]
         assert f"{TEST_PREFIX}b" in stats["bySymbol"]
-        assert stats["roundTripCostPct"] == 0.3
+        assert stats["roundTripCostPct"] == st.ROUND_TRIP_COST_PCT
         assert stats["bySymbol"][f"{TEST_PREFIX}a"]["count"] == 1
         assert stats["bySymbol"][f"{TEST_PREFIX}a"]["winRate"] == 1.0
         assert stats["bySymbol"][f"{TEST_PREFIX}b"]["count"] == 1

@@ -12,7 +12,7 @@ from data_sync_service.service.macro_daily import sync_macro_daily_full
 logger = logging.getLogger(__name__)
 
 JOB_ID = "macro_daily_full_sync"
-CRON_EXPRESSION = "0 7 * * 2-6"
+CRON_EXPRESSION = "0 7 * * tue-sat"
 TIMEZONE = "Asia/Shanghai"
 
 

@@ -12,10 +12,10 @@ Rule R5c:
   both weak                       -> 0/0 (both markets' own regime gates
                                        already keep them out of positions)
 
-T6 sleeve extension (2026-08-21): when BOTH markets are weak, the idle pool
-is offered to the third-asset sleeve — 100% Nasdaq ETF while it trades above
-its 200-day MA, else stay in cash/repo. The three-window validation lives in
-scripts/sleeve_nav_sim.py (OPT-119).
+Sleeve extension (2026-08-24, unified 2026-09-18): when BOTH markets are
+weak, the idle pool goes to the multi-asset parking sleeve (the same
+``harbor.pick_parking`` rule as Live/paper/watchlist). The legacy single-
+NASDAQ T6 sleeve was retired (OPT-226).
 """
 
 from __future__ import annotations
@@ -62,14 +62,12 @@ def weights_with_sleeve_from_regimes(
         etf_above = pick is not None and bool(pick.get("above_ma200"))
         return (0.0, 0.0, 1.0 if etf_above else 0.0)
     except Exception:
-        # fallback to single NASDAQ
-        from data_sync_service.service.third_asset_sleeve import (
-            THIRD_ASSET_TS,
-            _etf_market_data,
-        )
+        # fallback to the NASDAQ leg only (no legacy third-asset dependency)
+        from data_sync_service.service.harbor import MULTI_TS
+        from data_sync_service.service.multi_asset_sleeve import _etf_market_data
 
-        md = _etf_market_data(THIRD_ASSET_TS)
-        etf_above_ma200 = bool(md.get("ok") and md.get("above_ma200"))
+        md = _etf_market_data(MULTI_TS["NASDAQ"])
+        etf_above_ma200 = bool(md.get("ok") and md.get("above"))
         return (0.0, 0.0, 1.0 if etf_above_ma200 else 0.0)
 
 

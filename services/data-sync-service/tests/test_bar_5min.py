@@ -114,13 +114,15 @@ def test_rows_from_tushare() -> None:
 
 def test_bar_5min_job_constants() -> None:
     assert bar_5min_job.JOB_ID == "bar_5min_close"
-    assert bar_5min_job.CRON_EXPRESSION == "40 18 * * 1-5"
+    assert bar_5min_job.CRON_EXPRESSION == "40 18 * * mon-fri"
     assert bar_5min_job.TIMEZONE == "Asia/Shanghai"
 
 
 def test_bar_5min_job_run_no_symbols(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(bar_5min_job, "list_gap_codes", lambda _d: [])
     monkeypatch.setattr(bar_5min_job, "_open_cn_paper_ts_codes", lambda: [])
+    monkeypatch.setattr(bar_5min_job, "derived_1500_marks", lambda _d: 0)
+    monkeypatch.setattr(bar_5min_job, "_refresh_satellite_pool", lambda _d: None)
     records: list[dict] = []
     monkeypatch.setattr(
         bar_5min_job,
@@ -141,6 +143,7 @@ def test_bar_5min_job_run_ok(monkeypatch) -> None:  # noqa: ANN001
         "backfill_symbols",
         lambda **kw: {"ok": 2, "failed": 0, "skipped": 0, "stored": 14, "pending": 2},
     )
+    monkeypatch.setattr(bar_5min_job, "derived_1500_marks", lambda _d: 0)
     refreshed: list[str] = []
     monkeypatch.setattr(bar_5min_job, "_refresh_satellite_pool", refreshed.append)
     records: list[dict] = []
@@ -310,6 +313,73 @@ def test_upsert_payload_defaults_to_ranked_update(monkeypatch: pytest.MonkeyPatc
     assert b5db.upsert_5min_payload(_payload()) == 1
     insert = next(s for s in conn.cur.statements if "INSERT INTO" in s)
     assert "DO UPDATE SET" in insert and "ext_15min" in insert
+    # OPT-224: a live close-only snapshot (live_1430) must lose to a real bar.
+    assert "live_1430" in insert
+
+
+def test_derived_1500_marks_builds_insert_only_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OPT-224: qfq closes are un-adjusted to raw 15:00 marks, insert-only."""
+    from data_sync_service.service import bar_5min as b5
+
+    captured: dict = {}
+
+    class _Cur:
+        def __enter__(self) -> _Cur:
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+        def execute(self, sql: str, params=None) -> None:  # noqa: ANN001
+            captured["sql"] = str(sql)
+            captured["params"] = params
+
+        def fetchall(self):
+            return [("600000.SH", 9.06), ("510300.SH", 4.123456), ("BAD.SH", None)]
+
+    class _Conn:
+        def cursor(self) -> _Cur:
+            return _Cur()
+
+        def __enter__(self) -> _Conn:
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+    def _fake_upsert(payload, *, on_conflict: str = "update") -> int:  # noqa: ANN001
+        captured["payload"] = payload
+        captured["on_conflict"] = on_conflict
+        return len(payload)
+
+    monkeypatch.setattr(b5, "get_connection", lambda: _Conn())
+    monkeypatch.setattr(b5, "upsert_5min_payload", _fake_upsert)
+    assert b5.derived_1500_marks("2026-09-17") == 2
+    assert captured["on_conflict"] == "nothing"
+    assert captured["params"] == ("2026-09-17",)
+    assert "adj_latest" in captured["sql"]
+    ts, day, hhmm, o, h, low, close, vol, amount, source = captured["payload"][0]
+    assert (ts, day, hhmm, o, h, low, vol, amount) == (
+        "600000.SH",
+        "2026-09-17",
+        "1500",
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    assert close == pytest.approx(9.06)
+    assert source == b5.SOURCE_DERIVED_1500
+
+
+def test_derived_1500_marks_empty_date_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    from data_sync_service.service import bar_5min as b5
+
+    calls: list = []
+    monkeypatch.setattr(b5, "upsert_5min_payload", lambda *a, **kw: calls.append(a) or 0)
+    assert b5.derived_1500_marks("") == 0
+    assert calls == []
 
 
 def test_upsert_payload_nothing_never_rewrites(monkeypatch: pytest.MonkeyPatch) -> None:

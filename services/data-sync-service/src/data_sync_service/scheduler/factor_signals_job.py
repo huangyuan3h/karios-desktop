@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "factor_signals_sync"
 # Weekdays 18:30 Asia/Shanghai (after close_sync 17:10; needs today's daily bars).
-CRON_EXPRESSION = "30 18 * * 1-5"
+CRON_EXPRESSION = "30 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

@@ -91,9 +91,14 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
           it.nameStatus === 'resolved' || it.nameStatus === 'not_found' ? it.nameStatus : undefined,
         addedAt: String(it.addedAt ?? new Date().toISOString()),
         color,
+        // 2026-09-23: round to 2dp. The a25 sleeve/B3 targets multiply idle ×
+        // weight (e.g. 56.25 × 0.026 = 1.4625000000000001); the raw float then
+        // failed TradeActionDialog's `/^\d+(\.\d{0,2})?$/` check on the
+        // prefilled sell % → the 卖出 confirm button stayed disabled. Rounding
+        // here heals already-stored noise on every load/save.
         positionPct:
           typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-            ? Math.max(0, Math.min(100, it.positionPct))
+            ? Math.round(Math.max(0, Math.min(100, it.positionPct)) * 100) / 100
             : null,
         costPrice:
           typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
@@ -261,10 +266,15 @@ export async function hydrateWatchlist(): Promise<HydrateWatchlistResult> {
   try {
     const remote = await fetchWatchlistFromBackend();
     if (remote.length > 0) {
-      const merged = mergeWatchlistRemoteWithLocal(remote, localBefore);
+      // Un-pushed local changes are at least as new as the registry's copy —
+      // let them win and push them up, instead of reverting the user's action.
+      const merged = mergeWatchlistRemoteWithLocal(remote, localBefore, {
+        preferLocal: pendingSync,
+      });
       saveWatchlistLocal(merged);
-      // If we kept local-only held rows or filled null position fields, push back up.
-      if (watchlistPositionSignature(merged) !== watchlistPositionSignature(remote)) {
+      // If we kept local-only held rows / filled nulls / re-applied pending
+      // changes, push back up.
+      if (pendingSync || watchlistPositionSignature(merged) !== watchlistPositionSignature(remote)) {
         const synced = await upliftLocalToBackend(merged);
         pendingSync = !synced;
         return { source: 'registry', items: merged, pendingSync };
@@ -342,6 +352,13 @@ export function normalizeWatchlistItem(
   );
 }
 
+/** Numeric-field merge: pick the preferred side, falling back to the other. */
+function pick<T>(preferLocal: boolean, localValue: T | null, remoteValue: T | null): T | null {
+  return preferLocal
+    ? (localValue ?? remoteValue ?? null)
+    : (remoteValue ?? localValue ?? null);
+}
+
 function hasHeldPosition(item: WatchlistItem): boolean {
   return (
     typeof item.positionPct === 'number' &&
@@ -353,11 +370,19 @@ function hasHeldPosition(item: WatchlistItem): boolean {
 /**
  * Prefer remote membership, but keep local position economics when remote left them null.
  * Also retain local-only held rows so a polluted/partial registry cannot wipe positions.
+ *
+ * ``preferLocal`` flips the economics to the local side. Use it when the local
+ * cache holds changes that never reached the registry (``pendingSync``): the
+ * local values are then at least as new as the remote's, and the default
+ * "remote's non-null wins" would silently revert a sell the user already made
+ * (2026-09-23: a local OIL 81% sell was restored to the registry's old 19%).
  */
 export function mergeWatchlistRemoteWithLocal(
   remote: WatchlistItem[],
   local: WatchlistItem[],
+  opts: { preferLocal?: boolean } = {},
 ): WatchlistItem[] {
+  const preferLocal = opts.preferLocal === true;
   const localBySym = new Map(local.map((x) => [x.symbol, x]));
   const merged: WatchlistItem[] = remote.map((r) => {
     const loc = localBySym.get(r.symbol);
@@ -367,10 +392,10 @@ export function mergeWatchlistRemoteWithLocal(
       name: r.name ?? loc.name ?? null,
       nameStatus: r.nameStatus ?? loc.nameStatus,
       color: r.color && r.color !== '#ffffff' ? r.color : (loc.color ?? r.color),
-      positionPct: r.positionPct ?? loc.positionPct ?? null,
-      costPrice: r.costPrice ?? loc.costPrice ?? null,
-      maxPrice: r.maxPrice ?? loc.maxPrice ?? null,
-      entryDate: r.entryDate ?? loc.entryDate ?? null,
+      positionPct: pick(preferLocal, loc.positionPct, r.positionPct),
+      costPrice: pick(preferLocal, loc.costPrice, r.costPrice),
+      maxPrice: pick(preferLocal, loc.maxPrice, r.maxPrice),
+      entryDate: pick(preferLocal, loc.entryDate, r.entryDate),
     };
   });
   const remoteSyms = new Set(remote.map((x) => x.symbol));

@@ -243,7 +243,10 @@ def import_vendor_tree(
         nonlocal buf
         if not buf:
             return
-        n = upsert_5min_payload(buf)
+        # Historical vendor CSV import is a backfill: never rewrite an existing
+        # print (OPT-211/OPT-224 lesson — a re-fetch must not overwrite live
+        # 14:30 prints and reprice fills). Missing keys only.
+        n = upsert_5min_payload(buf, on_conflict="nothing")
         stats["stored"] += n
         buf = []
 

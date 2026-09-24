@@ -12,7 +12,7 @@ from data_sync_service.service.index_daily import sync_index_daily_full
 logger = logging.getLogger(__name__)
 
 JOB_ID = "index_daily_full_sync"
-CRON_EXPRESSION = "30 16 * * 1-5"
+CRON_EXPRESSION = "30 16 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

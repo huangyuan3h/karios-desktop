@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "eastmoney_industry_sync"
 # Weekdays 18:00 Asia/Shanghai (after close_sync 17:10)
-CRON_EXPRESSION = "0 18 * * 1-5"
+CRON_EXPRESSION = "0 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

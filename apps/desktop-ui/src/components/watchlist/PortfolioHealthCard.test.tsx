@@ -361,7 +361,7 @@ describe('PortfolioHealthCard (harbor)', () => {
       isFetching: false,
     });
     renderCard({ mode: 'starport' });
-    expect(await screen.findByText(/操作提示（研究档 · 不进 Live）/)).toBeDefined();
+    expect(await screen.findByText(/策略参照（引擎 · 研究档）/)).toBeDefined();
     expect(screen.getByText(/星港：母港 0\.8 \+ 卫星 0\.2/)).toBeDefined();
     expect(screen.getByText(/14:30 到期卖出（余 1 日）：/)).toBeDefined();
   });

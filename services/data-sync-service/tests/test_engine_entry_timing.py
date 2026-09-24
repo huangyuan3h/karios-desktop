@@ -22,6 +22,7 @@ def _data(
     bars: list[tuple[str, str, str, str, str, str]],
     scores: dict[str, dict[str, float]],
     regime: str = "Strong",
+    px1430: dict[str, dict[str, float]] | None = None,
 ) -> SimpleNamespace:
     cal = [b[0] for b in bars]
     closes = {b[0]: float(b[4]) for b in bars}
@@ -31,6 +32,7 @@ def _data(
         close_by_ts_day={TS: dict(closes)},
         closes_by_ts={TS: [(b[0], float(b[4])) for b in bars]},
         bars_by_ts={TS: list(bars)},
+        px1430_by_ts=px1430 or {},
         regime_by_day={d: regime for d in cal},
         national_team_by_day={},
         guide_down_by_day={},
@@ -144,16 +146,17 @@ def test_next_open_stop_fires_on_a_later_session() -> None:
     t = run.trades[0]
     assert t.entry_date == "2024-01-02" and t.entry_price == pytest.approx(106.0)
     assert t.close_date == "2024-01-04" and t.close_reason == "stop_hit"
-    assert t.pnl_pct == pytest.approx(100.0 / 106.0 * 100 - 100 - 0.3, abs=0.05)
+    assert t.pnl_pct == pytest.approx(100.0 / 106.0 * 100 - 100 - 0.32282, abs=0.01)
 
 
 def test_next_open_signal_day_nav_has_no_mark_noise() -> None:
     data = _data(_gap_up_bars(), {"2024-01-02": {SYM: 70.0}})
     run = simulate(_cfg(), data)
-    # Marked at cost: committed capital (0.1 sleeve + half round-trip cost)
-    # at ratio 1.0, zero open/close-gap noise (the close-100 vs open-106 gap
-    # would otherwise print a fake -0.57pt dip).
-    assert run.nav_curve[0] == pytest.approx(1.0 - 0.1 * 1.0015 + 0.1 * 1.0)
+    # Marked at cost: committed capital (0.1 sleeve + entry-side cost) at
+    # ratio 1.0, zero open/close-gap noise (the close-100 vs open-106 gap
+    # would otherwise print a fake -0.57pt dip). Entry cost = explicit 3.641bp
+    # + 10bp slippage floor at the 106 open = 1.3641bp.
+    assert run.nav_curve[0] == pytest.approx(1.0 - 0.1 * 1.0013641 + 0.1 * 1.0)
 
 
 def test_close_mode_same_day_evaluation_unchanged() -> None:
@@ -167,4 +170,77 @@ def test_close_mode_same_day_evaluation_unchanged() -> None:
     # exit here is the window-end liquidation, and MTM still marks day one.
     assert len(run.trades) == 1
     assert run.trades[0].close_reason == "end_of_window"
-    assert run.nav_curve[0] == pytest.approx(1.0 - 0.1 * 1.0015 + 0.1)
+    assert run.nav_curve[0] == pytest.approx(1.0 - 0.1 * 1.0013641 + 0.1)
+
+
+# ---------------------------------------------------------------------------
+# H-CLOCK-1430 (2026-09-18): entry_mode="next_1430" — same signal/lag as
+# next_open, fill price = the fill session's 14:30 print (already qfq).
+# ---------------------------------------------------------------------------
+
+
+def _print_bars() -> list[tuple[str, str, str, str, str, str]]:
+    # D1 signal close 100; D2 opens 106 but the 14:30 print is 104.5.
+    return [
+        ("2024-01-02", "99", "101", "99", "100", "1000"),
+        ("2024-01-03", "106", "106", "104", "105", "1000"),
+        ("2024-01-04", "105", "106", "104", "105", "1000"),
+        ("2024-01-05", "105", "106", "104", "105", "1000"),
+    ]
+
+
+def test_next_1430_fills_at_the_fill_session_print() -> None:
+    data = _data(
+        _print_bars(),
+        {"2024-01-02": {SYM: 70.0}},
+        px1430={TS: {"2024-01-03": 104.5}},
+    )
+    run = simulate(_cfg(entry_mode="next_1430"), data)
+    snap = run.positions_by_day[0]
+    assert snap["date"] == "2024-01-02"
+    assert snap["positions"][0]["entry_price"] == pytest.approx(104.5)
+    assert len(run.trades) == 1
+    assert run.trades[0].entry_date == "2024-01-02"
+    assert run.trades[0].entry_price == pytest.approx(104.5)
+
+
+def test_next_1430_missing_print_skips_the_fill() -> None:
+    data = _data(_print_bars(), {"2024-01-02": {SYM: 70.0}}, px1430={TS: {}})
+    run = simulate(_cfg(entry_mode="next_1430"), data)
+    assert run.trades == []
+    assert run.summary.open_at_end == 0
+    assert run.summary.gated_blocks.get("no_1430_print", 0) >= 1
+
+
+def test_next_1430_limit_locked_print_skips_the_fill() -> None:
+    # 14:30 print pinned at the signal-day-close limit (100 x 1.10 = 110).
+    data = _data(
+        _print_bars(),
+        {"2024-01-02": {SYM: 70.0}},
+        px1430={TS: {"2024-01-03": 110.5}},
+    )
+    run = simulate(_cfg(entry_mode="next_1430"), data)
+    assert run.trades == []
+    assert run.summary.open_at_end == 0
+    assert run.summary.gated_blocks.get("limit_up", 0) >= 1
+
+
+def test_next_1430_no_same_session_exit() -> None:
+    """Fill at the D2 print; a D2-close stop must be discarded (A-share T+1).
+
+    Entry 106 at the D2 14:30 print, D2 closes 100 (-5.7% would stop) but the
+    fill session cannot sell; the D3 close (100) fires the stop at holding=2,
+    exactly like next_open. Exit price stays the decision-day close (there is
+    no 14:30 exit leg in the engine).
+    """
+    data = _data(
+        _gap_up_bars(),
+        {"2024-01-02": {SYM: 70.0}},
+        px1430={TS: {"2024-01-03": 106.0}},
+    )
+    run = simulate(_cfg(entry_mode="next_1430"), data)
+    assert len(run.trades) == 1
+    t = run.trades[0]
+    assert t.entry_date == "2024-01-02" and t.entry_price == pytest.approx(106.0)
+    assert t.close_date == "2024-01-04" and t.close_reason == "stop_hit"
+    assert t.holding_days == 2

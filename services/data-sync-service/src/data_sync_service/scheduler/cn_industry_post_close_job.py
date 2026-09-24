@@ -24,7 +24,7 @@ JOB_ID = "cn_industry_post_close_sync"
 # industry fund-flow/mainline data late afternoon (17:30-18:30); 17:35 runs
 # failed every weekday with no data yet (2026-08-09 audit). 18:15 sits after
 # close_sync 17:10 + watchlist_automation 17:30 + paper_s3_intake 17:42.
-CRON_EXPRESSION = "15 18 * * 1-5"
+CRON_EXPRESSION = "15 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

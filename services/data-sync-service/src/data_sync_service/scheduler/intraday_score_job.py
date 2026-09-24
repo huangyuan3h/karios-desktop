@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 JOB_ID = "intraday_score"
 # 10:30 (CN/HK morning session established) + 12:30 (midday break snapshot)
 # + 14:00 (afternoon) Asia/Shanghai.
-CRON_EXPRESSION = "30 10,12,14 * * 1-5"
+CRON_EXPRESSION = "30 10,12,14 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

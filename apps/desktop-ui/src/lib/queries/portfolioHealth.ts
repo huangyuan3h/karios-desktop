@@ -106,55 +106,6 @@ export interface PortfolioHealthResponse {
     industryOutflow?: number;
     industryInflow?: number;
   } | null;
-  /**
-   * 2026-08-19 (T6) — NASDAQ-100 ETF (513100) idle-cash sleeve hint.
-   * Active when the CN line has idle capital and the ETF is above its 200d MA
-   * (buy) or when it must be sold (A-share buy point / broke the MA line).
-   */
-  thirdAssetSleeve?: {
-    active?: boolean;
-    action?: 'BUY_513100' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'DONT_BUY' | 'NONE';
-    label?: string;
-    message?: string;
-    etf?: string;
-    tsCode?: string;
-    price?: number;
-    ma200?: number;
-    aboveMa200?: boolean;
-    asOfDate?: string;
-    pctChg?: number | null;
-    idlePct?: number;
-    s3BuySetup?: boolean;
-    gateOpen?: boolean;
-    holding513100?: boolean;
-    note?: string;
-  } | null;
-  /**
-   * 2026-08-20 (T6): the HELD NASDAQ-100 ETF (513110/513100/...) tracked as a
-   * separate "third asset / US" region with the sleeve rules (200d MA line),
-   * NOT as a CN A-share holding.
-   */
-  thirdAssetHolding?: {
-    active?: boolean;
-    symbol?: string;
-    tsCode?: string;
-    name?: string | null;
-    entryDate?: string;
-    costPrice?: number | null;
-    positionPct?: number | null;
-    price?: number;
-    ma200?: number;
-    aboveMa200?: boolean;
-    asOfDate?: string;
-    pctChg?: number | null;
-    pnlPct?: number | null;
-    action?: 'HOLD' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'NONE';
-    label?: string;
-    message?: string;
-    s3BuySetup?: boolean;
-    gateOpen?: boolean;
-    note?: string;
-  } | null;
   /** 港湾 live pick (mom_compare: STOCK basket ∪ GOLD/OIL/NASDAQ/BOND10). */
   multiAssetSleeve?: {
     active?: boolean;

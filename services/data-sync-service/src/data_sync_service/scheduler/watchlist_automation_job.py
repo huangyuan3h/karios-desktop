@@ -12,7 +12,7 @@ from data_sync_service.service.watchlist_automation import run_watchlist_automat
 logger = logging.getLogger(__name__)
 
 JOB_ID = "watchlist_automation"
-CRON_EXPRESSION = "30 17 * * 1-5"
+CRON_EXPRESSION = "30 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

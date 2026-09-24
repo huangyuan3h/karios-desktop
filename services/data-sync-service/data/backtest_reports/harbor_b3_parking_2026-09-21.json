@@ -1,0 +1,144 @@
+{
+ "tag": "harbor-b3-parking-2026-09-21",
+ "protocol": "Harbor = S-3 CN + idle parking; H_B3 = idle -> B3 risk-budget (homeport.risk_budget_nav, 5 assets inverse-vol monthly); P1/P1_H2 = argmax sleeve references; 5bps/side transfer; prereg docs/designs/harbor-b3-parking-prereg-2026-09-21.md",
+ "windows": {
+  "OOS2": {
+   "V0": {
+    "total": 37.3,
+    "delta_vs_V0": 0.0,
+    "cagr": 39.07,
+    "mdd": -11.8,
+    "sharpe": 1.63
+   },
+   "P1": {
+    "total": 54.4,
+    "delta_vs_V0": 17.2,
+    "cagr": 57.23,
+    "mdd": -14.3,
+    "sharpe": 1.71
+   },
+   "P1_H2": {
+    "total": 56.8,
+    "delta_vs_V0": 19.6,
+    "cagr": 59.79,
+    "mdd": -13.5,
+    "sharpe": 1.75
+   },
+   "H_B3": {
+    "total": 50.2,
+    "delta_vs_V0": 12.9,
+    "cagr": 52.75,
+    "mdd": -12.4,
+    "sharpe": 1.96
+   }
+  },
+  "train": {
+   "V0": {
+    "total": 39.0,
+    "delta_vs_V0": 0.0,
+    "cagr": 97.57,
+    "mdd": -9.6,
+    "sharpe": 2.87
+   },
+   "P1": {
+    "total": 52.0,
+    "delta_vs_V0": 13.0,
+    "cagr": 137.48,
+    "mdd": -8.2,
+    "sharpe": 3.0
+   },
+   "P1_H2": {
+    "total": 61.4,
+    "delta_vs_V0": 22.3,
+    "cagr": 168.66,
+    "mdd": -8.0,
+    "sharpe": 3.43
+   },
+   "H_B3": {
+    "total": 52.4,
+    "delta_vs_V0": 13.3,
+    "cagr": 138.72,
+    "mdd": -7.5,
+    "sharpe": 3.49
+   }
+  },
+  "valid": {
+   "V0": {
+    "total": 38.7,
+    "delta_vs_V0": 0.0,
+    "cagr": 113.0,
+    "mdd": -6.1,
+    "sharpe": 3.25
+   },
+   "P1": {
+    "total": 50.2,
+    "delta_vs_V0": 11.5,
+    "cagr": 156.13,
+    "mdd": -21.8,
+    "sharpe": 2.13
+   },
+   "P1_H2": {
+    "total": 49.7,
+    "delta_vs_V0": 11.0,
+    "cagr": 154.06,
+    "mdd": -22.0,
+    "sharpe": 2.12
+   },
+   "H_B3": {
+    "total": 34.1,
+    "delta_vs_V0": -4.5,
+    "cagr": 97.21,
+    "mdd": -10.1,
+    "sharpe": 2.61
+   }
+  },
+  "long": {
+   "V0": {
+    "total": 81.2,
+    "delta_vs_V0": 0.0,
+    "cagr": 13.13,
+    "mdd": -32.7,
+    "sharpe": 0.71
+   },
+   "P1": {
+    "total": 197.1,
+    "delta_vs_V0": 115.9,
+    "cagr": 25.34,
+    "mdd": -22.9,
+    "sharpe": 0.98
+   },
+   "P1_H2": {
+    "total": 211.3,
+    "delta_vs_V0": 130.1,
+    "cagr": 26.56,
+    "mdd": -24.4,
+    "sharpe": 1.02
+   },
+   "H_B3": {
+    "total": 123.6,
+    "delta_vs_V0": 42.3,
+    "cagr": 18.16,
+    "mdd": -28.8,
+    "sharpe": 0.9
+   }
+  }
+ },
+ "verdict": {
+  "arm": "H_B3",
+  "deltas_3w_vs_V0": [
+   12.9,
+   13.3,
+   -4.5
+  ],
+  "k1_no_window_dilution": false,
+  "long_delta_vs_V0": 42.3,
+  "k2_long_ge_50": false,
+  "valid_mdd_gain_vs_P1": 11.7,
+  "k3_valid_mdd_5pt_shallower": true,
+  "long_sharpe_gain_vs_P1": -0.08,
+  "k4_sharpe_better": false,
+  "pass": false,
+  "note": "Harbor parking asset swap; PASS = candidate only, Live unchanged"
+ },
+ "as_of": "2026-09-21T05:29:31.601668+00:00"
+}

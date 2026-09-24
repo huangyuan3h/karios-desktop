@@ -232,7 +232,7 @@ class TestBuildSgapTimeline:
         # final NAV: entry next_open, exit at 3rd-day close, 0.3% round trip cost
         exp_entry = per_ts["A.SH"][21]["open"]
         exp_exit = per_ts["A.SH"][23]["close"]
-        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * sbt.POSITION_PCT
+        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - sbt.COSTS_ROUNDTRIP) * sbt.POSITION_PCT
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         assert r["summary"]["satPct"] == round((exp_nav - 1) * 100, 2)
         fill_row = next(row for row in rows if row.get("filledToday"))
@@ -269,7 +269,7 @@ class TestBuildSgapTimeline:
         assert exit_row["satActive"] is True
         exp_entry = per_ts["A.SH"][20]["close"]
         exp_exit = per_ts["A.SH"][22]["close"]
-        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - 0.003) * sbt.POSITION_PCT
+        exp_nav = 1.0 + ((exp_exit / exp_entry - 1) - sbt.COSTS_ROUNDTRIP) * sbt.POSITION_PCT
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
         assert fill_blot[0]["entryDate"] == dates[20]
@@ -317,7 +317,10 @@ class TestBuildSgapTimeline:
         )
         assert fills == [(dates[20], "A.SH")]
         assert r["fill_mode"] == sbt.FILL_SAME_1430
-        exp_nav = 1.0 + ((per_ts["A.SH"][22]["close"] / px_1430 - 1) - 0.003) * sbt.POSITION_PCT
+        exp_nav = (
+            1.0
+            + ((per_ts["A.SH"][22]["close"] / px_1430 - 1) - sbt.COSTS_ROUNDTRIP) * sbt.POSITION_PCT
+        )
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
 
     def test_same_1430_skips_when_print_missing(self, monkeypatch) -> None:
@@ -447,6 +450,56 @@ class TestBreadthAt1430:
         ctx = {"per_ts": per_ts, "mv_map": mv, "date_idx": date_idx, "px_1430": {}}
         assert sbt._breadth_at_1430(ctx, dates[20]) is None
 
+    def test_thin_gate_sample_returns_none(self) -> None:
+        """OPT-224: a gap-only print day (~36 names) must not decide the gate.
+
+        2026-09-17: the replay read 29/36 = 80.6% "open" from the day's gap
+        names while the market-wide snapshot said 27.9% "closed" — phantom buys.
+        """
+        dates, per_ts, mv, _ = _mk_data()
+        for i in range(16):
+            ts = f"X{i:02d}.SZ"
+            per_ts[ts] = _mk_series(dates, None, 0.0, 0.02)
+            for d in dates:
+                mv[d][ts] = 100.0
+        date_idx = {ts: {r["date"]: i for i, r in enumerate(s)} for ts, s in per_ts.items()}
+        day = dates[20]
+        ctx = {
+            "per_ts": per_ts,
+            "mv_map": mv,
+            "date_idx": date_idx,
+            "px_1430": {"A.SH": {day: 100.0}},  # 1/20 = 5% coverage
+        }
+        assert sbt._breadth_at_1430(ctx, day) is None
+        # Control: a market-wide panel still computes (all far below MA20).
+        ctx["px_1430"] = {ts: {day: 1.0} for ts in per_ts}
+        assert sbt._breadth_at_1430(ctx, day) == 0.0
+
+    def test_thin_panel_falls_back_to_close_breadth(self, monkeypatch) -> None:
+        """OPT-224: gate_1430 with a thin print sample falls back to close breadth."""
+        dates, per_ts, mv, _ = _mk_data()
+        for i in range(16):
+            ts = f"X{i:02d}.SZ"
+            per_ts[ts] = _mk_series(dates, None, 0.0, 0.02)
+            for d in dates:
+                mv[d][ts] = 100.0
+        _patch_loaders(monkeypatch, dates, per_ts, mv)
+        day = dates[20]
+        # Only the top-bucket name has a 14:30 print -> sample breadth 0.0, but
+        # the day-close breadth (>0.5) must decide: the day still fills.
+        monkeypatch.setattr(
+            sbt, "_load_bar5_closes", lambda *_a, **_k: {"1430": {"A.SH": {day: 1.0}}}
+        )
+        fills: list[tuple[str, str]] = []
+        sbt.build_sgap_timeline(
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            gate_1430=True,
+            debug_fills=fills,
+        )
+        assert (day, "A.SH") in fills
+
     def test_uses_raw_prior_closes(self) -> None:
         """Basis regression: raw 14:30 px vs raw MA20 (not qfq)."""
         dates, per_ts, _mv, _ = _mk_data()
@@ -474,7 +527,10 @@ class TestBreadthAt1430:
         )
         assert fills == [(dates[20], "A.SH")]
         assert r["fill_hhmm"] == "1500"
-        exp_nav = 1.0 + ((per_ts["A.SH"][22]["close"] / px_1500 - 1) - 0.003) * sbt.POSITION_PCT
+        exp_nav = (
+            1.0
+            + ((per_ts["A.SH"][22]["close"] / px_1500 - 1) - sbt.COSTS_ROUNDTRIP) * sbt.POSITION_PCT
+        )
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
 
     def test_same_1430_body4_exits_one_day_later(self, monkeypatch) -> None:
@@ -504,16 +560,21 @@ class TestBreadthAt1430:
         _patch_loaders(monkeypatch, dates, per_ts, mv)
         px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
         monkeypatch.setattr(
-            sbt, "_load_bar5_closes",
+            sbt,
+            "_load_bar5_closes",
             lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry}}},
         )
         monkeypatch.setattr(
-            sbt, "_stage_labels_at",
+            sbt,
+            "_stage_labels_at",
             lambda ctx, ts, day, hhmm: {"wein": "S2-advance", "runup5": "climax"},
         )
         r = sbt.build_sgap_timeline(
-            start=dates[0], end=dates[-1], fill_mode=sbt.FILL_SAME_1430,
-            fill_hhmm="1430", body_by_stage_tier={0: 4},
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+            body_by_stage_tier={0: 4},
         )
         fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
         assert fill_blot[0]["entryDate"] == dates[20]
@@ -525,16 +586,21 @@ class TestBreadthAt1430:
         _patch_loaders(monkeypatch, dates, per_ts, mv)
         px_entry = round(float(per_ts["A.SH"][20]["close"]) * 0.99, 4)
         monkeypatch.setattr(
-            sbt, "_load_bar5_closes",
+            sbt,
+            "_load_bar5_closes",
             lambda *_a, **_k: {"1430": {"A.SH": {dates[20]: px_entry}}},
         )
         monkeypatch.setattr(
-            sbt, "_stage_labels_at",
+            sbt,
+            "_stage_labels_at",
             lambda ctx, ts, day, hhmm: {"wein": "S1-base", "runup5": "cool"},
         )
         r = sbt.build_sgap_timeline(
-            start=dates[0], end=dates[-1], fill_mode=sbt.FILL_SAME_1430,
-            fill_hhmm="1430", body_by_stage_tier={0: 4},
+            start=dates[0],
+            end=dates[-1],
+            fill_mode=sbt.FILL_SAME_1430,
+            fill_hhmm="1430",
+            body_by_stage_tier={0: 4},
         )
         fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
         assert fill_blot[0]["exitDate"] == dates[22]
@@ -558,7 +624,7 @@ class TestBreadthAt1430:
         )
         fill_blot = [b for b in r["blotter"] if b["kind"] == "fill"]
         assert fill_blot[0]["exitDate"] == dates[22]
-        exp_nav = 1.0 + ((px_exit / px_entry - 1) - 0.003) * sbt.POSITION_PCT
+        exp_nav = 1.0 + ((px_exit / px_entry - 1) - sbt.COSTS_ROUNDTRIP) * sbt.POSITION_PCT
         assert r["rows"][-1]["satNav"] == round(exp_nav, 6)
         assert r["exit_hhmm"] == "1430"
 
@@ -1008,6 +1074,41 @@ class TestStarshipParkedComposition:
         assert res["parkedBlotter"] == []
         assert res["parkedHeld"] is None
 
+    def test_apply_parked_display_uses_h2_band_for_canonical_a25(self, monkeypatch) -> None:
+        import data_sync_service.service.harbor as harbor
+        import data_sync_service.service.homeport as homeport
+
+        calls: list[dict] = []
+        rows = [
+            {"date": "2026-01-05", "satNav": 1.0, "cashShare": 1.0},
+            {"date": "2026-01-06", "satNav": 1.0, "cashShare": 1.0},
+        ]
+        monkeypatch.setattr(harbor, "load_etf_closes", lambda: {})
+        monkeypatch.setattr(
+            harbor,
+            "parking_replay",
+            lambda etf, dates, **kwargs: calls.append(kwargs)
+            or [{"date": d, "parking_ret": 0.0, "sides": 0} for d in dates[1:]],
+        )
+        monkeypatch.setattr(homeport, "load_risk_closes", lambda: {})
+        monkeypatch.setattr(
+            homeport,
+            "risk_budget_run",
+            lambda _closes, dates: {
+                "nav": [1.0] * len(dates),
+                "weights": [{ts: 0.2 for ts in homeport.RISK_UNIVERSE} for _ in dates],
+                "events": [],
+            },
+        )
+        out = {"ok": True, "rows": [dict(row) for row in rows], "summary": {}, "openPositions": [], "blotter": []}
+        res = sbt.apply_parked_display(out, parked_mode=sbt.A25_PARKING_MODE, cost_bps=0.0)
+        assert calls[-1]["hyst_band"] == harbor.HYST_BAND
+        assert sbt.A25_SLEEVE_WEIGHT == 0.25
+        assert sbt.A25_B3_WEIGHT == 0.75
+        assert len(res["riskUniverse"]) == len(homeport.RISK_UNIVERSE)
+        assert res["rows"][-1]["riskTop"] in homeport.RISK_UNIVERSE
+        assert res["summary"]["riskPct"] == 0.0
+
     def test_parked_blotter_records_buys_sells_and_trail(self) -> None:
         closes = {
             "518880.SH": {"2026-01-05": 5.0, "2026-01-06": 5.1, "2026-01-07": 5.2},
@@ -1210,6 +1311,7 @@ class TestUniverseWhere:
         assert "sb.delist_date IS NULL" in q
         assert "sb.name NOT LIKE" in q
         assert "d.ts_code NOT LIKE '%%.BJ'" in q
+        assert "d.ts_code NOT LIKE '%%.HK'" in q  # explicit market filter (look-ahead ledger B8)
 
     def test_listed_history_keeps_bars_while_listed(self) -> None:
         q = sbt._universe_where(include_st=False, include_listed_history=True)
@@ -1219,7 +1321,36 @@ class TestUniverseWhere:
     def test_include_st_drops_only_the_name_filter(self) -> None:
         q = sbt._universe_where(include_st=True, include_listed_history=False)
         assert "sb.delist_date IS NULL" in q
-        assert q.count("NOT LIKE") == 1  # only the BJ exclusion remains
+        assert "sb.name NOT LIKE" not in q
+        assert q.count("NOT LIKE") == 2  # BJ + HK market exclusions remain
+
+
+class TestSame1430LookaheadGuard:
+    """B3 (look-ahead ledger 2026-09-24): the unsafe same_1430 default is loud."""
+
+    def _call(self, **kw) -> None:
+        try:
+            sbt.replay_sgap_from_context(
+                {}, start="2026-01-01", end="2026-01-02",
+                fill_mode=sbt.FILL_SAME_1430, **kw,
+            )
+        except Exception:
+            pass
+
+    def test_unsafe_same_1430_warns(self, caplog) -> None:
+        with caplog.at_level("WARNING"):
+            self._call(rank_key=None, gate_1430=False)
+        assert any("OLD look-ahead key" in r.message for r in caplog.records)
+
+    def test_safe_params_do_not_warn(self, caplog) -> None:
+        with caplog.at_level("WARNING"):
+            self._call(rank_key="amp_1430", gate_1430=True)
+        assert not any("OLD look-ahead key" in r.message for r in caplog.records)
+
+    def test_explicit_opt_out_silences(self, caplog) -> None:
+        with caplog.at_level("WARNING"):
+            self._call(rank_key=None, gate_1430=False, allow_lookahead=True)
+        assert not any("OLD look-ahead key" in r.message for r in caplog.records)
 
 
 class _FakeCopy:

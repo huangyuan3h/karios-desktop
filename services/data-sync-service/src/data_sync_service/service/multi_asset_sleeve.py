@@ -28,10 +28,12 @@ import numpy as np
 
 from data_sync_service.db.daily import fetch_last_bars
 from data_sync_service.service.harbor import (
+    HYST_BAND,
     MULTI_TS,
     NAMES,
     NASDAQ_ALIASES,
     TRAIL_PCT,
+    held_mom,
     pick_parking,
 )
 
@@ -91,6 +93,17 @@ def multi_key_for_symbol(symbol: str | None) -> str | None:
         if s == c["symbol"] or s == c["ts"] or code == c["ts"].split(".")[0]:
             return c["key"]
     return None
+
+
+def _etf_symbol_to_ts(symbol: str | None) -> str:
+    """Parking ts_code for a holding symbol ('' when not a parking ETF)."""
+    key = multi_key_for_symbol(symbol)
+    if not key:
+        return ""
+    for c in CANDIDATES:
+        if c["key"] == key:
+            return c["ts"]
+    return ""
 
 
 def is_multi_asset_symbol(symbol: str) -> bool:
@@ -313,6 +326,18 @@ def _pick(*, as_of: str | None = None) -> dict[str, Any] | None:
     return pick_parking(etf_close, pick_as_of)
 
 
+def _held_leg_mom(ts: str | None, day: str | None) -> float | None:
+    """Held leg's own mom60 as of ``day`` (same formula as the state machine).
+
+    Used by the unified H2 rotation gate; ``None`` fails open (rotate).
+    """
+    if not ts:
+        return None
+    series = _signal_series(ts, 260, as_of=day)
+    as_of = day or (max(series) if series else "")
+    return held_mom({ts: series}, ts, as_of)
+
+
 def _rsi(closes: list[float], period: int = 14) -> float | None:
     if len(closes) < period + 1:
         return None
@@ -458,13 +483,17 @@ def build_multi_asset_sleeve(
     s3_buy_setup = gate_open and len(cands) > 0
 
     held = None
+    held_c = None
     for h in holdings:
         sym = str(h.get("symbol") or "").upper()
         ts = str(h.get("ts_code") or "").upper()
         for c in CANDIDATES:
             if sym == c["symbol"] or ts == c["ts"]:
                 held = h
+                held_c = c
                 break
+        if held is not None:
+            break
 
     etf_pick = _pick(as_of=day)
     out: dict[str, Any] = {
@@ -521,6 +550,25 @@ def build_multi_asset_sleeve(
         )
         return out
     if held:
+        # Unified H2 (H-H2-UNIFY, 2026-09-18): only rotate when the challenger
+        # leads the incumbent's own mom60 by >= HYST_BAND; otherwise keep it.
+        held_ts = str((held_c or {}).get("ts") or held.get("ts_code") or "").upper()
+        hm = _held_leg_mom(held_ts, day)
+        gap_pct = etf_pick["mom60"] - (hm * 100.0 if hm is not None else 0.0)
+        if hm is not None and gap_pct < HYST_BAND * 100.0:
+            out.update(
+                {
+                    "active": True,
+                    "action": "HOLD",
+                    "hystBlocked": True,
+                    "message": (
+                        f"港湾停车：维持持有 {held_sym}（挑战者 {etf_pick['symbol']} "
+                        f"领先 {gap_pct:.1f}pt < 2pt 门槛，不换仓）"
+                    ),
+                    "label": "持有（迟滞）",
+                }
+            )
+            return out
         out.update(
             {
                 "active": True,

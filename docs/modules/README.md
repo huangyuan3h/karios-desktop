@@ -4,11 +4,11 @@
 
 ---
 
-## 现行策略真值入口（2026-09-17）
+## 现行策略真值入口（2026-09-24）
 
 | 文档 | 用途 |
 |------|------|
-| [`strategy-recipes.md`](./strategy-recipes.md) | **五档现行配方（可重建 spec）**：港湾/母港/星港/双子星/星舰的 universe/信号/时点/仓位/出场/闲置现金/成本/闸 + 口径裁决 + 已知漂移 |
+| [`strategy-recipes.md`](./strategy-recipes.md) | **现行配方（可重建 spec）**：港湾/母港/星港/双子星/星舰/稳健星舰 H2-a25/星舰 B 的 universe/信号/时点/仓位/出场/闲置现金/成本/闸 + 口径裁决 + 已知漂移 |
 | [`strategy-params.md`](./strategy-params.md) §1 | S-3 参数数值真值表 |
 | [`pick-strong-track.md`](./pick-strong-track.md) | 港湾产品策略真值（S-3 核心 + 闲置现金 ETF 停车场） |
 | [`trading-system.md`](./trading-system.md) | ⚠️ 部分过期（S-3 叙事/背景；现行值以上三份为准） |

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "sleeve_etf_daily_sync"
 # Weekdays 17:25 Asia/Shanghai (after close_sync 17:10 + daily_basic 17:20).
-CRON_EXPRESSION = "25 17 * * 1-5"
+CRON_EXPRESSION = "25 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

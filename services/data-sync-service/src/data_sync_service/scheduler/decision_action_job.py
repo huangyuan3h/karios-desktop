@@ -21,7 +21,7 @@ from data_sync_service.service.decision import (
 logger = logging.getLogger(__name__)
 
 JOB_ID = "decision_action_tracking"
-CRON_EXPRESSION = "30 18 * * 1-5"
+CRON_EXPRESSION = "30 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

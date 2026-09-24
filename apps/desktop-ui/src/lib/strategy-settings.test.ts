@@ -17,21 +17,21 @@ afterEach(() => {
 });
 
 describe('getStrategyMode', () => {
-  it('defaults to starport when unset', () => {
-    expect(DEFAULT_STRATEGY_MODE).toBe('starport');
-    expect(getStrategyMode()).toBe('starport');
-    expect(window.localStorage.getItem('karios.strategyMode.v2')).toBe('"starport"');
+  it('defaults to starship_b when unset', () => {
+    expect(DEFAULT_STRATEGY_MODE).toBe('starship_b');
+    expect(getStrategyMode()).toBe('starship_b');
+    expect(window.localStorage.getItem('karios.strategyMode.v2')).toBe('"starship_b"');
   });
 
   it('migrates the legacy key to the new default and removes it', () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('harbor'));
-    expect(getStrategyMode()).toBe('starport');
+    expect(getStrategyMode()).toBe('starship_b');
     expect(window.localStorage.getItem('karios.strategyMode')).toBeNull();
   });
 
-  it('migrates a retired mode to starport', () => {
+  it('migrates a retired mode to the current default', () => {
     window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('legacy_satellite'));
-    expect(getStrategyMode()).toBe('starport');
+    expect(getStrategyMode()).toBe('starship_b');
   });
 
   it('keeps the twin_star parallel mode (restored 2026-09-17)', () => {
@@ -39,24 +39,33 @@ describe('getStrategyMode', () => {
     expect(getStrategyMode()).toBe('twin_star');
   });
 
-  it('ignores corrupt storage and falls back to starport', () => {
+  it('ignores corrupt storage and falls back to the default', () => {
     window.localStorage.setItem('karios.strategyMode.v2', 'not-json');
-    expect(getStrategyMode()).toBe('starport');
+    expect(getStrategyMode()).toBe('starship_b');
   });
 
   it('keeps explicit selections for every registered mode', () => {
-    for (const mode of ['harbor', 'homeport', 'starport', 'starship', 'twin_star'] as const) {
+    for (const mode of [
+      'harbor',
+      'homeport',
+      'starport',
+      'starship',
+      'starship_robust',
+      'twin_star',
+    ] as const) {
       setStrategyMode(mode);
       expect(getStrategyMode()).toBe(mode);
     }
   });
 
-  it('labels the three tiers plus the sunset baseline', () => {
+  it('labels the tiers plus the sunset baseline', () => {
     expect(STRATEGY_MODE_LABELS).toEqual({
       harbor: '港湾',
       homeport: '母港',
       starport: '星港',
       starship: '星舰',
+      starship_robust: '稳健星舰 H2-a25',
+      starship_b: '星舰 B',
       twin_star: '双子星',
     });
   });

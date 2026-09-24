@@ -25,7 +25,7 @@ from data_sync_service.db.sync_job_record import get_today_run, insert_record
 logger = logging.getLogger(__name__)
 
 JOB_ID = "paper_chain_watchdog"
-CRON_EXPRESSION = "5 18 * * 1-5"  # weekdays 18:05 Asia/Shanghai
+CRON_EXPRESSION = "5 18 * * mon-fri"  # weekdays 18:05 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 CLOSE_JOB = "stock_close_sync"
 CLOSE_JOB_ALIASES = ("stock_close_sync", "close_sync")

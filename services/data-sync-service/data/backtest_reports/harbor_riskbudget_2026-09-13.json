@@ -10,25 +10,25 @@
   ],
   "stress": {
     "harbor": {
-      "total": 4.6,
-      "cagr": 4.7,
-      "mdd": -18.0,
-      "sharpe": 0.34
+      "total": 1.5,
+      "cagr": 4.35,
+      "mdd": -18.8,
+      "sharpe": 0.31
     },
     "m50": {
-      "total": 6.5,
-      "cagr": 3.62,
-      "mdd": -8.3,
-      "sharpe": 0.4
+      "total": 5.1,
+      "cagr": 3.58,
+      "mdd": -8.7,
+      "sharpe": 0.38
     }
   },
   "results": {
     "OOS2": {
       "harbor": {
-        "total": 55.2,
-        "cagr": 58.05,
+        "total": 54.4,
+        "cagr": 57.23,
         "mdd": -14.3,
-        "sharpe": 1.73
+        "sharpe": 1.71
       },
       "rp": {
         "total": 18.8,
@@ -37,68 +37,68 @@
         "sharpe": 1.95
       },
       "m50": {
-        "total": 36.5,
-        "cagr": 38.29,
+        "total": 36.2,
+        "cagr": 37.92,
         "mdd": -9.0,
-        "sharpe": 1.89
+        "sharpe": 1.88
       },
       "m40": {
-        "total": 40.2,
-        "cagr": 42.16,
+        "total": 39.8,
+        "cagr": 41.71,
         "mdd": -10.0,
-        "sharpe": 1.85
+        "sharpe": 1.83
       },
       "m60": {
-        "total": 32.9,
-        "cagr": 34.46,
+        "total": 32.6,
+        "cagr": 34.17,
         "mdd": -8.0,
-        "sharpe": 1.94
+        "sharpe": 1.93
       },
       "m30": {
-        "total": 43.9,
-        "cagr": 46.08,
+        "total": 43.4,
+        "cagr": 45.54,
         "mdd": -11.0,
-        "sharpe": 1.81
+        "sharpe": 1.79
       },
       "m20": {
-        "total": 47.6,
-        "cagr": 50.03,
+        "total": 47.0,
+        "cagr": 49.4,
         "mdd": -12.1,
-        "sharpe": 1.78
+        "sharpe": 1.76
       },
       "md": {
-        "total": 36.7,
-        "cagr": 38.5,
-        "mdd": -9.1,
-        "sharpe": 1.91
-      },
-      "m50_cost20": {
         "total": 36.4,
-        "cagr": 38.17,
-        "mdd": -9.0,
+        "cagr": 38.14,
+        "mdd": -9.1,
         "sharpe": 1.89
       },
+      "m50_cost20": {
+        "total": 36.1,
+        "cagr": 37.8,
+        "mdd": -9.0,
+        "sharpe": 1.87
+      },
       "m30_cost20": {
-        "total": 43.8,
-        "cagr": 45.99,
+        "total": 43.3,
+        "cagr": 45.46,
         "mdd": -11.1,
-        "sharpe": 1.81
+        "sharpe": 1.79
       },
       "m20_cost20": {
-        "total": 47.6,
-        "cagr": 49.97,
+        "total": 47.0,
+        "cagr": 49.34,
         "mdd": -12.1,
-        "sharpe": 1.78
+        "sharpe": 1.76
       },
       "corr": 0.65,
       "days": 243
     },
     "train": {
       "harbor": {
-        "total": 52.2,
-        "cagr": 138.1,
-        "mdd": -8.1,
-        "sharpe": 3.01
+        "total": 52.0,
+        "cagr": 137.48,
+        "mdd": -8.2,
+        "sharpe": 3.0
       },
       "rp": {
         "total": 16.8,
@@ -107,66 +107,66 @@
         "sharpe": 4.27
       },
       "m50": {
-        "total": 35.0,
-        "cagr": 85.86,
-        "mdd": -5.0,
-        "sharpe": 3.52
-      },
-      "m40": {
-        "total": 38.5,
-        "cagr": 96.02,
-        "mdd": -5.7,
-        "sharpe": 3.37
-      },
-      "m60": {
-        "total": 31.4,
-        "cagr": 75.86,
-        "mdd": -4.3,
-        "sharpe": 3.7
-      },
-      "m30": {
-        "total": 42.0,
-        "cagr": 106.34,
-        "mdd": -6.3,
-        "sharpe": 3.25
-      },
-      "m20": {
-        "total": 45.4,
-        "cagr": 116.8,
-        "mdd": -6.9,
-        "sharpe": 3.16
-      },
-      "md": {
-        "total": 33.9,
-        "cagr": 82.9,
-        "mdd": -4.3,
-        "sharpe": 3.61
-      },
-      "m50_cost20": {
         "total": 34.9,
-        "cagr": 85.66,
+        "cagr": 85.6,
         "mdd": -5.0,
         "sharpe": 3.51
       },
+      "m40": {
+        "total": 38.4,
+        "cagr": 95.7,
+        "mdd": -5.7,
+        "sharpe": 3.36
+      },
+      "m60": {
+        "total": 31.4,
+        "cagr": 75.66,
+        "mdd": -4.3,
+        "sharpe": 3.69
+      },
+      "m30": {
+        "total": 41.9,
+        "cagr": 105.95,
+        "mdd": -6.4,
+        "sharpe": 3.24
+      },
+      "m20": {
+        "total": 45.3,
+        "cagr": 116.33,
+        "mdd": -7.0,
+        "sharpe": 3.15
+      },
+      "md": {
+        "total": 33.9,
+        "cagr": 82.66,
+        "mdd": -4.3,
+        "sharpe": 3.6
+      },
+      "m50_cost20": {
+        "total": 34.8,
+        "cagr": 85.4,
+        "mdd": -5.0,
+        "sharpe": 3.5
+      },
       "m30_cost20": {
-        "total": 42.0,
-        "cagr": 106.2,
-        "mdd": -6.3,
-        "sharpe": 3.25
+        "total": 41.8,
+        "cagr": 105.81,
+        "mdd": -6.4,
+        "sharpe": 3.24
       },
       "m20_cost20": {
-        "total": 45.4,
-        "cagr": 116.7,
-        "mdd": -6.9,
-        "sharpe": 3.16
+        "total": 45.3,
+        "cagr": 116.23,
+        "mdd": -7.0,
+        "sharpe": 3.15
       },
       "corr": 0.43,
       "days": 123
     },
     "valid": {
       "harbor": {
-        "total": 50.3,
-        "cagr": 156.35,
+        "total": 50.2,
+        "cagr": 156.13,
         "mdd": -21.8,
         "sharpe": 2.13
       },
@@ -178,55 +178,55 @@
       },
       "m50": {
         "total": 25.6,
-        "cagr": 69.31,
+        "cagr": 69.23,
         "mdd": -11.4,
         "sharpe": 2.25
       },
       "m40": {
         "total": 30.5,
-        "cagr": 85.0,
+        "cagr": 84.9,
         "mdd": -13.6,
         "sharpe": 2.21
       },
       "m60": {
         "total": 20.7,
-        "cagr": 54.48,
-        "mdd": -9.1,
-        "sharpe": 2.29
+        "cagr": 54.42,
+        "mdd": -9.2,
+        "sharpe": 2.28
       },
       "m30": {
         "total": 35.4,
-        "cagr": 101.55,
+        "cagr": 101.43,
         "mdd": -15.7,
         "sharpe": 2.18
       },
       "m20": {
-        "total": 40.4,
-        "cagr": 118.96,
+        "total": 40.3,
+        "cagr": 118.81,
         "mdd": -17.8,
         "sharpe": 2.16
       },
       "md": {
         "total": 25.6,
-        "cagr": 69.5,
+        "cagr": 69.43,
         "mdd": -11.0,
         "sharpe": 2.36
       },
       "m50_cost20": {
         "total": 25.5,
-        "cagr": 69.04,
+        "cagr": 68.96,
         "mdd": -11.5,
         "sharpe": 2.24
       },
       "m30_cost20": {
-        "total": 35.4,
-        "cagr": 101.34,
+        "total": 35.3,
+        "cagr": 101.21,
         "mdd": -15.8,
         "sharpe": 2.18
       },
       "m20_cost20": {
         "total": 40.3,
-        "cagr": 118.8,
+        "cagr": 118.65,
         "mdd": -17.8,
         "sharpe": 2.16
       },
@@ -235,10 +235,10 @@
     },
     "long": {
       "harbor": {
-        "total": 207.9,
-        "cagr": 26.27,
-        "mdd": -22.8,
-        "sharpe": 1.02
+        "total": 197.1,
+        "cagr": 25.34,
+        "mdd": -22.9,
+        "sharpe": 0.98
       },
       "rp": {
         "total": 46.2,
@@ -247,58 +247,58 @@
         "sharpe": 1.76
       },
       "m50": {
-        "total": 118.6,
-        "cagr": 17.62,
-        "mdd": -11.8,
-        "sharpe": 1.19
+        "total": 115.1,
+        "cagr": 17.22,
+        "mdd": -12.8,
+        "sharpe": 1.16
       },
       "m40": {
-        "total": 135.2,
-        "cagr": 19.41,
-        "mdd": -14.1,
-        "sharpe": 1.14
-      },
-      "m60": {
-        "total": 102.7,
-        "cagr": 15.79,
-        "mdd": -9.6,
-        "sharpe": 1.27
-      },
-      "m30": {
-        "total": 152.5,
-        "cagr": 21.18,
-        "mdd": -16.4,
+        "total": 130.6,
+        "cagr": 18.92,
+        "mdd": -14.6,
         "sharpe": 1.1
       },
-      "m20": {
-        "total": 170.4,
-        "cagr": 22.91,
-        "mdd": -18.6,
+      "m60": {
+        "total": 100.2,
+        "cagr": 15.49,
+        "mdd": -11.1,
+        "sharpe": 1.24
+      },
+      "m30": {
+        "total": 146.6,
+        "cagr": 20.59,
+        "mdd": -16.4,
         "sharpe": 1.06
+      },
+      "m20": {
+        "total": 163.0,
+        "cagr": 22.21,
+        "mdd": -18.6,
+        "sharpe": 1.03
       },
       "md": {
-        "total": 120.3,
-        "cagr": 17.8,
-        "mdd": -11.8,
-        "sharpe": 1.22
-      },
-      "m50_cost20": {
-        "total": 118.0,
-        "cagr": 17.54,
-        "mdd": -11.9,
+        "total": 116.5,
+        "cagr": 17.38,
+        "mdd": -12.7,
         "sharpe": 1.19
       },
+      "m50_cost20": {
+        "total": 114.5,
+        "cagr": 17.15,
+        "mdd": -12.9,
+        "sharpe": 1.16
+      },
       "m30_cost20": {
-        "total": 152.0,
-        "cagr": 21.13,
+        "total": 146.1,
+        "cagr": 20.53,
         "mdd": -16.4,
-        "sharpe": 1.09
+        "sharpe": 1.06
       },
       "m20_cost20": {
-        "total": 170.0,
-        "cagr": 22.87,
+        "total": 162.6,
+        "cagr": 22.17,
         "mdd": -18.6,
-        "sharpe": 1.06
+        "sharpe": 1.03
       },
       "corr": 0.41,
       "days": 1216
@@ -312,5 +312,5 @@
     "k5": true,
     "pass": true
   },
-  "as_of": "2026-09-16T08:54:25+00:00"
+  "as_of": "2026-09-21T00:16:46+00:00"
 }

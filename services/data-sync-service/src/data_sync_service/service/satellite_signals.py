@@ -13,7 +13,8 @@ Frozen habit recipe (mirrors ``_sat_book`` in eval_sat_idle_parking):
 4 slots x 25%, C1 3%, skip_t1 on, C2/C3/churn off, strict pool, gate 0.5.
 
 Fills price basis: 14:30 raw print (FILL_SAME_1430, user-confirmed
-2026-09-16); paper fills add 30bps RT on top (paper layer, slice 2).
+2026-09-16); paper fills add the static CN round-trip cost on top (paper
+layer, slice 2; see ``COST_RT_BPS``).
 
 Availability: the endpoint only serves days whose panel is complete
 (``daily`` row + 14:30 prints present). Intraday-today panels depend on the
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 from data_sync_service.service.state_bucket_track import (
     BUCKET_Q,
     MIN_GAP_PCT,
@@ -40,7 +42,9 @@ from data_sync_service.service.state_bucket_track import (
 )
 
 FILL_HHMM = "1430"
-COST_RT_BPS = 30.0  # satellite round-trip cost applied by the paper layer
+# Satellite static round-trip cost (single source; the paper layer uses
+# state_bucket_track.COSTS_ROUNDTRIP, derived from the same model).
+COST_RT_BPS = round(round_trip_cost_pct("CN") * 10000.0, 2)
 
 # Frozen habit recipe (parity with _sat_book; change = new prereg).
 RECIPE: dict[str, Any] = {
@@ -56,7 +60,7 @@ RECIPE: dict[str, Any] = {
     "pool_mode": "strict",
     "gate_threshold": R_WIDE_THRESHOLD,
     "fill_hhmm": FILL_HHMM,
-    "fill_basis": "14:30 raw print + 30bps RT (paper)",
+    "fill_basis": f"14:30 raw print + {COST_RT_BPS:g}bps RT (paper)",
 }
 
 
@@ -113,6 +117,23 @@ def _fillable_at_print(
     if pc and pc > 0 and px >= float(pc) * (1.0 + lim - 0.004):
         return False, "limit_locked_at_print"
     return True, None
+
+
+def _names_for(ts_codes: list[str]) -> dict[str, str]:
+    """Stock display names for the ranked list (best-effort, display only)."""
+    if not ts_codes:
+        return {}
+    try:
+        from data_sync_service.db import get_connection
+
+        with get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT ts_code, name FROM stock_basic WHERE ts_code = ANY(%s)",
+                (list(ts_codes),),
+            )
+            return {str(r[0]): str(r[1]) for r in cur.fetchall() if r[1]}
+    except Exception:  # noqa: BLE001 - display freshness, never a gate
+        return {}
 
 
 def satellite_signals_for_day(
@@ -172,6 +193,7 @@ def satellite_signals_for_day(
 
     entries: dict[str, dict[str, Any]] = {}
     locked: dict[str, str] = {}
+    names = _names_for(ranked)
     for ts in ranked:
         di = date_idx.get(ts, {}).get(day, -1)
         series = per_ts.get(ts)
@@ -201,6 +223,7 @@ def satellite_signals_for_day(
         amp_key = _proxy_amp(ts)
         entries[ts] = {
             "ts": ts,
+            "name": names.get(ts),
             "gapPct": round(float(gap) * 100, 2) if gap == gap else None,
             "amp1430Pct": round(amp_key[1] * 100, 2) if amp_key[0] == 0 else None,
             "px1430": round(float(px), 4) if px and px > 0 else None,
@@ -233,7 +256,7 @@ def satellite_signals_for_day(
         "recipe": {k: v for k, v in RECIPE.items()},
         "basis": ("gap>3% (daily open/prev close) -> amp_1430 asc -> top-1/3 bucket -> "
                   "skip_t1/C1/C2 + fillable guard -> strict pool; fills at 14:30 raw "
-                  "print + 30bps RT (paper); R-wide gate 0.5 on 14:30 breadth"),
+                  f"print + {COST_RT_BPS:g}bps RT (paper); R-wide gate 0.5 on 14:30 breadth"),
     }
 
 

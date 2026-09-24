@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { AccountBar } from '@/components/account/AccountBar';
 import { PoolHistoryTable } from '@/components/watchlist/PoolHistoryTable';
 import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
@@ -338,8 +339,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         <StrategyModeBar />
+        <AccountBar />
         <TodayTodoCard />
-        <PickStrongAlignBanner mode={strategyMode} />
+        {/* The banner aligns the account against the HARBOR core leg (target
+            100% ETF). The satellite-standalone modes hold no core leg, so it
+            only reports "idle too high" — pure noise for 星舰/稳健星舰. */}
+        {strategyMode === 'starship' || strategyMode === 'starship_robust' || strategyMode === 'starship_b' ? null : (
+          <PickStrongAlignBanner mode={strategyMode} />
+        )}
         <PortfolioHealthCard mode={strategyMode} onOpenStock={onOpenStock} />
         <WatchlistToolbar
           trendUpdatedAt={trendUpdatedAt}

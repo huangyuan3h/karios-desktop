@@ -23,7 +23,7 @@ from data_sync_service.service.reconciliation import run_and_persist
 logger = logging.getLogger(__name__)
 
 JOB_ID = "backtest_paper_recon"
-CRON_EXPRESSION = "30 7 * * 1"  # Monday 07:30 Asia/Shanghai
+CRON_EXPRESSION = "30 7 * * mon"  # Monday 07:30 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
 

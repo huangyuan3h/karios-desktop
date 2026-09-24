@@ -23,10 +23,10 @@
 | Alpha Incubator（V4 双核捕猎） | [`modules/alpha-incubator.md`](./modules/alpha-incubator.md) |
 | 下游 AI Prompt（V7.6） | [`modules/downstream-ai-prompt.md`](./modules/downstream-ai-prompt.md) |
 | S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
-| **五档策略现行配方（可重建 spec：港湾/母港/星港/双子星/星舰）** | [`modules/strategy-recipes.md`](./modules/strategy-recipes.md) |
+| **五档策略现行配方（可重建 spec：港湾/母港/星港/双子星/星舰/稳健星舰 H2-a25）** | [`modules/strategy-recipes.md`](./modules/strategy-recipes.md) |
 | **港湾 Harbor（产品策略真值 · S-3 核心 + 闲置现金 ETF 停车场）** | [`modules/pick-strong-track.md`](./modules/pick-strong-track.md) |
 | 回测结论 / 实验记录（2026-08-09 归档 · 现行真值见 strategy-params.md） | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) → [`archive/modules-legacy/backtest-strategy-legacy.md`](./archive/modules-legacy/backtest-strategy-legacy.md) |
-| **回测实验记录（最终指向港湾 Harbor）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 调策略先看 [B11 停车场基线](./backtests/stable/etf-parking-baseline-2026-09-13.md)（卫星 REJECT 见 [B12](./backtests/stable/twin-star-parking-refit-2026-09-13.md)） · **新想法先自查** [`first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md) |
+| **回测实验记录（最终指向港湾 Harbor；H2-a25 为现行研究/展示 canonical）** | [`backtests/README.md`](./backtests/README.md) · [`SUMMARY.md`](./backtests/SUMMARY.md) · 现行 [H2-a25 报告](./backtests/stable/sat-h2-a25-2026-09-24.md) · 调策略先看 [B11 停车场基线](./backtests/stable/etf-parking-baseline-2026-09-13.md)（旧 0pt 对照见 [B12](./backtests/stable/twin-star-parking-refit-2026-09-13.md)） · **新想法先自查** [`first-principles-2026-09-05.md`](./backtests/first-principles-2026-09-05.md) |
 | **因子库（所有已验证因子 · 无论成败 · 定义/数据/结果/判定）** | [`factor-library/README.md`](./factor-library/README.md) |
 | 交易系统总纲（含 S-3 生命周期） | [`modules/trading-system.md`](./modules/trading-system.md) |
 | 行业资金流（已归档，只读） | [`archive/modules-legacy/industry-flow.md`](./archive/modules-legacy/industry-flow.md) |
@@ -45,7 +45,7 @@
 
 | 清单 | 命名 | 适用范围 | 状态 |
 |------|------|----------|------|
-| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-146` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（最新 OPT-146 factor_signals 港股符号误标） |
+| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-242` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（最新 OPT-242 H2-a25 canonical 收敛） |
 | [`trading-improvement-checklist.md`](./trading-improvement-checklist.md) | `TIP-001` ~ `TIP-015`、`V6.2-*`、`V6.3-*`、`V6.4-*`、`V7.0-*` | 业务规则校准 / 交易闸 | 滚动维护（最新 TIP-015 决策 Agent 闭环；已归档至 archive/ 的见 todo.md `沉淀`表） |
 
 **已完成项归档**：每批完成的 OPT/TIP 按天归档到 [`archive/`](./archive/)（见 archive/README.md

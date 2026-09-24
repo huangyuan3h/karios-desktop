@@ -237,9 +237,12 @@ class TestExtraRsiPulse:
 class TestExtraSleeveBuild:
     """Harbor (P1, B11): park idle in the mom60+MA200 argmax ETF; no STOCK gate."""
 
-    def _patch(self, monkeypatch, etf_pick, trail=None) -> None:
+    def _patch(self, monkeypatch, etf_pick, trail=None, held_mom_value=-1.0) -> None:
         monkeypatch.setattr(mas, "_pick", lambda **kw: etf_pick)
         monkeypatch.setattr(mas, "_etf_trail_exit", lambda held, day: trail)
+        # Unified H2 gate: default held mom far below the challenger so a
+        # rotation is allowed; pass a nearby value to exercise blocking.
+        monkeypatch.setattr(mas, "_held_leg_mom", lambda ts, day: held_mom_value)
 
     def test_extra_sleeve_no_candidate_no_hold(self, monkeypatch) -> None:
         self._patch(monkeypatch, None)
@@ -271,6 +274,24 @@ class TestExtraSleeveBuild:
             day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
         )
         assert out["action"] == "ROTATE"
+
+    def test_extra_sleeve_h2_blocks_noise_rotation(self, monkeypatch) -> None:
+        """H2: a challenger leading by <2pt keeps the incumbent (no churn)."""
+        pick = {
+            "key": "NASDAQ",
+            "symbol": "ETF:513100",
+            "name": "nas",
+            "mom60": 12.0,
+            "above_ma200": True,
+        }
+        # incumbent GOLD mom60 = 11.0% -> challenger leads by 1.0pt < 2pt.
+        self._patch(monkeypatch, pick, held_mom_value=0.11)
+        held = [{"symbol": "ETF:518880", "ts_code": "518880.SH", "positionPct": 30.0}]
+        out = mas.build_multi_asset_sleeve(
+            day="2026-03-01", cn_block=_extra_cn_block(), holdings_override=held
+        )
+        assert out["action"] == "HOLD"
+        assert out["hystBlocked"] is True
 
     def test_extra_sleeve_held_above_ma_holds(self, monkeypatch) -> None:
         pick = {

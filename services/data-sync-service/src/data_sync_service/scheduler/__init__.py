@@ -31,7 +31,6 @@ from data_sync_service.scheduler import (
     etf_daily_job,
     factor_signals_job,
     fund_basic_job,
-    harbor_h2_shadow_job,
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
@@ -236,14 +235,6 @@ def create_scheduler() -> BackgroundScheduler:
         sleeve_paper_job.run,
         sleeve_paper_job.build_trigger(),
         id=sleeve_paper_job.JOB_ID,
-        replace_existing=True,
-    )
-    # OPT-216: H2 shadow ledger (18:35 — after the 18:20 sleeve mirror; display
-    # only, never touches the paper/real books).
-    scheduler.add_job(
-        harbor_h2_shadow_job.run,
-        harbor_h2_shadow_job.build_trigger(),
-        id=harbor_h2_shadow_job.JOB_ID,
         replace_existing=True,
     )
     # OPT-222: live 14:30 satellite panel snapshot (watchlist card). No startup
@@ -696,14 +687,6 @@ def catchup_missed_eod_chain() -> None:
             sleeve_paper_job.run()
         except Exception:  # noqa: BLE001
             logger.warning("eod chain catchup: sleeve_paper_auto run failed", exc_info=True)
-    # harbor_h2_shadow cron: 18:35 — 18:40 avoids the race; append-only and
-    # idempotent, safe to re-run.
-    if (now.hour, now.minute) >= (18, 40) and not already("harbor_h2_shadow"):
-        logger.info("eod chain catchup: harbor_h2_shadow missed (restart) — re-running")
-        try:
-            harbor_h2_shadow_job.run()
-        except Exception:  # noqa: BLE001
-            logger.warning("eod chain catchup: harbor_h2_shadow run failed", exc_info=True)
     # bar_5min_close cron: 18:40 — 18:45 avoids the race. Fetches the day's
     # 14:30 prints and then refreshes the 星舰 pool (OPT-219): the 17:30
     # automation ran before the fill panel existed.

@@ -12,7 +12,7 @@ from data_sync_service.service.decision import apply_daily_outcomes
 logger = logging.getLogger(__name__)
 
 JOB_ID = "decision_outcome"
-CRON_EXPRESSION = "0 19 * * 1-5"
+CRON_EXPRESSION = "0 19 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

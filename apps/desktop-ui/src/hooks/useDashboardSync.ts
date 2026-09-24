@@ -9,6 +9,31 @@ import { stripModelThinking } from '@/lib/strip-model-thinking';
 
 type DashboardSyncResp = Record<string, unknown>;
 
+export function isDashboardSyncResultOk(result: unknown): boolean {
+  return Boolean(result && typeof result === 'object' && (result as { ok?: unknown }).ok === true);
+}
+
+function syncResultErrorMessage(result: unknown): string {
+  if (!result || typeof result !== 'object') return 'Sync returned an invalid result';
+  const record = result as {
+    error?: unknown;
+    message?: unknown;
+    steps?: unknown;
+  };
+  if (typeof record.error === 'string' && record.error) return record.error;
+  if (typeof record.message === 'string' && record.message) return record.message;
+  if (Array.isArray(record.steps)) {
+    for (const step of record.steps) {
+      if (!step || typeof step !== 'object') continue;
+      const detail = step as { ok?: unknown; message?: unknown };
+      if (detail.ok === false && typeof detail.message === 'string' && detail.message) {
+        return detail.message;
+      }
+    }
+  }
+  return 'Sync failed';
+}
+
 export type SyncStep = {
   name: string;
   ok: boolean | null;
@@ -34,7 +59,7 @@ export type DashboardSyncCallbacks = {
    * the watchlist page or via the daily hk_daily cron.
    */
   forceRefreshWatchlistOnSync?: () => Promise<unknown>;
-  /** Fired after Sync All stream completes (success or soft failure). */
+  /** Fired after Sync All completes successfully. */
   onSyncComplete?: () => void;
 };
 
@@ -135,21 +160,56 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
             if (esRef.current === es) esRef.current = null;
             const result = data.result as DashboardSyncResp;
             setSyncResp(result);
-            // Progress stays at backend progress until the optional watchlist
-            // force-refresh finishes — otherwise the UI would jump to 100% and
-            // appear "done" while HK/ETF bars are still being pulled.
+            const cb = callbacksRef.current;
+            const fail = (message: string) => {
+              setSyncSteps((prev) =>
+                prev.map((st) =>
+                  st.name === 'watchlist' && st.ok === null
+                    ? { ...st, ok: false, message: 'skipped after sync failure' }
+                    : st,
+                ),
+              );
+              setSyncProgress(100);
+              setBusy(false);
+              cb.setError(message);
+              resolve({ ok: false, summary: null });
+            };
+
+            if (!isDashboardSyncResultOk(result)) {
+              fail(syncResultErrorMessage(result));
+              return;
+            }
+
+            const s = data.summary as DashboardSummary | null | undefined;
+            if (!s) {
+              fail('Sync returned no dashboard summary');
+              return;
+            }
+
             setSyncProgress(Math.round(((stepNames.length - 1) / stepNames.length) * 100));
             setSyncSteps((prev) =>
-              prev.map((s) =>
-                s.name === 'watchlist' && s.ok === null
-                  ? { ...s, ok: null, message: 'pulling HK/ETF K-lines…' }
-                  : s,
+              prev.map((st) =>
+                st.name === 'watchlist' && st.ok === null
+                  ? { ...st, ok: null, message: 'pulling HK/ETF K-lines…' }
+                  : st,
               ),
             );
 
-            const cb = callbacksRef.current;
-            const s = data.summary as DashboardSummary;
-            const finalize = () => {
+            const finalize = (watchlistOk: boolean) => {
+              if (!watchlistOk) {
+                setSyncSteps((prev) =>
+                  prev.map((st) =>
+                    st.name === 'watchlist' && st.ok === null
+                      ? { ...st, ok: false, durationMs: 0, message: 'refresh failed' }
+                      : st,
+                  ),
+                );
+                setSyncProgress(100);
+                setBusy(false);
+                cb.setError('Watchlist refresh failed after sync');
+                resolve({ ok: false, summary: null });
+                return;
+              }
               setSyncSteps((prev) =>
                 prev.map((st) =>
                   st.name === 'watchlist' && st.ok === null
@@ -159,61 +219,59 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
               );
               setSyncProgress(100);
               setBusy(false);
+              cb.applySummaryToCache(s);
               cb.onSyncComplete?.();
               resolve({ ok: true, summary: s });
             };
 
             const afterWatchlist = async () => {
+              let watchlistOk = true;
               try {
                 if (cb.forceRefreshWatchlistOnSync) {
                   await cb.forceRefreshWatchlistOnSync();
                 }
               } catch (e) {
+                watchlistOk = false;
                 console.warn('forceRefreshWatchlistOnSync failed:', e);
               }
-              finalize();
+              finalize(watchlistOk);
             };
 
-            if (s) {
-              cb.applySummaryToCache(s);
-              const newsData = (s as any)?.news;
-              if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
-                if (!cb.shouldRefreshNewsBrief(cb.newsSummaryUpdatedAt) && cb.newsSummary?.trim()) {
-                  void afterWatchlist();
-                  return;
-                }
-                cb.setNewsSummaryBusy(true);
-                fetch(`${AI_BASE_URL}/news/summary`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ items: newsData.items, hours: 24 }),
-                })
-                  .then((aiRes) => {
-                    if (aiRes.ok) {
-                      return aiRes.json();
-                    }
-                    return null;
-                  })
-                  .then((aiData) => {
-                    const summaryText =
-                      typeof aiData?.summary === 'string' ? stripModelThinking(aiData.summary) : '';
-                    if (summaryText) {
-                      const updatedAt = new Date().toISOString();
-                      cb.setNewsSummary(summaryText);
-                      cb.setNewsSummaryUpdatedAt(updatedAt);
-                      cb.saveNewsBriefCache({ summary: summaryText, updatedAt });
-                    }
-                  })
-                  .catch((e) => {
-                    console.warn('news summary generation failed:', e);
-                  })
-                  .finally(() => {
-                    cb.setNewsSummaryBusy(false);
-                    void afterWatchlist();
-                  });
-              } else {
+            const newsData = (s as any)?.news;
+            if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
+              if (!cb.shouldRefreshNewsBrief(cb.newsSummaryUpdatedAt) && cb.newsSummary?.trim()) {
                 void afterWatchlist();
+                return;
               }
+              cb.setNewsSummaryBusy(true);
+              fetch(`${AI_BASE_URL}/news/summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: newsData.items, hours: 24 }),
+              })
+                .then((aiRes) => {
+                  if (aiRes.ok) {
+                    return aiRes.json();
+                  }
+                  return null;
+                })
+                .then((aiData) => {
+                  const summaryText =
+                    typeof aiData?.summary === 'string' ? stripModelThinking(aiData.summary) : '';
+                  if (summaryText) {
+                    const updatedAt = new Date().toISOString();
+                    cb.setNewsSummary(summaryText);
+                    cb.setNewsSummaryUpdatedAt(updatedAt);
+                    cb.saveNewsBriefCache({ summary: summaryText, updatedAt });
+                  }
+                })
+                .catch((e) => {
+                  console.warn('news summary generation failed:', e);
+                })
+                .finally(() => {
+                  cb.setNewsSummaryBusy(false);
+                  void afterWatchlist();
+                });
             } else {
               void afterWatchlist();
             }

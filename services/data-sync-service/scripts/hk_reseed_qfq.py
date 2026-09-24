@@ -1,5 +1,10 @@
 """Reseed all HK daily bars from Tencent ifzq qfq (adjusted) prices.
 
+LOOK-AHEAD DECLARATION (ledger B7, 2026-09-24): qfq depends on *future*
+dividends, so this rewrite restates past prices; frozen windows can drift
+across reseeds. Deliberate convention (backup first) — record data version
+with any frozen number (L5).
+
 Problem: the `daily` table for HK tickers mixes tushare RAW prices (first
 backfill, dividend days show artificial gaps) with Tencent qfq (adjusted,
 recent days only). Trend indicators (EMA/RSI/RS) in backtests misread

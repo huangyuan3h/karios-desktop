@@ -322,6 +322,60 @@ def fetch_last_adj_factors(
     return out
 
 
+def fetch_qfq_ratios(
+    ts_codes: list[str],
+    start_date: str,
+    end_date: str,
+) -> dict[str, dict[str, float]]:
+    """{ts_code: {trade_date: adj_factor / adj_latest}} over [start, end].
+
+    ``daily`` stores qfq prices; a raw print (``bar_5min``) times this ratio
+    lands on the same qfq basis (mirror of ``bar_5min.derived_1500_marks``,
+    which applies the inverse ``adj_latest / adj``). Ratios are causal for an
+    intraday fill: the day's ``adj_factor`` is published before the session.
+    """
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return {}
+    start2 = _date_str(start_date)
+    end2 = _date_str(end_date)
+    if not start2 or not end2:
+        return {}
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                WITH latest AS (
+                    SELECT DISTINCT ON (ts_code) ts_code, adj_factor AS adj_latest
+                    FROM {TABLE_NAME}
+                    WHERE ts_code = ANY(%s)
+                      AND adj_factor IS NOT NULL AND adj_factor > 0
+                    ORDER BY ts_code, trade_date DESC
+                )
+                SELECT d.ts_code, d.trade_date,
+                       COALESCE(l.adj_latest / NULLIF(d.adj_factor, 0), 1.0)
+                FROM {TABLE_NAME} d
+                LEFT JOIN latest l USING (ts_code)
+                WHERE d.ts_code = ANY(%s)
+                  AND d.trade_date >= %s AND d.trade_date <= %s
+                  AND d.adj_factor IS NOT NULL AND d.adj_factor > 0
+                """,
+                (codes, codes, start2, end2),
+            )
+            rows = cur.fetchall()
+    out: dict[str, dict[str, float]] = {}
+    for code, trade_date, ratio in rows:
+        d = trade_date.strftime("%Y-%m-%d") if hasattr(trade_date, "strftime") else str(trade_date)
+        try:
+            r = float(ratio)
+        except (TypeError, ValueError):
+            continue
+        if r > 0:
+            out.setdefault(str(code), {})[d] = r
+    return out
+
+
 def fetch_latest_trade_date_for_codes(ts_codes: list[str]) -> str | None:
     """
     Return the latest trade_date across ts_codes, as YYYY-MM-DD.

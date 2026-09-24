@@ -410,7 +410,7 @@ def _patch_swap_env(holds, candidates, rs_map, closes):
         patch.object(paper_s3, "close_paper_trade"),
         patch.object(paper_s3, "insert_paper_trade"),
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
-        patch.object(paper_s3, "round_trip_cost_pct", lambda m: 0.003),
+        patch.object(paper_s3, "round_trip_cost_pct_at", lambda m, e, x: 0.003),
     ]
     return patchers
 
@@ -441,7 +441,7 @@ def test_swap_holds_replaces_weak_with_strong() -> None:
     with (
         patch.object(paper_s3, "close_paper_trade") as close,
         patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
-        patch.object(paper_s3, "round_trip_cost_pct", lambda m: 0.003),
+        patch.object(paper_s3, "round_trip_cost_pct_at", lambda m, e, x: 0.003),
     ):
         swapped, rest = paper_s3._swap_holds_for_candidates(
             day="2026-08-07",
@@ -1150,8 +1150,8 @@ def test_swap_close_prices_hk_costs() -> None:
         )
     assert len(swapped) == 1
     kwargs = close.call_args.kwargs
-    assert kwargs["costs_pct"] == pytest.approx(0.9)
-    assert kwargs["pnl_pct"] == pytest.approx(-5.0 - 0.9)
+    assert kwargs["costs_pct"] == pytest.approx(0.9754)
+    assert kwargs["pnl_pct"] == pytest.approx(-5.0 - 0.9754)
 
 
 def test_hk_settled_cash_empty_book() -> None:

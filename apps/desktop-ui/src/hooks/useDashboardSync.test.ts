@@ -1,4 +1,7 @@
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { isDashboardSyncResultOk, useDashboardSync } from '@/hooks/useDashboardSync';
 
 type Listener = (event: { data: string }) => void;
 
@@ -23,6 +26,15 @@ class FakeEventSource {
   }
 }
 
+describe('dashboard sync result contract', () => {
+  it('accepts only an explicit successful result', () => {
+    expect(isDashboardSyncResultOk({ ok: true })).toBe(true);
+    expect(isDashboardSyncResultOk({ ok: false })).toBe(false);
+    expect(isDashboardSyncResultOk({})).toBe(false);
+    expect(isDashboardSyncResultOk(null)).toBe(false);
+  });
+});
+
 describe('useDashboardSync.forceRefreshWatchlistOnSync', () => {
   const originalEventSource = (globalThis as { EventSource?: unknown }).EventSource;
 
@@ -39,11 +51,43 @@ describe('useDashboardSync.forceRefreshWatchlistOnSync', () => {
     }
   });
 
-  // Smoke test for the new callback contract: verify the hook accepts the
-  // callback and exposes it via returned handlers. We can't drive the SSE
-  // flow without a React renderer (the project doesn't depend on
-  // @testing-library/react) but the typing + integration is covered in the
-  // wider component test in DashboardPage.
+  it('resolves false and skips cache updates when the backend reports failure', async () => {
+    const callbacks = {
+      applySummaryToCache: vi.fn(),
+      shouldRefreshNewsBrief: () => false,
+      newsSummary: null,
+      newsSummaryUpdatedAt: null,
+      setNewsSummary: vi.fn(),
+      setNewsSummaryUpdatedAt: vi.fn(),
+      setNewsSummaryBusy: vi.fn(),
+      saveNewsBriefCache: vi.fn(),
+      setError: vi.fn(),
+      forceRefreshWatchlistOnSync: vi.fn().mockResolvedValue(undefined),
+      onSyncComplete: vi.fn(),
+    };
+    const { result } = renderHook(() => useDashboardSync(callbacks));
+    let syncPromise: Promise<unknown> | undefined;
+
+    await act(async () => {
+      syncPromise = result.current.onSyncAll();
+      await Promise.resolve();
+    });
+    const es = FakeEventSource.instances[0]!;
+    await act(async () => {
+      es.emit({ type: 'start' });
+      es.emit({
+        type: 'done',
+        result: { ok: false, error: 'vendor unavailable' },
+        summary: { asOfDate: '2026-09-24' },
+      });
+    });
+
+    await expect(syncPromise).resolves.toEqual({ ok: false, summary: null });
+    expect(callbacks.setError).toHaveBeenCalledWith('vendor unavailable');
+    expect(callbacks.applySummaryToCache).not.toHaveBeenCalled();
+    expect(callbacks.forceRefreshWatchlistOnSync).not.toHaveBeenCalled();
+    expect(callbacks.onSyncComplete).not.toHaveBeenCalled();
+  });
   it('accepts a forceRefreshWatchlistOnSync callback in its options', async () => {
     const mod = await import('@/hooks/useDashboardSync');
     const fn = vi.fn();

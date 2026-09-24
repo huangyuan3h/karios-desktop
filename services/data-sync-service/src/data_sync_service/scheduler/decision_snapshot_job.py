@@ -12,7 +12,7 @@ from data_sync_service.service.decision import build_daily_snapshot
 logger = logging.getLogger(__name__)
 
 JOB_ID = "decision_snapshot"
-CRON_EXPRESSION = "0 18 * * 1-5"
+CRON_EXPRESSION = "0 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

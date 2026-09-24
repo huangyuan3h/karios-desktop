@@ -63,7 +63,12 @@ from data_sync_service.service.execution_gate import (
 )
 from data_sync_service.service.industry_fund_flow_read import top_by_date_from_rows
 from data_sync_service.service.market_regime import get_hk_regime, get_index_signals
-from data_sync_service.service.paper_cost_model import MARKETS, round_trip_cost_pct
+from data_sync_service.service.paper_cost_model import (
+    MARKETS,
+    explicit_entry_frac,
+    explicit_exit_frac,
+    slippage_frac,
+)
 from data_sync_service.service.paper_trading import _pick_close_reason, _resolve_ts_code
 
 logger = logging.getLogger(__name__)
@@ -100,7 +105,9 @@ def _board_limit_pct(ts: str) -> float | None:
     return None
 
 
-def _at_limit(data, ts: str, day: str, close_px: float, *, up: bool, base_day: str | None = None) -> bool:
+def _at_limit(
+    data, ts: str, day: str, close_px: float, *, up: bool, base_day: str | None = None
+) -> bool:
     """True when ``close_px`` closed pinned at the board limit (limit-up →
     cannot buy in; limit-down → cannot sell out). qfq prices scale the ratio,
     so a 1-cent tolerance absorbs the rounding.
@@ -249,7 +256,15 @@ class BacktestConfig:
     #                     尾盘; HK 15:00-16:00 尾盘). Purely OHLC-based proxy.
     #   last_hour_hl    — midpoint of the last-hour proxy: (low*0.5+close*0.5 + close)/2
     #   next_open       — next-session open (signal-day close → T+1 买入)
+    #   next_1430       — next session's 14:30 print (H-CLOCK-1430, 2026-09-18):
+    #                     same signal/lag as next_open, fill price = the raw
+    #                     14:30 print converted to the daily qfq basis. Missing
+    #                     print = no fill that session (never guess a price).
     entry_mode: str = "close"
+    # NOTE (2026-09-24, look-ahead ledger B5): a never-consumed `exit_at_1430`
+    # knob was removed. `px1430_by_ts` is loaded only for `entry_mode="next_1430"`
+    # (the H-CLOCK-1430 entry fill). Exits are close-based; there is no 14:30 exit
+    # leg in the engine (the `s3-clock-1430` variant was REJECTED, OPT-229).
     # TIP-014: entry STYLE — what kind of candidate to prefer/allow on a
     # signal day, per market environment (see service/env_label.py):
     #   score     — no style filter (baseline, matches live today)
@@ -603,10 +618,16 @@ class BacktestConfig:
             raise ValueError(
                 "max_hold_unprofitable_days must be >= 0 (0 disables; 20 = close underwater holdings after 20 days)"
             )
-        if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
+        if self.entry_mode not in (
+            "close",
+            "last_hour_low",
+            "last_hour_hl",
+            "next_open",
+            "next_1430",
+        ):
             raise ValueError(
-                "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
-                f"(got {self.entry_mode!r})"
+                "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', "
+                f"'next_open', 'next_1430') (got {self.entry_mode!r})"
             )
         if self.entry_style not in ("score", "momentum", "dip", "auto"):
             raise ValueError(
@@ -738,6 +759,30 @@ class BacktestData:
             series.sort(key=lambda kv: kv[0])
             self.close_by_ts_day[ts] = closes
             self.closes_by_ts[ts] = series
+        # H-CLOCK-1430: raw 14:30 prints on the daily qfq basis, loaded only
+        # when a 14:30 clock is requested. Lazy import + fail-open so unit
+        # tests with injected data (and no Postgres) keep working.
+        self.px1430_by_ts: dict[str, dict[str, float]] = {}
+        if config.entry_mode == "next_1430" and self.ts_codes:
+            try:
+                from data_sync_service.db.bar_5min import fetch_1430_closes
+                from data_sync_service.db.daily import fetch_qfq_ratios
+
+                raw_1430 = fetch_1430_closes(self.ts_codes, config.start_date, config.end_date)
+                ratios = fetch_qfq_ratios(self.ts_codes, config.start_date, config.end_date)
+                for ts, by_day in raw_1430.items():
+                    rmap = ratios.get(ts) or {}
+                    conv: dict[str, float] = {}
+                    for d, px in by_day.items():
+                        # fetch_qfq_ratios returns adj_latest/adj, and the daily
+                        # basis is qfq = raw * adj / adj_latest = raw / ratio
+                        # (verified 2026-09-21: raw/qfq == adj_latest/adj).
+                        k = rmap.get(d)
+                        conv[d] = float(px) / float(k) if k else float(px)
+                    if conv:
+                        self.px1430_by_ts[ts] = conv
+            except Exception:  # pragma: no cover - no DB / table missing
+                self.px1430_by_ts = {}
         self.regime_by_day = _load_regime_by_day(config, self.calendar)
         # TIP-017 B: national-team gate state (CN only). Computed once per
         # line calendar with a 400-day price/share lookback so the MA200 and
@@ -1926,10 +1971,28 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     positions_by_day: list[dict] = []  # end-of-day holding snapshots (2026-08-11)
     nav_curve: list[float] = []  # daily account NAV (start 1.0) for Sharpe/DD/CAGR
     nav_cash: float = 1.0  # realised capital (initial units); OPEN sleeves add their MTM on top
-    _rt_cost = round_trip_cost_pct(config.market) * 100.0
-    _cfrac = _rt_cost / 200.0  # half of round-trip commission as entry, half as exit
-    _entry_cost_frac = config.slippage_pct / 100.0 + _cfrac
-    _exit_cost_frac = config.slippage_pct / 100.0 + _cfrac
+    _market = config.market
+    _explicit_entry = explicit_entry_frac(_market)
+    _explicit_exit = explicit_exit_frac(_market)
+    _slip_overlay = config.slippage_pct / 100.0
+
+    def _entry_cost_frac(price: float | None) -> float:
+        """One-side entry cost fraction (explicit fees + price-aware slippage)."""
+        return _slip_overlay + _explicit_entry + slippage_frac(_market, price)
+
+    def _exit_cost_frac(price: float | None) -> float:
+        """One-side exit cost fraction (explicit fees + price-aware slippage)."""
+        return _slip_overlay + _explicit_exit + slippage_frac(_market, price)
+
+    def _rt_cost_pct(entry_px: float | None, exit_px: float | None) -> float:
+        """Full round-trip cost in pct points (explicit fees + both slippages)."""
+        return (
+            _explicit_entry
+            + _explicit_exit
+            + slippage_frac(_market, entry_px)
+            + slippage_frac(_market, exit_px)
+        ) * 100.0
+
     gated_blocks: dict[str, int] = defaultdict(int)
     strength_cache: dict[str, float] = {}  # §19.2 D1: day -> strength score
     last_panic_idx = -(10**9)
@@ -1966,6 +2029,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
           (A股 14:00-15:00 / HK 15:00-16:00). Always <= close.
         - ``last_hour_hl``: midpoint of that proxy and close.
         - ``next_open``: next session's open (fill on the following day).
+        - ``next_1430``: next session's 14:30 raw print (H-CLOCK-1430). Same
+          fill session as ``next_open``; ``None`` when that day has no print.
         """
         closes = data.close_by_ts_day.get(ts)
         base = closes.get(day) if closes else None
@@ -1989,6 +2054,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             except (TypeError, ValueError):
                 return None
             return o if o > 0 else None
+        if mode == "next_1430":
+            if not bars:
+                return None
+            nxt = next((b for b in bars if str(b[0]) > day), None)
+            if nxt is None:
+                return None
+            px1430 = (getattr(data, "px1430_by_ts", {}) or {}).get(ts, {}).get(str(nxt[0]))
+            try:
+                p = float(px1430)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return None
+            return p if p > 0 else None
         if bar is None:
             return base
         try:
@@ -2203,7 +2280,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 slip = config.slippage_pct
                 cost = entry_px * (1 + slip / 100.0)
                 gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
-                net = gross - _rt_cost
+                rt_cost = _rt_cost_pct(entry_px, close_px)
+                net = gross - rt_cost
                 realized_pnl_window.append((day, net))
                 closed_trades.append(
                     BacktestTrade(
@@ -2214,7 +2292,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         close_date=day,
                         close_price=round(float(close_px), 4),
                         gross_pnl_pct=round(gross, 4),
-                        costs_pct=round(_rt_cost, 4),
+                        costs_pct=round(rt_cost, 4),
                         pnl_pct=round(net, 4),
                         holding_days=_calendar_days_between(
                             str(pos_w["entry_date"]), day, data.calendar
@@ -2779,6 +2857,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 continue
             px = entry_price_for(ts, day)
             if px is None or px <= 0:
+                if config.entry_mode == "next_1430":
+                    # No 14:30 print on the fill session (or no next session):
+                    # no fill, never a guessed price (H-CLOCK-1430).
+                    gated_blocks["no_1430_print"] += 1
                 continue
             # OPT-103: limit-up close = cannot buy in today (board pinned);
             # skip the signal — the engine re-evaluates next session, so a
@@ -2786,13 +2868,14 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             # next_open fills at the NEXT session's open, so its limit
             # reference is the signal day's close (base_day=day); close /
             # last-hour fills stay on the prior close (base_day=None).
+            # next_1430 fills at the same session, later print → same anchor.
             if config.market == "CN" and _at_limit(
                 data,
                 ts,
                 day,
                 px,
                 up=True,
-                base_day=day if config.entry_mode == "next_open" else None,
+                base_day=(day if config.entry_mode in ("next_open", "next_1430") else None),
             ):
                 gated_blocks["limit_up"] += 1
                 continue
@@ -2816,7 +2899,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if sum(p["position_pct"] for p in positions.values()) + eff_pct > 1.0 + 1e-9:
                 gated_blocks["cash_cap"] += 1
                 continue
-            entry_cost = eff_pct * (1.0 + _entry_cost_frac)
+            entry_cost = eff_pct * (1.0 + _entry_cost_frac(px))
             if settle_n > 0:
                 # Settlement realism: only settled cash opens new sleeves.
                 if settled_cash + 1e-9 < entry_cost:
@@ -2870,11 +2953,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             slip = config.slippage_pct
             cost = entry_px * (1 + slip / 100.0)
             gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
-            net = gross - _rt_cost
+            rt_cost = _rt_cost_pct(entry_px, close_px)
+            net = gross - rt_cost
             holding = _calendar_days_between(str(pos["entry_date"]), day, data.calendar)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
 
-            if config.entry_mode == "next_open" and holding == 0:
+            if config.entry_mode in ("next_open", "next_1430") and holding == 0:
                 # OPT-211 P1: the fill lands on NEXT session's open — nothing
                 # about this sleeve is executable today. Running exit / peak /
                 # pyramid logic against today's close would read the future
@@ -3005,10 +3089,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             # morning's open cannot be sold at its close. Discard the computed
             # exit reason; the next session re-evaluates (peak update above
             # already ran, delist / window-end force reasons bypass below).
+            # H-CLOCK-1430: same rule for next_1430 (bought at that 14:30 print).
             if (
                 reason is not None
                 and config.market == "CN"
-                and config.entry_mode == "next_open"
+                and config.entry_mode in ("next_open", "next_1430")
                 and holding <= 1
             ):
                 reason = None
@@ -3025,7 +3110,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         close_date=day,
                         close_price=round(float(close_px), 4),
                         gross_pnl_pct=round(gross, 4),
-                        costs_pct=round(_rt_cost, 4),
+                        costs_pct=round(rt_cost, 4),
                         pnl_pct=round(net, 4),
                         holding_days=holding,
                         close_reason=reason,
@@ -3038,9 +3123,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     add_entry = float(add["entry_price"])
                     add_cost = add_entry * (1 + slip / 100.0)
                     add_gross = (close_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
+                    add_rt_cost = _rt_cost_pct(add_entry, close_px)
                     # NAV: credit the realised add P&L (exit cost applied).
                     add_proceeds = (
-                        add["position_pct"] * (close_px / add_entry) * (1.0 - _exit_cost_frac)
+                        add["position_pct"]
+                        * (close_px / add_entry)
+                        * (1.0 - _exit_cost_frac(close_px))
                     )
                     nav_cash += add_proceeds
                     if settle_n > 0:
@@ -3054,8 +3142,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             close_date=day,
                             close_price=round(float(close_px), 4),
                             gross_pnl_pct=round(add_gross, 4),
-                            costs_pct=round(_rt_cost, 4),
-                            pnl_pct=round(add_gross - _rt_cost, 4),
+                            costs_pct=round(add_rt_cost, 4),
+                            pnl_pct=round(add_gross - add_rt_cost, 4),
                             holding_days=_calendar_days_between(
                                 str(add["entry_date"]), day, data.calendar
                             ),
@@ -3066,7 +3154,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     )
                 # NAV: credit the realised main-leg P&L (exit cost applied).
                 main_proceeds = (
-                    pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac)
+                    pos["position_pct"] * (close_px / entry_px) * (1.0 - _exit_cost_frac(close_px))
                 )
                 nav_cash += main_proceeds
                 if settle_n > 0:
@@ -3090,13 +3178,15 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 )
                 if total_now + add_pct > 1.0 + 1e-9:
                     gated_blocks["cash_cap_pyramid"] = gated_blocks.get("cash_cap_pyramid", 0) + 1
-                elif settle_n > 0 and settled_cash + 1e-9 < add_pct * (1.0 + _entry_cost_frac):
+                elif settle_n > 0 and settled_cash + 1e-9 < add_pct * (
+                    1.0 + _entry_cost_frac(close_px)
+                ):
                     gated_blocks["settle_lock_pyramid"] = (
                         gated_blocks.get("settle_lock_pyramid", 0) + 1
                     )
                 else:
                     if settle_n > 0:
-                        settled_cash -= add_pct * (1.0 + _entry_cost_frac)
+                        settled_cash -= add_pct * (1.0 + _entry_cost_frac(close_px))
                     pos["adds"] = pos.get("adds", 0) + 1
                     pos.setdefault("adds_list", []).append(
                         {
@@ -3106,7 +3196,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         }
                     )
                     # NAV: deploy the add's capital + entry cost.
-                    nav_cash -= add_pct * (1.0 + _entry_cost_frac)
+                    nav_cash -= add_pct * (1.0 + _entry_cost_frac(close_px))
 
         # Continuous NAV (mark-to-market of all open sleeves) for honest
         # Sharpe / MaxDD / CAGR — replaces the old per-close-day proxy.
@@ -3157,7 +3247,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         slip = config.slippage_pct
         cost = entry_px * (1 + slip / 100.0)
         gross = (final_px * (1 - slip / 100.0) - cost) / cost * 100.0
-        net = gross - _rt_cost
+        rt_cost = _rt_cost_pct(entry_px, final_px)
+        net = gross - rt_cost
         closed_trades.append(
             BacktestTrade(
                 symbol=sym,
@@ -3167,7 +3258,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 close_date=last_day,
                 close_price=round(float(final_px), 4),
                 gross_pnl_pct=round(gross, 4),
-                costs_pct=round(_rt_cost, 4),
+                costs_pct=round(rt_cost, 4),
                 pnl_pct=round(net, 4),
                 holding_days=_calendar_days_between(
                     str(pos["entry_date"]), last_day, data.calendar
@@ -3181,6 +3272,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             add_entry = float(add["entry_price"])
             add_cost = add_entry * (1 + slip / 100.0)
             add_gross = (final_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
+            add_rt_cost = _rt_cost_pct(add_entry, final_px)
             closed_trades.append(
                 BacktestTrade(
                     symbol=sym,
@@ -3190,8 +3282,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     close_date=last_day,
                     close_price=round(float(final_px), 4),
                     gross_pnl_pct=round(add_gross, 4),
-                    costs_pct=round(_rt_cost, 4),
-                    pnl_pct=round(add_gross - _rt_cost, 4),
+                    costs_pct=round(add_rt_cost, 4),
+                    pnl_pct=round(add_gross - add_rt_cost, 4),
                     holding_days=_calendar_days_between(
                         str(add["entry_date"]), last_day, data.calendar
                     ),
@@ -3201,12 +3293,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 )
             )
         # NAV: credit the realised window-end P&L (main + add legs).
-        nav_cash += pos["position_pct"] * (final_px / entry_px) * (1.0 - _exit_cost_frac)
+        nav_cash += pos["position_pct"] * (final_px / entry_px) * (1.0 - _exit_cost_frac(final_px))
         for add in pos.get("adds_list", []):
             nav_cash += (
                 add["position_pct"]
                 * (final_px / float(add["entry_price"]))
-                * (1.0 - _exit_cost_frac)
+                * (1.0 - _exit_cost_frac(final_px))
             )
         # Must drop the closed position or open_at_end would count it too
         # (it counts only the positions we could not price at window end).

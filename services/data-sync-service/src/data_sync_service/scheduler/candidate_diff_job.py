@@ -24,7 +24,7 @@ from data_sync_service.service.paper_s3 import build_s3_candidates
 logger = logging.getLogger(__name__)
 
 JOB_ID = "candidate_diff"
-CRON_EXPRESSION = "35 17 * * 1-5"
+CRON_EXPRESSION = "35 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

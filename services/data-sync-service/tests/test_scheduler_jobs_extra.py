@@ -23,19 +23,19 @@ def _no_real_job_records(monkeypatch: pytest.MonkeyPatch):
 
 
 MODULES = {
-    "adj_factor_job": ("adj_factor_full_sync", "sync_adj_factor_full", "30 18 * * 5"),
+    "adj_factor_job": ("adj_factor_full_sync", "sync_adj_factor_full", "30 18 * * fri"),
     "eastmoney_industry_job": (
         "eastmoney_industry_sync",
         "sync_eastmoney_industry_incremental",
-        "0 18 * * 1-5",
+        "0 18 * * mon-fri",
     ),
-    "etf_daily_job": ("sleeve_etf_daily_sync", "sync_sleeve_etfs", "25 17 * * 1-5"),
+    "etf_daily_job": ("sleeve_etf_daily_sync", "sync_sleeve_etfs", "25 17 * * mon-fri"),
     "fund_basic_job": ("etf_fund_basic_sync", "sync_etf_fund_basic", "0 4 1 * *"),
     "hk_basic_job": ("hk_basic_sync", "sync_hk_basic", "30 3 1 * *"),
     "hk_daily_job": ("hk_daily_full_sync", "sync_hk_daily_full", "30 17 * * *"),
     "hk_industry_job": ("hk_industry_sync", "sync_hk_industry", "0 2 * * *"),
-    "index_daily_job": ("index_daily_full_sync", "sync_index_daily_full", "30 16 * * 1-5"),
-    "macro_daily_job": ("macro_daily_full_sync", "sync_macro_daily_full", "0 7 * * 2-6"),
+    "index_daily_job": ("index_daily_full_sync", "sync_index_daily_full", "30 16 * * mon-fri"),
+    "macro_daily_job": ("macro_daily_full_sync", "sync_macro_daily_full", "0 7 * * tue-sat"),
 }
 
 
@@ -184,7 +184,6 @@ class TestCreateScheduler:
             "minute_capture",
             "bar_5min_close",
             "sleeve_paper_auto",
-            "harbor_h2_shadow",
             "satellite_live_panel",
             "factor_signals_sync",
             "risk_state_sync",
@@ -218,7 +217,7 @@ class TestStockBasicJob:
         from data_sync_service.scheduler import stock_basic_job
 
         assert stock_basic_job.JOB_ID == "stock_basic_sync"
-        assert stock_basic_job.CRON_EXPRESSION == "0 18 * * 5"
+        assert stock_basic_job.CRON_EXPRESSION == "0 18 * * fri"
         assert isinstance(stock_basic_job.build_trigger(), CronTrigger)
 
     def test_run_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1183,7 +1182,6 @@ def test_catchup_retries_skipped_watchlist_automation(monkeypatch) -> None:
     monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: None)
     monkeypatch.setattr(scheduler_pkg.paper_backtest_mirror_job, "run", lambda: None)
     monkeypatch.setattr(scheduler_pkg.sleeve_paper_job, "run", lambda: None)
-    monkeypatch.setattr(scheduler_pkg.harbor_h2_shadow_job, "run", lambda: None)
     monkeypatch.setattr(scheduler_pkg.bar_5min_job, "run", lambda: None)
 
     scheduler_pkg.catchup_missed_eod_chain()

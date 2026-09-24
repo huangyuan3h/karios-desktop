@@ -321,6 +321,27 @@ def dashboard_summary(
     }
 
 
+def _sync_failure_message(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    if value.get("ok") is False:
+        for key in ("error", "message", "reason"):
+            detail = value.get(key)
+            if detail:
+                return str(detail)
+        errors = value.get("errors")
+        if isinstance(errors, list) and errors:
+            first = errors[0]
+            if isinstance(first, dict) and first.get("error"):
+                return str(first["error"])
+        return "sync step returned ok=false"
+    for nested in value.values():
+        message = _sync_failure_message(nested)
+        if message:
+            return message
+    return None
+
+
 def _run_step(name: str, fn: callable) -> dict[str, Any]:
     st = time.perf_counter()
     ok = True
@@ -330,6 +351,10 @@ def _run_step(name: str, fn: callable) -> dict[str, Any]:
         out = fn()
         if isinstance(out, dict):
             meta = out
+            failure = _sync_failure_message(out)
+            if failure:
+                ok = False
+                msg = failure
     except Exception as exc:
         ok = False
         msg = str(exc)
@@ -395,7 +420,15 @@ def _sync_news_step() -> dict[str, Any]:
     results = fetch_all_sources()
     total = sum(v for v in results.values() if v > 0)
     failed = sum(1 for v in results.values() if v < 0)
-    return {"total": total, "failed": failed, "sources": len(results)}
+    out: dict[str, Any] = {
+        "ok": failed == 0,
+        "total": total,
+        "failed": failed,
+        "sources": len(results),
+    }
+    if failed:
+        out["error"] = f"{failed} news source(s) failed"
+    return out
 
 
 def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
@@ -492,8 +525,14 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
         "steps": steps,
     }
     summary_data: dict[str, Any] = {}
+    summary_error: str | None = None
     try:
         summary_data = dashboard_summary()
-    except Exception:
-        pass
+        if not summary_data:
+            summary_error = "dashboard summary unavailable"
+    except Exception as exc:
+        summary_error = str(exc) or "dashboard summary failed"
+    if summary_error:
+        final["ok"] = False
+        final["error"] = summary_error
     yield json.dumps({"type": "done", "result": final, "summary": summary_data}) + "\n"

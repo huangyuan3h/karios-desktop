@@ -23,7 +23,7 @@ from data_sync_service.db.webhook import emit_event
 logger = logging.getLogger(__name__)
 
 JOB_ID = "behavior_audit"
-CRON_EXPRESSION = "45 18 * * 1-5"  # weekdays 18:45 Asia/Shanghai
+CRON_EXPRESSION = "45 18 * * mon-fri"  # weekdays 18:45 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
 

@@ -1,16 +1,17 @@
 """Frozen strategy-family catalog for the Backtest page overview (display layer).
 
 Single source for the clean caliber numbers (costs included) shown in the UI.
-Every row cites its authoritative doc; numbers must be updated here when a new
-audit re-freezes them (see the audit doc's §0 comparison table).
+The current robust Starship row is the H2-a25 report and explicitly carries
+its K3 risk; every row cites its authoritative doc and numbers must be updated
+when a new audit re-freezes them (see the audit doc's §0 comparison table).
 
 Text style (2026-09-15): human-facing copy is plain language (大白话) — what it
 does, what it earned, when it works. Jargon stays in the真值 docs.
 
 Live stays 港湾 — this catalog is read-only display data, never order wiring.
 
-Three-tier lineup (2026-09-16): 星舰 offense / 星港 balanced / 母港M30 defense,
-plus 港湾 sunset baseline (Live keeps running; no new development).
+Three-tier lineup (2026-09-24): 星舰 offense / 稳健星舰 H2-a25 balanced / 星港 balanced /
+母港M30 defense, plus 港湾 sunset baseline (Live keeps running; no new development).
 Order below is the display order everywhere (catalog panel, tabs, mode bar).
 """
 
@@ -18,7 +19,9 @@ from __future__ import annotations
 
 from typing import Any
 
-UPDATED = "2026-09-17"
+from data_sync_service.service.state_bucket_track import A25_TAG, STARSIP_B_TAG
+
+UPDATED = "2026-09-21"
 
 # Windows: total% (含成本) / CAGR% / maxDD% / Sharpe. Frozen 2026-09-14 clean.
 _STRATEGIES: list[dict[str, Any]] = [
@@ -26,53 +29,165 @@ _STRATEGIES: list[dict[str, Any]] = [
         "key": "starship",
         "name": "星舰",
         "structure": (
-            "v2（2026-09-15 定稿，2026-09-16 起闲置按 H2 迟滞套筒停放）：卫星打法——"
-            "每天下午 2:30 挑“跳空高开 + 波动小”的股票，最多 4 只、每只 25% 的钱，"
-            "持有 3 天后卖出；大盘太弱时自动停手。没出手时的现金拿去买趋势最好的"
-            "一个 ETF，换仓需 2pt 动量领先（过滤噪音换仓）。"
+            "激进对照：卫星 4 槽 ×25% + 闲置现金 100% 停 H2 趋势 ETF"
+            "（mom60+MA200，领先 2pt 才换仓）；不接 Live 自动下单。"
         ),
         "status": "aggressive_pending",
         "statusLabel": "激进 · 前置未满",
         "role": "offense",
         "roleLabel": "进攻",
         "timelineStrategy": "starship",
-        "doc": "docs/backtests/stable/sleeve-tune-2026-09-16.md",
-        "tag": "starship-h2-20260916",
+        "doc": "docs/backtests/stable/sat-h2-a25-2026-09-24.md",
+        "tag": "starship-h2-20260924",
+        "updated": "2026-09-24",
+        "variant": {
+            "sleeveMode": "h2",
+            "hystBand": 0.02,
+            "sleeveWeight": 1.0,
+            "b3Weight": 0.0,
+        },
         "windows": {
-            "OOS2": {"total": 242.7, "cagr": 260.5, "mdd": -8.6, "sharpe": 5.08},
-            "train": {"total": 76.8, "cagr": 224.6, "mdd": -9.6, "sharpe": 4.55},
-            "valid": {"total": -0.3, "cagr": -0.6, "mdd": -35.9, "sharpe": 0.23},
-            "long": {"total": 975.0, "cagr": 63.6, "mdd": -30.5, "sharpe": 2.15},
+            "OOS2": {"total": 240.7, "cagr": 258.36, "mdd": -8.6, "sharpe": 5.06},
+            "train": {"total": 75.9, "cagr": 221.0, "mdd": -9.6, "sharpe": 4.5},
+            "valid": {"total": -0.6, "cagr": -1.32, "mdd": -36.1, "sharpe": 0.21},
+            "long": {"total": 962.7, "cagr": 63.26, "mdd": -30.5, "sharpe": 2.14},
         },
         "pros": [
-            "长期总收益 +975%（15bps 下仍 +921%；旧停车口径 +925%）",
-            "换仓降噪有增量：train +76.8（比旧停车 +10.6）、long +975（+50.1）",
-            "卫星本身执行审计已过：1036 笔成交全部落在当天最高最低价区间内；500 万以内好成交",
-            "六个年份全部正收益（+74%/+34%/+33%/+61%/+77%/+22%）",
+            "H2 迟滞后 long +962.7%，纯套筒臂长期收益最高",
+            "卫星执行审计已过：成交价格落在日内区间；容量约 500 万以内",
+            "适合单独研究卫星脉冲和收益上限",
         ],
         "cons": [
-            "回撤仍大：长期从高点最多跌 30.5%；valid 窗内有 −35.9% 的 episode",
-            "2022 是迟滞弱年（停车腿 −6.9% vs 旧口径 −0.1%）；valid 与旧口径持平（−0.3%）",
-            "单月最差 −8.7%；要进实盘还差两步：paper 先跑满 20 笔平仓 + 你正式授权",
+            "回撤极深：long MDD -30.5%，valid MDD -36.1%",
+            "valid -0.6%，弱窗卫星与停车腿都缺乏有效收益",
+            "只固化到研究/展示；Live 前置仍为 paper 20 笔 + 风险授权",
         ],
         "regime": {
             "fit": [
-                "六个年份全部正收益：2021 +74%、2022 +34%、2023 +33%、2024 +61%、2025 +77%、2026 +22%",
-                "约 74% 的月份赚钱（61 个月里 45 个月赚钱）；中位 +3.5%",
-                "弱市 + 波动大时卫星脉冲最肥（OOS2 +243%）",
+                "卫星脉冲和趋势窗进攻",
+                "long 端提供最高收益上限",
             ],
             "unfit": [
-                "单月最差 −8.7%；valid 窗内 −35.9% 的 episode",
-                "趋势窗卫星挨饿时全靠停车腿（valid 卫星有仓仅 27%）",
+                "卫星弱窗和大幅回撤期",
+                "需要严格风险授权，不适合作为稳健基线",
             ],
             "evidence": [
-                {"label": "2021 年（8–12月）", "value": "+74.1%"},
-                {"label": "2022 年", "value": "+34.3%"},
-                {"label": "2023 年", "value": "+33.1%"},
-                {"label": "2024 年", "value": "+60.6%"},
-                {"label": "2025 年", "value": "+76.8%"},
-                {"label": "2026 年至 8 月", "value": "+21.5%"},
-                {"label": "每月胜率", "value": "74%（61 个月里 45 个月赚钱）；中位 +3.5%；最差 −8.7%"},
+                {"label": "长窗（2021-08~2026-08）", "value": "+962.7% / MDD -30.5% / SR 2.14"},
+                {"label": "OOS2（2024-08~2025-08）", "value": "+240.7% / MDD -8.6%"},
+                {"label": "train（2025-08~2026-02）", "value": "+75.9% / MDD -9.6%"},
+                {"label": "valid（2026-03~2026-08）", "value": "-0.6% / MDD -36.1%"},
+            ],
+            "note": "这些只是“什么行情下好用”的记录，不是买卖开关。",
+        },
+    },
+    {
+        "key": "starship_robust",
+        "name": "稳健星舰 H2-a25",
+        "structure": (
+            "唯一现行稳健研究/展示档：卫星 4 槽 ×25% + cashShare(T−1) 的闲置现金；"
+            "闲置现金按 25% H2 趋势 ETF（mom60+MA200，领先 2pt 才换仓）+ 75% B3 风险预算"
+            "（5 资产 inverse-vol，月调权重）配置。H2-a25，不接 Live 自动下单。"
+        ),
+        "status": "product_candidate",
+        "statusLabel": "现行 canonical · K3 风险",
+        "role": "balanced",
+        "roleLabel": "稳健",
+        "timelineStrategy": "starship_robust",
+        "doc": "docs/backtests/stable/sat-h2-a25-2026-09-24.md",
+        "tag": A25_TAG,
+        "updated": "2026-09-24",
+        "canonical": True,
+        "variant": {
+            "sleeveMode": "h2",
+            "hystBand": 0.02,
+            "sleeveWeight": 0.25,
+            "b3Weight": 0.75,
+        },
+        "risk": "K3 failed: long MDD -8.4% vs pure B3 -6.8% (delta -1.6pt)",
+        "windows": {
+            "OOS2": {"total": 238.4, "cagr": 255.83, "mdd": -5.0, "sharpe": 6.32},
+            "train": {"total": 55.9, "cagr": 150.4, "mdd": -7.5, "sharpe": 4.15},
+            "valid": {"total": 3.2, "cagr": 7.5, "mdd": -10.8, "sharpe": 0.46},
+            "long": {"total": 738.5, "cagr": 55.43, "mdd": -8.4, "sharpe": 3.5},
+        },
+        "pros": [
+            "H2 2pt 迟滞减少无效换仓，收益路径接近 0pt 经典臂但保留现行产品逻辑",
+            "三窗相对纯 B3 的收益增量为 +1.9/+6.3/+0.2pt，long +84.2pt",
+            "回撤仍显著低于激进套筒：long -8.4% vs 纯套筒 -30.5%",
+        ],
+        "cons": [
+            "K3 未通过：long MDD 相对纯 B3 恶化 -1.6pt（预注册门槛 -1.0pt），不能写成全门 PASS",
+            "valid 只有 +3.2%，卫星弱窗仍是主要短板",
+            "仅固化到研究/展示/人工操作；Live 自动执行仍为港湾，前置仍是 paper 20 笔 + 风险授权",
+        ],
+        "regime": {
+            "fit": [
+                "弱市/高波时卫星脉冲较肥（OOS2 +238.4%，MDD -5.0%）",
+                "H2 2pt 迟滞下换仓更少，操作噪声低于 0pt 经典臂",
+                "闲置资金仍有 75% B3 分散，long MDD 比纯套筒浅 22.1pt",
+            ],
+            "unfit": [
+                "K3 风险：H2-a25 long MDD 比纯 B3 深 1.6pt",
+                "valid 弱窗只有 +3.2%，卫星腿仍是主要收益波动来源",
+                "报告裁决为 REJECT（仅 K3 失败），不是全门 PASS",
+            ],
+            "evidence": [
+                {"label": "长窗（2021-08~2026-08）", "value": "+738.5% / MDD -8.4% / SR 3.50"},
+                {"label": "OOS2（2024-08~2025-08）", "value": "+238.4% / MDD -5.0%"},
+                {"label": "train（2025-08~2026-02）", "value": "+55.9% / MDD -7.5%"},
+                {"label": "valid（2026-03~2026-08）", "value": "+3.2% / MDD -10.8%"},
+                {"label": "门控", "value": "K1/K2/K4/K5 PASS；K3 FAIL（MDD delta -1.6pt）"},
+            ],
+            "note": "这些只是“什么行情下好用”的记录，不是买卖开关；K3 风险需持续观察。",
+        },
+    },
+    {
+        "key": "starship_b",
+        "name": "星舰 B",
+        "structure": (
+            "卫星 4 槽 ×25% 不变；闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，"
+            "因果 T−1，5bps/边）。相比 H2-a25：长期收益略低、回撤更浅、2022–23 熊市更强。"
+            "研究/展示/人工操作档，不接 Live 自动下单。"
+        ),
+        "status": "product_candidate",
+        "statusLabel": "稳健备选 · 3 腿停放",
+        "role": "balanced",
+        "roleLabel": "稳健",
+        "timelineStrategy": "starship_b",
+        "doc": "docs/backtests/stable/starship-b-2026-09-24.md",
+        "tag": STARSIP_B_TAG,
+        "updated": "2026-09-24",
+        "windows": {
+            "OOS2": {"total": 231.7, "cagr": 248.55, "mdd": -4.0, "sharpe": 6.65},
+            "train": {"total": 51.5, "cagr": 135.95, "mdd": -8.2, "sharpe": 4.01},
+            "valid": {"total": 5.4, "cagr": 12.87, "mdd": -10.0, "sharpe": 0.66},
+            "long": {"total": 669.6, "cagr": 52.69, "mdd": -5.5, "sharpe": 3.9},
+        },
+        "pros": [
+            "回撤更浅（long MDD -5.5% vs H2-a25 -8.4%），Sharpe 更高（3.90 vs 3.50）",
+            "2022–23 熊市显著更强（stress +124.0% / -7.4% vs H2-a25 +103.5% / -10.1%）",
+            "停放腿只有 3 只 ETF（国债+黄金+纳指），比 H2+B3 好复制",
+        ],
+        "cons": [
+            "长期收益低于 H2-a25（long +669.6% vs +738.5%，少 69pt）",
+            "valid 仍弱（+5.4%），卫星弱窗是共同短板",
+            "仅研究/展示/人工操作；Live 自动执行仍为港湾",
+        ],
+        "regime": {
+            "fit": [
+                "熊市/压力段（stress +124.0%）优于 H2-a25",
+                "卫星空仓时停放的 3 腿更分散、回撤更浅",
+            ],
+            "unfit": [
+                "追逐最高长期收益时不如 H2-a25",
+                "valid 弱窗收益仍薄",
+            ],
+            "evidence": [
+                {"label": "长窗（2021-08~2026-08）", "value": "+669.6% / MDD -5.5% / SR 3.90"},
+                {"label": "OOS2（2024-08~2025-08）", "value": "+231.7% / MDD -4.0%"},
+                {"label": "train（2025-08~2026-02）", "value": "+51.5% / MDD -8.2%"},
+                {"label": "valid（2026-03~2026-08）", "value": "+5.4% / MDD -10.0%"},
+                {"label": "stress（2022-01~2023-12）", "value": "+124.0% / MDD -7.4%"},
             ],
             "note": "这些只是“什么行情下好用”的记录，不是买卖开关。",
         },
@@ -89,10 +204,10 @@ _STRATEGIES: list[dict[str, Any]] = [
         "doc": "docs/backtests/stable/harbor-b3-sat-2026-09-14.md",
         "tag": "h-b3-sat-20260914",
         "windows": {
-            "OOS2": {"total": 65.3, "cagr": 68.8, "mdd": -6.5, "sharpe": 3.25},
-            "train": {"total": 38.2, "cagr": 95.1, "mdd": -4.4, "sharpe": 4.16},
-            "valid": {"total": 21.0, "cagr": 55.4, "mdd": -11.4, "sharpe": 1.97},
-            "long": {"total": 169.0, "cagr": 22.8, "mdd": -11.2, "sharpe": 1.62},
+            "OOS2": {"total": 64.8, "cagr": 68.24, "mdd": -6.6, "sharpe": 3.22},
+            "train": {"total": 38.0, "cagr": 94.44, "mdd": -4.5, "sharpe": 4.14},
+            "valid": {"total": 20.9, "cagr": 55.12, "mdd": -11.4, "sharpe": 1.96},
+            "long": {"total": 163.3, "cagr": 22.24, "mdd": -11.2, "sharpe": 1.57},
         },
         "pros": [
             "六个年份全部赚钱（+10%/+9%/+5%/+31%/+35%/+19%）",
@@ -142,10 +257,10 @@ _STRATEGIES: list[dict[str, Any]] = [
         "doc": "docs/backtests/stable/homeport-weight-tune-2026-09-16.md",
         "tag": "h-mix-m30-20260916",
         "windows": {
-            "OOS2": {"total": 43.9, "cagr": 46.1, "mdd": -11.0, "sharpe": 1.81},
-            "train": {"total": 42.0, "cagr": 106.3, "mdd": -6.3, "sharpe": 3.25},
-            "valid": {"total": 35.4, "cagr": 101.6, "mdd": -15.7, "sharpe": 2.18},
-            "long": {"total": 152.5, "cagr": 21.2, "mdd": -16.4, "sharpe": 1.10},
+            "OOS2": {"total": 43.4, "cagr": 45.54, "mdd": -11.0, "sharpe": 1.79},
+            "train": {"total": 41.9, "cagr": 105.95, "mdd": -6.4, "sharpe": 3.24},
+            "valid": {"total": 35.4, "cagr": 101.43, "mdd": -15.7, "sharpe": 2.18},
+            "long": {"total": 146.6, "cagr": 20.59, "mdd": -16.4, "sharpe": 1.06},
         },
         "pros": [
             "防守也有收益：四段测试总收益 +44%/+42%/+35%/+153%（含手续费），长期年化 21%（M50 只有 17.6%）",
@@ -196,10 +311,10 @@ _STRATEGIES: list[dict[str, Any]] = [
         "doc": "docs/backtests/stable/etf-parking-baseline-2026-09-13.md",
         "tag": "harbor-p1-20260913",
         "windows": {
-            "OOS2": {"total": 55.2, "cagr": 58.0, "mdd": -14.3, "sharpe": 1.73},
-            "train": {"total": 52.2, "cagr": 138.2, "mdd": -8.0, "sharpe": 3.01},
-            "valid": {"total": 50.3, "cagr": 156.6, "mdd": -21.8, "sharpe": 2.14},
-            "long": {"total": 201.5, "cagr": 25.7, "mdd": -22.8, "sharpe": 1.00},
+            "OOS2": {"total": 54.4, "cagr": 57.23, "mdd": -14.3, "sharpe": 1.71},
+            "train": {"total": 52.0, "cagr": 137.48, "mdd": -8.2, "sharpe": 3.0},
+            "valid": {"total": 50.2, "cagr": 156.13, "mdd": -21.8, "sharpe": 2.13},
+            "long": {"total": 197.1, "cagr": 25.34, "mdd": -22.9, "sharpe": 0.98},
         },
         "pros": [
             "实盘基线。四段测试总收益 +55%/+52%/+50%/+202%（含手续费）",
@@ -237,24 +352,24 @@ _STRATEGIES: list[dict[str, Any]] = [
         },
     },
     {
-        # 2026-09-17 audit: restored as the parallel comparison entry
-        # (removing it from the product surface was too aggressive; user
-        # decision 2026-09-14: keep it, catalog badge = 并行对照).
+        # 2026-09-21 user decision: fully revived as a first-class comparison
+        # strategy (was a "parallel reference" badge after the 09-17 audit).
+        # Display/research only — Live orders stay 港湾 (S-3 + parking).
         "key": "twin_star",
         "name": "双子星",
-        "structure": "港湾核心和卫星打法各放一半钱。行情好时冲得最猛，作为“并行对照”保留观察，不进实盘。",
-        "status": "parallel_candidate",
-        "statusLabel": "并行对照",
+        "structure": "港湾核心和卫星打法各放一半钱（无仓日 100% 港湾）。行情好时冲得最猛；五档正式并行对比（展示口径，非 Live）。",
+        "status": "product_candidate",
+        "statusLabel": "并行 · 正式",
         "role": "balanced",
-        "roleLabel": "对照",
+        "roleLabel": "均衡",
         "timelineStrategy": "twin_star",
         "doc": "docs/backtests/stable/twin-star-parking-refit-2026-09-13.md",
-        "tag": "b12",
+        "tag": "twin-star-parking-2026-09-13",
         "windows": {
-            "OOS2": {"total": 149.7, "cagr": 159.3, "mdd": -9.2, "sharpe": 4.54},
-            "train": {"total": 52.2, "cagr": 138.0, "mdd": -6.8, "sharpe": 3.98},
-            "valid": {"total": 29.1, "cagr": 80.5, "mdd": -21.8, "sharpe": 1.49},
-            "long": {"total": 291.9, "cagr": 32.8, "mdd": -20.8, "sharpe": 1.45},
+            "OOS2": {"total": 144.6, "cagr": 153.8, "mdd": -9.2, "sharpe": 4.22},
+            "train": {"total": 52.2, "cagr": 138.0, "mdd": -6.6, "sharpe": 3.93},
+            "valid": {"total": 24.5, "cagr": 66.1, "mdd": -21.8, "sharpe": 1.31},
+            "long": {"total": 299.8, "cagr": 33.3, "mdd": -20.8, "sharpe": 1.48},
         },
         "pros": [
             "行情好的年份冲得最猛：2021 +22%、2022 +24%、2025 +67%",
@@ -264,7 +379,7 @@ _STRATEGIES: list[dict[str, Any]] = [
         "cons": [
             "卫星状态差的年份很平庸：2023 只 +5.8%、2026 只 +7.7%",
             "最差一个月 −7.9%；卫星抽搐时连累明显（2026-06 −6.9%、2026-07 −7.2%）",
-            "有一段比港湾核心少赚 21.2%，没通过内部验收——保留它只为了对照观察，不进实盘",
+            "valid 窗比港湾核心少赚 25.7pt（趋势窗卫星有仓仅 27%），是它唯一短板——作为正式并行档保留，不进 Live",
         ],
         "regime": {
             "fit": [
@@ -302,7 +417,7 @@ def strategy_catalog() -> list[dict[str, Any]]:
             "windows": {k: dict(v) for k, v in row["windows"].items()},
             "pros": list(row["pros"]),
             "cons": list(row["cons"]),
-            "updated": UPDATED,
+            "updated": row.get("updated", UPDATED),
         }
         reg = row.get("regime")
         if reg:

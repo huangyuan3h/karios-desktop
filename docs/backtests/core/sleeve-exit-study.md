@@ -1,5 +1,11 @@
 # ETF/套筒 离场时机验证（2026-08-28）
 
+> **⚠️ 前视，已修复，数字作废（2026-09-24）**：本档的 `hard20`/`trail8` 结论来自
+> `sleeve_exit_variants.py`，其 `simulate_with_exit` 用**当日收盘**决定当日 sleeve 持仓并记
+> **当日收益**（OPT-177 同族 1 日前视）——"提前 5–7d 切 GC001、valid/长窗 +7~32pt"是前视产物。
+> 脚本已删除；本档仅作历史留档。现行套筒唯一实现 = `harbor.parking_replay`（因果）。
+> 台账：[`lookahead-inventory-2026-09-24.md`](../lookahead-inventory-2026-09-24.md) §B2。
+
 > 问题：ETF 何时离场？`MA200` 之外是否需 `20d -10%` 硬切或 `trail -8%`？方法同 §19：三窗 `OOS2/train/valid` 同屏，`min_idle 0%`，`sleeve_nav_sim` 基线 `S3_CONFIG`。
 
 ## 口径

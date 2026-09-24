@@ -26,7 +26,7 @@ from data_sync_service.service.allocation import decide_week, week_start_for
 logger = logging.getLogger(__name__)
 
 JOB_ID = "allocation_decide"
-CRON_EXPRESSION = "45 17 * * 1"  # Monday 17:45 Asia/Shanghai
+CRON_EXPRESSION = "45 17 * * mon"  # Monday 17:45 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
 

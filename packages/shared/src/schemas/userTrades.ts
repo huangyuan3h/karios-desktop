@@ -4,9 +4,22 @@ import { z } from 'zod';
 export const UserTradeSideSchema = z.enum(['BUY', 'ADD', 'SELL']);
 export type UserTradeSide = z.infer<typeof UserTradeSideSchema>;
 
-/** Which strategy book a manual leg belongs to (OPT-149). */
-export const UserTradeLegSchema = z.enum(['s3', 'parking']);
+/** Which strategy book a manual leg belongs to (OPT-149; satellite 2026-09-21). */
+export const UserTradeLegSchema = z.enum(['s3', 'parking', 'satellite', 'h2', 'b3']);
 export type UserTradeLeg = z.infer<typeof UserTradeLegSchema>;
+
+/** Strategy identity for a manual journal row; historical rows stay unknown. */
+export const UserTradeStrategyModeSchema = z.enum([
+  'harbor',
+  'homeport',
+  'starport',
+  'starship',
+  'starship_robust',
+  'starship_b',
+  'twin_star',
+  'legacy_unknown',
+]);
+export type UserTradeStrategyMode = z.infer<typeof UserTradeStrategyModeSchema>;
 
 /** One alpha-radar event visible as-of the trade date (§19.3 snapshot). */
 export const AlphaSnapshotEventSchema = z.object({
@@ -46,6 +59,7 @@ export const UserTradeSchema = z.object({
   market: z.string().optional(),
   note: z.string().nullable().optional(),
   leg: UserTradeLegSchema.optional().default('s3'),
+  strategyMode: UserTradeStrategyModeSchema.optional().default('legacy_unknown'),
   alphaSnapshot: AlphaSnapshotSchema.nullable().optional(),
   createdAt: z.string().nullable().optional(),
 });
@@ -64,6 +78,7 @@ export const UserTradeRequestSchema = z.object({
   market: z.string().optional(),
   note: z.string().optional(),
   leg: UserTradeLegSchema.optional(),
+  strategyMode: UserTradeStrategyModeSchema.optional(),
 });
 export type UserTradeRequest = z.infer<typeof UserTradeRequestSchema>;
 
@@ -76,6 +91,7 @@ export type UserTradeResponse = z.infer<typeof UserTradeResponseSchema>;
 /** PATCH /trades/{id} body (OPT-150): corrections only, side/symbol/date immutable. */
 export const UserTradePatchSchema = z.object({
   leg: UserTradeLegSchema.optional(),
+  strategyMode: UserTradeStrategyModeSchema.optional(),
   positionPct: z.number().positive().optional(),
   note: z.string().optional(),
 });

@@ -29,7 +29,7 @@ from data_sync_service.service.backtest_engine import BacktestConfig, simulate
 logger = logging.getLogger(__name__)
 
 JOB_ID = "rolling_oos"
-CRON_EXPRESSION = "15 8 1-7 * 1"  # first Monday of each month 08:15 Asia/Shanghai
+CRON_EXPRESSION = "15 8 1-7 * mon"  # first Monday of each month 08:15 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
 ROLLING_DAYS = 90

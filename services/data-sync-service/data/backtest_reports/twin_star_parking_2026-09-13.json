@@ -5,45 +5,45 @@
     "OOS2": {
       "core": {
         "n_days": 243,
-        "total_pct": 55.2,
-        "cagr": 58.05,
+        "total_pct": 54.4,
+        "cagr": 57.23,
         "max_dd": -14.3,
-        "sharpe": 1.73
+        "sharpe": 1.71
       },
       "satellite": {
         "n_days": 243,
-        "total_pct": 209.0,
-        "cagr": 223.69,
-        "max_dd": -4.3,
-        "sharpe": 6.41
+        "total_pct": 207.2,
+        "cagr": 221.83,
+        "max_dd": -4.4,
+        "sharpe": 6.38
       },
       "twin": {
         "0.4": {
           "n_days": 243,
-          "total_pct": 124.6,
-          "cagr": 132.21,
+          "total_pct": 123.4,
+          "cagr": 130.96,
           "max_dd": -9.2,
-          "sharpe": 3.71
+          "sharpe": 3.68
         },
         "0.5": {
           "n_days": 243,
-          "total_pct": 145.9,
-          "cagr": 155.18,
+          "total_pct": 144.6,
+          "cagr": 153.79,
           "max_dd": -9.2,
-          "sharpe": 4.25
+          "sharpe": 4.22
         },
         "0.6": {
           "n_days": 243,
-          "total_pct": 169.0,
-          "cagr": 180.22,
+          "total_pct": 167.6,
+          "cagr": 178.67,
           "max_dd": -9.2,
-          "sharpe": 4.78
+          "sharpe": 4.75
         }
       },
-      "delta_core_total": 90.7,
-      "delta_core_cagr": 97.13,
+      "delta_core_total": 90.2,
+      "delta_core_cagr": 96.56,
       "delta_core_mdd": 5.1,
-      "delta_core_sharpe": 2.52,
+      "delta_core_sharpe": 2.51,
       "pct_active": 67.9,
       "fills": 298,
       "avg_held_days": 3.0
@@ -51,45 +51,45 @@
     "train": {
       "core": {
         "n_days": 123,
-        "total_pct": 52.2,
-        "cagr": 138.1,
-        "max_dd": -8.1,
-        "sharpe": 3.01
+        "total_pct": 52.0,
+        "cagr": 137.48,
+        "max_dd": -8.2,
+        "sharpe": 3.0
       },
       "satellite": {
         "n_days": 123,
-        "total_pct": 36.9,
-        "cagr": 91.33,
-        "max_dd": -8.4,
-        "sharpe": 3.11
+        "total_pct": 36.2,
+        "cagr": 89.26,
+        "max_dd": -8.6,
+        "sharpe": 3.05
       },
       "twin": {
         "0.4": {
           "n_days": 123,
-          "total_pct": 52.7,
-          "cagr": 139.75,
-          "max_dd": -6.5,
-          "sharpe": 3.84
+          "total_pct": 52.3,
+          "cagr": 138.37,
+          "max_dd": -6.6,
+          "sharpe": 3.81
         },
         "0.5": {
           "n_days": 123,
-          "total_pct": 52.6,
-          "cagr": 139.54,
-          "max_dd": -6.5,
-          "sharpe": 3.96
+          "total_pct": 52.2,
+          "cagr": 137.96,
+          "max_dd": -6.6,
+          "sharpe": 3.93
         },
         "0.6": {
           "n_days": 123,
-          "total_pct": 52.5,
-          "cagr": 139.07,
-          "max_dd": -6.5,
-          "sharpe": 4.01
+          "total_pct": 51.9,
+          "cagr": 137.31,
+          "max_dd": -6.6,
+          "sharpe": 3.98
         }
       },
-      "delta_core_total": 0.4,
-      "delta_core_cagr": 1.44,
+      "delta_core_total": 0.2,
+      "delta_core_cagr": 0.48,
       "delta_core_mdd": 1.6,
-      "delta_core_sharpe": 0.95,
+      "delta_core_sharpe": 0.93,
       "pct_active": 56.1,
       "fills": 124,
       "avg_held_days": 3.0
@@ -97,141 +97,49 @@
     "valid": {
       "core": {
         "n_days": 110,
-        "total_pct": 50.3,
-        "cagr": 156.35,
+        "total_pct": 50.2,
+        "cagr": 156.13,
         "max_dd": -21.8,
         "sharpe": 2.13
       },
       "satellite": {
         "n_days": 110,
-        "total_pct": 6.8,
-        "cagr": 16.49,
-        "max_dd": -7.1,
-        "sharpe": 0.95
+        "total_pct": 6.5,
+        "cagr": 15.68,
+        "max_dd": -7.3,
+        "sharpe": 0.91
       },
       "twin": {
         "0.4": {
           "n_days": 110,
-          "total_pct": 29.6,
-          "cagr": 82.09,
+          "total_pct": 29.4,
+          "cagr": 81.45,
           "max_dd": -21.8,
-          "sharpe": 1.51
+          "sharpe": 1.5
         },
         "0.5": {
           "n_days": 110,
-          "total_pct": 24.8,
-          "cagr": 66.79,
+          "total_pct": 24.5,
+          "cagr": 66.09,
           "max_dd": -21.8,
-          "sharpe": 1.32
+          "sharpe": 1.31
         },
         "0.6": {
           "n_days": 110,
-          "total_pct": 20.1,
-          "cagr": 52.64,
+          "total_pct": 19.8,
+          "cagr": 51.9,
           "max_dd": -21.8,
-          "sharpe": 1.14
+          "sharpe": 1.12
         }
       },
-      "delta_core_total": -25.5,
-      "delta_core_cagr": -89.56,
+      "delta_core_total": -25.7,
+      "delta_core_cagr": -90.04,
       "delta_core_mdd": 0.0,
-      "delta_core_sharpe": -0.81,
+      "delta_core_sharpe": -0.82,
       "pct_active": 27.3,
       "fills": 52,
       "avg_held_days": 3.0
-    },
-    "long": {
-      "core": {
-        "n_days": 1216,
-        "total_pct": 207.9,
-        "cagr": 26.27,
-        "max_dd": -22.8,
-        "sharpe": 1.02
-      },
-      "satellite": {
-        "n_days": 1216,
-        "total_pct": 474.4,
-        "cagr": 43.7,
-        "max_dd": -4.9,
-        "sharpe": 3.48
-      },
-      "twin": {
-        "0.4": {
-          "n_days": 1216,
-          "total_pct": 298.2,
-          "cagr": 33.19,
-          "max_dd": -20.8,
-          "sharpe": 1.43
-        },
-        "0.5": {
-          "n_days": 1216,
-          "total_pct": 322.3,
-          "cagr": 34.82,
-          "max_dd": -20.8,
-          "sharpe": 1.53
-        },
-        "0.6": {
-          "n_days": 1216,
-          "total_pct": 347.0,
-          "cagr": 36.42,
-          "max_dd": -21.4,
-          "sharpe": 1.63
-        }
-      },
-      "delta_core_total": 114.4,
-      "delta_core_cagr": 8.55,
-      "delta_core_mdd": 2.0,
-      "delta_core_sharpe": 0.51,
-      "pct_active": 52.0,
-      "fills": 1080,
-      "avg_held_days": 3.0
-    },
-    "holdout": {
-      "core": {
-        "n_days": 27,
-        "total_pct": -2.5,
-        "cagr": -22.13,
-        "max_dd": -4.2,
-        "sharpe": -1.12
-      },
-      "satellite": {
-        "n_days": 27,
-        "total_pct": -0.9,
-        "cagr": -8.67,
-        "max_dd": -12.4,
-        "sharpe": -0.15
-      },
-      "twin": {
-        "0.4": {
-          "n_days": 27,
-          "total_pct": -1.8,
-          "cagr": -15.76,
-          "max_dd": -6.1,
-          "sharpe": -0.86
-        },
-        "0.5": {
-          "n_days": 27,
-          "total_pct": -1.6,
-          "cagr": -14.36,
-          "max_dd": -7.0,
-          "sharpe": -0.72
-        },
-        "0.6": {
-          "n_days": 27,
-          "total_pct": -1.4,
-          "cagr": -13.03,
-          "max_dd": -7.9,
-          "sharpe": -0.58
-        }
-      },
-      "delta_core_total": 0.9,
-      "delta_core_cagr": 7.77,
-      "delta_core_mdd": -2.8,
-      "delta_core_sharpe": 0.4,
-      "pct_active": 100.0,
-      "fills": 48,
-      "avg_held_days": 3.0
     }
   },
-  "as_of": "2026-09-16T06:04:30+00:00"
+  "as_of": "2026-09-21T00:45:37+00:00"
 }

@@ -47,9 +47,11 @@ export function TradeActionDialog({
   onConfirm,
 }: TradeActionDialogProps) {
   const { kind, item, currentPrice } = state;
+  // 2026-09-23: 2dp, so `String(heldPct)` passes PCT_RE. A stored float like
+  // 1.4625000000000001 made the prefilled sell % invalid → 卖出 was unclickable.
   const heldPct =
     typeof item.positionPct === 'number' && Number.isFinite(item.positionPct)
-      ? item.positionPct
+      ? Math.round(item.positionPct * 100) / 100
       : 0;
   // 2026-08-09: holdings without a cost price used to make SELL unrecordable
   // (backend 400). The dialog now offers an optional cost fill so the sell

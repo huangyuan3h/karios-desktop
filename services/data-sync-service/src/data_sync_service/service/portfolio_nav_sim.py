@@ -165,8 +165,15 @@ def simulate_sleeve_nav(
         deployed_pct = min(1.0, deployed_pct)
         idle_pct = max(0.0, 1.0 - deployed_pct)
 
-        close = etf_close_by_day.get(day)
-        ma = ma200_by_day.get(day)
+        # OPT-177 family fix (2026-09-24): the sleeve holding/entry/exit is decided
+        # from the PREVIOUS close (causal); today's close only feeds today's return
+        # through the prior holding. The old code used today's close to decide
+        # today's holding and then credited today's return — a 1-day look-ahead
+        # that skipped every exit-day loss.
+        idx = day_idx.get(day)
+        sig_day = calendar[idx - 1] if idx and idx > 0 else None
+        close = etf_close_by_day.get(sig_day) if sig_day else None
+        ma = ma200_by_day.get(sig_day) if sig_day else None
         above = close is not None and ma is not None and close >= ma
 
         if holding:

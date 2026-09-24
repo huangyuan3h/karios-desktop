@@ -106,6 +106,7 @@ describe('UserTradeSchema', () => {
       positionPct: 10,
     });
     expect(core.leg).toBe('s3');
+    expect(core.strategyMode).toBe('legacy_unknown');
     const parking = UserTradeSchema.parse({
       id: 'b',
       symbol: 'ETF:518880',
@@ -116,6 +117,22 @@ describe('UserTradeSchema', () => {
       leg: 'parking',
     });
     expect(parking.leg).toBe('parking');
+    const satellite = UserTradeRequestSchema.parse({
+      symbol: 'CN:002128',
+      side: 'BUY',
+      price: 27.7,
+      positionPct: 25,
+      leg: 'satellite',
+    });
+    expect(satellite.leg).toBe('satellite');
+    expect(UserTradeRequestSchema.parse({
+      symbol: 'CN:002128',
+      side: 'BUY',
+      price: 27.7,
+      positionPct: 25,
+      leg: 'b3',
+      strategyMode: 'starship_robust',
+    }).strategyMode).toBe('starship_robust');
     expect(() =>
       UserTradeRequestSchema.parse({
         symbol: 'ETF:518880',
@@ -129,6 +146,7 @@ describe('UserTradeSchema', () => {
 
   it('validates patch bodies (OPT-150)', () => {
     expect(UserTradePatchSchema.parse({ leg: 'parking' }).leg).toBe('parking');
+    expect(UserTradePatchSchema.parse({ strategyMode: 'harbor' }).strategyMode).toBe('harbor');
     expect(UserTradePatchSchema.parse({ positionPct: 12.5 }).positionPct).toBe(12.5);
     expect(() => UserTradePatchSchema.parse({ leg: 'x' })).toThrow();
     expect(() => UserTradePatchSchema.parse({ positionPct: -1 })).toThrow();

@@ -38,11 +38,12 @@ import {
   upsertWatchlistOpenTrade,
   type WatchlistItem,
 } from '@/lib/watchlist-storage';
+import { A25TargetBlock } from '@/components/watchlist/A25TargetBlock';
 import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
 import { SatelliteLegBlock } from '@/components/watchlist/SatelliteLegBlock';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
 import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
-import { useTimelineQuery, useSatelliteLivePanelQuery, type TimelineStrategy } from '@/lib/queries/backtest';
+import { useTimelineQuery, useSatelliteLivePanelQuery, useSatellitePaperQuery, useUserSatelliteBookQuery, type TimelineStrategy } from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
@@ -965,7 +966,13 @@ export function PortfolioHealthCard({
   onOpenStock?: (symbol: string) => void;
   mode?: StrategyMode;
 } = {}) {
-  const coreView = mode !== 'starship';
+  const coreView = mode !== 'starship' && mode !== 'starship_robust' && mode !== 'starship_b';
+  const satelliteMode =
+    mode === 'starport' ||
+    mode === 'starship' ||
+    mode === 'starship_robust' ||
+    mode === 'starship_b' ||
+    mode === 'twin_star';
   const queryClient = useQueryClient();
   const sentimentQ = useDashboardSentimentQuery();
   const q = useQuery({
@@ -1015,6 +1022,15 @@ export function PortfolioHealthCard({
 
   const data: PortfolioHealthResponse | undefined = q.data;
   const sleeve = data?.multiAssetSleeve;
+  // Last close per held symbol — the a25 order surface needs a mark for a leg
+  // the engine never booked (no timeline row, not in today's panel gap list).
+  const holdingLastClose = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const h of data?.holdings ?? []) {
+      if (h.symbol && typeof h.lastClose === 'number') m[h.symbol] = h.lastClose;
+    }
+    return m;
+  }, [data]);
   const satToday = new Date().toISOString().slice(0, 10);
   const satStart = (() => {
     const d = new Date();
@@ -1022,18 +1038,17 @@ export function PortfolioHealthCard({
     return d.toISOString().slice(0, 10);
   })();
   const satStrategy: TimelineStrategy =
-    mode === 'starship' ? 'starship' : mode === 'twin_star' ? 'twin_star' : 'starport';
-  const satQ = useTimelineQuery(
-    satStart,
-    satToday,
-    satStrategy,
-    mode === 'starport' || mode === 'starship' || mode === 'twin_star',
-  );
+    mode === 'starship' || mode === 'starship_robust' || mode === 'starship_b' || mode === 'twin_star'
+      ? mode
+      : 'starport';
+  const satQ = useTimelineQuery(satStart, satToday, satStrategy, satelliteMode);
   // OPT-222: today's 14:30 live snapshot (card prefers it over the replay day).
   // Only the satellite modes render the block — don't poll in harbor/homeport.
-  const satLiveQ = useSatelliteLivePanelQuery(
-    mode === 'starport' || mode === 'starship' || mode === 'twin_star',
-  );
+  const satLiveQ = useSatelliteLivePanelQuery(satelliteMode);
+  // OPT-228: forward paper book (open legs + closed trades + 20-trade prereq).
+  const satPaperQ = useSatellitePaperQuery(satelliteMode);
+  // The user's own satellite book (journal-sourced) — drives the real prereq.
+  const satUserBookQ = useUserSatelliteBookQuery(satStrategy, satelliteMode);
   const satLast = satQ.data?.rows?.[satQ.data.rows.length - 1];
   /** Parking pick (ETF key / null=REPO). */
   const pickKey = sleeve?.pick?.key ?? null;
@@ -1323,8 +1338,21 @@ export function PortfolioHealthCard({
         </div>
           </>
         ) : null}
-        {mode === 'homeport' || mode === 'starport' ? <B3LegBlock /> : null}
-        {mode === 'starport' || mode === 'starship' || mode === 'twin_star' ? (
+        {mode === 'starship_robust' || mode === 'starship_b' ? (
+          <A25TargetBlock
+            parkedHeld={satQ.data?.parkedHeld ?? null}
+            sleevePick={sleeve?.pick ?? null}
+            panel={satLiveQ.data?.panel ?? null}
+            openPositions={satQ.data?.openPositions ?? []}
+            satCapacity={satQ.data?.satCapacity ?? null}
+            holdingLastClose={holdingLastClose}
+            parkMode={mode === 'starship_b' ? 'starship_b' : 'a25'}
+          />
+        ) : null}
+        {mode === 'homeport' || mode === 'starport' || mode === 'starship_robust' ? (
+          <B3LegBlock />
+        ) : null}
+        {satelliteMode ? (
           <SatelliteLegBlock
             row={satLast}
             strategy={mode}
@@ -1333,7 +1361,15 @@ export function PortfolioHealthCard({
             parkedHeld={satQ.data?.parkedHeld ?? null}
             livePanel={satLiveQ.data?.panel ?? null}
             livePanelStale={satLiveQ.data?.stale === true}
+            paper={satPaperQ.data?.paper ?? null}
+            userBook={satUserBookQ.data ?? null}
             stockGateClosed={gateClosedToday}
+            hideBuyRows={mode === 'starship_robust' || mode === 'starship_b'}
+            timelineUnavailable={satQ.isLoading ? 'loading' : satQ.error ? 'error' : null}
+            timelineError={satQ.error ? String(satQ.error instanceof Error ? satQ.error.message : satQ.error) : null}
+            onRetryTimeline={() =>
+              queryClient.invalidateQueries({ queryKey: ['backtest', 'timeline'] })
+            }
           />
         ) : null}
       </div>

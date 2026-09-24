@@ -27,6 +27,11 @@ TRAIL_PCT = 8.0
 COST = 0.0005
 MODE = "harbor"
 STRATEGY_LABEL = "港湾"
+# H2 hysteresis band (mom60 leadership required to rotate). Product default
+# since the 2026-09-18 unify decision (H-H2-UNIFY): Live/paper/timeline/
+# watchlist all park with this band; ``parking_replay`` keeps 0.0 as its
+# research default so frozen canonical experiments stay reproducible.
+HYST_BAND = 0.02
 
 MULTI_TS: dict[str, str] = {
     "GOLD": "518880.SH",
@@ -237,6 +242,29 @@ def pick_parking(
     }
 
 
+def held_mom(
+    etf_close: dict[str, dict[str, float]],
+    ts: str | None,
+    as_of: str,
+    *,
+    days_by_ts: dict[str, list[str]] | None = None,
+) -> float | None:
+    """The held ts's own mom60 as of ``as_of`` (single source).
+
+    Mirrors the ``pick_parking`` momentum formula on the *actual held alias*
+    (not the display alias), so the Live decision and the backtest agree on
+    the hysteresis gap even across the NASDAQ 513100/513110 aliases.
+    """
+    if not ts:
+        return None
+    mp = etf_close.get(ts) or {}
+    ds = (days_by_ts or {}).get(ts) or sorted(mp)
+    i = bisect.bisect_right(ds, as_of) - 1
+    if i < LOOKBACK or not mp.get(ds[i - LOOKBACK]):
+        return None
+    return mp[ds[i]] / mp[ds[i - LOOKBACK]] - 1.0
+
+
 def parking_replay(
     etf_close: dict[str, dict[str, float]],
     calendar: list[str],
@@ -248,8 +276,9 @@ def parking_replay(
     bond_ungated: bool = False,
     trail_pct: float = TRAIL_PCT,
     cooldown_days: int = 0,
+    hyst_band: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Canonical Harbor parking state machine (single source).
+    """Harbor parking state machine (the ONE implementation).
 
     Live order: trail the held leg first (a trail day goes to REPO, no same-day
     re-entry), then rotate on a TS change (an alias switch is a different fund
@@ -257,14 +286,20 @@ def parking_replay(
     dropped. ``parking_ret`` is the held leg's close-to-close return, NOT
     idle-scaled (callers multiply by the idle fraction).
 
-    Optional robustness gates (default off = canonical P1):
+    ``hyst_band`` (H2): a rotation to a different leg requires the challenger's
+    mom60 to lead the incumbent's own mom60 by at least ``band``; otherwise the
+    rotation is *blocked* and the incumbent leg stays (no sell, no REPO gap,
+    peak keeps trailing). Product code passes ``harbor.HYST_BAND`` (2pt); the
+    default 0.0 reproduces the historical canonical “rotate on any change”.
+    Missing incumbent momentum fails open (rotate).
+
+    Optional robustness gates (research arms only; default off = P1):
     ``min_idle_pct`` (fresh-entry floor), ``stock_gate`` (skip when the S-3
     stock basket mom >= ETF mom), ``bond_ungated`` (BOND10 eligible below MA).
 
-    ``cooldown_days`` (H-PARK-C candidate, default 0 = incumbent): after a
-    trail exit, the exited *key* is ineligible for ``cooldown_days`` sessions
-    (by key, so NASDAQ aliases share the cooldown); the parking sleeve then
-    rotates to the next eligible candidate or sits in REPO.
+    ``cooldown_days`` (H-PARK-C, default 0 = incumbent): after a trail exit,
+    the exited *key* is ineligible for ``cooldown_days`` sessions (by key, so
+    NASDAQ aliases share the cooldown).
     """
     sessions = {d for mp in etf_close.values() for d in mp}
     cal = [d for d in calendar if d in sessions]
@@ -310,11 +345,21 @@ def parking_replay(
                     peak = 0.0
                     sides += 1
                     trail_exit = True
-        # 2) rotate on a TS change (alias switch = different fund -> fresh peak)
+        # 2) rotate on a TS change, gated by ``hyst_band`` (H2). A blocked
+        #    rotation keeps the incumbent leg: no sell, no REPO gap, peak
+        #    keeps trailing (prereg 2026-09-16; unified product rule 2026-09-18).
+        blocked = False
         if not trail_exit and (held_key != want_key or held_ts != want_ts):
-            sides += int(held_ts is not None) + int(want_ts is not None)
-            held_key, held_ts = want_key, want_ts
-            peak = ((etf_close.get(held_ts) or {}).get(prev) or 0.0) if held_ts else 0.0
+            if want is not None and hyst_band > 0 and held_ts is not None:
+                hm = held_mom(etf_close, held_ts, prev, days_by_ts=days_by_ts)
+                gap = (want["mom60"] / 100.0 - hm) if hm is not None else None
+                blocked = gap is not None and gap < hyst_band
+            if blocked:
+                want_key, want_ts = held_key, held_ts
+            else:
+                sides += int(held_ts is not None) + int(want_ts is not None)
+                held_key, held_ts = want_key, want_ts
+                peak = ((etf_close.get(held_ts) or {}).get(prev) or 0.0) if held_ts else 0.0
         # 3) day return of the (possibly new) held leg
         if held_ts is not None:
             c0 = (etf_close.get(held_ts) or {}).get(prev)
@@ -332,6 +377,7 @@ def parking_replay(
                 "sides": sides,
                 "trail_exit": trail_exit,
                 "cooldown_active": bool(active_exclude),
+                "hyst_blocked": blocked,
             }
         )
     return out
@@ -347,7 +393,8 @@ def build_harbor_timeline(
     """Replay Harbor NAV (engine + idle parking) with UI rows."""
     etf_close = etf_close or load_etf_closes()
     snap_by_day = {str(s.get("date")): s for s in positions_by_day}
-    records = parking_replay(etf_close, calendar)
+    # Product timeline uses the unified H2 band (H-H2-UNIFY, 2026-09-18).
+    records = parking_replay(etf_close, calendar, hyst_band=HYST_BAND)
 
     nav_base = 1.0
     nav_harbor = 1.0

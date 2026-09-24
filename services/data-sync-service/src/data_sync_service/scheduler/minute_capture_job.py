@@ -25,7 +25,7 @@ JOB_ID = "minute_capture"
 # 16:35 — after HK close (16:00) + CN close (15:00) + a 35-min buffer so the
 # last-minute data is stable. Before close_sync (17:10) which needs the daily
 # bars; minute capture only touches bar_minute so ordering is independent.
-CRON_EXPRESSION = "35 16 * * 1-5"
+CRON_EXPRESSION = "35 16 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 MAX_SYMBOLS = 60
 

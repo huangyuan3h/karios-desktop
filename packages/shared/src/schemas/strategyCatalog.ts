@@ -13,6 +13,8 @@ export const StrategyCatalogKeySchema = z.enum([
   'homeport',
   'starport',
   'starship',
+  'starship_robust',
+  'starship_b',
   'twin_star',
 ]);
 export type StrategyCatalogKey = z.infer<typeof StrategyCatalogKeySchema>;
@@ -42,6 +44,14 @@ export type StrategyCatalogRegime = z.infer<typeof StrategyCatalogRegimeSchema>;
 export const StrategyCatalogRoleSchema = z.enum(['offense', 'balanced', 'defense', 'live']);
 export type StrategyCatalogRole = z.infer<typeof StrategyCatalogRoleSchema>;
 
+export const StrategyCatalogVariantSchema = z.object({
+  sleeveMode: z.enum(['h2', 'legacy-canonical']),
+  hystBand: z.number(),
+  sleeveWeight: z.number(),
+  b3Weight: z.number(),
+});
+export type StrategyCatalogVariant = z.infer<typeof StrategyCatalogVariantSchema>;
+
 export const StrategyCatalogEntrySchema = z.object({
   key: StrategyCatalogKeySchema,
   name: z.string(),
@@ -50,9 +60,21 @@ export const StrategyCatalogEntrySchema = z.object({
   statusLabel: z.string(),
   role: StrategyCatalogRoleSchema,
   roleLabel: z.string(),
+  canonical: z.boolean().optional(),
+  variant: StrategyCatalogVariantSchema.optional(),
+  risk: z.string().optional(),
   /** Timeline API strategy when one exists; null only for legacy rows. */
   timelineStrategy: z
-    .enum(['harbor', 'harbor_h2', 'homeport', 'homeport_m30', 'starport', 'starship', 'twin_star'])
+    .enum([
+      'harbor',
+      'homeport',
+      'homeport_m30',
+      'starport',
+      'starship',
+      'starship_robust',
+      'starship_b',
+      'twin_star',
+    ])
     .nullable(),
   doc: z.string(),
   tag: z.string(),

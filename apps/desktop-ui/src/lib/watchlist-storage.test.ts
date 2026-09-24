@@ -65,6 +65,15 @@ describe('normalizeWatchlistItems', () => {
     expect(out[0]?.positionPct).toBe(100);
     expect(out[1]?.positionPct).toBe(0);
   });
+
+  it('rounds float noise to 2dp (2026-09-23 sell-unclickable fix)', () => {
+    const out = normalizeWatchlistItems([
+      { symbol: 'ETF:510500', addedAt: '2026-01-01', positionPct: 1.4625000000000001 },
+      { symbol: 'ETF:510300', addedAt: '2026-01-01', positionPct: 2.1374999999999997 },
+    ]);
+    expect(out[0]?.positionPct).toBe(1.46);
+    expect(out[1]?.positionPct).toBe(2.14);
+  });
 });
 
 describe('mergeWatchlistRemoteWithLocal', () => {
@@ -84,6 +93,23 @@ describe('mergeWatchlistRemoteWithLocal', () => {
     expect(merged[0]?.positionPct).toBe(10);
     expect(merged[0]?.costPrice).toBe(12.5);
     expect(merged[0]?.entryDate).toBe('2026-06-01');
+  });
+
+  it('lets a local sell beat the registry’s stale size when preferLocal', () => {
+    const merged = mergeWatchlistRemoteWithLocal(
+      [{ symbol: 'ETF:513350', addedAt: '2026-06-18', positionPct: 19, costPrice: 1.38 }],
+      [{ symbol: 'ETF:513350', addedAt: '2026-06-18', positionPct: 3.6, costPrice: 1.38 }],
+      { preferLocal: true },
+    );
+    expect(merged[0]?.positionPct).toBe(3.6);
+  });
+
+  it('keeps the registry size when it is set (default)', () => {
+    const merged = mergeWatchlistRemoteWithLocal(
+      [{ symbol: 'ETF:513350', addedAt: '2026-06-18', positionPct: 19 }],
+      [{ symbol: 'ETF:513350', addedAt: '2026-06-18', positionPct: 3.6 }],
+    );
+    expect(merged[0]?.positionPct).toBe(19);
   });
 
   it('keeps local-only held positions dropped by remote', () => {
@@ -126,6 +152,27 @@ describe('hydrateWatchlist', () => {
     expect(loadWatchlist()[0]?.symbol).toBe('CN:REMOTE');
     expect(loadWatchlist()[0]?.positionPct).toBe(15);
     expect(loadWatchlist()[0]?.costPrice).toBe(9.5);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps an un-pushed local sell over the registry and re-uploads it', async () => {
+    localStorage.setItem(
+      WATCHLIST_STORAGE_KEY,
+      JSON.stringify([{ symbol: 'ETF:513350', addedAt: '2026-01-01', positionPct: 3.6 }]),
+    );
+    localStorage.setItem(WATCHLIST_PENDING_SYNC_KEY, 'true');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        registryResponse([
+          { symbol: 'ETF:513350', addedAt: '2026-06-18', positionPct: 19 } as WatchlistItem,
+        ]) as Response,
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{}' } as Response);
+
+    const result = await hydrateWatchlist();
+    expect(result.source).toBe('registry');
+    expect(loadWatchlist()[0]?.positionPct).toBe(3.6); // the sell survived
+    expect(result.pendingSync).toBe(false); // and was pushed back up
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

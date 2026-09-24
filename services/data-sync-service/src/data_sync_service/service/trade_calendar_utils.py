@@ -74,6 +74,40 @@ def previous_open_date(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> date | N
     return prior[-1] if prior else None
 
 
+def nth_open_date_from(
+    entry: str,
+    body: int,
+    *,
+    exchange: str = DEFAULT_EXCHANGE,
+) -> str | None:
+    """The ``body``-th open session counting ``entry`` as session 1.
+
+    Mirrors the replay's ``exit_due = cal[entry_idx + body - 1]`` but against the
+    exchange calendar instead of the loaded data window. The satellite replay's
+    calendar only holds days that already have a ``daily`` row, so on the panel
+    day (before the close sync) an in-flight leg's ``exitDue`` collapses to the
+    panel day and every held leg looks "due today" (2026-09-23 incident).
+
+    Returns None when the entry date is unparseable, ``body`` is non-positive,
+    the calendar is unreadable, or the window does not reach the body-th open
+    day — callers keep the replay's own value.
+    """
+    try:
+        start = date.fromisoformat(str(entry).strip()[:10])
+    except ValueError:
+        return None
+    if body <= 0:
+        return None
+    end = start + timedelta(days=body * 4 + 20)
+    try:
+        opens = get_open_dates(exchange=exchange, start_date=start, end_date=end)
+    except Exception:  # noqa: BLE001 — calendar unreadable → caller keeps the old value
+        return None
+    if len(opens) < body:
+        return None
+    return opens[body - 1].isoformat()
+
+
 def trade_dates_upto(
     d0: str,
     days: int,

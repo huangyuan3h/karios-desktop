@@ -1,5 +1,10 @@
 """Reseed all CN A-share daily bars from Tencent ifzq fqkline (qfq) prices.
 
+LOOK-AHEAD DECLARATION (ledger B7, 2026-09-24): qfq depends on *future*
+dividends, so this rewrite restates past prices; frozen windows can drift
+across reseeds. Deliberate convention (backup first) — record data version
+with any frozen number (L5).
+
 Problem (mirror of hk_reseed_qfq): the `daily` table for CN A-shares stores
 tushare RAW prices — dividend/ex-right days show artificial gaps that trend
 indicators (EMA/RSI/RS/stop-loss) misread as crashes. 2025-08-01+ audit:

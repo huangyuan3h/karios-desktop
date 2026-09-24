@@ -29,7 +29,7 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 logger = logging.getLogger(__name__)
 
 JOB_ID = "intraday_alarm"
-CRON_EXPRESSION = "0 10,11,12,13,14 * * 1-5"
+CRON_EXPRESSION = "0 10,11,12,13,14 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 DRAWDOWN_THRESHOLD_PCT = -8.0
 

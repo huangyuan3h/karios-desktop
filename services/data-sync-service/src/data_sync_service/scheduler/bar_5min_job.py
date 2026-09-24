@@ -21,13 +21,14 @@ from data_sync_service.db.sync_job_record import insert_record
 from data_sync_service.service.bar_5min import (
     SOURCE_BAOSTOCK,
     backfill_symbols,
+    derived_1500_marks,
     list_gap_codes,
 )
 
 logger = logging.getLogger(__name__)
 
 JOB_ID = "bar_5min_close"
-CRON_EXPRESSION = "40 18 * * 1-5"
+CRON_EXPRESSION = "40 18 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -55,32 +56,47 @@ def run() -> None:
     today = _today_cn()
     try:
         codes = list(dict.fromkeys(list_gap_codes(today) + _open_cn_paper_ts_codes()))
-        if not codes:
-            insert_record(JOB_ID, success=True, last_ts_code="0", error_message="no-symbols")
+        if codes:
+            res = backfill_symbols(
+                ts_codes=codes,
+                start_date=today,
+                end_date=today,
+                source=SOURCE_BAOSTOCK,
+                skip_covered=True,
+            )
+            fetch_ok = res["failed"] == 0
+            fetch_error = None if fetch_ok else f"failed={res['failed']}"
+            stored = res["stored"]
+            logger.info(
+                "[bar_5min_close] pending=%d ok=%d stored=%d failed=%d skipped=%d",
+                res["pending"],
+                res["ok"],
+                res["stored"],
+                res["failed"],
+                res["skipped"],
+            )
+        else:
+            fetch_ok = True
+            fetch_error = "no-symbols"
+            stored = 0
             logger.info("[bar_5min_close] no gap/paper symbols for %s", today)
-            return
-        res = backfill_symbols(
-            ts_codes=codes,
-            start_date=today,
-            end_date=today,
-            source=SOURCE_BAOSTOCK,
-            skip_covered=True,
-        )
+
+        derived_ok = True
+        try:
+            filled = derived_1500_marks(today)
+            logger.info("[bar_5min_close] derived 15:00 marks: %d", filled)
+        except Exception as exc:  # noqa: BLE001
+            derived_ok = False
+            fetch_error = "; ".join(x for x in (fetch_error, f"derived_1500 failed: {exc}") if x)
+            logger.warning("[bar_5min_close] derived 15:00 marks failed: %s", exc)
+
+        _refresh_satellite_pool(today)
         insert_record(
             JOB_ID,
-            success=res["failed"] == 0,
-            last_ts_code=str(res["stored"]),
-            error_message=None if res["failed"] == 0 else f"failed={res['failed']}",
+            success=fetch_ok and derived_ok,
+            last_ts_code=str(stored),
+            error_message=fetch_error,
         )
-        logger.info(
-            "[bar_5min_close] pending=%d ok=%d stored=%d failed=%d skipped=%d",
-            res["pending"],
-            res["ok"],
-            res["stored"],
-            res["failed"],
-            res["skipped"],
-        )
-        _refresh_satellite_pool(today)
     except Exception as exc:  # noqa: BLE001
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])
         logger.warning("[bar_5min_close] failed: %s", exc)

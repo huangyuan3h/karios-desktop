@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "sleeve_paper_auto"
 RECON_JOB_ID = "sleeve_paper_recon"  # OPT-151: daily core-leg expected-vs-actual
-CRON_EXPRESSION = "20 18 * * 1-5"  # weekdays 18:20 Asia/Shanghai
+CRON_EXPRESSION = "20 18 * * mon-fri"  # weekdays 18:20 Asia/Shanghai
 TIMEZONE = "Asia/Shanghai"
 
 

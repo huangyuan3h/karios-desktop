@@ -36,26 +36,6 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
         gates = p.get("gate") or {}
         candidates = p.get("candidates") or []
         exits = p.get("exits") or []
-        sleeve = p.get("thirdAssetSleeve")
-        sleeve_lines = []
-        if sleeve and sleeve.get("action"):
-            icon = {"BUY_513100": "💼", "SELL_TO_A_SHARE": "🔔", "SELL_TO_REPO": "⚠️"}.get(
-                str(sleeve.get("action")), "💼"
-            )
-            detail = []
-            if sleeve.get("price") is not None:
-                detail.append(f"现价 {sleeve['price']}")
-            if sleeve.get("ma200") is not None:
-                detail.append(f"MA200 {sleeve['ma200']}")
-            if sleeve.get("idlePct") is not None:
-                detail.append(f"闲置 {sleeve['idlePct']}%")
-            sleeve_lines = [
-                "",
-                f"{icon} 择强单轨：{sleeve.get('label') or sleeve.get('action')}",
-                f"  {sleeve.get('message') or ''}",
-            ]
-            if detail:
-                sleeve_lines.append(f"  ({' · '.join(detail)})")
         pyramid_lines = []
         for pt in p.get("pyramidTriggers") or []:
             pyramid_lines.append(
@@ -80,7 +60,6 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
                 or []
             ),
             *pyramid_lines,
-            *sleeve_lines,
         )
         return {"title": f"📋 执行卡·单轨对照 {p.get('day', '')}".strip(), "body": body}
 

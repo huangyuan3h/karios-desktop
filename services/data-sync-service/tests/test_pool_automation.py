@@ -44,6 +44,8 @@ class TestS3PoolAdditions:
 class TestSatellitePoolAdditions:
     def test_compute_satellite_pool_maps_legs(self) -> None:
         replay = {
+            "decisionAvailable": True,
+            "decisionUnavailableDays": [],
             "openPositions": [
                 {
                     "ts": "300906.SZ",
@@ -72,6 +74,17 @@ class TestSatellitePoolAdditions:
                 "daysLeft": 1,
             }
         ]
+
+    def test_compute_satellite_pool_returns_none_on_incomplete_panel(self) -> None:
+        with patch(
+            "data_sync_service.service.state_bucket_track.build_state_bucket_timeline",
+            lambda **kw: {
+                "decisionAvailable": False,
+                "decisionUnavailableDays": [DAY],
+                "openPositions": [{"ts": "300906.SZ"}],
+            },
+        ):
+            assert wa.compute_satellite_pool(day=DAY) is None
 
     def test_compute_satellite_pool_returns_none_on_failure(self) -> None:
         """Replay failure is distinguishable from "no legs" — the removal

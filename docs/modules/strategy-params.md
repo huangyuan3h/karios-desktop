@@ -1,6 +1,6 @@
 # 策略参数真值（S-3 股票腿 · 服务于港湾 Harbor）
 
-> **2026-09-13 新基线「港湾」（Harbor，tag `harbor-p1-20260913` · 已验 · **Live 已切 2026-09-13**）**：**S-3 核心 + 闲置现金 ETF 停车场**（[B11 实验档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）——闲置即停、14:30 卫星口径、含成本：三窗增量 **+17.2/+13.0/+11.6**、long **+118.8**（2026-09-14 日历修正 clean 口径；幻影日 + 决策单源对账 100%，见 [三策略审计](../backtests/audit-three-strategy-lookahead-2026-09-14.md)）；"100% argmax 硬切"（择强单轨）已被证伪（OPT-177 后 long ≈ +0.8%/MDD −58%）；卫星腿重拟合 REJECT（B12，clean 后仍 REJECT）。**Live 已切港湾（OPT-178 ✅：前视/账本修复 + 双子星退役）；残余 T6 展示收敛见 OPT-179。**
+> **2026-09-13 新基线「港湾」（Harbor，tag `harbor-p1-20260913` · 已验 · **Live 已切 2026-09-13**）**：**S-3 核心 + 闲置现金 ETF 停车场**（[B11 实验档](../backtests/stable/etf-parking-baseline-2026-09-13.md)）——闲置即停、14:30 卫星口径、含成本：三窗增量 **+17.2/+13.0/+11.6**、long **+118.8**（2026-09-14 日历修正 clean 口径；幻影日 + 决策单源对账 100%，见 [三策略审计](../backtests/audit-three-strategy-lookahead-2026-09-14.md)）；"100% argmax 硬切"（择强单轨）已被证伪（OPT-177 后 long ≈ +0.8%/MDD −58%）；旧卫星腿重拟合 REJECT（B12，clean 后仍 REJECT；当前稳健星舰 H2-a25 为独立研究/展示档）。**Live 已切港湾（OPT-178 ✅：前视/账本修复 + 双子星退役）；残余 T6 展示收敛见 OPT-179。** **2026-09-18 停车统一到 H2 迟滞（2pt，H-H2-UNIFY）**：Live/paper/Timeline/watchlist/recon 走唯一 `parking_replay(hyst_band=0.02)`；canonical 降为研究参考。同日清理冗余（OPT-226）：`harbor_h2` 验证线、`harbor_h2_shadow` 影子账本、旧 T6 `third_asset_sleeve`（OPT-179）全部退役。
 > **产品基线策略**：**[港湾（Harbor）](./pick-strong-track.md)**（S-3 股票核心 + 闲置现金 ETF 停车场；tag `harbor-p1-20260913`）。  
 > 本文件只固化 **S-3 股票腿**参数；改停车场规则不在此表，见 pick-strong-track §3。
 > 回测实验用 `BacktestConfig` 显式传参，**不代表系统当前值**——系统当前值看本表与常量。
@@ -23,7 +23,7 @@
 | diverging_scale（分歧期仓位） | 1.0（满仓） | 1.0 | Diverging 开仓最大贡献；0.5 收益减半 | 双窗定案 |
 | panic_cooldown_days（恐慌冷却） | 2 | **2** | E2：情绪回填后 panic=3 锁死 OOS2；panic=2 三窗+长窗通过 | **2026-08-14 固化** |
 | drawdown_circuit_pct（回撤熔断） | 0（关） | **-25.0** | 近 30 天已实现净盈亏 ≤-25%（≥3 笔）→ 暂停新仓；2026-08-12 长窗（2021-08~2026-08 全市场口径）暴露弱市脆弱性（2022 -166%/2023 -691%）→ 熔断后 2022 转正（+93）、2023 减亏 428pt（-691→-263）、DD 89.3→40.9、夏普 2.11→2.65、总收益 +225→+251；代价=牛市段空仓期（2025 +1614→+956，用户拍板接受「特定时间空仓」）；**仅 CN 线**（HK 未验证不开）；live 同码镜像（paper_s3 S3_CIRCUIT_PCT） | **长窗验证 · 用户拍板（2026-08-12）** |
-| slippage_pct（滑点） | **0（2026-09-10 起）** | —（成本模型含滑点） | E5 双计修正：`paper_cost_model` 已含 10bps/边（HK 15bps）滑点，引擎再叠 0.05% 属冗余 → 回测 ~40bps ≠ live 30bps。置 0 后回测成本 = live 成本模型（CN 30bps / HK 90bps RT）；三窗 +0.8/+0.6/+0.2pt（CN），无劣化 | **E5 修正固化（2026-09-10）· 基线重固化** |
+| slippage_pct（滑点） | **0（2026-09-10 起）** | —（成本模型含滑点） | E5 双计修正：`paper_cost_model` 已含 10bps/边（HK 15bps）滑点，引擎再叠 0.05% 属冗余 → 回测 ~40bps ≠ live 30bps。置 0 后回测成本 = live 成本模型；2026-09-21 成本模型严格化后为 CN 静态 32.28bps / HK 92.54bps 往返（且引擎/paper 按成交价套 1-tick 滑点下限，见 §4 版本行）；三窗 +0.8/+0.6/+0.2pt（CN），无劣化 | **E5 修正固化（2026-09-10）· 基线重固化** |
 | max_positions（持仓上限） | 10 | 10 | 20→10 收益 train +1.3pt OOS2/valid 持平 `2026-08-23` `mp10 vs mp20 43.1/35.6/43.3` `mp5 -14.2/valid -21.1拒` `mp30持平` `10最优` 固化 | **2026-08-23 固化 mp10** |
 | position_pct（单支票仓位） | 10% | **10%（与回测同口径）** | 10%×10=100% 现金≤1.0 恰满 `纯杠杆线性（夏普恒定）；2026-08-11 用户拍板 paper=回测 10%，paper 实绩可直接对照回测数字` | 用户拍板（2026-08-11 从 5% 上调） |
 | 名义仓位上限 | 10%×10=100% | 10%×10=100%（同回测） | **paper 实绩期望 = 回测数字（同口径）** | 用户拍板 |
@@ -42,7 +42,7 @@
 ## 1b. HK 并行线参数（2026-08-29 NAV 重固化 · 与 A 股完全独立）
 
 > **定位**：港股独立策略线，与 A 股 S-3 并行互不干扰。三窗切分同 CN。
-> **现行基线**：`walk_forward_hk_baseline.json` tag `s3-hk-baseline-20260909` sha256 `bab3fc14561c`
+> **现行基线**：`walk_forward_hk_baseline.json` tag `s3-hk-baseline-20260921` sha256 `88c21fb48d20`（2026-09-21 成本严格化重固化；上一版 `s3-hk-baseline-20260909` sha `bab3fc14561c`）
 > ——**2026-09-09 起 HK 冻结口径含 T+2 交收**（`settle_lock_sessions=2`，用户拍板"我需要真实的"；
 > live paper OPT-148 已同码执行）。
 > （2026-08-29 无 T+2 基线封存 `walk_forward_hk_baseline_20260829.json`——旧对照数字不可再当现行。）
@@ -64,11 +64,11 @@
 | settle_lock_sessions | **2（HK T+2）** | 0 | 卖出资金 T+2 可用（券商现金户真规则）；live paper OPT-148 同码。CN 保持 0（A 股卖出资金当日可复用） |
 | drawdown_circuit_pct | **-25（2026-09-09 补齐）** | -25 | TIP-016 B 三窗通过（OOS2 +11.6/train +1.8/valid -1.2）后与 CN 对齐；此前"仅 CN 线"（2026-08-12 挂起项） |
 
-**三窗（2026-09-09 重固化 · NAV · next_open · mp10 · 含 T+2 + HK 熔断）**：
-OOS2 **+21.5%**/DD24.0/夏普0.86/83笔 · train **+2.3%**/DD11.2/0.36/32笔 ·
-valid **+65.4%**/DD17.7/2.43/43笔 — train 极弱，**HK 不作高置信收益叙事**；
-基线 tag `s3-hk-baseline-20260909` sha `ba03aa91aa68`（同日 T+2-only 中间版 sha `bab3fc14561c`
-被同名版本文件覆盖，数字见下表 T+2 行与 hk-settle §12）。
+**三窗（2026-09-21 成本严格化重固化 · NAV · next_open · mp10 · 含 T+2 + HK 熔断）**：
+OOS2 **+17.4%**/DD24.7/夏普0.90/87笔 · train **−0.7%**/DD11.1/−0.03/34笔 ·
+valid **+63.9%**/DD7.2/2.90/43笔 — train 极弱，**HK 不作高置信收益叙事**；
+基线 tag `s3-hk-baseline-20260921` sha `88c21fb48d20`
+（2026-09-09 版 OOS2 +21.5/train +2.3/valid +65.4 tag `s3-hk-baseline-20260909`；成本 90→92.54bp + tick 下限使 OOS2 −4.1/train −3.0/valid −1.5）。
 HK past_year 线（含熔断）：+64.0%/DD17.7/1.47/77笔（无熔断 +59.6%，-9 笔换手）。
 
 **现实成本 overlay（滑点 0.25 + 平安最高佣金 round-trip 90bps · 2026-09-09 重算，基线已含 T+2+熔断）**：
@@ -122,6 +122,7 @@ CCASS 0.0042%/边（2025-06 起无上下限）；模型 stamp 10+10bps 对上，
 **复核节奏**：季度（每 3 个月）双窗复核一轮，结果记版本历史"复核"列。
 **基线（2026-08-22 mp10 固化 · 100%现金 + 0.7亿流动性 + 交易日历 + D3 环境仓位 · 10%×10=100%）**：
 **NAV 口径基线（2026-08-28 重固化 · 连续 NAV：Sharpe/MaxDD/CAGR 改为日频盯市净值；entry_mode=next_open；退市剔除）**：OOS2 **+47.3%/DD18.9/夏普1.26/93笔** · train **+34.1%/DD11.6/夏普2.22/51笔** · valid **+38.7%/DD10.7/夏普2.40/16笔** n⚠️（`walk_forward_baseline.json` `sha256:da6940b53c52fe96e3e12640b31bdd1c921883dbaf2bcbb9372825da7b8468b8` `git tag s3-baseline-20260828-nav`）；旧算术口径基线（夏普6-12 虚高、total 简单加总）封存于 `walk_forward_baseline_legacy_arithmetic_20260822.json`；
+**NAV 口径基线（2026-09-21 成本严格化重固化 · CN）**：OOS2 **+37.3%/DD14.4/夏普1.62/82笔** · train **+39.0%/DD11.2/夏普2.84/53笔** · valid **+38.7%/DD8.9/夏普3.20/16笔** · long **+81.2%/DD32.7/夏普0.71/127笔**（`walk_forward_baseline.json` `sha256:545d385c7339` `git tag s3-cn-baseline-20260921`；成本 30→32.28bp + tick 下限使 OOS2 −0.7/train −0.1/valid −0.1/long −1.5）；上一版 2026-08-28 NAV 基线封存 `da6940b53c52`；
 旧 `117.2/122.6/142.2% n237/123/55` 封存 `walk_forward_baseline_20260815_D3.json` `6d8280`（`200%杠杆` 未约束，`valid` 峰值）；`holdout 2026-08-08~2027-02-08` 只读 `n0`，`long` 待 `survivor` 修正后重固化
 
 ## 4. 版本历史
@@ -158,6 +159,9 @@ CCASS 0.0042%/边（2025-06 起无上下限）；模型 stamp 10+10bps 对上，
 | 2026-09-09 | **HK 熔断 -25 补齐（TIP-016 B · 三窗通过）** | drawdown_circuit_pct 0 → **-25（HK 线）** | 终结 2026-08-12"仅 CN 线"挂起项；三窗 **OOS2 +11.6 / train +1.8 / valid -1.2**（settle=2 新基线上），long +87.9 参考；HK past_year 线 +59.6→+64.0（-9 笔换手）；live `paper_s3._circuit_blocked(market)` 同码（分账本）；基线重固化 sha `ba03aa91aa68`；W1/W2/E 同批拒收见诊断档 §8 | ✅ 已固化（2026-09-09）· 基线重固化 · live 已同步 |
 | 2026-09-10 | **国家队闸（TIP-017 B · 预注册协议 PASS）** | national_team_gate 关 → **开（仅 CN）** | 沪深300 < MA200 且 4 只宽基 ETF（510300/510500/510510/159915）20 日份额净增 ≤0 → 暂停新仓（fail-open）；预注册三窗 +0.0（现代完全惰性——国家队持续申购），**long +20.0pt**（CN 78.6→98.6，dd 43.3→31.7，22 窗全部 2021-08~2023-04 资金流旱段，跳过 2022 熊市主跌段），past_year +0.0；性质=**"休眠保险"**（平时零行为改变，仅"指数破位+护盘资金连续 20 日缺席"重现时接管）；引擎原生门 `BacktestConfig.national_team_gate`（数据 index_daily+cn_etf_share，每日 risk_state_sync）+ live `paper_s3._national_team_blocked`；S3_CONFIG 三处镜像（walk_forward/rolling_oos/reconciliation）；HK 不适用；基线重固化 tag `s3-cn-baseline-20260910` sha `5ea07cb964be` | ✅ 已固化（2026-09-10）· 基线重固化 · live 已同步 |
 | 2026-09-10 | **E5 滑点双计修正（audit-2026-08-22 · realism）** | slippage_pct 0.05 → **0.0（CN+HK 冻结配置）** | `paper_cost_model` 已含滑点（CN 10bps/边、HK 15bps/边）；引擎再叠 `slippage_pct=0.05` → 回测往返 40bps（CN）≠ live 30bps，属双计。置 0 后回测成本 = live 成本模型，口径对齐；三窗 CN **+0.8/+0.6/+0.2pt**（回落结束 dd 同降）、HK ≈持平；`run_walk_forward` / `rolling_oos_job` / `reconciliation` 三处同步；基线重固化 `s3-cn-baseline-20260910`（sha `7d0d9cc414c6`）、`s3-hk-baseline-20260910`（sha `8502178f355b`）。**残余**：小票 ADV/冲击成本未建模，另记 | ✅ 已修正（2026-09-10）· 基线重固化 |
+| 2026-09-18 | **停车统一到 H2 迟滞（H-H2-UNIFY · 用户拍板）** | 停车换仓：canonical（任何变化就换）→ **H2（挑战者 mom60 领先现持 ≥2pt 才换）** | **非 S-3 参数**（本表仅登记）：Live/paper/Timeline/watchlist/recon 停车全部收敛到**唯一** `harbor.parking_replay(hyst_band=HYST_BAND)`；`hysteresis_parking_replay` 降为薄委托；`parking_replay` 默认 0.0 保留 canonical 供冻结研究复现。依据：多窗综合（收益 5胜4负/+3.4pt CAGR、夏普 5胜4负、回撤 3胜6负、**换手 −52%**；用户权重综合 +0.022 偏 H2，可操作性碾压）+ 用户价值取向（收益>夏普>回撤+易操作）。核对：`verify_harbor_live_vs_backtest` **100%**、全量 pytest 4378 绿、DB 零变化 | ✅ 已落地（2026-09-18）· 详见 [harbor-h2-unify](../backtests/stable/harbor-h2-unify-2026-09-18.md) · 预注册 [prereg](../designs/harbor-h2-unify-prereg-2026-09-18.md) |
+| 2026-09-21 | **交易成本严格化（真实世界口径 · 用户拍板）** | `paper_cost_model` 默认升级：CN 佣金 万2.5→**万3** + 过户/经手/证管费；HK 补微费；新增 **1-tick 滑点下限** `max(base_bps, tick/price)`；最低佣金（CN ¥5、HK$100）按 `REFERENCE_CAPITAL=¥1M × 10%` 折算（不触发，残差声明）。CN 静态往返 30→**32.28bp**，HK 90→**92.54bp**；**引擎（S-3）与 Live paper 按成交价套 tick 下限**（<¥10 股更贵），卫星/展示仍用静态 base。影响：**所有冻结回测数字漂移**，须 `run_walk_forward.py --save-baseline` 重固化 + 全策略重跑；`slippage_pct` 仍为 0（模型已含滑点）。未建模：>¥5M 冲击、HK FX、电话佣金。**已重固化**：CN `s3-cn-baseline-20260921` sha `545d385c7339`（+37.3/+39.0/+38.7，long +81.2）、HK `s3-hk-baseline-20260921` sha `88c21fb48d20`（+17.4/−0.7/+63.9）；五策略重跑见 [scorecard §9](../backtests/stable/five-strategy-v2-scorecard-2026-09-16.md) | ✅ 已落地（2026-09-21）· 真值 `service/paper_cost_model.py` |
+| 2026-09-24 | **H2-a25 canonical 固化（研究/展示/人工操作）** | `starship_robust` 统一为卫星 + `cashShare(T−1)` ×（25% H2 套筒 + 75% B3）；H2=2pt、B3 配比和卫星参数不变。独立报告 `sat_h2_a25_2026-09-24` 重跑：OOS2/train/valid/long +238.4/+55.9/+3.2/+738.5，long MDD -8.4、SR 3.50。K1/K2/K4/K5 PASS，K3 FAIL（MDD 相对纯 B3 -1.6pt），因此 canonical ≠ 全门 PASS；Live 仍为港湾。 | ✅ 已落地 · 现行风险观察 · [H2-a25 报告](../backtests/stable/sat-h2-a25-2026-09-24.md) |
 
 ## 5. HK 数据质量与稳定性备忘（2026-08-10 · 用户关注）
 

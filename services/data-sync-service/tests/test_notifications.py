@@ -397,6 +397,16 @@ class TestSatelliteActionAlert:
         assert "000978" in it["detail"] and "卖出资金停入 H2 停车腿" in it["detail"]
         assert it["lane"] == "trade"
 
+    def test_item_for_robust_mode_mentions_a25_split(self, monkeypatch) -> None:
+        self._patch(monkeypatch, dict(self.PANEL))
+        items = nf._satellite_action_alert("starship_robust")
+        assert len(items) == 1
+        it = items[0]
+        assert it["id"] == "satellite_action:2026-09-17:starship_robust"
+        # The robust mode carries the satellite leg and spells out the a25 split.
+        assert "卖出资金停入 H2 停车腿" in it["detail"]
+        assert "25%" in it["detail"] and "B3" in it["detail"]
+
     def test_skips_legacy_modes_and_stale_panels(self, monkeypatch) -> None:
         self._patch(monkeypatch, dict(self.PANEL))
         assert nf._satellite_action_alert("single_track") == []

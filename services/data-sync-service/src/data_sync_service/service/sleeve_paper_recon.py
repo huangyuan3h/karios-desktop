@@ -175,6 +175,8 @@ def _user_core_trades(day: str) -> list[dict[str, Any]]:
                 cur.execute(
                     "SELECT symbol, side, trade_date, price, position_pct "
                     "FROM user_trades WHERE symbol = ANY(%s) "
+                    "AND leg = 'parking' "
+                    "AND strategy_mode IN ('harbor', 'legacy_unknown') "
                     "AND trade_date >= %s ORDER BY trade_date",
                     (syms, day),
                 )

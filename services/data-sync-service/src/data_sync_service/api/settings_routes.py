@@ -18,8 +18,20 @@ from data_sync_service.db import app_settings
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 STRATEGY_MODE_KEY = "strategy_mode"
-STRATEGY_MODES = ("harbor", "homeport", "starport", "starship", "twin_star")
-DEFAULT_STRATEGY_MODE = "starport"
+STRATEGY_MODES = (
+    "harbor",
+    "homeport",
+    "starport",
+    "starship",
+    "starship_robust",
+    "starship_b",
+    "twin_star",
+)
+# User decision 2026-09-24 (updated): 星舰 B is the default research/display
+# mode (shallower DD, stronger stress, 3-ETF parking that is easier to
+# replicate). 稳健星舰 H2-a25 stays selectable. The selected mode still does
+# not control Live order routing (Live = 港湾).
+DEFAULT_STRATEGY_MODE = "starship_b"
 
 
 class StrategyModeBody(BaseModel):
@@ -40,6 +52,6 @@ def put_strategy_mode(body: StrategyModeBody) -> dict[str, Any]:
 
 
 def selected_strategy_mode() -> str:
-    """Mode for background copy; falls back to the UI default (星港)."""
+    """Mode for background copy; falls back to the UI default (星舰稳健版)."""
     mode = app_settings.get_setting(STRATEGY_MODE_KEY, DEFAULT_STRATEGY_MODE)
     return str(mode) if mode in STRATEGY_MODES else DEFAULT_STRATEGY_MODE

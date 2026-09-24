@@ -43,6 +43,18 @@ describe('TradeActionDialog', () => {
     expect(screen.getByPlaceholderText('留空 = 仅记录卖出')).toBeTruthy();
   });
 
+  it('sells a holding whose stored % carries float noise (2026-09-23 fix)', () => {
+    // a25 sleeve/B3 targets multiply to e.g. 1.4625000000000001; the prefilled
+    // sell % used to fail PCT_RE and leave 确认卖出 disabled.
+    const { onConfirm } = renderDialog({
+      item: { ...ITEM, positionPct: 1.4625000000000001 } as never,
+    });
+    const btn = screen.getByRole('button', { name: '确认卖出' });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(onConfirm).toHaveBeenCalledWith({ price: 1600, positionPct: 1.46 });
+  });
+
   it('confirms without costPrice when the cost field is left empty', () => {
     const { onConfirm } = renderDialog({ item: { ...ITEM, costPrice: null } as never });
     fireEvent.click(screen.getByRole('button', { name: '确认卖出' }));

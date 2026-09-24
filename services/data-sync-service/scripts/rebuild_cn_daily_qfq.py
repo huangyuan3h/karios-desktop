@@ -1,5 +1,11 @@
 """Rebuild A-share daily 2021-2026 as a single consistent qfq series.
 
+LOOK-AHEAD DECLARATION (ledger B7, 2026-09-24): qfq is a function of *future*
+dividends/ex-rights, so a whole-series rewrite restates past prices. This is a
+deliberate repo convention (a backup is mandatory), but it means frozen backtest
+windows can drift across reseeds — always record the data version with a frozen
+number (validation-gates-v2 L5).
+
 Root cause fixed here: the stored 2021+ ``daily.close`` was a mix of
 standard qfq, stale qfq (old adjustment bases never rescaled), and raw
 (unadjusted, mostly BJ 920xxx). This re-fetches raw daily + adj_factor

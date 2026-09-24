@@ -1,14 +1,15 @@
 # Karios 回测实验记录（Backtest Experiments）
 
 > **何时看**：任何新回测实验前、复盘策略演进时。**用户要改策略 / 仓位 / 退出时，Agent 先读 [`SUMMARY.md`](./SUMMARY.md) 和本目录实验，再开口。**
-> **现行产品基线**：**港湾（Harbor）= S-3 核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`，Live 2026-09-13）—— [`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md)；真值 [`pick-strong-track.md`](../modules/pick-strong-track.md)。
+> **现行产品基线**：**港湾（Harbor）= S-3 核心 + 闲置现金 H2 ETF 停车场**（tag `harbor-p1-20260913`，Live 2026-09-13）—— [`stable/etf-parking-baseline-2026-09-13.md`](stable/etf-parking-baseline-2026-09-13.md)；真值 [`pick-strong-track.md`](../modules/pick-strong-track.md)。
+> **现行研究/展示默认（2026-09-24）**：**星舰 B** = 卫星 + `cashShare(T−1)` × 100% {国债+黄金+纳指} 逆波动率；报告 [`starship-b-2026-09-24.md`](stable/starship-b-2026-09-24.md)，不接 Live。`starship_robust`（H2-a25 = 25% H2 套筒 + 75% B3，[b](stable/sat-h2-a25-2026-09-24.md)，K3 风险 REJECT）仍可选。
 > **产品候选**：**母港** = 港湾 × B3 风险预算 50/50（[B15](stable/harbor-riskbudget-2026-09-13.md)，PASS，未进 Live）。
-> **历史/已作废**：机会双子星 v3.1 clip4 + 择强单轨（OPT-177 前视、B12 口径 bug）—— 见 [三策略审计 2026-09-14](audit-three-strategy-lookahead-2026-09-14.md)。
+> **历史/已作废**：机会双子星 v3.1 clip4 + 择强单轨（OPT-177 前视、B12 口径 bug）—— 见 [三策略审计 2026-09-14](audit-three-strategy-lookahead-2026-09-14.md)；旧 0pt a25 只作历史对照。
 > 本目录记录通往该基线的实验（含拒收）；**新结论必须写清对港湾核心 / 母港的增量**（历史实验对双子星的增量保留）。
 >
 > **改策略流程**：走仓库根 `AGENTS.md` → Strategy / parameter changes（主源，含调参查找）。
 > 本目录只管实验导航 + 验证纪律。
-> **SUMMARY 标题注**：「指向择强单轨」是历史名；现行 = 港湾，母港为候选，双子星/择强为历史。
+> **SUMMARY 标题注**：「指向择强单轨」是历史名；现行 = 港湾 Live，稳健星舰 H2-a25 为研究/展示 canonical，母港为候选，双子星/择强为历史。
 >
 > **编码速查**：`P*` → `experiments-planned.md`（信号池 P1-P26）· `D*` → `experiments-d-pool.md`（D1-D8）
 > · `A*/B*/C*` → `experiments-defensive.md`（防守 23 项）· `C1` → `sat-entry-c1` · `H1/H2/H3/H4` → rank/c1-grid/bucketq/rwide
@@ -52,10 +53,18 @@
 
 ### 09-04 → 09-08 增补（习惯 Live 打磨 + 规律提取 · 明细只看 SUMMARY §1）
 
+> **⚠️ 时代口径警告（2026-09-24 前视台账 B4）**：本区块（及 `sat/` 2026-09-11 之前的实验）
+> 的 `compare_sat_*`/`diag_sat_*` 脚本用的是**当时的排序键 = 全天振幅（`rank_key=None`，
+> 现已知带前视）**，且 R-wide 闸用**收盘广度**（`gate_1430=False`）。**绝对数字作废**；
+> 结论方向多为"维持/拒收"，但**凡引用这些档的收益/增量，须以 2026-09-11 `amp_1430` 统一 +
+> 2026-09-14 `gate_1430` 修复后的口径为准**。台账：
+> [`lookahead-inventory-2026-09-24.md`](lookahead-inventory-2026-09-24.md) §B4。
+
 | 文档 | 内容 | 状态 |
 |------|------|------|
 | [`sat-rank-hhmm-2026-09-04.md`](sat/sat-rank-hhmm-2026-09-04.md) | 习惯排名 H1：无前视键（gap/‖runup‖升序） | ❌ 全拒（gap OOS2 −96 永不重开） |
 | [`sat-c1-grid-2026-09-04.md`](sat/sat-c1-grid-2026-09-04.md) | 习惯 C1 网格 H2（2/3/4/5%） | ✅ C1=3% 维持（平顶） |
+| [`sat/sat-c1-vol-strata-2026-09-24.md`](sat/sat-c1-vol-strata-2026-09-24.md) | 卫星 C1 波动率分层诊断 H-C1-VOL（四窗 · 只读，用现行 `amp_1430`+`gate_1430` 口径） | ❌ REJECT（假设证伪，C1 维持 3%） |
 | [`sat-bucketq-2026-09-04.md`](sat/sat-bucketq-2026-09-04.md) | 习惯桶 H3（1/2 vs 1/3） | ✅ 1/3 维持 |
 | [`sat-rwide-2026-09-04.md`](sat/sat-rwide-2026-09-04.md) | 习惯 R-wide 闸 H4（0.4/0.5/0.6） | ✅ 0.5 维持（单峰） |
 | [`sat-c3-fade-2026-09-04.md`](sat/sat-c3-fade-2026-09-04.md) | 习惯 C3 下跌过滤 S2 | ❌ 组合冗余，不进 Live |
@@ -76,6 +85,11 @@
 | [`vendor-minute-compare-2026-09-05.md`](vendor/vendor-minute-compare-2026-09-05.md) · [`vendor-adj-compare-2026-09-05.md`](vendor/vendor-adj-compare-2026-09-05.md) | 外购分钟/复权对拍 | ✅ 有条件过 / 只报不修 |
 | [`first-principles-2026-09-05.md`](./first-principles-2026-09-05.md) | 基础规律与不变量（新想法先自查） | ✅ §一–§六 |
 | [`validation-gates-v2-2026-09-16.md`](./validation-gates-v2-2026-09-16.md) | **验证门控 v2（唯一裁决标准 · 多窗+长窗+多角度 + 前视 L 门）** | ✅ **新预注册必读** |
+| [`stable/sat-h2-a25-2026-09-24.md`](stable/sat-h2-a25-2026-09-24.md) | H2-a25 canonical 独立报告（K3 风险下 REJECT） | ✅ 现行口径 |
+| [`stable/h2-a25-hardening-2026-09-24.md`](stable/h2-a25-hardening-2026-09-24.md) | H2-a25 加固：stress + 成本敏感性 + holdout（仅 K3 未过） | ✅ |
+| [`stable/h2-sleeve-top2-2026-09-24.md`](stable/h2-sleeve-top2-2026-09-24.md) | H2 套筒 top-2 分散（修 K3、代价 valid） | ✅ 实验 |
+| [`stable/starship-b-2026-09-24.md`](stable/starship-b-2026-09-24.md) | **星舰 B**：闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（回撤浅/熊市强/好复制；稳健备选） | ✅ 展示档 |
+| [`lookahead-inventory-2026-09-24.md`](lookahead-inventory-2026-09-24.md) | 全项目前视清单与修复台账 | ✅ |
 | [`stable/five-strategy-v2-scorecard-2026-09-16.md`](stable/five-strategy-v2-scorecard-2026-09-16.md) | 五策略 v2 记分卡（当前数据横向比较 · 只读） | ✅ 09-16 |
 | [`leg-fingerprints-2026-09-06.md`](./leg-fingerprints-2026-09-06.md) | 各腿指纹表（胜率×单笔×周转×右尾×方差） | ✅ 右尾/月度待补 |
 | [`sat-body1-2026-09-07.md`](sat/sat-body1-2026-09-07.md) | 持有 1/2 天 vs 3 天（OOS2+train，valid 未碰） | ❌ 全拒；body=1 退化为 body=2 |

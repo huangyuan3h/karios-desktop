@@ -611,6 +611,14 @@ def compute_satellite_pool(*, day: str) -> list[dict[str, Any]] | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("satellite pool %s failed: %s", day, exc)
         return None
+    if replay.get("decisionAvailable") is not True:
+        unavailable = replay.get("decisionUnavailableDays") or []
+        logger.warning(
+            "satellite pool %s unavailable: incomplete 14:30 panel (%s)",
+            day,
+            ",".join(str(x) for x in unavailable) or "unknown",
+        )
+        return None
     out: list[dict[str, Any]] = []
     for p in replay.get("openPositions") or []:
         ts = str(p.get("ts") or "")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 from data_sync_service.service import dashboard as dash  # noqa: F401  (alias used below)
@@ -151,6 +152,18 @@ class TestRunStep:
         out = dash._run_step("x", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
         assert out["ok"] is False and out["message"] == "boom"
 
+    def test_failed_result(self) -> None:
+        out = dash._run_step("x", lambda: {"ok": False, "error": "vendor unavailable"})
+        assert out["ok"] is False
+        assert out["message"] == "vendor unavailable"
+
+    def test_nested_failed_result(self) -> None:
+        out = dash._run_step(
+            "x", lambda: {"nested": {"ok": False, "error": "nested vendor unavailable"}}
+        )
+        assert out["ok"] is False
+        assert out["message"] == "nested vendor unavailable"
+
 
 class TestSyncSteps:
     def test_macro_step(self, monkeypatch) -> None:
@@ -194,7 +207,13 @@ class TestSyncSteps:
     def test_news_step(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "fetch_all_sources", lambda: {"a": 3, "b": 0, "c": -1})
         out = dash._sync_news_step()
-        assert out == {"total": 3, "failed": 1, "sources": 3}
+        assert out == {
+            "ok": False,
+            "total": 3,
+            "failed": 1,
+            "sources": 3,
+            "error": "1 news source(s) failed",
+        }
 
 
 class TestDashboardSummary:
@@ -281,6 +300,21 @@ class TestSyncFlows:
         assert out["ok"] is False
         assert out["steps"][0]["ok"] is False
 
+    def test_dashboard_sync_propagates_false_result(self, monkeypatch) -> None:
+        monkeypatch.setattr(dash, "_now_iso", lambda: "now")
+        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_sentiment_step", lambda **kw: {"ok": True})
+        monkeypatch.setattr(
+            dash,
+            "_sync_macro_step",
+            lambda: {"ok": False, "error": "macro vendor unavailable"},
+        )
+        monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
+        out = dash.dashboard_sync(force=True)
+        assert out["ok"] is False
+        assert out["steps"][2]["ok"] is False
+        assert out["steps"][2]["message"] == "macro vendor unavailable"
+
     def test_dashboard_sync_parallel(self, monkeypatch) -> None:
         monkeypatch.setattr(dash, "_now_iso", lambda: "now")
         monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: {"ok": True})
@@ -327,3 +361,6 @@ class TestSyncFlows:
         )
         chunks = list(dash.dashboard_sync_stream(force=True))
         assert chunks[-1].startswith('{"type": "done"')
+        payload = json.loads(chunks[-1])
+        assert payload["result"]["ok"] is False
+        assert payload["result"]["error"] == "x"

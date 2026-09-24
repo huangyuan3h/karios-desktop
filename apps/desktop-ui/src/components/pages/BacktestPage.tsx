@@ -8,7 +8,6 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
-import { H2ShadowFollowCard } from '@/components/pages/H2ShadowFollowCard';
 import { StrategyCatalogPanel } from '@/components/pages/StrategyCatalogPanel';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
 import { HarborNavOverlay } from '@/components/pages/HarborNavOverlay';
@@ -44,7 +43,6 @@ import {
   usePaperVsBacktestQuery,
   useReturnAttributionQuery,
   useSensitivityQuery,
-  useSleeveNavQuery,
   TIMELINE_STRATEGY_LABEL,
   useTimelineQuery,
   type BacktestOverviewBaseline,
@@ -383,68 +381,6 @@ function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
   );
 }
 
-function SleeveNavCard({ q }: { q: ReturnType<typeof useSleeveNavQuery> }) {
-  const report = q.data?.report;
-  const results = report?.results;
-  const rows = results ? Object.entries(results) : [];
-  return (
-    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
-        <TrendingDown className="size-3.5" />
-        历史 · 闲置现金套筒 NAV（非定案；定案见上方 Timeline 港湾）
-        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
-          {report?.generatedAt ? `报告 ${report.generatedAt.slice(0, 10)}` : ''}
-        </span>
-      </div>
-      {q.isError ? (
-        <p className="text-xs text-red-700">{String(q.error)}</p>
-      ) : rows.length ? (
-        <div className="flex flex-col gap-2">
-          <div className="overflow-auto">
-            <table className="w-full text-left text-xs tabular-nums">
-              <thead>
-                <tr className="text-[10px] text-[var(--k-muted)]">
-                  <th className="py-1 pr-2">窗口</th>
-                  <th className="py-1 pr-2">基线收益%</th>
-                  <th className="py-1 pr-2">套筒收益%</th>
-                  <th className="py-1 pr-2">增量pt</th>
-                  <th className="py-1 pr-2">基线DD%</th>
-                  <th className="py-1 pr-2">套筒DD%</th>
-                  <th className="py-1 pr-2">持有天数</th>
-                  <th className="py-1 pr-2">平均闲置%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(([w, r]) => (
-                  <tr key={w} className="border-t border-[var(--k-border)]">
-                    <td className="py-1 pr-2 font-medium">{w}</td>
-                    <td className="py-1 pr-2">{r.totalBasePct ?? '—'}</td>
-                    <td className="py-1 pr-2">{r.totalSleevePct ?? '—'}</td>
-                    <td className={cn('py-1 pr-2 font-semibold', tone(r.deltaPct ?? null))}>
-                      {r.deltaPct != null ? `${r.deltaPct >= 0 ? '+' : ''}${r.deltaPct}` : '—'}
-                    </td>
-                    <td className="py-1 pr-2">{r.maxDdBasePct ?? '—'}</td>
-                    <td className="py-1 pr-2">{r.maxDdSleevePct ?? '—'}</td>
-                    <td className="py-1 pr-2">{r.holdDays ?? '—'}</td>
-                    <td className="py-1 pr-2">{r.avgIdlePct ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-[10px] text-[var(--k-muted)]">
-            口径（2026-08-29）：基线 = S-3 引擎现金+MTM NAV（与 walk_forward 同码）；闲置吃
-            513100（MA200 + trail -8%）或 GC001。验证：scripts/sleeve_nav_sim.py（三窗增量≥0）。
-          </p>
-        </div>
-      ) : (
-        <p className="text-xs text-[var(--k-muted)]">
-          尚无套筒 NAV 报告——先跑 scripts/sleeve_nav_sim.py 生成三窗对比。
-        </p>
-      )}
-    </div>
-  );
-}
 
 function RollingOosCard({
   overview,
@@ -730,24 +666,19 @@ function catalogKeyToTimeline(k: StrategyCatalogKey): TimelineStrategy {
   return k === 'homeport' ? 'homeport_m30' : k;
 }
 
-/** Timeline line -> catalog product slot (M30 line belongs to the 母港 slot;
- * harbor_h2 validation line belongs to the 港湾 slot). */
+/** Timeline line -> catalog product slot (M30 line belongs to the 母港 slot). */
 function timelineToCatalogKey(s: TimelineStrategy): StrategyCatalogKey {
   if (s === 'homeport_m30') return 'homeport';
-  if (s === 'harbor_h2') return 'harbor';
   return s;
 }
 function TimelineCard({
   strategy: controlledStrategy,
   onStrategyChange,
   showFundFlow = true,
-  extraStrategies = [],
 }: {
   strategy?: TimelineStrategy;
   onStrategyChange?: (strategy: TimelineStrategy) => void;
   showFundFlow?: boolean;
-  /** Extra research lines (e.g. harbor_h2 validation) appended to the tabs. */
-  extraStrategies?: TimelineStrategy[];
 } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const windows = React.useMemo(() => resolveTimelineWindows(today), [today]);
@@ -795,12 +726,13 @@ function TimelineCard({
   const strategyLabel = TIMELINE_STRATEGY_LABEL[strategy];
   const strategySubtitle: Record<TimelineStrategy, string> = {
     harbor: '选强股票 + 闲钱停 ETF 停车场 · Live（日落模式）',
-    harbor_h2: '港湾H2验证线（条件PASS待 paper，非产品档）',
     homeport: '港湾一半 + 风险预算一半（M50 冻结口径，星港底座）',
     homeport_m30: '港湾七成 + 风险预算三成（防守档 · 年化 21%）',
     starport: '母港 + 卫星 0.2 曝露 · 全家最稳',
-    starship: 'v2：卫星 + 闲钱停 ETF（收益高、回撤也大）',
-    twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）· 并行对照',
+    starship: '激进对照：卫星 + 闲钱 100% 停 H2 ETF（收益高、回撤也大）',
+    starship_robust: '现行 canonical：卫星 + 闲钱 25% 停 H2 ETF / 75% 停 B3 风险预算（K3 风险）',
+    starship_b: '稳健备选：卫星 + 闲钱 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，好复制、回撤浅）',
+    twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）· 正式并行档',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
     harbor:
@@ -809,23 +741,26 @@ function TimelineCard({
       '母港 M50 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。冻结口径（星港底座）；防守档看 M30 tab。',
     homeport_m30:
       '母港 M30 防守档 = 港湾七成 + 风险预算三成（每月调一次）。回撤比港湾浅一截，长期年化 21%。',
-    harbor_h2:
-      '港湾H2 = S-3 核心冻结，闲置停车换 H2 迟滞套筒（H-HARBOR-H2 验证线）。只看曲线不下单；Live=港湾 canonical。',
     starport:
       '星港 = 母港 + 卫星 0.2 曝露。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
     starship:
-      '星舰 v2 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 没出手时的现金（平均 84%）去买趋势最好的 ETF。长期 +975%，但最大回撤 −30.5%（跌幅全部来自停车资产）。不进实盘（还差 paper 3/20 + 授权）。',
+      '激进星舰 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 闲置现金 100% 停 H2 ETF。long +962.7%，但 MDD −30.5%；不进实盘。',
+    starship_robust:
+      '稳健星舰 H2-a25 = 卫星 + 闲置现金 25% 停 H2 ETF、75% 停 B3 风险预算（5 资产 inverse-vol 月调）。long +738.5%、MDD −8.4%、SR 3.50；K1/K2/K4/K5 PASS，K3 风险未过；仅研究/展示/人工操作，不进实盘。',
+    starship_b:
+      '星舰 B = 卫星 + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，因果 T−1）。long +669.6%、MDD −5.5%、SR 3.90；2022–23 熊市显著强于 H2-a25（stress +124%）；停放腿只有 3 只 ETF，好复制；仅研究/展示/人工操作，不进实盘。',
     twin_star:
-      '双子星 = 港湾一半 + 卫星一半。行情好的年份冲得最猛（2025 +67%），卫星不行的年份很平庸。保留作对照观察，不进实盘。',
+      '双子星 = 港湾一半 + 卫星一半。行情好的年份冲得最猛（2025 +67%），卫星不行的年份很平庸（valid 窗跑输港湾 25.7pt）。五档正式并行档（展示口径，不进实盘）。',
   };
   const TABLE_NOTE: Record<TimelineStrategy, string> = {
     harbor: '港湾（S-3 核心 + 闲置现金 ETF 停车场）· 日落',
-    harbor_h2: '港湾H2（S-3 + H2 迟滞停车）· 验证线',
     homeport: '母港M50（港湾 × 风险预算 50/50）· 冻结',
     homeport_m30: '母港M30（港湾 70% × 风险预算 30%）· 防守档',
     starport: '星港（母港 + 卫星 0.2）',
     starship: '星舰 v2（卫星 + 闲置现金停 ETF）',
-    twin_star: '双子星（港湾 × 卫星 50/50）· 并行对照',
+    starship_robust: '稳健星舰 H2-a25（卫星 + 25% H2 ETF / 75% B3 风险预算）· 现行 canonical',
+    starship_b: '星舰 B（卫星 + 100% {国债+黄金+纳指} 逆波动率停放）· 稳健备选',
+    twin_star: '双子星（港湾 × 卫星 50/50）· 正式并行档',
   };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
   const satMode = rows.some((r) => isSatelliteRow(r));
@@ -842,7 +777,9 @@ function TimelineCard({
   const showParkCol =
     rows.some((r) => hasParkedLeg(r)) ||
     (showBase && rows.some((r) => (r.parkedSides ?? 0) > 0 || r.parkedTrail));
-  const showParkStrip = strategy === 'starship' && rows.some((r) => hasParkedLeg(r));
+  const showParkStrip =
+    (strategy === 'starship' || strategy === 'starship_robust' || strategy === 'starship_b') &&
+    rows.some((r) => hasParkedLeg(r));
   const dist = rows.reduce<Record<string, number>>((acc, r) => {
     const k = (r.positions ?? 0) > 0 ? 'STOCK' : (r.pick ?? 'REPO');
     acc[k] = (acc[k] ?? 0) + 1;
@@ -991,7 +928,8 @@ function TimelineCard({
           {strategy === 'starport' && summary?.homeportPct != null
             ? ` · 母港 ${summary.homeportPct}%`
             : ''}
-          {strategy === 'starship' && summary?.parkedAvgWeight != null
+          {(strategy === 'starship' || strategy === 'starship_robust' || strategy === 'starship_b') &&
+          summary?.parkedAvgWeight != null
             ? ` · 停车均值 ${Math.round(summary.parkedAvgWeight * 100)}%`
             : ''}
           {summary?.riskPct != null ? ` · B3 ${summary.riskPct}%` : ''}
@@ -1016,7 +954,7 @@ function TimelineCard({
           </button>
         ))}
         <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
-        {(['starship', 'starport', 'homeport_m30', 'harbor', 'twin_star', ...extraStrategies] as const).map((s) => (
+        {(['starship_robust', 'starship_b', 'starship', 'starport', 'homeport_m30', 'harbor', 'twin_star'] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -1815,7 +1753,6 @@ export function BacktestPage() {
   const overviewQ = useBacktestOverviewQuery();
   const reconQ = useBacktestReconQuery(2);
   const c4Q = usePaperVsBacktestQuery();
-  const sleeveQ = useSleeveNavQuery();
   const coreQ = useCoreAuditQuery();
 
   const set = (k: keyof BacktestParams, v: string | number) =>
@@ -1843,10 +1780,8 @@ export function BacktestPage() {
           <CoreAuditCard q={coreQ} />
           <ReplicaGapCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
           <ReturnAttributionCard start={attrStart} end={attrEndState} onRangeChange={onAttrRange} />
-          <TimelineCard extraStrategies={['harbor_h2']} />
-          <H2ShadowFollowCard />
+          <TimelineCard />
           <RecentDailyCompareCard />
-          <SleeveNavCard q={sleeveQ} />
           <PaperVsBacktestCard q={c4Q} />
           <ReconStrip reconQ={reconQ} />
         </TabsContent>
@@ -2709,9 +2644,11 @@ function SatelliteLegDetail({
         卫星腿明细
         <span className="text-[10px] font-normal text-[var(--k-muted)]">
           14:30 名单 · amp_1430 排名 · 3 日持有 · 4×25% 槽 ·{' '}
-          {strategy === 'starship'
-            ? 'v2：闲置现金停 ETF 套筒'
-            : `组合权重 ${fmtSatWeight(satWeight)}（卫星 v1 · 冻结口径）`}
+          {strategy === 'starship_robust'
+            ? 'H2-a25：卫星 + 25% H2 ETF / 75% B3'
+            : strategy === 'starship'
+              ? 'H2：卫星 + 闲置现金停 ETF 套筒'
+              : `组合权重 ${fmtSatWeight(satWeight)}（卫星 v1 · 冻结口径）`}
         </span>
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
           当前持仓 {openPositions.length} · 买 {opens.length} / 卖 {fills.length} · 跳过{' '}

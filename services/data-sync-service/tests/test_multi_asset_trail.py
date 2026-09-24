@@ -175,6 +175,8 @@ def test_rotate_park_pct_includes_held_leg():
     with (
         patch.object(mas, "_pick", return_value=pick),
         patch.object(mas, "_adjusted_series", _adj(bars)),
+        # Unified H2 gate: incumbent well behind the challenger -> rotate.
+        patch.object(mas, "_held_leg_mom", return_value=-1.0),
     ):
         out = mas.build_multi_asset_sleeve(
             day="2026-03-01", cn_block=cn, holdings_override=[held, stock]

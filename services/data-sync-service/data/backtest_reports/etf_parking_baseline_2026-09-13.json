@@ -4,102 +4,102 @@
   "results": {
     "OOS2": {
       "V0": {
-        "total": 38.0,
+        "total": 37.3,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 39.8,
-        "mdd": -11.7,
-        "sharpe": 1.66
+        "cagr": 39.07,
+        "mdd": -11.8,
+        "sharpe": 1.63
       },
       "P1": {
-        "total": 55.2,
-        "delta": 17.3,
+        "total": 54.4,
+        "delta": 17.2,
         "trades": 30,
-        "cagr": 58.05,
-        "mdd": -14.3,
-        "sharpe": 1.73
-      },
-      "P1_H2": {
-        "total": 57.6,
-        "delta": 19.7,
-        "trades": 16,
-        "cagr": 60.63,
-        "mdd": -13.5,
-        "sharpe": 1.77
-      },
-      "R1": {
-        "total": 54.5,
-        "delta": 16.6,
-        "trades": 30,
-        "cagr": 57.31,
+        "cagr": 57.23,
         "mdd": -14.3,
         "sharpe": 1.71
       },
+      "P1_H2": {
+        "total": 56.8,
+        "delta": 19.6,
+        "trades": 16,
+        "cagr": 59.79,
+        "mdd": -13.5,
+        "sharpe": 1.75
+      },
+      "R1": {
+        "total": 53.7,
+        "delta": 16.5,
+        "trades": 30,
+        "cagr": 56.49,
+        "mdd": -14.3,
+        "sharpe": 1.69
+      },
       "R2": {
-        "total": 48.9,
+        "total": 48.1,
         "delta": 10.9,
         "trades": 34,
-        "cagr": 51.33,
+        "cagr": 50.54,
         "mdd": -14.3,
-        "sharpe": 1.58
+        "sharpe": 1.56
       },
       "R3": {
-        "total": 55.2,
-        "delta": 17.3,
+        "total": 54.4,
+        "delta": 17.2,
         "trades": 30,
-        "cagr": 58.05,
+        "cagr": 57.23,
         "mdd": -14.3,
-        "sharpe": 1.73
+        "sharpe": 1.71
       }
     },
     "train": {
       "V0": {
-        "total": 39.2,
+        "total": 39.0,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 97.93,
-        "mdd": -9.7,
-        "sharpe": 2.88
+        "cagr": 97.57,
+        "mdd": -9.6,
+        "sharpe": 2.87
       },
       "P1": {
-        "total": 52.2,
+        "total": 52.0,
         "delta": 13.0,
         "trades": 23,
-        "cagr": 138.1,
-        "mdd": -8.1,
-        "sharpe": 3.01
+        "cagr": 137.48,
+        "mdd": -8.2,
+        "sharpe": 3.0
       },
       "P1_H2": {
-        "total": 61.5,
+        "total": 61.4,
         "delta": 22.3,
         "trades": 7,
-        "cagr": 169.2,
+        "cagr": 168.66,
         "mdd": -8.0,
-        "sharpe": 3.44
+        "sharpe": 3.43
       },
       "R1": {
-        "total": 52.2,
+        "total": 52.0,
         "delta": 13.0,
         "trades": 23,
-        "cagr": 138.1,
-        "mdd": -8.1,
-        "sharpe": 3.01
+        "cagr": 137.48,
+        "mdd": -8.2,
+        "sharpe": 3.0
       },
       "R2": {
-        "total": 43.5,
+        "total": 43.4,
         "delta": 4.3,
         "trades": 16,
-        "cagr": 110.88,
-        "mdd": -9.5,
-        "sharpe": 2.91
+        "cagr": 110.49,
+        "mdd": -9.4,
+        "sharpe": 2.9
       },
       "R3": {
-        "total": 52.2,
+        "total": 52.0,
         "delta": 13.0,
         "trades": 23,
-        "cagr": 138.1,
-        "mdd": -8.1,
-        "sharpe": 3.01
+        "cagr": 137.48,
+        "mdd": -8.2,
+        "sharpe": 3.0
       }
     },
     "valid": {
@@ -107,15 +107,15 @@
         "total": 38.7,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 113.18,
+        "cagr": 113.0,
         "mdd": -6.1,
         "sharpe": 3.25
       },
       "P1": {
-        "total": 50.3,
+        "total": 50.2,
         "delta": 11.5,
         "trades": 21,
-        "cagr": 156.35,
+        "cagr": 156.13,
         "mdd": -21.8,
         "sharpe": 2.13
       },
@@ -123,15 +123,15 @@
         "total": 49.7,
         "delta": 11.0,
         "trades": 15,
-        "cagr": 154.27,
+        "cagr": 154.06,
         "mdd": -22.0,
         "sharpe": 2.12
       },
       "R1": {
-        "total": 48.9,
+        "total": 48.8,
         "delta": 10.2,
         "trades": 19,
-        "cagr": 151.03,
+        "cagr": 150.82,
         "mdd": -21.8,
         "sharpe": 2.09
       },
@@ -139,70 +139,70 @@
         "total": 47.9,
         "delta": 9.2,
         "trades": 21,
-        "cagr": 147.26,
+        "cagr": 147.06,
         "mdd": -20.0,
         "sharpe": 2.08
       },
       "R3": {
-        "total": 50.3,
+        "total": 50.2,
         "delta": 11.5,
         "trades": 21,
-        "cagr": 156.35,
+        "cagr": 156.13,
         "mdd": -21.8,
         "sharpe": 2.13
       }
     },
     "long": {
       "V0": {
-        "total": 82.6,
+        "total": 81.2,
         "delta": 0.0,
         "trades": 0,
-        "cagr": 13.3,
-        "mdd": -31.5,
-        "sharpe": 0.72
+        "cagr": 13.13,
+        "mdd": -32.7,
+        "sharpe": 0.71
       },
       "P1": {
-        "total": 207.9,
-        "delta": 125.3,
+        "total": 197.1,
+        "delta": 115.9,
         "trades": 127,
-        "cagr": 26.27,
-        "mdd": -22.8,
-        "sharpe": 1.02
+        "cagr": 25.34,
+        "mdd": -22.9,
+        "sharpe": 0.98
       },
       "P1_H2": {
-        "total": 219.2,
-        "delta": 136.6,
+        "total": 211.3,
+        "delta": 130.1,
         "trades": 60,
-        "cagr": 27.22,
-        "mdd": -23.9,
-        "sharpe": 1.05
+        "cagr": 26.56,
+        "mdd": -24.4,
+        "sharpe": 1.02
       },
       "R1": {
-        "total": 203.8,
-        "delta": 121.2,
+        "total": 191.2,
+        "delta": 109.9,
         "trades": 125,
-        "cagr": 25.92,
-        "mdd": -22.8,
-        "sharpe": 1.01
+        "cagr": 24.82,
+        "mdd": -22.9,
+        "sharpe": 0.97
       },
       "R2": {
-        "total": 124.4,
-        "delta": 41.8,
-        "trades": 135,
-        "cagr": 18.25,
-        "mdd": -32.5,
-        "sharpe": 0.79
+        "total": 115.1,
+        "delta": 33.8,
+        "trades": 143,
+        "cagr": 17.22,
+        "mdd": -34.8,
+        "sharpe": 0.75
       },
       "R3": {
-        "total": 207.9,
-        "delta": 125.3,
+        "total": 197.1,
+        "delta": 115.9,
         "trades": 127,
-        "cagr": 26.27,
-        "mdd": -22.8,
-        "sharpe": 1.02
+        "cagr": 25.34,
+        "mdd": -22.9,
+        "sharpe": 0.98
       }
     }
   },
   "P1_pass": true,
-  "as_of": "2026-09-17T01:37:28+00:00"
+  "as_of": "2026-09-21T00:13:41+00:00"
 }

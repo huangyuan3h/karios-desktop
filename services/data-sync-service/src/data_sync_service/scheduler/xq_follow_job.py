@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "xq_follow_snapshot"
 # Weekdays 15:40 Asia/Shanghai (after the 15:00 close).
-CRON_EXPRESSION = "40 15 * * 1-5"
+CRON_EXPRESSION = "40 15 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

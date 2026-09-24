@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "zt_pool_snapshot"
 # Weekdays 17:45 Asia/Shanghai (after cn_industry_post_close at 17:35).
-CRON_EXPRESSION = "45 17 * * 1-5"
+CRON_EXPRESSION = "45 17 * * mon-fri"
 TIMEZONE = "Asia/Shanghai"
 
 

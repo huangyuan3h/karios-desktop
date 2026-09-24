@@ -694,7 +694,7 @@ def test_run_update_stop_triggers_on_net_not_gross() -> None:
     assert summary["closeReasons"].get("stop_hit") == 1
     assert abs(mock_close.call_args.kwargs["pnl_pct"] - (-5.1)) < 0.05  # net
     assert abs(mock_close.call_args.kwargs["gross_pnl_pct"] - (-4.8)) < 0.05
-    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.3) < 0.01
+    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.3279) < 0.01
     mock_update.assert_not_called()
 
 
@@ -776,7 +776,7 @@ def test_run_update_hk_trade_closes_with_hk_costs() -> None:
     assert summary["closed"] == 1
     assert summary["closeReasons"].get("stop_hit") == 1
     assert abs(mock_close.call_args.kwargs["gross_pnl_pct"] - (-7.0)) < 0.05
-    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.9) < 0.01
+    assert abs(mock_close.call_args.kwargs["costs_pct"] - 0.9254) < 0.01
     assert abs(mock_close.call_args.kwargs["pnl_pct"] - (-7.9)) < 0.05
     mock_update.assert_not_called()
 

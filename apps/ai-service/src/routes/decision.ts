@@ -94,16 +94,6 @@ export async function queryHoldingsHealth(): Promise<string> {
       active?: boolean;
     } | null;
     s3Rules?: Record<string, unknown>;
-    thirdAssetSleeve?: {
-      active?: boolean;
-      action?: string;
-      message?: string;
-      label?: string;
-      price?: number;
-      ma200?: number;
-      idlePct?: number;
-      asOfDate?: string;
-    } | null;
     holdings?: Array<{
       symbol?: string;
       name?: string;
@@ -132,10 +122,6 @@ export async function queryHoldingsHealth(): Promise<string> {
     `- S-3 规则：止损 -5% · 移动止损 -8% · 60 天上限 · 金字塔 +${rules.pyramidTriggerPct ?? 2.5}% 加半仓（每票至多 1 次，加过的不要再加）`,
     '',
   ];
-  const sleeve = data.thirdAssetSleeve;
-  if (sleeve?.active && sleeve.message) {
-    lines.push(`- 择强单轨（${sleeve.label ?? sleeve.action ?? ''}）：${sleeve.message}`);
-  }
   const holds = data.holdings ?? [];
   if (holds.length === 0) {
     lines.push('（当前无持仓——未录入成本/仓位的 watchlist 票不算持仓）');
