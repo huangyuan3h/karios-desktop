@@ -1,0 +1,370 @@
+{
+  "tag": "vix-regime-2026-09-24",
+  "prereg": "docs/designs/vix-regime-prereg-2026-09-24.md",
+  "buckets_long": [
+    {
+      "bucket": "<20",
+      "n": 340,
+      "mean": 0.61
+    },
+    {
+      "bucket": "20-50",
+      "n": 296,
+      "mean": 0.61
+    },
+    {
+      "bucket": "50-80",
+      "n": 318,
+      "mean": 0.52
+    },
+    {
+      "bucket": ">=80",
+      "n": 242,
+      "mean": 0.82
+    }
+  ],
+  "results": {
+    "OOS2": {
+      "days": 243,
+      "high_days": 99,
+      "base": {
+        "total": 18.8,
+        "cagr": 19.61,
+        "mdd": -3.9,
+        "sharpe": 1.95
+      },
+      "gated": {
+        "total": 16.7,
+        "cagr": 17.5,
+        "mdd": -3.9,
+        "sharpe": 1.88
+      },
+      "cond": {
+        "B3": {
+          "HIGH": {
+            "n": 99,
+            "mean": 2.04
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 1.59
+          },
+          "diff": 0.45
+        },
+        "510300.SH": {
+          "HIGH": {
+            "n": 99,
+            "mean": 2.16
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 2.21
+          },
+          "diff": -0.05
+        },
+        "510500.SH": {
+          "HIGH": {
+            "n": 99,
+            "mean": 2.44
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 3.35
+          },
+          "diff": -0.91
+        },
+        "518880.SH": {
+          "HIGH": {
+            "n": 99,
+            "mean": 2.96
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 2.76
+          },
+          "diff": 0.2
+        },
+        "513100.SH": {
+          "HIGH": {
+            "n": 99,
+            "mean": 3.05
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 0.5
+          },
+          "diff": 2.55
+        },
+        "511260.SH": {
+          "HIGH": {
+            "n": 99,
+            "mean": 0.4
+          },
+          "NORMAL": {
+            "n": 124,
+            "mean": 0.44
+          },
+          "diff": -0.04
+        }
+      }
+    },
+    "train": {
+      "days": 123,
+      "high_days": 7,
+      "base": {
+        "total": 16.8,
+        "cagr": 37.78,
+        "mdd": -2.2,
+        "sharpe": 4.27
+      },
+      "gated": {
+        "total": 16.8,
+        "cagr": 37.78,
+        "mdd": -2.2,
+        "sharpe": 4.27
+      },
+      "cond": {
+        "B3": {
+          "HIGH": {
+            "n": 7,
+            "mean": 0.9
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 2.57
+          },
+          "diff": -1.67
+        },
+        "510300.SH": {
+          "HIGH": {
+            "n": 7,
+            "mean": 1.43
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 2.5
+          },
+          "diff": -1.07
+        },
+        "510500.SH": {
+          "HIGH": {
+            "n": 7,
+            "mean": 1.87
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 4.99
+          },
+          "diff": -3.12
+        },
+        "518880.SH": {
+          "HIGH": {
+            "n": 7,
+            "mean": 3.25
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 6.73
+          },
+          "diff": -3.48
+        },
+        "513100.SH": {
+          "HIGH": {
+            "n": 7,
+            "mean": 3.58
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 2.26
+          },
+          "diff": 1.32
+        },
+        "511260.SH": {
+          "HIGH": {
+            "n": 7,
+            "mean": -0.09
+          },
+          "NORMAL": {
+            "n": 96,
+            "mean": 0.08
+          },
+          "diff": -0.17
+        }
+      }
+    },
+    "valid": {
+      "days": 110,
+      "high_days": 27,
+      "base": {
+        "total": 1.5,
+        "cagr": 3.54,
+        "mdd": -10.1,
+        "sharpe": 0.33
+      },
+      "gated": {
+        "total": 1.5,
+        "cagr": 3.54,
+        "mdd": -10.1,
+        "sharpe": 0.33
+      },
+      "cond": {
+        "B3": {
+          "HIGH": {
+            "n": 26,
+            "mean": 2.65
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": 0.58
+          },
+          "diff": 2.07
+        },
+        "510300.SH": {
+          "HIGH": {
+            "n": 26,
+            "mean": 3.41
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": -0.64
+          },
+          "diff": 4.05
+        },
+        "510500.SH": {
+          "HIGH": {
+            "n": 26,
+            "mean": 3.98
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": -2.23
+          },
+          "diff": 6.21
+        },
+        "518880.SH": {
+          "HIGH": {
+            "n": 26,
+            "mean": -2.15
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": -5.28
+          },
+          "diff": 3.13
+        },
+        "513100.SH": {
+          "HIGH": {
+            "n": 26,
+            "mean": 8.03
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": 3.45
+          },
+          "diff": 4.58
+        },
+        "511260.SH": {
+          "HIGH": {
+            "n": 26,
+            "mean": 0.43
+          },
+          "NORMAL": {
+            "n": 64,
+            "mean": 0.3
+          },
+          "diff": 0.13
+        }
+      }
+    },
+    "long": {
+      "days": 1216,
+      "high_days": 243,
+      "base": {
+        "total": 46.2,
+        "cagr": 8.2,
+        "mdd": -4.7,
+        "sharpe": 1.76
+      },
+      "gated": {
+        "total": 43.3,
+        "cagr": 7.74,
+        "mdd": -4.6,
+        "sharpe": 1.91
+      },
+      "cond": {
+        "B3": {
+          "HIGH": {
+            "n": 242,
+            "mean": 0.82
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": 0.58
+          },
+          "diff": 0.24
+        },
+        "510300.SH": {
+          "HIGH": {
+            "n": 242,
+            "mean": 0.95
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": -0.0
+          },
+          "diff": 0.95
+        },
+        "510500.SH": {
+          "HIGH": {
+            "n": 242,
+            "mean": 1.76
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": 0.18
+          },
+          "diff": 1.58
+        },
+        "518880.SH": {
+          "HIGH": {
+            "n": 242,
+            "mean": 1.4
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": 1.55
+          },
+          "diff": -0.15
+        },
+        "513100.SH": {
+          "HIGH": {
+            "n": 242,
+            "mean": 2.6
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": 1.16
+          },
+          "diff": 1.44
+        },
+        "511260.SH": {
+          "HIGH": {
+            "n": 242,
+            "mean": 0.31
+          },
+          "NORMAL": {
+            "n": 954,
+            "mean": 0.33
+          },
+          "diff": -0.02
+        }
+      }
+    }
+  },
+  "verdict": {
+    "K1": false,
+    "K2": false,
+    "pass": false
+  },
+  "as_of": "2026-09-24T13:35:45+00:00"
+}

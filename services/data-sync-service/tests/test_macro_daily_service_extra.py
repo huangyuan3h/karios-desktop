@@ -378,6 +378,8 @@ class TestSyncFull:
         monkeypatch.setattr(md, "resolve_main_fut_by_prefix", lambda pro, exch, pre: "AU2512.SHF")
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_ak", lambda s, e: None)
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())
+        monkeypatch.setattr(md, "sync_bond_yields", lambda: 0)
+        monkeypatch.setattr(md, "sync_vix", lambda: 0)
         upsert = Mock(
             side_effect=lambda df, series_id=None, source=None, underlying_ts_code=None: len(df)
         )
@@ -492,3 +494,227 @@ class TestSyncFull:
         monkeypatch.setattr(md, "_paged_index_global", lambda pro2, code, s, e: _ok_df())
         out = md.sync_macro_daily_full()
         assert out["ok"] is True and out["updated"] == 7
+
+
+class _FakeAkYield:
+    @staticmethod
+    def bond_zh_us_rate():
+        return pd.DataFrame(
+            [
+                {
+                    "日期": "2026-09-23",
+                    "中国国债收益率10年": 1.80,
+                    "美国国债收益率10年": 4.10,
+                    "美国国债收益率10年-2年": 0.50,
+                },
+                {
+                    "日期": "2026-09-24",
+                    "中国国债收益率10年": 1.81,
+                    "美国国债收益率10年": 4.12,
+                    "美国国债收益率10年-2年": 0.52,
+                },
+            ]
+        )
+
+
+class TestBondYields:
+    def test_import_fail(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "akshare", None)
+        assert md.sync_bond_yields() == 0
+
+    def test_fetch_raises(self, monkeypatch) -> None:
+        ak = Mock()
+        ak.bond_zh_us_rate.side_effect = RuntimeError("net")
+        monkeypatch.setitem(sys.modules, "akshare", ak)
+        assert md.sync_bond_yields() == 0
+
+    def test_empty_and_bad_columns(self, monkeypatch) -> None:
+        ak = Mock()
+        ak.bond_zh_us_rate.return_value = pd.DataFrame()
+        monkeypatch.setitem(sys.modules, "akshare", ak)
+        assert md.sync_bond_yields() == 0
+        ak.bond_zh_us_rate.return_value = pd.DataFrame([{"nope": 1}])
+        assert md.sync_bond_yields() == 0
+
+    def test_happy_incremental(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "akshare", _FakeAkYield)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: date(2026, 9, 23))
+        calls: list[tuple[str, str, list[str]]] = []
+
+        def _upsert(df, *, series_id, source, underlying_ts_code=None):
+            calls.append((series_id, source, list(df["trade_date"])))
+            return len(df)
+
+        monkeypatch.setattr(md, "upsert_from_dataframe", _upsert)
+        assert md.sync_bond_yields() == 3
+        assert {c[0] for c in calls} == {"CN10Y", "US10Y", "US10Y2Y"}
+        assert all(c[1] == md.YIELD_SOURCE for c in calls)
+        assert all(c[2] == ["2026-09-24"] for c in calls)
+
+    def test_happy_full_when_no_last(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "akshare", _FakeAkYield)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
+        monkeypatch.setattr(
+            md,
+            "upsert_from_dataframe",
+            lambda df, *, series_id, source, underlying_ts_code=None: len(df),
+        )
+        assert md.sync_bond_yields() == 6
+
+    def test_up_to_date_skips(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "akshare", _FakeAkYield)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: date(2026, 9, 30))
+        monkeypatch.setattr(
+            md, "upsert_from_dataframe", lambda *a, **k: pytest.fail("should not upsert")
+        )
+        assert md.sync_bond_yields() == 0
+
+
+class _FakeYfVix:
+    @staticmethod
+    def Ticker(symbol):
+        class _T:
+            @staticmethod
+            def history(start=None, end=None):
+                return pd.DataFrame(
+                    [
+                        {
+                            "Date": pd.Timestamp("2026-09-24"),
+                            "Open": 15.0,
+                            "High": 16.0,
+                            "Low": 14.5,
+                            "Close": 15.5,
+                            "Volume": 0,
+                        }
+                    ]
+                )
+
+        return _T()
+
+
+class TestVix:
+    def test_import_fail(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "yfinance", None)
+        assert md.sync_vix() == 0
+
+    def test_up_to_date_skips(self, monkeypatch) -> None:
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: date.today())
+        monkeypatch.setitem(sys.modules, "yfinance", _FakeYfVix)
+        assert md.sync_vix() == 0
+
+    def test_history_raises(self, monkeypatch) -> None:
+        yf = Mock()
+        yf.Ticker.return_value.history.side_effect = RuntimeError("net")
+        monkeypatch.setitem(sys.modules, "yfinance", yf)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
+        assert md.sync_vix() == 0
+
+    def test_empty(self, monkeypatch) -> None:
+        yf = Mock()
+        yf.Ticker.return_value.history.return_value = pd.DataFrame()
+        monkeypatch.setitem(sys.modules, "yfinance", yf)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
+        assert md.sync_vix() == 0
+
+    def test_happy(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "yfinance", _FakeYfVix)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: date(2026, 9, 1))
+        seen: dict[str, object] = {}
+
+        def _upsert(df, *, series_id, source, underlying_ts_code=None):
+            seen.update(series_id=series_id, source=source, n=len(df))
+            return len(df)
+
+        monkeypatch.setattr(md, "upsert_from_dataframe", _upsert)
+        assert md.sync_vix() == 1
+        assert seen == {"series_id": "VIX", "source": md.VIX_SOURCE, "n": 1}
+
+    def test_all_nan_close(self, monkeypatch) -> None:
+        class _Fake:
+            @staticmethod
+            def Ticker(symbol):
+                class _T:
+                    @staticmethod
+                    def history(start=None, end=None):
+                        return pd.DataFrame(
+                            {
+                                "Date": [pd.Timestamp("2026-09-24")],
+                                "Open": [1.0],
+                                "High": [2.0],
+                                "Low": [0.5],
+                                "Close": [float("nan")],
+                                "Volume": [0],
+                            }
+                        )
+
+                return _T()
+
+        monkeypatch.setitem(sys.modules, "yfinance", _Fake)
+        monkeypatch.setattr(md, "get_last_trade_date", lambda sid: None)
+        assert md.sync_vix() == 0
+
+
+class TestHkIndexTencent:
+    def _fake_requests(self, payload):
+        resp = Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = payload
+        mod = Mock()
+        mod.get.return_value = resp
+        return mod
+
+    def test_import_fail(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "requests", None)
+        assert md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808") is None
+
+    def test_get_raises(self, monkeypatch) -> None:
+        mod = Mock()
+        mod.get.side_effect = RuntimeError("net")
+        monkeypatch.setitem(sys.modules, "requests", mod)
+        assert md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808") is None
+
+    def test_no_rows(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "requests", self._fake_requests({"data": {}}))
+        assert md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808") is None
+
+    def test_success_sorted(self, monkeypatch) -> None:
+        payload = {
+            "data": {
+                "hkHSI": {
+                    "day": [
+                        ["2026-08-07", "1.0", "2.0", "1.5", "0.5", "100"],
+                        ["2026-08-06", "1.0", "2.0", "1.4", "0.5", "90"],
+                    ]
+                }
+            }
+        }
+        monkeypatch.setitem(sys.modules, "requests", self._fake_requests(payload))
+        out = md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808")
+        assert out is not None
+        assert list(out["trade_date"]) == ["2026-08-06", "2026-08-07"]
+        assert list(out["close"]) == [1.4, 1.5]
+        assert "pct_chg" in out.columns
+
+    def test_qfqday_fallback(self, monkeypatch) -> None:
+        payload = {
+            "data": {"hkHSI": {"qfqday": [["2026-08-07", "1.0", "2.0", "1.5", "0.5", "100"]]}}
+        }
+        monkeypatch.setitem(sys.modules, "requests", self._fake_requests(payload))
+        out = md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808")
+        assert out is not None and len(out) == 1
+
+    def test_bad_and_out_of_window_rows(self, monkeypatch) -> None:
+        payload = {
+            "data": {
+                "hkHSI": {
+                    "day": [
+                        "not-a-row",
+                        ["2026-08-07", "1", "2", "3"],
+                        ["bad-date", "1", "2", "3", "4", "5"],
+                        ["2020-01-01", "1", "2", "3", "4", "5"],
+                    ]
+                }
+            }
+        }
+        monkeypatch.setitem(sys.modules, "requests", self._fake_requests(payload))
+        assert md._fetch_hk_index_via_tencent("hkHSI", "20260801", "20260808") is None

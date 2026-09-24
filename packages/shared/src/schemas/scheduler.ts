@@ -357,7 +357,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'macro_daily_full',
     'indexMacro',
     '宏观/全球数据',
-    '美股收盘后同步全球宏观日线序列。',
+    '美股收盘后同步全球宏观日线序列；同一任务顺带增量同步 CN/US 国债收益率曲线（akshare bond_zh_us_rate，US10Y/CN10Y 等）与 VIX（yfinance）。',
     '周二–周六 07:00',
     '0 7 * * 2-6',
     'cron',

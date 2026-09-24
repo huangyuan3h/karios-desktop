@@ -57,6 +57,8 @@ docs/archive/
 | 2026-09-14 | P0-13 三策略复审（OPT-182 + OPT-183 · 非 todo 条目） | [`2026-09-14-three-strategy-audit.md`](./2026-09-14-three-strategy-audit.md) | **三轮共修 8 处**（A 双子星口径 / B B3 负索引 / C gate 前视 / D Live 账本 / **E 卫星 qfq×raw 基期混用** / **F 双市场日历 HK-only 日期**）。最终 clean：港湾 **+55.2/+52.2/+50.3/+201.5**（Δ +17.2/+13.0/+11.6/+118.8，K1–K3 过）；**双子星 +149.7/+52.2/+29.1/+291.9 仍 REJECT（只挂 valid）**，B12「boom-bust/MDD −80.6%」作废（卫星 long 实为 +463.6%/MDD −8.4%，每年正收益）；母港 PASS（M50 +36.5/+35.0/+25.6/+116.3）。CN/HK 官方基线重固化；数据真实性逐笔校验 1036/1036；Live 仍=港湾 |
 | 2026-09-15 | P0-13 B18 游资解剖（席位 × 封板质量 × 情绪周期） | [`2026-09-15-hotmoney-anatomy.md`](./2026-09-15-hotmoney-anatomy.md) | **理解性研究（不进 Live）**：E1 席位次日分解 REJECT（剔一字后转负、拉萨对照 −2.23）· E2 退出不可见（可见率 17.5%）· E4 相位梯度干净但 d3 全负 · **E3 封板质量 PASS（质量分界真实，缺口归封板持有者）** · E5 可执行缝双 REJECT → **头部游资的钱 = 自己封板吃缺口，公开数据无可跟边缘**。含**基期修正**（qfq×raw，同族第 3 次）→ 新增 `first-principles §二.8`。遗留：E3 long 窗待 baostock、D3 快照未启动 |
 | 2026-09-24 | OPT-242 · H2-a25 canonical 口径收敛 | [`2026-09-24-h2-a25-canonical.md`](./2026-09-24-h2-a25-canonical.md) | H2-a25 统一为现行研究/展示/人工操作口径；独立报告 +238.4/+55.9/+3.2/+738.5，K3 风险下 REJECT；旧 0pt 报告降为 historical；Live 仍为港湾 |
+| 2026-09-24 | P0-13 B21 VIX 风险 regime 砖 | [`2026-09-24-vix-regime.md`](./2026-09-24-vix-regime.md) | **REJECT/方向证伪**：VIX 高分位后 B3 `fwd20` 反而更高（+0.82 vs +0.58）、闸 long +43.3 vs +46.2 → "VIX 高→去风险"不成立，反向属恐慌后反弹（B4/B6 同族）。同批 VIX + CN/US 收益率曲线接每日增量（`sync_vix`/`sync_bond_yields`） |
+| 2026-09-24 | P0-13 B22 星舰 B 卫星左尾解剖 + H-SAT-AMP-CAP | [`2026-09-24-starship-b-loss-anatomy.md`](./2026-09-24-starship-b-loss-anatomy.md) | **无免费午餐**：亏损=卫星脉冲左尾（477/1080 全 body_exit、无止损）、离散非 regime、同日篮子≈一个赌注。S1 gap 关 / **S1b amp1430 真信号但回放 REJECT（臂 B 降波动换 −68pt）** / S2 行业不集中关 / S3 早出更差关。唯一产物=可选防守档（amp≤1%），Live 不动 |
 
 ---
 

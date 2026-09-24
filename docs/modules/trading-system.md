@@ -45,7 +45,7 @@ K线        RS排名      资金流        移动止损      评估框架
 | TV 候选池 | `tv_screener_snapshots` | 2025-12-21 | TV screener 每日 AM/PM 抓取（已剥离，仅历史） |
 | 黄金/原油/美股ETF | `daily` `518880/513350/513100` | 2023-01 | `fund_daily` `backfill_target_etfs.py`（`518880 881b/513350 662b/513100 880b`） |
 | 债券ETF | `daily` `511260/511010` | 2023-01 | `fund_daily` `511260 881b` |
-| 美债/中债收益率 | `macro_daily` `US10Y 8.9k/CN10Y 6.1k/CN30Y/US30Y/VIX 2.5k` | 1990/2002/2016 | `akshare bond_zh_us_rate` + `yfinance VIX` `backfill_yields_ak.py` |
+| 美债/中债收益率 | `macro_daily` `US10Y 8.9k/CN10Y 6.1k/CN30Y/US30Y/VIX 2.5k` | 1990/2002/2016 | `akshare bond_zh_us_rate` + `yfinance VIX` `backfill_yields_ak.py`；**每日增量**由 `sync_macro_daily_full` → `sync_bond_yields()`（CN2Y/5Y/10Y/30Y、US2Y/5Y/10Y/30Y、US10Y2Y）+ `sync_vix()`（^VIX）维护 |
 
 **as-of 纪律（不可违反）**：所有信号计算必须只用截至决策日的数据——
 分数/红绿灯/资金流/RS/情绪全部 as-of 重算，禁止用未来数据（回测引擎强制）。

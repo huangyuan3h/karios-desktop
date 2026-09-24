@@ -795,6 +795,7 @@ def replay_sgap_from_context(
     exit_hhmm: str | None = None,
     exit_day_trail_pct: float | None = None,
     max_open_to_1430_pct: float | None = None,
+    max_amp_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
     r_wide: float | None = None,
@@ -1091,6 +1092,15 @@ def replay_sgap_from_context(
                     return (0, float(hl[0] - hl[1]) / float(px))
 
                 ranked = sorted(gap_stocks, key=_proxy_amp)
+                if max_amp_1430_pct is not None:
+                    # H-SAT-AMP-CAP: keep only names with a valid 14:30 print
+                    # whose amplitude is within the absolute cap. Tighter than
+                    # the rank bucket on days whose whole candidate set is wide.
+                    ranked = [
+                        ts
+                        for ts in ranked
+                        if _proxy_amp(ts)[0] == 0 and _proxy_amp(ts)[1] <= max_amp_1430_pct
+                    ]
             else:  # absrunup_asc: |fill print / open - 1|, missing print ranks last
 
                 def _abs_runup(ts: str, _day: str = day) -> float:
@@ -1415,6 +1425,7 @@ def replay_sgap_from_context(
         "exit_hhmm": exit_hhmm,
         "exit_day_trail_pct": exit_day_trail_pct,
         "max_open_to_1430_pct": max_open_to_1430_pct,
+        "max_amp_1430_pct": max_amp_1430_pct,
         "near_limit_buffer_pct": near_limit_buffer_pct,
         "min_open_to_1430_pct": min_open_to_1430_pct,
         "max_t1_turnover_mult": max_t1_turnover_mult,
@@ -1442,6 +1453,7 @@ def build_sgap_timeline(
     fill_hhmm: str = "1430",
     exit_hhmm: str | None = None,
     max_open_to_1430_pct: float | None = None,
+    max_amp_1430_pct: float | None = None,
     near_limit_buffer_pct: float | None = None,
     rank_key: str | None = None,
     gate_1430: bool = False,
@@ -1491,6 +1503,7 @@ def build_sgap_timeline(
         fill_hhmm=fill_hhmm,
         exit_hhmm=exit_hhmm,
         max_open_to_1430_pct=max_open_to_1430_pct,
+        max_amp_1430_pct=max_amp_1430_pct,
         near_limit_buffer_pct=near_limit_buffer_pct,
         rank_key=rank_key,
         gate_1430=gate_1430,
@@ -1744,9 +1757,7 @@ def apply_parked_display(
             a, b = b_nav[i - 1], b_nav[i]
             b_ret_by_day[dates[i]] = (b / a - 1.0) if a else 0.0
         # 100% parked in B leg (no H2 sleeve, no B3).
-        sleeve_ret_by_day = {
-            d: b_ret_by_day.get(d, 0.0) for d in sleeve_ret_by_day
-        }
+        sleeve_ret_by_day = {d: b_ret_by_day.get(d, 0.0) for d in sleeve_ret_by_day}
         from data_sync_service.service.strategy_today import B3_LABELS
 
         b_weights = b_run.get("weights") or []
@@ -1761,13 +1772,19 @@ def apply_parked_display(
             if b_peak > 0:
                 b_max_dd = max(b_max_dd, (b_peak - float(value)) / b_peak)
         last_weights = b_weights[-1] if b_weights else {}
-        out["riskUniverse"] = [{"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in STARSIP_B_UNIVERSE]
+        out["riskUniverse"] = [
+            {"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in STARSIP_B_UNIVERSE
+        ]
         out["riskBlotter"] = b_run.get("events") or []
         out["riskHeld"] = {
             "date": dates[-1] if dates else "",
-            "weights": {ts: round(float(last_weights.get(ts) or 0.0), 4) for ts in STARSIP_B_UNIVERSE},
+            "weights": {
+                ts: round(float(last_weights.get(ts) or 0.0), 4) for ts in STARSIP_B_UNIVERSE
+            },
         }
-        out.setdefault("summary", {})["riskPct"] = round((b_nav[-1] - 1.0) * 100, 2) if b_nav else 0.0
+        out.setdefault("summary", {})["riskPct"] = (
+            round((b_nav[-1] - 1.0) * 100, 2) if b_nav else 0.0
+        )
         out["summary"]["riskMaxDdPct"] = round(b_max_dd * 100, 1)
     if parked_mode in ("a25", A25_PARKING_MODE):
         # 星舰稳健版 (H-SAT-A25): idle parked 25% sleeve + 75% B3 risk-budget.
@@ -1807,7 +1824,9 @@ def apply_parked_display(
             "date": dates[-1] if dates else "",
             "weights": {ts: round(float(last_weights.get(ts) or 0.0), 4) for ts in RISK_UNIVERSE},
         }
-        out.setdefault("summary", {})["riskPct"] = round((b3_nav[-1] - 1.0) * 100, 2) if b3_nav else 0.0
+        out.setdefault("summary", {})["riskPct"] = (
+            round((b3_nav[-1] - 1.0) * 100, 2) if b3_nav else 0.0
+        )
         out["summary"]["riskMaxDdPct"] = round(b3_max_dd * 100, 1)
     parked = compose_parked_rows(rows, sleeve_ret_by_day, cost_bps=cost_bps)
     by_day = {r["date"]: r for r in parked["rows"]}

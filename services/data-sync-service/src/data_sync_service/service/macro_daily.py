@@ -44,6 +44,31 @@ SERIES_ORDER: list[str] = [
     SID_510300_PUT_IV,
 ]
 
+# CN/US treasury yield curve (akshare ``bond_zh_us_rate``). These do NOT go
+# through the tushare per-series loop: one API call returns the whole curve, so
+# we fetch once and upsert incrementally per series. ``close`` stores the yield
+# in percent (same convention as ``scripts/backfill_yields_ak.py``). Series ids
+# match the existing backfilled rows so history stays continuous.
+YIELD_SOURCE = "akshare.bond_zh_us_rate"
+YIELD_COLMAP: dict[str, str] = {
+    "中国国债收益率2年": "CN2Y",
+    "中国国债收益率5年": "CN5Y",
+    "中国国债收益率10年": "CN10Y",
+    "中国国债收益率30年": "CN30Y",
+    "美国国债收益率2年": "US2Y",
+    "美国国债收益率5年": "US5Y",
+    "美国国债收益率10年": "US10Y",
+    "美国国债收益率30年": "US30Y",
+    "美国国债收益率10年-2年": "US10Y2Y",
+}
+
+# CBOE VIX (^VIX) via yfinance. Standalone series like the yield curve: one
+# call, upsert incrementally. Historical backfill lives in
+# ``scripts/backfill_remaining_yields_vix.py`` (10y, frozen 2026-09-12).
+SID_VIX = "VIX"
+VIX_SOURCE = "yfinance.VIX"
+VIX_FULL_START = "2015-01-01"
+
 
 def _today_yyyymmdd() -> str:
     return datetime.now(UTC).strftime("%Y%m%d")
@@ -360,6 +385,87 @@ def resolve_main_fut_by_prefix(pro: Any, exchange: str, symbol_prefix: str) -> s
     return str(ts_c).strip() or None
 
 
+def sync_bond_yields() -> int:
+    """Incrementally upsert CN/US treasury yields into macro_daily.
+
+    ``akshare.bond_zh_us_rate`` returns the full curve history in one call, so
+    we fetch once and upsert only rows newer than each series' stored max date.
+    Fail-open: a missing/blocked akshare returns 0 (never raises) so the macro
+    job still records its tushare series and the next run retries the curve.
+    """
+    try:
+        import akshare as ak  # noqa: PLC0415
+    except Exception:
+        return 0
+    try:
+        raw = ak.bond_zh_us_rate()
+    except Exception:
+        return 0
+    if raw is None or getattr(raw, "empty", True) or "日期" not in raw.columns:
+        return 0
+    total = 0
+    for src_col, series_id in YIELD_COLMAP.items():
+        if src_col not in raw.columns:
+            continue
+        sub = raw[["日期", src_col]].dropna()
+        sub.columns = ["trade_date", "close"]
+        sub["trade_date"] = sub["trade_date"].astype(str).str.slice(0, 10)
+        last = get_last_trade_date(series_id)
+        if last is not None:
+            sub = sub[sub["trade_date"] > last.strftime("%Y-%m-%d")]
+        if sub.empty:
+            continue
+        total += upsert_from_dataframe(
+            sub, series_id=series_id, source=YIELD_SOURCE, underlying_ts_code=series_id
+        )
+    return total
+
+
+def sync_vix() -> int:
+    """Incrementally upsert CBOE VIX (^VIX) into macro_daily via yfinance.
+
+    Same fail-open contract as ``sync_bond_yields``: a missing yfinance/network
+    returns 0 so the macro job still records its other series.
+    """
+    try:
+        import yfinance as yf  # type: ignore[import-not-found]
+    except Exception:
+        return 0
+    last = get_last_trade_date(SID_VIX)
+    start = (last + timedelta(days=1)).isoformat() if last is not None else VIX_FULL_START
+    end = (datetime.now(UTC).date() + timedelta(days=1)).isoformat()
+    if start >= end:
+        return 0
+    try:
+        hist = yf.Ticker("^VIX").history(start=start, end=end)
+    except Exception:
+        return 0
+    if hist is None or hist.empty:
+        return 0
+    hist = hist.dropna(subset=["Close"])
+    if hist.empty:
+        return 0
+    df = hist.reset_index()
+    date_col = df["Date"]
+    out = pd.DataFrame()
+    if hasattr(date_col.dt, "strftime"):
+        out["trade_date"] = date_col.dt.strftime("%Y-%m-%d")
+    else:
+        out["trade_date"] = date_col.astype(str).str[:10]
+    out["open"] = df.get("Open")
+    out["high"] = df.get("High")
+    out["low"] = df.get("Low")
+    out["close"] = df.get("Close")
+    out["pct_chg"] = pd.to_numeric(df["Close"], errors="coerce").pct_change() * 100.0
+    out["vol"] = df.get("Volume")
+    out = out.dropna(subset=["close"])
+    if out.empty:
+        return 0
+    return upsert_from_dataframe(
+        out, series_id=SID_VIX, source=VIX_SOURCE, underlying_ts_code="^VIX"
+    )
+
+
 def sync_macro_daily_full() -> dict[str, Any]:
     """
     Full macro sync for configured series.
@@ -565,6 +671,9 @@ def sync_macro_daily_full() -> dict[str, Any]:
                 error_message=f"{sid}: {e}",
             )
             return {"ok": False, "error": str(e), "last_ts_code": last_successful, "series": sid}
+
+    total_rows += sync_bond_yields()
+    total_rows += sync_vix()
 
     insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
     return {"ok": True, "updated": total_rows}
