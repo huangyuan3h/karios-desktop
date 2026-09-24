@@ -108,7 +108,8 @@ def record_trade(req: TradeLegRequest) -> dict:
             market=req.market or "CN",
             note=req.note,
             alpha_snapshot=_alpha_snapshot_for(req.symbol, trade_date),
-            leg=req.leg or (
+            leg=req.leg
+            or (
                 latest_buy_leg(req.symbol, strategy_mode=req.strategyMode)
                 if req.side in ("SELL", "ADD")
                 else LEG_S3
@@ -194,7 +195,12 @@ def patch_trade(trade_id: str, req: TradePatchRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid strategyMode: {req.strategyMode}")
     if req.positionPct is not None and not req.positionPct > 0:
         raise HTTPException(status_code=400, detail="positionPct must be positive")
-    if req.leg is None and req.strategyMode is None and req.positionPct is None and req.note is None:
+    if (
+        req.leg is None
+        and req.strategyMode is None
+        and req.positionPct is None
+        and req.note is None
+    ):
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
         ensure_tables()

@@ -719,7 +719,9 @@ def apply_pool_run(
         if prev_source == "manual":
             continue  # never override the user's own row
         if prev_source in (SOURCE_S3, SOURCE_SATELLITE):
-            source = SOURCE_SATELLITE if sym in sat_today else str(item.get("source") or prev_source)
+            source = (
+                SOURCE_SATELLITE if sym in sat_today else str(item.get("source") or prev_source)
+            )
             by_sym[sym] = {
                 **prev,
                 **item,
@@ -1048,9 +1050,7 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     s3_symbols_prev: set[str] | None = None
     if prev_day:
         s3_symbols_prev = {
-            str(x.get("symbol"))
-            for x in compute_s3_pool(day=prev_day)
-            if x.get("symbol")
+            str(x.get("symbol")) for x in compute_s3_pool(day=prev_day) if x.get("symbol")
         }
     satellite_legs = compute_satellite_pool(day=trade_date)
     satellite_symbols_today: set[str] | None = None

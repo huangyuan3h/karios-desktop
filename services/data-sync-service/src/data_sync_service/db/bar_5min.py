@@ -11,7 +11,7 @@ reach 10y but is 1 call/min (or /hour on this token). Eastmoney/akshare
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, LiteralString, cast
 
 from data_sync_service.db import get_connection
 from data_sync_service.db._ensure_guard import ensure_once
@@ -161,8 +161,7 @@ def upsert_5min_payload(payload: list[tuple], *, on_conflict: str = "update") ->
                 WHERE {_source_rank(f"{TABLE_NAME}.source")}
                     <= {_source_rank("EXCLUDED.source")}"""
             )
-            cur.execute(
-                f"""
+            insert_sql = f"""
                 INSERT INTO {TABLE_NAME}(
                     ts_code, trade_date, trade_time, open, high, low, close, vol, amount, source
                 )
@@ -171,7 +170,7 @@ def upsert_5min_payload(payload: list[tuple], *, on_conflict: str = "update") ->
                 WHERE close IS NOT NULL
                 {conflict_clause}
                 """
-            )
+            cur.execute(cast(LiteralString, insert_sql))
         conn.commit()
     return len(payload)
 

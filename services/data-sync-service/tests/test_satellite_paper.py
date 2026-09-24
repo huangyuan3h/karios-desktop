@@ -221,7 +221,7 @@ def test_user_book_query_is_bounded(monkeypatch) -> None:
     satellite_paper.build_user_satellite_book(start="2026-09-18", end="2026-09-23")
     assert "trade_date >= %s" in str(seen["sql"])
     assert "trade_date <= %s" in str(seen["sql"])
-    assert seen["params"] == ("satellite", "2026-09-18", "2026-09-23")
+    assert seen["params"] == ("satellite", "starship_b", "2026-09-18", "2026-09-23")
 
 
 def test_user_book_empty() -> None:

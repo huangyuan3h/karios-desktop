@@ -89,7 +89,7 @@ def _t1_turnover(
     series = per_ts.get(ts)
     if di is None or di <= 20 or not series:
         return None
-    amts = [r.get("amount") for r in series[di - 21 : di] if r.get("amount")]
+    amts = [float(a) for r in series[di - 21 : di] if (a := r.get("amount"))]
     if len(amts) >= 15 and amts[-1]:
         avg = sum(amts[:-1]) / max(len(amts) - 1, 1)
         return amts[-1] / avg if avg else None
@@ -137,7 +137,10 @@ def _names_for(ts_codes: list[str]) -> dict[str, str]:
 
 
 def satellite_signals_for_day(
-    ctx: dict[str, Any], day: str, *, today: str | None = None,
+    ctx: dict[str, Any],
+    day: str,
+    *,
+    today: str | None = None,
 ) -> dict[str, Any]:
     """Habit candidate panel for one decision day (pure; ctx injected).
 
@@ -156,27 +159,44 @@ def satellite_signals_for_day(
     if today is None:
         today = _date.today().isoformat()
     if day not in (ctx.get("idx_by_day") or {}):
-        return {"ok": True, "date": day, "decisionAvailable": False,
-                "reason": "day not in trading calendar"}
+        return {
+            "ok": True,
+            "date": day,
+            "decisionAvailable": False,
+            "reason": "day not in trading calendar",
+        }
     per_ts = ctx.get("per_ts") or {}
     date_idx = ctx.get("date_idx") or {}
     px1430_day = {ts: m.get(day) for ts, m in (ctx.get("px_1430") or {}).items() if m.get(day)}
     if not px1430_day:
-        return {"ok": True, "date": day, "decisionAvailable": False,
-                "reason": "no 14:30 prints for day (live panel not yet synced)"}
+        return {
+            "ok": True,
+            "date": day,
+            "decisionAvailable": False,
+            "reason": "no 14:30 prints for day (live panel not yet synced)",
+        }
     feat_all, close_breadth = _cached_day_features(ctx, day)
     if not feat_all:
-        return {"ok": True, "date": day, "decisionAvailable": False,
-                "reason": "no daily features for day (daily row not yet synced)"}
+        return {
+            "ok": True,
+            "date": day,
+            "decisionAvailable": False,
+            "reason": "no daily features for day (daily row not yet synced)",
+        }
     breadth = _breadth_at_1430(ctx, day)
     if breadth is None:
         if day >= today:
-            return {"ok": True, "date": day, "decisionAvailable": False,
-                    "reason": "14:30 breadth uncomputable (panel incomplete)"}
+            return {
+                "ok": True,
+                "date": day,
+                "decisionAvailable": False,
+                "reason": "14:30 breadth uncomputable (panel incomplete)",
+            }
         breadth = close_breadth  # historical parity path (replay fallback)
 
     gap_stocks = [
-        ts for ts, d in feat_all.items()
+        ts
+        for ts, d in feat_all.items()
         if d.get("gap") is not None and d["gap"] == d["gap"] and d["gap"] > RECIPE["min_gap_pct"]
     ]
     hl = ctx.get("px_hl_1430") or {}
@@ -208,7 +228,10 @@ def satellite_signals_for_day(
             if raw_pre:
                 raw_pre = float(raw_pre) * k
         reason = _same_1430_skip_reason(
-            ts=ts, px=px, open_px=raw_open, pre_close=raw_pre,
+            ts=ts,
+            px=px,
+            open_px=raw_open,
+            pre_close=raw_pre,
             skip_t1_limit=RECIPE["skip_t1_limit"],
             max_open_to_1430_pct=RECIPE["max_open_to_1430_pct"],
             near_limit_buffer_pct=RECIPE["near_limit_buffer_pct"],
@@ -240,8 +263,7 @@ def satellite_signals_for_day(
         e["ampRank"] = rank
         e["inBucket"] = rank <= qn
         e["wouldFill"] = bool(
-            gate_open and rank <= qn and not e["skipReason"] and e["fillable"]
-            and ts in pool
+            gate_open and rank <= qn and not e["skipReason"] and e["fillable"] and ts in pool
         )
     return {
         "ok": True,
@@ -254,9 +276,11 @@ def satellite_signals_for_day(
         "poolSize": len(pool),
         "ranked": [entries[ts] for ts in ranked],
         "recipe": {k: v for k, v in RECIPE.items()},
-        "basis": ("gap>3% (daily open/prev close) -> amp_1430 asc -> top-1/3 bucket -> "
-                  "skip_t1/C1/C2 + fillable guard -> strict pool; fills at 14:30 raw "
-                  f"print + {COST_RT_BPS:g}bps RT (paper); R-wide gate 0.5 on 14:30 breadth"),
+        "basis": (
+            "gap>3% (daily open/prev close) -> amp_1430 asc -> top-1/3 bucket -> "
+            "skip_t1/C1/C2 + fillable guard -> strict pool; fills at 14:30 raw "
+            f"print + {COST_RT_BPS:g}bps RT (paper); R-wide gate 0.5 on 14:30 breadth"
+        ),
     }
 
 

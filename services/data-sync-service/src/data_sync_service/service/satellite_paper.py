@@ -82,7 +82,9 @@ def satellite_paper_from_sat(sat: dict[str, Any], *, start: str, end: str) -> di
             }
         )
     # Newest first is what an operations card wants.
-    closed.sort(key=lambda r: (str(r.get("exitDate") or ""), str(r.get("entryDate") or "")), reverse=True)
+    closed.sort(
+        key=lambda r: (str(r.get("exitDate") or ""), str(r.get("entryDate") or "")), reverse=True
+    )
 
     open_legs: list[dict[str, Any]] = []
     for p in sat.get("openPositions") or []:
@@ -134,9 +136,7 @@ def satellite_paper_from_sat(sat: dict[str, Any], *, start: str, end: str) -> di
     }
 
 
-def build_satellite_paper(
-    end: str | None = None, *, start: str | None = None
-) -> dict[str, Any]:
+def build_satellite_paper(end: str | None = None, *, start: str | None = None) -> dict[str, Any]:
     """Forward paper book for [start, end] (defaults: inception -> Shanghai today).
 
     Heavy read (loads the 5-min context with 120-day warmup); the API is
@@ -260,9 +260,7 @@ def satellite_user_book_from_rows(
         if not sym or px <= 0 or pct <= 0:
             continue
         if side in ("BUY", "ADD"):
-            open_lots.setdefault(sym, []).append(
-                {"entryDate": day, "entryPrice": px, "pct": pct}
-            )
+            open_lots.setdefault(sym, []).append({"entryDate": day, "entryPrice": px, "pct": pct})
             continue
         if side != "SELL":
             continue
@@ -362,9 +360,9 @@ def build_user_satellite_book(
             cur.execute(
                 "SELECT symbol, side, trade_date, price, position_pct, created_at "
                 "FROM user_trades "
-                "WHERE leg = %s AND strategy_mode = %s AND trade_date <= %s "
+                "WHERE leg = %s AND strategy_mode = %s AND trade_date >= %s AND trade_date <= %s "
                 "ORDER BY trade_date, created_at",
-                ("satellite", strategy_mode, end),
+                ("satellite", strategy_mode, start, end),
             )
             rows = [
                 {

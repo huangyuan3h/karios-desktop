@@ -215,11 +215,12 @@ class TestHomeportM30:
     def test_default_weight_unchanged(self) -> None:
         panel, rows = self._rows()
         base = {"ok": True, "rows": rows, "summary": {"fusedPct": 6.0}}
-        assert blend_homeport_timeline(dict(base), risk_closes=panel)["summary"][
-            "fusedPct"
-        ] == blend_homeport_timeline(dict(base), risk_closes=panel, w_harbor=0.5)["summary"][
-            "fusedPct"
-        ]
+        assert (
+            blend_homeport_timeline(dict(base), risk_closes=panel)["summary"]["fusedPct"]
+            == blend_homeport_timeline(dict(base), risk_closes=panel, w_harbor=0.5)["summary"][
+                "fusedPct"
+            ]
+        )
 
 
 class TestHomeportM30Route:
@@ -251,9 +252,7 @@ class TestHomeportM30Route:
 
         monkeypatch.setattr(br, "_get_or_build_timeline", _fake)
         monkeypatch.setattr(hp, "load_risk_closes", lambda: panel)
-        out, _ = br._get_or_build_timeline(
-            "2024-01-01", "2024-03-01", strategy="homeport_m30"
-        )
+        out, _ = br._get_or_build_timeline("2024-01-01", "2024-03-01", strategy="homeport_m30")
         assert out["summary"]["harborWeight"] == 0.7
         direct = hp.blend_homeport_timeline(
             {"ok": True, "rows": [dict(r) for r in rows], "summary": {"fusedPct": 6.0}},

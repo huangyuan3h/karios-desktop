@@ -14,7 +14,10 @@ def test_timeline_rejects_unknown_strategy() -> None:
     with pytest.raises(HTTPException) as exc:
         br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="no_such_strategy")
     assert exc.value.status_code == 400
-    assert "harbor|homeport|homeport_m30|starport|starship|starship_robust|starship_b|twin_star|pick_strong|state_bucket" in exc.value.detail
+    assert (
+        "harbor|homeport|homeport_m30|starport|starship|starship_robust|starship_b|twin_star|pick_strong|state_bucket"
+        in exc.value.detail
+    )
 
 
 def test_timeline_accepts_twin_star(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -57,7 +57,7 @@
 | 停放模式 | `state_bucket_track.STARSIP_B_PARKING_MODE` (`"starship_b"`) | `apply_parked_display(parked_mode=...)` 分支 |
 | 常量 | `state_bucket_track.STARSIP_B_UNIVERSE` / `STARSIP_B_TAG` | 单一来源 |
 | Timeline | `GET /api/backtest/timeline?strategy=starship_b` | mode/strategy/parkingMode=starship_b |
-| 展示档 | `strategy-settings.ts` / `settings_routes.py` / `strategy_catalog.py` | 五档 + 星舰B；默认仍 `starship_robust` |
+| 展示档 | `strategy-settings.ts` / `settings_routes.py` / `strategy_catalog.py` | 五档 + 星舰B；默认 = `starship_b`（H2-a25 并列可选） |
 | frontend | `lib/queries/backtest.ts`（TimelineStrategy）、`BacktestPage.tsx`、`StrategyModeBar` | 标签「星舰 B」 |
 
 ## 5. 复现

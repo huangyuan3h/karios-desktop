@@ -232,14 +232,10 @@ class TestMergeRecentDbClosesBasis:
 
     def _run(self, monkeypatch, out, anchor, tail):
         cur = self._FakeCursor(anchor, tail)
-        monkeypatch.setattr(
-            "data_sync_service.db.get_connection", lambda: self._FakeConn(cur)
-        )
+        monkeypatch.setattr("data_sync_service.db.get_connection", lambda: self._FakeConn(cur))
         return merge_recent_db_closes(out, ["513100.SH"])
 
-    def test_tail_scaled_by_overlap_ratio_when_adj_factor_missing(
-        self, monkeypatch
-    ) -> None:  # noqa: ANN001
+    def test_tail_scaled_by_overlap_ratio_when_adj_factor_missing(self, monkeypatch) -> None:  # noqa: ANN001
         # CSV last 11.009182 (= raw 2.201 x 5.0019); DB tail raw 2.191 was
         # appended verbatim before the fix -> a -80.1% fake day.
         out = {"513100.SH": {"2026-09-11": 11.009182}}
@@ -260,9 +256,7 @@ class TestMergeRecentDbClosesBasis:
         merged = self._run(monkeypatch, out, anchor, tail)
         assert merged["513100.SH"]["2026-09-14"] == pytest.approx(2.191 * 5.0019)
 
-    def test_no_common_basis_falls_back_to_raw_and_keeps_going(
-        self, monkeypatch
-    ) -> None:  # noqa: ANN001
+    def test_no_common_basis_falls_back_to_raw_and_keeps_going(self, monkeypatch) -> None:  # noqa: ANN001
         out = {"513100.SH": {}}
         tail = [(date(2026, 9, 14), 2.191, None)]
         merged = self._run(monkeypatch, out, None, tail)

@@ -12,7 +12,7 @@
 
 | 数据 | 缺口 | 免费补？ | 付费补？ | 影响 |
 |------|------|---------|---------|------|
-| **市场情绪 sentiment** | 2026-01-05 起，OOS2/train 全缺 | ✅ **能**（tushare daily 重算） | — | **neutral_block + auto + D2 的老窗验证** |
+| **市场情绪 sentiment** | ~~2026-01-05 起~~ **✅ 已回填至 2024-08-01**（2026-08-14） | ✅ **已完成**（tushare daily 重算） | — | **neutral_block + auto + D2 的老窗验证已随之完成（TIP-014）** |
 | **行业资金流** | 2025-12-15 起，OOS2/train 缺 | ❌ 东财只留 ~120 根 | ✅ tushare moneyflow_ind（2000 积分） | mainline 闸门老窗回放 |
 | **主线评分 mainline** | 2026-02-10 起 | ⚠️ 依赖资金流（资金流补上即可重算） | 同资金流 | 电风扇/主线识别 |
 | **ETF 资金流** | 2023-01 起 | ✅ 已完整 | — | 无缺口 |
@@ -23,9 +23,12 @@
 
 ## 1. 缺口详情与影响面
 
-### 1.1 市场情绪（sentiment）— 最优先，免费可补
+### 1.1 市场情绪（sentiment）— ✅ **已回填完成（2026-08-14）**
 
-**现状**：`market_cn_sentiment_daily` 从 2026-01-05 起（142 个交易日）。
+**现状（2026-09-24 更新）**：~~从 2026-01-05 起~~ **已回填至 2024-08-01**
+（commit `7530607`，`scripts/backfill_sentiment_history.py`；OOS2/train 现有情绪标签）。
+TIP-014 环境感知实验随之完成并固化（E2 panic_cooldown 3→2，见 [`docs/backtests/s3/experiments-tip014.md`](../backtests/s3/experiments-tip014.md)）。
+以下原分析保留作历史。
 **生成逻辑**（`service/market_sentiment.py:1050 compute_cn_sentiment_for_date`）：
 - 涨跌家数 / 涨跌比 / 成交额 ← **tushare daily 接口**（`fetch_cn_market_breadth_eod`，当前积分可调）
 - 昨日涨停溢价 ← **从 daily 表算**（`_close_limit_up_pool_codes` + pct_chg）
@@ -75,7 +78,7 @@ trend 三因子评分）。**资金流补上 → 主线评分可重算**（有�
 
 ## 2. 补法选项矩阵（按 ROI 排序）
 
-### 方案 A：免费重算情绪历史（推荐先做，0 元）
+### 方案 A：免费重算情绪历史（✅ 已于 2026-08-14 完成，0 元）
 
 - **动作**：写脚本 `backfill_sentiment_history.py`——遍历 2024-08-01~2025-12-31 交易日，
   调 `compute_cn_sentiment_for_date`（tushare daily，~500 个交易日 × 2-3 次请求 ≈ 10 分钟）
@@ -125,3 +128,48 @@ Step 3: 主线评分重算 + 三窗完整复核（资金流补上后）
   "待长窗结果拍板"的前提已满足。
 - 8/1 data-source-audit：**"卫星仓场景下当前源矩阵是 ROI 最优解，不要跟风买 Wind"** —
   不冲突；tushare 2000 积分与"不买 Wind"不矛盾。
+
+---
+
+## 5. 增补（2026-09-24 · 文本 / 流言 / level-2 缺口与补法）
+
+> **来源**：2026-09-24 讨论「为什么我们的信号不如外部收到的一个级别」——结论是缺的正是
+> 文本/流言/微观结构数据。本节登记**每个缺口的可补性**，供后续拍板；**不代表已决定购买**。
+> **前置纪律**：补数据 ≠ 有 edge。文本/注意力类历史实验（研报覆盖 / Alpha Radar / 人气榜 / 龙虎榜）
+> **全部 REJECT 或 SHELVE**（见 `factors/research-coverage-2026-09-07`、`factors/alpha-trend-forward-2026-09-07`、
+> `factors/fin-d1-hot-rank-2026-09-11`、`inst/lhb-inst-netbuy-2026-09-12`）。按 `first-principles §四 S1`
+> （机制先行律，18/18），**先有一句话机制再补对应数据**，不先囤数据。
+
+### 5.1 缺口 × 可补性
+
+| 缺口 | 能补？ | 途径 | 成本 | 性质 |
+|------|--------|------|------|------|
+| **Level-2 / 逐笔 / 封单 / 委托队列** | ❌ 历史不可补 | 交易所/券商授权；tushare 无此接口 | 高 / 个人用户难 | **结构性硬墙**（打板、游资跟买、封板排队全卡这里，见 `limitup-do-not-redo-2026-09-12`、`hotmoney/seat-timing-2026-09-15`） |
+| **涨停池封单快照** | ⚠️ 只能前向 | 东财 `zt_pool`（job `zt_pool_snapshot` 工作日 17:45，已跑） | 0 | 接口仅保留 ~2 周，**无历史可回填**，攒 12 个月才够样本 |
+| **PIT 新闻/公告（带时间戳，历史）** | ✅ 可补 | tushare `news` / `anns` / `report_rc`（需积分）；实时层已有（RSSHub → `news_items`，5 源） | ¥数百 | **缺的是历史回填**；实时不缺 |
+| **UGC 社交文本（微博/股吧/互动易/雪球正文）** | ❌ 难 | 合规 + 采集；无稳定 API（雪球正文需登录，互动易仅网页） | 高 | `archive/2026-09-12-event-rate.md` 已定「采集难/噪音/合规，暂不做」 |
+| **机构调研 `stk_surv`** | ⚠️ 部分 | tushare 需权限；akshare 逐股且忽略日期 | — | 历史难 |
+| **文本情绪极性模型** | ✅ 可建 | 现有 LLM 仅做结构化抽取（ticker/事件），未做情绪打分 | 低 | 依赖上游文本数据 |
+| 情绪/资金流历史（旧缺口） | ✅ | 见 §2 方案 A（免费）/ 方案 B（¥500） | 0 / ¥500 | 已在本文档 |
+
+### 5.2 三类结论
+
+1. **免费可补且值得**：`market_cn_sentiment_daily` 历史回填（§2 方案 A，0 元）——**已完成（2026-08-14）**。
+2. **付费可补（待拍板）**：行业资金流 ¥500（§2 方案 B）；tushare `news`/`anns`/`report_rc` 历史（需先查积分权限）。
+3. **结构性不可补**：level-2/逐笔/封单历史、UGC 社交历史——只能**前向积累**（`zt_pool`、`cn_xq_follow`、live 14:30 prints）。
+
+### 5.3 为什么「外部信号不是一个级别」——审计优先
+
+即便补齐上述数据，也必须先排除三种偏差（`first-principles §二`）：
+
+- **前视 / 幸存者**：`hedge-twin` naive-touch 把 +6600% 打回 +0.9%；`trail8` 前视 +82pt→+8pt。
+- **不可成交**：A 股 T+1 + 涨停不买 + 隔夜跳空（`§一.14`）——「能算出的溢价长在买不到的地方」（`hotmoney/board-quality-2026-09-15`）。
+- **容量 / 时点**：卫星腿容量 ≤500 万（`sat-execution-audit-2026-09-14`）。
+
+> **进展（2026-09-24）**：① 方案 A 已于 2026-08-14 完成（情绪回填 + TIP-014 固化）；
+> ② 现 token 权限探针 + 新落资产（`broker_recommend` / `sw_members`）见
+> [`data-source-audit §9`](data-source-audit-2026-08.md)；券商金股诊断 **REJECT**
+> （[factors/broker-recommend-2026-09-24](../backtests/factors/broker-recommend-2026-09-24.md)）。
+> **下一步（待用户拍板）**：① 若要评估外部信号，按 L1–L7 做前视 + 成交语义审计，
+> 判定真 edge vs 幻觉，**再决定是否为文本/level-2 数据付费**；② 付费候选 = `moneyflow_ind` ¥500（方案 B）。
+> 供应商决策仍受 [`data-source-audit-2026-08.md`](data-source-audit-2026-08.md) §7（2026-12-01 复审）约束。

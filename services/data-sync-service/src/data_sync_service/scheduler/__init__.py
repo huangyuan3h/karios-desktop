@@ -635,9 +635,7 @@ def catchup_missed_eod_chain() -> None:
     # once close lands late in the evening (09-15/16 both lost the day's pool
     # because the 17:30 pass skipped and the catch-up trusted its record).
     watchlist_retried = False
-    if (now.hour, now.minute) >= (17, 35) and not _automation_applied_today(
-        now.date().isoformat()
-    ):
+    if (now.hour, now.minute) >= (17, 35) and not _automation_applied_today(now.date().isoformat()):
         logger.info("eod chain catchup: watchlist_automation missed/skipped (restart) — re-running")
         try:
             watchlist_automation_job.run()

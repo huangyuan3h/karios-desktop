@@ -32,8 +32,11 @@ def run() -> None:
         return  # exception path already recorded + logged
 
     def _ok(r) -> None:
-        logger.info("xq_follow_snapshot ok: updated=%s trade_date=%s",
-                    r.get("updated", 0), r.get("trade_date", ""))
+        logger.info(
+            "xq_follow_snapshot ok: updated=%s trade_date=%s",
+            r.get("updated", 0),
+            r.get("trade_date", ""),
+        )
 
     def _fail(r) -> None:
         logger.warning("xq_follow_snapshot failed: %s", r.get("error", "unknown"))

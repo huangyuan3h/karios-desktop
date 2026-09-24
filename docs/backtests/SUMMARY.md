@@ -2,7 +2,7 @@
 
 > **何时看**：任何人想「再回测 / 再优化 / 改实盘规则」之前——先走仓库根 `AGENTS.md` → Strategy / parameter changes（主流程）。
 > 本页是拒收总表 + 失败模式（内容层）。
-> **现行边界**：Live 默认仍是港湾 Harbor（S-3 + H2 闲置停车场）；稳健星舰 H2-a25 是唯一研究/展示/人工操作 canonical，不接 Live 自动下单。H2-a25 独立报告为 K3 风险下的 REJECT，不写成全门 PASS。历史 0pt sleeve 数字只作对照。
+> **现行边界**：Live 默认仍是港湾 Harbor（S-3 + H2 闲置停车场）；研究/展示/人工操作默认档是**星舰 B**（卫星 + 闲置现金 3 腿逆波动率），稳健星舰 H2-a25 并列可选，均不接 Live 自动下单。H2-a25 独立报告为 K3 风险下的 REJECT，不写成全门 PASS。历史 0pt sleeve 数字只作对照。
 > **2026-09-21 成本严格化重跑（OPT-229）**：`paper_cost_model` 升级（CN 万3 + 杂费 + 1-tick 滑点下限；HK 微费），CN 30→**32.28bp**、HK 90→**92.54bp**。S-3 CN 重固化 `s3-cn-baseline-20260921` sha `545d385c7339`，HK `s3-hk-baseline-20260921` sha `88c21fb48d20`；H2-a25 新证据见 [`sat-h2-a25-2026-09-24`](stable/sat-h2-a25-2026-09-24.md)。
 
 ---

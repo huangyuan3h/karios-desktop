@@ -908,5 +908,3 @@ def test_is_cn_b_share() -> None:
     assert wa._is_cn_b_share("CN:9009") is False
     assert wa._is_cn_b_share("HK:0900") is False
     assert wa._is_cn_b_share("") is False
-
-

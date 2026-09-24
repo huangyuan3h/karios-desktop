@@ -1193,9 +1193,7 @@ def test_catchup_retries_skipped_watchlist_automation(monkeypatch) -> None:
 def test_catchup_does_not_retry_skipped_before_close(monkeypatch) -> None:
     """Before the 17:35 guard a skipped run is left alone (close not ready)."""
     _monkey_cst(monkeypatch, 17, 20)
-    _patch_today_runs(
-        monkeypatch, ran={"watchlist_automation"}, automation_applied=False
-    )
+    _patch_today_runs(monkeypatch, ran={"watchlist_automation"}, automation_applied=False)
     calls: dict[str, int] = {"wa": 0}
     monkeypatch.setattr(
         scheduler_pkg.watchlist_automation_job,

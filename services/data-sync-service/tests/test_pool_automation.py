@@ -21,7 +21,9 @@ class TestS3PoolAdditions:
         def fake_build(**kwargs):
             calls.append(kwargs)
             market = kwargs.get("market")
-            return [{"symbol": f"{market}:600001", "score": 90.0, "rs": 0.8, "ts_code": "600001.SH"}]
+            return [
+                {"symbol": f"{market}:600001", "score": 90.0, "rs": 0.8, "ts_code": "600001.SH"}
+            ]
 
         with patch("data_sync_service.service.paper_s3.build_s3_candidates", fake_build):
             out = wa.compute_s3_pool(day=DAY)
@@ -55,7 +57,7 @@ class TestSatellitePoolAdditions:
                     "daysLeft": 1,
                 },
                 {"ts": "", "entryDate": "2026-09-11"},
-            ]
+            ],
         }
         with patch(
             "data_sync_service.service.state_bucket_track.build_state_bucket_timeline",
@@ -237,7 +239,7 @@ class TestSatellitePoolRefresh:
         monkeypatch.setattr(wa, "list_registry", lambda: list(registry))
         monkeypatch.setattr(
             "data_sync_service.db.watchlist_automation.get_latest_run",
-            lambda: ({"tradeDate": DAY, "meta": prev_meta} if prev_meta is not None else None),
+            lambda: {"tradeDate": DAY, "meta": prev_meta} if prev_meta is not None else None,
         )
 
         def fake_insert(**kw):
@@ -272,8 +274,11 @@ class TestSatellitePoolRefresh:
             monkeypatch,
             legs=legs,
             registry=registry,
-            prev_meta={"s3PoolSize": 10, "poolAdded": {"s3": 3, "satellite": 1},
-                       "poolRemoved": {"s3": 1, "satellite": 0}},
+            prev_meta={
+                "s3PoolSize": 10,
+                "poolAdded": {"s3": 3, "satellite": 1},
+                "poolRemoved": {"s3": 1, "satellite": 0},
+            },
         )
         out = wa.refresh_satellite_pool(day=DAY)
         assert out["ok"] is True

@@ -62,16 +62,10 @@ def compose_satellite_action(
     gate_open = panel.get("gateOpen") is True
     ranked = panel.get("ranked") or []
     candidates = [
-        e
-        for e in ranked
-        if e.get("inBucket") and not e.get("skipReason") and e.get("fillable")
+        e for e in ranked if e.get("inBucket") and not e.get("skipReason") and e.get("fillable")
     ][:MAX_BUYS]
     exits = [str(x.get("ts") or "") for x in (panel.get("exits") or []) if x.get("ts")]
-    held = [
-        str(x.get("ts") or "")
-        for x in (panel.get("heldLegs") or [])
-        if x.get("ts")
-    ]
+    held = [str(x.get("ts") or "") for x in (panel.get("heldLegs") or []) if x.get("ts")]
     park = parking_label(parking)
     proceeds = (
         f"卖出资金停入 H2 停车腿（{park}）"
@@ -83,7 +77,10 @@ def compose_satellite_action(
         lines.append(f"卖出：{'、'.join(t.split('.')[0] for t in exits)}（14:30 到期）")
         lines.append(proceeds)
     else:
-        lines.append("今日无到期卖出" + (f"（继续持有 {'、'.join(t.split('.')[0] for t in held)}）" if held else ""))
+        lines.append(
+            "今日无到期卖出"
+            + (f"（继续持有 {'、'.join(t.split('.')[0] for t in held)}）" if held else "")
+        )
     if gate_open:
         buys = "、".join(str(e.get("ts", "")).split(".")[0] for e in candidates) or "无合规候选"
         lines.append(f"闸开（广度 {_pct(panel.get('breadth1430'))}）→ 买入：{buys}")
@@ -98,9 +95,7 @@ def compose_satellite_action(
             f"闲钱停车：25% 停 {park}（H2 迟滞，2pt 领先才换）+ 75% 停 B3 风险预算（5 资产逆波动率，月初再平衡）"
         )
     elif mode == "starship_b":
-        lines.append(
-            "闲钱停车：100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，月初再平衡）"
-        )
+        lines.append("闲钱停车：100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，月初再平衡）")
     return {
         "tradeDate": panel.get("tradeDate"),
         "mode": mode,

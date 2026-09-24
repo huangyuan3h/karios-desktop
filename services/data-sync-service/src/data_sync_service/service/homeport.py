@@ -127,15 +127,11 @@ def risk_budget_run(
         {"date": cal[0] if cal else "", "weights": _rounded(cur), "turnover": 0.0}
     ]
     for i in range(1, len(cal)):
-        r = sum(
-            cur[ts]
-            * (
-                series[ts][i] / series[ts][i - 1] - 1.0
-                if series[ts][i - 1] and series[ts][i]
-                else 0.0
-            )
-            for ts in RISK_UNIVERSE
-        )
+        r = 0.0
+        for ts in RISK_UNIVERSE:
+            prev, now = series[ts][i - 1], series[ts][i]
+            if prev and now:
+                r += cur[ts] * (now / prev - 1.0)
         nav.append(nav[-1] * (1.0 + r))
         if w_by_i[i] != cur:
             turn = sum(abs(w_by_i[i][ts] - cur[ts]) for ts in RISK_UNIVERSE) / 2.0
@@ -190,19 +186,29 @@ def starship_b_run(
     nav = [1.0]
     cur = w_by_i[0]
     events: list[dict[str, Any]] = [
-        {"date": cal[0] if cal else "", "weights": {ts: round(cur[ts], 4) for ts in universe}, "turnover": 0.0}
+        {
+            "date": cal[0] if cal else "",
+            "weights": {ts: round(cur[ts], 4) for ts in universe},
+            "turnover": 0.0,
+        }
     ]
     for i in range(1, len(cal)):
-        r = sum(
-            cur[ts] * (series[ts][i] / series[ts][i - 1] - 1.0)
-            for ts in universe
-            if series[ts][i - 1] and series[ts][i]
-        )
+        r = 0.0
+        for ts in universe:
+            prev, now = series[ts][i - 1], series[ts][i]
+            if prev and now:
+                r += cur[ts] * (now / prev - 1.0)
         nav.append(nav[-1] * (1.0 + r))
         if w_by_i[i] != cur:
             turn = sum(abs(w_by_i[i][ts] - cur[ts]) for ts in universe) / 2.0
             nav[-1] *= 1.0 - cost * turn
-            events.append({"date": cal[i], "weights": {ts: round(w_by_i[i][ts], 4) for ts in universe}, "turnover": round(turn, 4)})
+            events.append(
+                {
+                    "date": cal[i],
+                    "weights": {ts: round(w_by_i[i][ts], 4) for ts in universe},
+                    "turnover": round(turn, 4),
+                }
+            )
             cur = w_by_i[i]
     return {"nav": nav, "events": events, "weights": [w_by_i[i] for i in range(len(cal))]}
 
@@ -309,9 +315,7 @@ def blend_homeport_timeline(
         if risk_peak > 0:
             risk_dd = max(risk_dd, (risk_peak - v) / risk_peak)
     last_w = run["weights"][-1] if run["weights"] else {}
-    out["riskUniverse"] = [
-        {"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in RISK_UNIVERSE
-    ]
+    out["riskUniverse"] = [{"ts": ts, "name": B3_LABELS.get(ts, ts)} for ts in RISK_UNIVERSE]
     out["riskBlotter"] = run["events"]
     out["riskHeld"] = {
         "date": cal[-1],

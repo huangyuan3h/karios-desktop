@@ -34,12 +34,29 @@ def _build_ctx() -> tuple[dict, str]:
         series = []
         for i, d in enumerate(days):
             if i < 24:
-                series.append({"date": d, "open": 10.0, "high": 10.0, "low": 10.0,
-                               "close": 10.0, "pre_close": 10.0, "amount": 1e6})
+                series.append(
+                    {
+                        "date": d,
+                        "open": 10.0,
+                        "high": 10.0,
+                        "low": 10.0,
+                        "close": 10.0,
+                        "pre_close": 10.0,
+                        "amount": 1e6,
+                    }
+                )
             else:
-                series.append({"date": d, "open": opens[ts], "high": highs[ts],
-                               "low": lows[ts], "close": closes[ts],
-                               "pre_close": 10.0, "amount": 1e6})
+                series.append(
+                    {
+                        "date": d,
+                        "open": opens[ts],
+                        "high": highs[ts],
+                        "low": lows[ts],
+                        "close": closes[ts],
+                        "pre_close": 10.0,
+                        "amount": 1e6,
+                    }
+                )
         per_ts[ts] = series
     mv_map = {d: {ts: 1e9 for ts in NAMES} for d in days}
     # raw 15:00 == qfq close every day (ratio 1.0: no basis scaling in checks,
@@ -55,7 +72,9 @@ def _build_ctx() -> tuple[dict, str]:
         "mv_map": mv_map,
         "cal": days,
         "date_idx": {ts: {d: i for i, d in enumerate(days)} for ts in NAMES},
-        "close_by_ts": {ts: {r["date"]: r["close"] for r in series} for ts, series in per_ts.items()},
+        "close_by_ts": {
+            ts: {r["date"]: r["close"] for r in series} for ts, series in per_ts.items()
+        },
         "idx_by_day": {d: i for i, d in enumerate(days)},
         "feat_cache": {},
         "px_by_hhmm": {"1430": {ts: {day: prints[ts]} for ts in NAMES}, "1500": px1500},
@@ -155,10 +174,20 @@ def test_live_signals_match_replay(day: str) -> None:
     sig = satellite_signals_for_day(ctx, day)
     assert sig["decisionAvailable"] is True, sig.get("reason")
     sat = replay_sgap_from_context(
-        ctx, start=start, end=day, skip_t1_limit=True, pool_mode="strict",
-        max_pos=4, position_pct=0.25, body=3, fill_mode=FILL_SAME_1430,
-        fill_hhmm="1430", exit_hhmm="1430", max_open_to_1430_pct=0.03,
-        rank_key="amp_1430", gate_1430=True,
+        ctx,
+        start=start,
+        end=day,
+        skip_t1_limit=True,
+        pool_mode="strict",
+        max_pos=4,
+        position_pct=0.25,
+        body=3,
+        fill_mode=FILL_SAME_1430,
+        fill_hhmm="1430",
+        exit_hhmm="1430",
+        max_open_to_1430_pct=0.03,
+        rank_key="amp_1430",
+        gate_1430=True,
     )
     rows = [r for r in sat["rows"] if str(r.get("date")) == day]
     assert len(rows) == 1

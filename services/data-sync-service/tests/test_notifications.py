@@ -372,8 +372,16 @@ class TestSatelliteActionAlert:
         "exits": [{"ts": "000978.SZ", "exitDue": "2026-09-17"}],
         "heldLegs": [],
         "ranked": [
-            {"ts": "002128.SZ", "inBucket": True, "skipReason": None, "fillable": True,
-             "gapPct": 3.04, "amp1430Pct": 2.92, "px1430": 27.7, "ampRank": 3},
+            {
+                "ts": "002128.SZ",
+                "inBucket": True,
+                "skipReason": None,
+                "fillable": True,
+                "gapPct": 3.04,
+                "amp1430Pct": 2.92,
+                "px1430": 27.7,
+                "ampRank": 3,
+            },
         ],
     }
 

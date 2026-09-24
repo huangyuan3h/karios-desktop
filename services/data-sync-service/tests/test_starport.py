@@ -55,9 +55,7 @@ class TestStarportTimeline:
 
     def test_active_day_applies_weighted_overlay(self) -> None:
         hp = _homeport([1.0, 1.10])
-        out = blend_starport_timeline(
-            hp, _sat([(1.0, False), (1.20, True)]), sat_weight=SAT_WEIGHT
-        )
+        out = blend_starport_timeline(hp, _sat([(1.0, False), (1.20, True)]), sat_weight=SAT_WEIGHT)
         expected = 1.0 * (1.0 + 0.10 + SAT_WEIGHT * (0.20 - 0.10))
         assert abs(out["rows"][1]["navSingle"] - round(expected, 6)) < 1e-9
         assert out["summary"]["activeDays"] == 1
@@ -90,7 +88,11 @@ class TestStarportTimeline:
 
     def test_missing_satellite_day_counts_inactive(self) -> None:
         hp = _homeport([1.0, 1.10])
-        sat = {"ok": True, "rows": [{"date": "2024-01-01", "satNav": 1.0, "satActive": True}], "summary": {}}
+        sat = {
+            "ok": True,
+            "rows": [{"date": "2024-01-01", "satNav": 1.0, "satActive": True}],
+            "summary": {},
+        }
         out = blend_starport_timeline(hp, sat)
         assert abs(out["rows"][1]["navSingle"] - 1.10) < 1e-9
         assert out["rows"][1]["satActive"] is False
@@ -100,7 +102,6 @@ class TestStarportTimeline:
         out = blend_starport_timeline(hp, _sat([(1.0, False), (1.2, False), (0.9, False)]))
         assert out["summary"]["maxDdFusedPct"] == -25.0
         assert out["summary"]["homeportPct"] == -10.0
-
 
     def test_satellite_row_fields_copied(self) -> None:
         hp = _homeport([1.0, 1.10])
@@ -201,7 +202,9 @@ class TestOverlayLegPassthrough:
         out = blend_starport_timeline(base, sat)
         day1 = 0.04 + STARPORT_DEFAULT_WEIGHT * (0.12 - 0.04)
         day2 = 1.05 / 1.04 - 1.0
-        assert abs(out["summary"]["fusedPct"] - round((1 + day1) * (1 + day2) * 100 - 100, 2)) < 0.05
+        assert (
+            abs(out["summary"]["fusedPct"] - round((1 + day1) * (1 + day2) * 100 - 100, 2)) < 0.05
+        )
         assert out["summary"]["activeDays"] == 1
         assert out["rows"][0]["navSingle"] == round(1 + day1, 6)
 
@@ -209,8 +212,13 @@ class TestOverlayLegPassthrough:
         base = {
             "ok": True,
             "rows": [
-                {"date": "2024-01-02", "prev": "2024-01-01", "navSingle": 1.04,
-                 "navMulti": 1.04, "navSingleReturnPct": 4.0},
+                {
+                    "date": "2024-01-02",
+                    "prev": "2024-01-01",
+                    "navSingle": 1.04,
+                    "navMulti": 1.04,
+                    "navSingleReturnPct": 4.0,
+                },
             ],
             "summary": {"fusedPct": 4.0},
         }

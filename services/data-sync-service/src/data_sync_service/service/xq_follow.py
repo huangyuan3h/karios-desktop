@@ -61,11 +61,13 @@ def sync_xq_follow_snapshot(*, as_of: str | None = None) -> dict[str, Any]:
         ts = _to_ts_code(getattr(r, "股票代码", ""))
         if ts is None:
             continue
-        rows.append({
-            "ts_code": ts,
-            "follow": getattr(r, "关注", None),
-            "price": getattr(r, "最新价", None),
-        })
+        rows.append(
+            {
+                "ts_code": ts,
+                "follow": getattr(r, "关注", None),
+                "price": getattr(r, "最新价", None),
+            }
+        )
     if not rows:
         return {"ok": False, "error": "xq follow: no mappable A-share rows"}
 

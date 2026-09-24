@@ -988,9 +988,7 @@ def _get_or_build_timeline(
         try:
             result = blend_homeport_timeline(harbor_result)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(
-                status_code=500, detail=f"timeline homeport failed: {exc}"
-            ) from exc
+            raise HTTPException(status_code=500, detail=f"timeline homeport failed: {exc}") from exc
         _timeline_mem_put(cache_key, result)
         return result, engine_ctx
 
@@ -1024,9 +1022,7 @@ def _get_or_build_timeline(
             sat_result = build_state_bucket_timeline(start=start, end=end, recipe="habit")
             result = blend_starport_timeline(homeport_result, sat_result)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(
-                status_code=500, detail=f"timeline starport failed: {exc}"
-            ) from exc
+            raise HTTPException(status_code=500, detail=f"timeline starport failed: {exc}") from exc
         _timeline_mem_put(cache_key, result)
         return result, engine_ctx
 

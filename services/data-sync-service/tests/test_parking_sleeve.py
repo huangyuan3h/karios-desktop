@@ -64,8 +64,17 @@ def test_hysteresis_blocks_noise_rotation() -> None:
     assert gated_sides <= free_sides
     # Shape compatibility with parking_replay records.
     for r in gated:
-        assert set(r) >= {"date", "prev", "pick_key", "pick_ts", "want_key",
-                          "parking_ret", "sides", "trail_exit", "cooldown_active"}
+        assert set(r) >= {
+            "date",
+            "prev",
+            "pick_key",
+            "pick_ts",
+            "want_key",
+            "parking_ret",
+            "sides",
+            "trail_exit",
+            "cooldown_active",
+        }
         assert r["cooldown_active"] is False
 
 

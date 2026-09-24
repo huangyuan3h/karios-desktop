@@ -196,8 +196,13 @@ class TestRecomputeExitDue:
             lambda entry, body: None,
         )
         legs = [
-            {"ts": "300220.SZ", "entryDate": "2026-09-21", "heldDays": 2, "daysLeft": 1,
-             "exitDue": "2026-09-22"},
+            {
+                "ts": "300220.SZ",
+                "entryDate": "2026-09-21",
+                "heldDays": 2,
+                "daysLeft": 1,
+                "exitDue": "2026-09-22",
+            },
         ]
         sl._recompute_exit_due(legs)
         assert legs[0]["exitDue"] == "2026-09-22"
@@ -310,9 +315,7 @@ class TestSatelliteLiveJob:
             called["n"] += 1
             raise AssertionError("must not rebuild when today's panel already exists")
 
-        monkeypatch.setattr(
-            "data_sync_service.service.satellite_live.build_live_panel", _boom
-        )
+        monkeypatch.setattr("data_sync_service.service.satellite_live.build_live_panel", _boom)
         out = job.run()
         assert out["skipped"] == "already_captured"
         assert called["n"] == 0

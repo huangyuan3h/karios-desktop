@@ -78,9 +78,7 @@ def test_merge_appends_only_newer_dates() -> None:
             (date(2026, 9, 14), 9.2, None),
         ],
     }
-    with patch(
-        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
-    ):
+    with patch("data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)):
         merged = harbor.merge_recent_db_closes(out, {"518880.SH"})
     assert merged["518880.SH"]["2026-09-11"] == 8.9  # frozen CSV value kept
     assert merged["518880.SH"]["2026-09-14"] == 9.2
@@ -92,9 +90,7 @@ def test_merge_scales_tail_onto_the_csv_basis() -> None:
     out = {"513100.SH": {"2026-09-11": 11.0}}
     anchors = {"513100.SH": (date(2026, 9, 11), 2.2, None)}  # ratio 5.0
     tails = {"513100.SH": [(date(2026, 9, 14), 2.191, None)]}
-    with patch(
-        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
-    ):
+    with patch("data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)):
         merged = harbor.merge_recent_db_closes(out, {"513100.SH"})
     assert merged["513100.SH"]["2026-09-14"] == 2.191 * 5.0
 
@@ -103,9 +99,7 @@ def test_merge_skips_bad_values_and_survives_db_error() -> None:
     out = {"513350.SH": {"2026-09-11": 1.39}}
     anchors = {"513350.SH": (date(2026, 9, 11), 1.39, None)}
     tails = {"513350.SH": [(date(2026, 9, 14), None, None), (date(2026, 9, 15), 0.0, None)]}
-    with patch(
-        "data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)
-    ):
+    with patch("data_sync_service.db.get_connection", return_value=_FakeConn(anchors, tails)):
         merged = harbor.merge_recent_db_closes(out, {"513350.SH"})
     assert merged == {"513350.SH": {"2026-09-11": 1.39}}
 

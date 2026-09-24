@@ -127,7 +127,6 @@ def test_job_failed_includes_error_body() -> None:
     assert "连败 3 次" in streak["body"]
 
 
-
 def test_satellite_action_push_lines() -> None:
     """OPT-223: the 14:30 push carries the selected strategy's action."""
     r = format_bark(

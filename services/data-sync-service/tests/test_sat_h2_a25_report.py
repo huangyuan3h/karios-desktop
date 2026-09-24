@@ -53,4 +53,7 @@ def test_h2_a25_report_uses_timeline_cash_share() -> None:
 def test_h2_a25_grid_uses_explicit_canonical_weights() -> None:
     grid = dict((label, (sleeve, b3, repo)) for label, sleeve, b3, repo in _grid_for_mode("h2"))
     assert grid["h2_a25"] == (A25_SLEEVE_WEIGHT, A25_B3_WEIGHT, 0.0)
-    assert "a25_0pt" in dict((label, (sleeve, b3, repo)) for label, sleeve, b3, repo in _grid_for_mode("legacy-canonical"))
+    assert "a25_0pt" in dict(
+        (label, (sleeve, b3, repo))
+        for label, sleeve, b3, repo in _grid_for_mode("legacy-canonical")
+    )

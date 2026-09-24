@@ -258,3 +258,77 @@
 | 涨停池每日快照 | `.../data/zt_pool/zt_pool_YYYYMMDD.csv`（job `zt_pool_snapshot`，工作日 17:45）| 东财 涨停/炸板/强势/昨日涨停 四池：封板资金/首封时间/最后封板/炸板次数/连板数；接口仅保留 ~2 周，**只能向前积累** |
 | 全天 5min 事件集 | `bar_5min` source `ext_5min`（2024–26 涨停事件日 48 根/天，259 万行）· `baostock_full`（2021–23，待补）| `scripts/import_5min_event_days.py` / `backfill_5min_event_days.py` |
 | 基期工具 | `scripts/hotmoney_lib.py` | `latest_adj` / `raw_price`（qfq→raw 重建）；所有"日线 × 涨停价 / 5min"研究先过它 |
+
+---
+
+## 9. 增补（2026-09-24 · 文本/共识数据权限探针 + 新落资产）
+
+> **背景**：「外部信号为何不是一个级别」讨论 → 探针现 token（¥200 Pro）**还能取到什么文本/共识数据**。
+> 结论：**免费的注意力/共识类已到顶，真正的流言（news/anns/热榜/调研）无权限，level-2 结构性不可得**。
+
+### 9.1 权限探针结果（2026-09-24，现 token）
+
+| 接口 | 权限 | 说明 |
+|------|------|------|
+| `top_list` / `top_inst` | ✅ | 龙虎榜（已在用） |
+| **`broker_recommend`** | ✅ | **券商月度金股**（本次新落） |
+| **`index_member_all`** | ✅ | **申万 PIT 成分史**（本次新落，`in_date`/`out_date`/`is_new`） |
+| `report_rc` | ⚠️ 可用但**1 次/分钟** | 券商盈利预测；全市场回填不可行（5000 只 × 1/min ≈ 83h），仅逐股可取 |
+| `news` / `major_news` / `cctv_news` | ❌ | 无权限 |
+| `anns_d`（公告） | ❌ | 无权限 |
+| `ths_hot` / `dc_hot`（热榜） | ❌ | 无权限 |
+| `stk_surv`（机构调研） | ❌ | 无权限 |
+| `moneyflow_ind_dc` / `moneyflow_ind_ths`（行业资金流） | ❌ | 无权限（付费 2000 积分 = ¥500 可解，见 [data-gap-backfill §2 方案 B](data-gap-backfill-2026-08.md)） |
+| `cyq_perf` / `cyq_chips`（筹码） | ❌ | 无权限 |
+| `limit_list_d` / `kpl_list`（涨停/开盘啦） | ❌ | 无权限 |
+| `stk_factor` / `ths_index` / `moneyflow_ths` | ❌ | 无权限 |
+
+### 9.2 新落研究资产（可复用，勿重复采集）
+
+| 资产 | 位置 | 说明 |
+|------|------|------|
+| 券商月度金股 2021+ | `.../data/altdata/broker_recommend.csv`（69 个月 ~1.6 万条；`scripts/sync_broker_recommend.py`） | 共识注意力；诊断 **REJECT**（[broker-recommend-2026-09-24](../backtests/factors/broker-recommend-2026-09-24.md)） |
+| 申万 PIT 成分史 | `.../data/altdata/sw_members.csv`（5,914 行 / 31 个 SW L1；`scripts/sync_sw_members.py`） | **补上"指数成分史缺"**；含 `in_date`/`out_date`/`is_new`，可做行业中性 / 产业链 PIT 研究 |
+
+### 9.3 结论
+
+- 免费可取的数据已基本取尽；**再往前的唯一路径 = 付费**（`moneyflow_ind` ¥500；news/anns/热榜需更高积分）
+  或 **前向积累**（`zt_pool`、`cn_xq_follow`）。
+- **结构性不可得**：level-2 / 逐笔 / 封单历史、UGC 社交历史（见 [data-gap-backfill §5](data-gap-backfill-2026-08.md)）。
+- 纪律不变：补数据 ≠ 有 edge；注意力/共识类已四源同向负（研报/人气榜/趋势卡/券商金股）。
+
+### 9.4 待拍板：付费数据源（2026-09-24 记录 · **未决定**）
+
+> 用户 2026-09-24：「付费的以后再说，但先记录一下」。本节只登记**选项与解锁面**，不是购买决定；
+> 供应商决策复审仍受 §7（**2026-12-01**）约束。**顺序纪律**：先有一句话机制假设，再买对应数据
+> （first-principles §四 S1）——当前注意力/共识族已四源同向负，故 news/热榜类**低优先**。
+
+| 源 | 覆盖 | 成本 | 解锁 | 优先级 / 前置 |
+|----|------|------|------|----------------|
+| **tushare `moneyflow_ind`**（2000 积分） | 行业资金流**全历史** | **¥500/年** | mainline 闸门在 OOS2/train 回放（[data-gap §2 方案 B](data-gap-backfill-2026-08.md)） | **最高**（唯一有明确回放用途） |
+| tushare `news` / `major_news` / `cctv_news` | 快讯/新闻历史 | 高积分（待查） | 文本事件流 PIT | 低（需先有机制；注意力族已负） |
+| tushare `anns_d` | 公告历史 | 待查 | 政策/公告事件 | 中（汇金/政策底等事件线缺它） |
+| tushare `ths_hot` / `dc_hot` | 热榜历史 | 待查 | 注意力 | 低（同族已负） |
+| tushare `stk_surv` | 机构调研 | 待查 | 调研事件 | 低 |
+| **level-2 / 逐笔 / 封单** | 微观结构 | 交易所/券商授权 | 打板/游资跟买 | 不可得（结构性硬墙，非购买问题） |
+
+- **决策状态**：未决定。若开，先走 `data-gap-backfill §2` 的 Step 流程 + 机制假设，不先囤数据。
+- **替代路径（0 元）**：前向积累 `zt_pool` / `cn_xq_follow` / live 14:30 prints，攒 12 个月再诊断。
+
+### 9.5 免费源补充探针（akshare · 2026-09-24）
+
+> 结论：**akshare 的新闻/快讯类基本都是"最新 N 条快照"，无历史**；有历史的只有政策文本、
+> 注意力快照（已负族）、和逐股互动 Q&A。真正可回填的"流言"免费源**不存在**。
+
+| akshare 接口 | 历史？ | 性质 | 判定 |
+|--------------|--------|------|------|
+| `stock_info_global_cls/em/sina/ths`（财联社/东财/新浪/同花顺快讯） | ❌ 仅最新 20–200 条 | 新闻快讯 | 只能前向（RSSHub `news_items` 已在做） |
+| `news_cctv` | ✅ 按日期 | 新闻联播（政策/宏观） | 政策线，隔夜 gap-consumed（§一.14），低优先 |
+| `stock_hot_search_baidu` | ✅ 按日期/时点 | 百度热搜 | 注意力族（已四源同向负），低优先 |
+| `stock_irm_cninfo`（深交所互动易） | ✅ **逐股历史 Q&A**（含提问时间） | UGC 散户互动 | **唯一免费 UGC 历史**；逐股重、需 NLP，未开 |
+| `stock_sns_sseinfo`（上证 e 互动） | ⚠️ 逐股，部分为空 | UGC 互动 | 同上，样本稀疏 |
+| `stock_news_em` | ❌ 逐股最新 ~100 | 个股新闻 | 无深历史 |
+| `stock_jgdy_tj_em` / `stock_research_report_em` | ⚠️ 调用挂起 | 调研/研报 | akshare 实现不可靠 |
+
+- **净结论**：免费历史文本 = **政策（gap-consumed）+ 注意力（已负）+ 互动易（逐股重）**，
+  均无新 edge 预期。**外部"流言"信号若要复现，只能付费（§9.4）或前向积累**。

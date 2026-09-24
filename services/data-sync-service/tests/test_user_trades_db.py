@@ -45,7 +45,7 @@ def test_insert_and_list_roundtrip() -> None:
     )
     assert row["side"] == "SELL"
     assert row["symbol"] == TEST_SYMBOL
-    rows = ut.list_trades()
+    rows = ut.list_trades(symbol=TEST_SYMBOL)
     assert any(r["id"] == row["id"] for r in rows)
 
 

@@ -1087,8 +1087,10 @@ class TestStarshipParkedComposition:
         monkeypatch.setattr(
             harbor,
             "parking_replay",
-            lambda etf, dates, **kwargs: calls.append(kwargs)
-            or [{"date": d, "parking_ret": 0.0, "sides": 0} for d in dates[1:]],
+            lambda etf, dates, **kwargs: (
+                calls.append(kwargs)
+                or [{"date": d, "parking_ret": 0.0, "sides": 0} for d in dates[1:]]
+            ),
         )
         monkeypatch.setattr(homeport, "load_risk_closes", lambda: {})
         monkeypatch.setattr(
@@ -1100,7 +1102,13 @@ class TestStarshipParkedComposition:
                 "events": [],
             },
         )
-        out = {"ok": True, "rows": [dict(row) for row in rows], "summary": {}, "openPositions": [], "blotter": []}
+        out = {
+            "ok": True,
+            "rows": [dict(row) for row in rows],
+            "summary": {},
+            "openPositions": [],
+            "blotter": [],
+        }
         res = sbt.apply_parked_display(out, parked_mode=sbt.A25_PARKING_MODE, cost_bps=0.0)
         assert calls[-1]["hyst_band"] == harbor.HYST_BAND
         assert sbt.A25_SLEEVE_WEIGHT == 0.25
@@ -1331,8 +1339,11 @@ class TestSame1430LookaheadGuard:
     def _call(self, **kw) -> None:
         try:
             sbt.replay_sgap_from_context(
-                {}, start="2026-01-01", end="2026-01-02",
-                fill_mode=sbt.FILL_SAME_1430, **kw,
+                {},
+                start="2026-01-01",
+                end="2026-01-02",
+                fill_mode=sbt.FILL_SAME_1430,
+                **kw,
             )
         except Exception:
             pass

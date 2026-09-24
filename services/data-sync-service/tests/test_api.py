@@ -468,9 +468,7 @@ def test_timeline_endpoint_carries_all_legs_for_every_strategy(monkeypatch) -> N
             }
         ],
         "parkedHeld": None,
-        "riskBlotter": [
-            {"date": "2026-08-01", "weights": {"510300.SH": 0.2}, "turnover": 0.0}
-        ],
+        "riskBlotter": [{"date": "2026-08-01", "weights": {"510300.SH": 0.2}, "turnover": 0.0}],
         "riskHeld": None,
         "riskUniverse": [{"ts": "510300.SH", "name": "沪深300"}],
         "satWeight": 1 / 3,

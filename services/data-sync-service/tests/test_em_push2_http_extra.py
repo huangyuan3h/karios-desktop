@@ -13,6 +13,13 @@ def _no_proxy_env(monkeypatch):
     urllib opener branch would otherwise do real network calls."""
     monkeypatch.setattr(eh, "_PROXY", "")
     monkeypatch.setattr(eh, "_COOKIE", "")
+    # The egress circuit breaker lives in module globals; a real call in an
+    # earlier test can latch it and make these unit tests fail in full-suite
+    # order. Reset here so this file is order-independent (see test_em_probe.py).
+    monkeypatch.setattr(eh, "_EM_BLOCKED", False)
+    monkeypatch.setattr(eh, "_EM_BLOCKED_AT", 0.0)
+    monkeypatch.setattr(eh, "_EM_FAIL_STREAK", 0)
+    monkeypatch.setattr(eh, "_PROXY_DEGRADED", False)
 
 
 def test_em_headers_valid_referer() -> None:

@@ -78,14 +78,10 @@ def b3_state(
 
     vol = {ts: (_vol_at(series[ts], rebal_i, VOL_LOOKBACK) or 1e-9) for ts in RISK_UNIVERSE}
     target = inverse_vol_weights(vol)
-    factor = {
-        ts: (
-            series[ts][-1] / series[ts][rebal_i]
-            if series[ts][rebal_i] and series[ts][-1]
-            else 1.0
-        )
-        for ts in RISK_UNIVERSE
-    }
+    factor: dict[str, float] = {}
+    for ts in RISK_UNIVERSE:
+        prev, now = series[ts][rebal_i], series[ts][-1]
+        factor[ts] = now / prev if prev and now else 1.0
     gross = sum(target[ts] * factor[ts] for ts in RISK_UNIVERSE) or 1.0
     drift = {ts: target[ts] * factor[ts] / gross for ts in RISK_UNIVERSE}
 
@@ -103,7 +99,12 @@ def b3_state(
         for ts in RISK_UNIVERSE
     ]
     trades = [
-        {"symbol": u["symbol"], "name": u["name"], "side": "BUY" if u["deltaPct"] > 0 else "SELL", "deltaPct": u["deltaPct"]}
+        {
+            "symbol": u["symbol"],
+            "name": u["name"],
+            "side": "BUY" if u["deltaPct"] > 0 else "SELL",
+            "deltaPct": u["deltaPct"],
+        }
         for u in universe
         if abs(u["deltaPct"]) >= MIN_TRADE_PCT
     ]
@@ -143,10 +144,10 @@ def starship_b_state(
         return {"ok": False, "error": "no current-month rebalance anchor"}
     vol = {ts: (_vol_at(series[ts], rebal_i, VOL_LOOKBACK) or 1e-9) for ts in universe_ts}
     target = inverse_vol_weights(vol)
-    factor = {
-        ts: (series[ts][-1] / series[ts][rebal_i] if series[ts][rebal_i] and series[ts][-1] else 1.0)
-        for ts in universe_ts
-    }
+    factor: dict[str, float] = {}
+    for ts in universe_ts:
+        prev, now = series[ts][rebal_i], series[ts][-1]
+        factor[ts] = now / prev if prev and now else 1.0
     gross = sum(target[ts] * factor[ts] for ts in universe_ts) or 1.0
     drift = {ts: target[ts] * factor[ts] / gross for ts in universe_ts}
     raw_px = _raw_last_closes()

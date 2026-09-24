@@ -37,7 +37,9 @@ def _patch_deps(monkeypatch):
     monkeypatch.setattr(
         ur,
         "list_trades",
-        lambda limit=50, symbol=None: [{"id": "t1", "symbol": "CN:600000"}],
+        lambda limit=50, symbol=None, leg=None, strategy_mode=None: [
+            {"id": "t1", "symbol": "CN:600000"}
+        ],
     )
     monkeypatch.setattr(
         ur,
