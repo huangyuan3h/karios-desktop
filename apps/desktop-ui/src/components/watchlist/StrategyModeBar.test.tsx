@@ -21,7 +21,7 @@ describe('StrategyModeBar', () => {
       screen.getByRole('button', { name: /^星舰 B/ }).getAttribute('aria-pressed'),
     ).toBe('true');
     expect(screen.getByRole('button', { name: /进攻/ })).toBeDefined();
-    expect(screen.getByRole('button', { name: /防守/ })).toBeDefined();
+    expect(screen.getByRole('button', { name: /基线/ })).toBeDefined();
     expect(screen.getByRole('button', { name: /均衡/ })).toBeDefined();
     const order = screen
       .getAllByRole('button')

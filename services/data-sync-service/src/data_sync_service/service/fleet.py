@@ -2,8 +2,10 @@
 
 Named portfolio combining the three engines with the H2k revival gate
 and the four defense lines. Pure functions only: no DB, no network,
-no clock, no broker/order calls. Starship B stays the live baseline;
-this module only sizes the observation weight (read-only).
+no clock, no broker/order calls. 母港M30 stays the baseline (Yuan 2026-10-03);
+Starship B stays observation (revival needs rolling-40-trade sum positive
+AND monthly large-cap P&L positive); this module only sizes the observation
+weight (read-only).
 
 Wiring (frozen, see FLEET_report.md in karios-audit-2026-10):
 - Tiers A/B/C via combo_tiers.resolve_asset_tier (buffers 155/145/210/180w,
@@ -204,7 +206,9 @@ def fleet_plan(
         "cost_notes": base["cost_notes"],
         "windows": {k: dict(v) for k, v in FLEET_WINDOWS.items()},
         "disclaimer": (
-            "Starship B stays the live baseline; fleet is research/display "
+            "母港M30 stays the baseline; Starship B stays observation "
+            "(revival needs rolling-40-trade sum positive AND monthly large-cap "
+            "P&L positive); fleet is research/display "
             "only (no orders). L1/L4 never fired in sample (free insurance); "
             "L2/L3 carry small insurance taxes (flagged, kept as approved)."
         ),

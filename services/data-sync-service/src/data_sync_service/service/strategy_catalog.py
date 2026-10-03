@@ -3,15 +3,17 @@
 Single source for the clean caliber numbers (costs included) shown in the UI.
 The current robust Starship row is the H2-a25 report and explicitly carries
 its K3 risk; every row cites its authoritative doc and numbers must be updated
-when a new audit re-freezes them (see the audit doc's §0 comparison table).
+when a new audit re-freezes them (see the audit doc's Sec 0 comparison table).
 
 Text style (2026-09-15): human-facing copy is plain language (大白话) — what it
 does, what it earned, when it works. Jargon stays in the真值 docs.
 
-Live stays 港湾 — this catalog is read-only display data, never order wiring.
+Baseline is 母港M30 (Yuan 2026-10-03 19:44); 星舰B is observation (revival needs
+rolling-40-trade sum positive AND monthly large-cap P&L positive); live
+decisions by Yuan — this catalog is read-only display data, never order wiring.
 
 Three-tier lineup (2026-09-24): 星舰 offense / 稳健星舰 H2-a25 balanced / 星港 balanced /
-母港M30 defense, plus 港湾 sunset baseline (Live keeps running; no new development).
+母港M30 defense (current baseline), plus 港湾 sunset (keeps running; no new development).
 Order below is the display order everywhere (catalog panel, tabs, mode bar).
 """
 
@@ -147,10 +149,10 @@ _STRATEGIES: list[dict[str, Any]] = [
         "structure": (
             "卫星 4 槽 ×25% 不变；闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，"
             "因果 T−1，5bps/边）。相比 H2-a25：长期收益略低、回撤更浅、2022–23 熊市更强。"
-            "研究/展示/人工操作档，不接 Live 自动下单。"
+            "观察档（基线已切母港M30；重启用需 rolling-40-trade sum转正 AND 月度大盘P&L转正），不接 Live 自动下单。"
         ),
         "status": "product_candidate",
-        "statusLabel": "稳健备选 · 3 腿停放",
+        "statusLabel": "观察 · 待复活",
         "role": "balanced",
         "roleLabel": "稳健",
         "timelineStrategy": "starship_b",
@@ -171,7 +173,7 @@ _STRATEGIES: list[dict[str, Any]] = [
         "cons": [
             "长期收益低于 H2-a25（long +669.6% vs +738.5%，少 69pt）",
             "valid 仍弱（+5.4%），卫星弱窗是共同短板",
-            "仅研究/展示/人工操作；Live 自动执行仍为港湾",
+            "观察档（基线=母港M30）；重启用需 rolling-40-trade sum转正 AND 月度大盘P&L转正，当前未满；仅研究/展示/人工操作",
         ],
         "regime": {
             "fit": [
@@ -220,9 +222,9 @@ _STRATEGIES: list[dict[str, Any]] = [
             "和星舰只有 0.16 相关，是真分散；防线一共只花 2.7pt保险税",
         ],
         "cons": [
-            "长窗比星舰 B（+731.3%）少 567pt，别指望跑赢它",
+            "长窗比母港M30基线（+152.6%）多 11pt，但valid（+10.0% vs M30 +35.0%）少 25pt，别指望跑赢基线",
             "当前复活闸关闭（0%），持有窗和基地一样亏 -8.4%，略输沪深300（-7.3%）",
-            "只做研究/展示；星舰 B 仍是 live 基线，不切自动交易",
+            "只做研究/展示；母港M30是当前基线，星舰B为观察，不切自动交易",
         ],
         "regime": {
             "fit": [
@@ -299,11 +301,11 @@ _STRATEGIES: list[dict[str, Any]] = [
         "name": "母港",
         "structure": (
             "港湾的减震版（M30 档）：七成钱跟港湾走，三成按风险预算买一篮子"
-            "（沪深300/中证500/黄金/纳指/国债），每月调一次仓。防守档：回撤比港湾浅，"
-            "长期年化 21%。"
+            "（沪深300/中证500/黄金/纳指/国债），每月调一次仓。当前基线（2026-10-03 Yuan定）："
+            "候选策略需在long/valid/holdout三窗收益全超M30才算找到。"
         ),
         "status": "product_candidate",
-        "statusLabel": "产品候选",
+        "statusLabel": "基线 · M30",
         "role": "defense",
         "roleLabel": "防守",
         "timelineStrategy": "homeport_m30",

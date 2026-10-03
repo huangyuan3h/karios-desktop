@@ -38,7 +38,7 @@ def test_plan_defaults_fail_closed() -> None:
     assert plan["weights"]["m30"] == pytest.approx(0.25)
     assert plan["weights"]["b3"] == pytest.approx(0.25)
     assert plan["target_tier"] == "A"
-    assert plan["disclaimer"].startswith("Starship B stays")
+    assert plan["disclaimer"].startswith("母港M30 stays")
 
 
 def test_plan_gate_pro_rata_and_cap() -> None:
@@ -93,7 +93,7 @@ def test_catalog_has_fleet_research_not_live() -> None:
     assert fleet["status"] == "research"
     assert fleet["windows"]["long"]["total"] == pytest.approx(163.6)
     assert fleet["windows"]["holdout"] if "holdout" in fleet["windows"] else True
-    # Live stays elsewhere (harbor live in code; starship B stays baseline per prompt).
+    # Live stays elsewhere (harbor live in code; 母港M30 stays baseline per Yuan 2026-10-03).
     live_keys = [r["key"] for r in rows if r.get("status") == "live"]
     assert "fleet" not in live_keys
 

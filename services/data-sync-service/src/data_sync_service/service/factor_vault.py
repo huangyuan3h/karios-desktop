@@ -25,7 +25,9 @@ Uniform rule (frozen, same for every factor, documented here and in the UI):
   Paper-20 + monthly-execution delays from H2k Sec 4 are enforced live
   (paper ~4/20 unmet pins the live line at 0%); this display replays the
   rule without the paper gate so revivals stay visible, and the UI labels
-  the live prerequisite separately. 星舰B stays the live baseline; this
+  the live prerequisite separately. 母港M30 stays the baseline (Yuan 2026-10-03);
+  星舰B stays observation (revival needs rolling-40-trade sum positive AND
+  monthly large-cap P&L positive); this
   module never changes live strategy params or any order/broker logic.
 
 Data (frozen, read-only, no DB/network/clock/broker calls):
@@ -88,7 +90,7 @@ FACTOR_DEFS: tuple[dict[str, Any], ...] = (
         "name": "星舰B默认",
         "family": "星舰B族",
         "source": "S-gap>3% + amp前1/3 + body=3 独立信号",
-        "doc": "FINAL Sec 2 + H2k (live基线, rebaseline post-dense)",
+        "doc": "FINAL Sec 2 + H2k (观察; revival需rolling40 sum转正 AND 月度大盘P&L转正, rebaseline post-dense)",
         "unit": "点",
         "updated": "2026-09-30",
         "windows": {
@@ -502,7 +504,7 @@ FACTOR_DEFS: tuple[dict[str, Any], ...] = (
         "name": "母港M30 (参考)",
         "family": "E1×70%+E2×30% (存活参考)",
         "source": "70%港湾+30%B3包装 (与港湾0.998同源, 非独立)",
-        "doc": "H2d Sec 1.2 + FINAL Sec 0 (防守档)",
+        "doc": "H2d Sec 1.2 + FINAL Sec 0 (当前基线M30)",
         "unit": "%",
         "updated": "2026-09-30",
         "windows": {

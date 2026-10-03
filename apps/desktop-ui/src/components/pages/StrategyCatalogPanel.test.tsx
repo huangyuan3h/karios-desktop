@@ -192,7 +192,7 @@ describe('StrategyCatalogPanel', () => {
     expect(await screen.findByText('+55.2%')).toBeDefined();
     expect(screen.getByText('1.73')).toBeDefined();
     expect(screen.getByText('四窗全正、绝对收益最强（long +201.5%）')).toBeDefined();
-    expect(screen.getByText(/Live 恒为港湾/)).toBeDefined();
+    expect(screen.getByText(/母港M30=基线/)).toBeDefined();
   });
 
   it('switches to 星港 details on click', async () => {

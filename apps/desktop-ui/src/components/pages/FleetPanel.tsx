@@ -45,7 +45,7 @@ export function FleetPanel() {
     <div className="flex flex-col gap-3" data-testid="fleet-panel">
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5">
         <div className="text-[13px] font-semibold">
-          舰队 <span className="ml-2 text-[11px] font-normal text-[var(--k-muted)]">研究 · 展示（星舰 B 仍是 live 基线，不切自动交易）</span>
+          舰队 <span className="ml-2 text-[11px] font-normal text-[var(--k-muted)]">研究 · 展示（母港M30为当前基线；星舰B为观察，不切自动交易）</span>
         </div>
         <div className="mt-1 text-[11px] leading-5 text-[var(--k-muted)]">
           底仓 50%港湾+25%母港M30+25%B3月调，预备舰按复活闸 0%/10%/20%切入（当前闸 0% fail-closed）；
@@ -103,7 +103,7 @@ export function FleetPanel() {
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5 text-[11px] leading-5 text-[var(--k-muted)]" data-testid="fleet-defense">
         防线状态：L1 60天-15%降档（样本0次，保留免费保险） · L2 单笔-8%暂停（样本69天，耗长窗约1.4pt，保留） ·
         L3 周-5%减半（样本20天，耗长窗约1.2pt、保持有0.3pt，保留） · L4 -25%转现金（样本0次，保留）。
-        复活闸当前 0%（因子冷库星舰B冷库，paper未满，保持观察）。
+        复活闸当前 0%（因子冷库星舰B冷库，paper未满，保持观察；复活需 rolling-40 sum转正 AND 月度大盘P&L转正）。
       </div>
       <div className="h-64 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -116,7 +116,7 @@ export function FleetPanel() {
             <ReferenceLine y={1} stroke="#94a3b8" strokeDasharray="4 3" />
             <Line type="monotone" dataKey="fleet" name="舰队" stroke="#0ea5e9" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="base" name="无星舰基地" stroke="#64748b" dot={false} strokeDasharray="5 3" />
-            <Line type="monotone" dataKey="starship_b" name="星舰B" stroke="#8b5cf6" dot={false} />
+            <Line type="monotone" dataKey="starship_b" name="星舰B（观察）" stroke="#8b5cf6" dot={false} />
             <Line type="monotone" dataKey="hs300" name="沪深300" stroke="#a1a1aa" dot={false} />
           </LineChart>
         </ResponsiveContainer>

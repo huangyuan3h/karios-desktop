@@ -48,24 +48,24 @@ export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
 
 export const STRATEGY_MODE_TAGS: Record<StrategyMode, string> = {
   harbor: 'Live · 日落',
-  homeport: '防守 · 产品候选',
+  homeport: '基线 · M30',
   starport: '均衡 · 数据档',
   starship: '进攻 · 前置未满',
   starship_robust: '现行 canonical · K3 风险',
-  starship_b: '稳健备选 · 3 腿停放',
+  starship_b: '观察 · 待复活',
   twin_star: '并行 · 正式',
 };
 
 export const STRATEGY_MODE_DESCRIPTIONS: Record<StrategyMode, string> = {
-  harbor: 'S-3 择强核心 + 闲置现金 ETF 停车场。实盘基线（日落模式：维持运行，不再开发）。',
-  homeport: '港湾 70% × B3 风险预算 30%（M30 防守档，月初再平衡 5bp/边）。回撤浅、长期年化 21%。',
+  harbor: 'S-3 择强核心 + 闲置现金 ETF 停车场。实盘（日落模式：维持运行，不再开发）；live决策由Yuan定。',
+  homeport: '港湾 70% × B3 风险预算 30%（M30当前基线，月初再平衡 5bp/边）。回撤浅、长期年化 21%。候选需三窗全超M30。',
   starport: '母港 × 卫星 0.2 曝露（当前数据验收最大权重）。数据收集默认档。',
   starship:
     '激进对照 = 卫星 + 闲置现金 100% 停 H2 趋势 ETF（2pt 迟滞换仓；long +962.7% / MDD −30.5 / SR 2.14）。卫星执行审计 ✅（容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',
   starship_robust:
     '稳健星舰 H2-a25 = 卫星 + 闲置现金 25% 停 H2 ETF / 75% 停 B3 风险预算（5 资产 inverse-vol 月调）。现行研究/展示 canonical；long +738.5% / MDD −8.4 / SR 3.50，K1/K2/K4/K5 PASS、K3 风险未过。前置 = paper 3/20 + 风险授权。',
   starship_b:
-    '星舰 B = 卫星 + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，因果 T−1）。研究/展示/人工操作档；long +669.6% / MDD −5.5 / SR 3.90，2022–23 熊市显著强于 H2-a25（stress +124% / −7.4%）。停放腿 3 只 ETF，好复制；进 Live 前置 = paper 3/20 + 风险授权。',
+    '星舰 B = 卫星 + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，因果 T−1）。观察档（基线已切M30；重启用需 rolling-40 sum转正 AND 月度大盘P&L转正）；long +669.6% / MDD −5.5 / SR 3.90。停放腿 3 只 ETF，好复制。',
   twin_star: '港湾核心 × 卫星 50/50（无仓日 100% 港湾）。五档正式并行档（展示口径，非 Live）；新成本 OOS2 +144.6/train +52.2/valid +24.5/long +299.8。',
 };
 

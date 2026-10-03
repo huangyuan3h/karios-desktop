@@ -64,7 +64,7 @@ def test_build_factors_cover_all_families() -> None:
     ):
         assert must in ids
     by_id = {r["id"]: r for r in rows}
-    # S-gap live baseline is cold on the holdout (10.9%ile, net negative).
+    # S-gap observation leg is cold on the holdout (10.9%ile, net negative).
     assert by_id["starship_b"]["status"] == "cold"
     assert by_id["starship_b"]["position"] == 0
     assert by_id["starship_b"]["badge"] == "冷库"

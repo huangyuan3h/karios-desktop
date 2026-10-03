@@ -902,4 +902,14 @@ describe('BacktestPage', () => {
     expect(screen.queryByText('卫星腿明细')).toBeNull();
   });
 
+  it('shows the M30 baseline card with 120w holdings on the catalog tab', async () => {
+    renderPage();
+    const card = await screen.findByTestId('m30-baseline-card');
+    expect(card.textContent).toContain('母港M30');
+    expect(card.textContent).toContain('当前基线');
+    expect(card.textContent).toContain('只读，不下单');
+    expect(card.textContent).toContain('2026-09-01');
+    expect(card.textContent).toContain('511260');
+  });
+
 });

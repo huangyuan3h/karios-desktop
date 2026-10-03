@@ -72,7 +72,7 @@ export function StrategyCatalogPanel({
         <div className="flex items-center gap-2 text-[12px] font-medium">
           策略族总览
           <span className="text-[10px] font-normal text-[var(--k-muted)]">
-             2026-09-24 H2-a25 现行口径（Live 恒为港湾；canonical 不等于全门 PASS）
+             2026-10-03 M30 基线（母港M30=基线；星舰B=观察，复活需 rolling40转正 AND 大盘P&L转正；live决策由Yuan定）
 
           </span>
         </div>

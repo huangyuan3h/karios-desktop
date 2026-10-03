@@ -730,11 +730,11 @@ function TimelineCard({
   const strategySubtitle: Record<TimelineStrategy, string> = {
     harbor: '选强股票 + 闲钱停 ETF 停车场 · Live（日落模式）',
     homeport: '港湾一半 + 风险预算一半（M50 冻结口径，星港底座）',
-    homeport_m30: '港湾七成 + 风险预算三成（防守档 · 年化 21%）',
+    homeport_m30: '港湾七成 + 风险预算三成（当前基线M30 · 年化 21%）',
     starport: '母港 + 卫星 0.2 曝露 · 全家最稳',
     starship: '激进对照：卫星 + 闲钱 100% 停 H2 ETF（收益高、回撤也大）',
     starship_robust: '现行 canonical：卫星 + 闲钱 25% 停 H2 ETF / 75% 停 B3 风险预算（K3 风险）',
-    starship_b: '稳健备选：卫星 + 闲钱 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，好复制、回撤浅）',
+    starship_b: '观察：卫星 + 闲钱 100% 停 {国债+黄金+纳指} 逆波动率（复活需 rolling40转正 AND 大盘P&L转正）',
     twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）· 正式并行档',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
@@ -743,7 +743,7 @@ function TimelineCard({
     homeport:
       '母港 M50 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。冻结口径（星港底座）；防守档看 M30 tab。',
     homeport_m30:
-      '母港 M30 防守档 = 港湾七成 + 风险预算三成（每月调一次）。回撤比港湾浅一截，长期年化 21%。',
+      '母港 M30 = 当前基线（港湾七成 + 风险预算三成，每月调一次）。回撤比港湾浅一截，长期年化 21%。候选策略需在long/valid/holdout三窗收益全超M30才算找到（2026-10-03 Yuan定）。',
     starport:
       '星港 = 母港 + 卫星 0.2 曝露。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
     starship:
@@ -751,18 +751,18 @@ function TimelineCard({
     starship_robust:
       '稳健星舰 H2-a25 = 卫星 + 闲置现金 25% 停 H2 ETF、75% 停 B3 风险预算（5 资产 inverse-vol 月调）。long +738.5%、MDD −8.4%、SR 3.50；K1/K2/K4/K5 PASS，K3 风险未过；仅研究/展示/人工操作，不进实盘。',
     starship_b:
-      '星舰 B = 卫星 + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，因果 T−1）。long +669.6%、MDD −5.5%、SR 3.90；2022–23 熊市显著强于 H2-a25（stress +124%）；停放腿只有 3 只 ETF，好复制；仅研究/展示/人工操作，不进实盘。',
+      '星舰 B = 观察档（基线已切母港M30）。卫星 + 闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（3 腿月频，因果 T−1）。long +669.6%、MDD −5.5%、SR 3.90；重启用需 rolling-40-trade sum转正 AND 月度大盘P&L转正；仅研究/展示/人工操作，不进实盘。',
     twin_star:
       '双子星 = 港湾一半 + 卫星一半。行情好的年份冲得最猛（2025 +67%），卫星不行的年份很平庸（valid 窗跑输港湾 25.7pt）。五档正式并行档（展示口径，不进实盘）。',
   };
   const TABLE_NOTE: Record<TimelineStrategy, string> = {
     harbor: '港湾（S-3 核心 + 闲置现金 ETF 停车场）· 日落',
     homeport: '母港M50（港湾 × 风险预算 50/50）· 冻结',
-    homeport_m30: '母港M30（港湾 70% × 风险预算 30%）· 防守档',
+    homeport_m30: '母港M30（港湾 70% × 风险预算 30%）· 当前基线',
     starport: '星港（母港 + 卫星 0.2）',
     starship: '星舰 v2（卫星 + 闲置现金停 ETF）',
     starship_robust: '稳健星舰 H2-a25（卫星 + 25% H2 ETF / 75% B3 风险预算）· 现行 canonical',
-    starship_b: '星舰 B（卫星 + 100% {国债+黄金+纳指} 逆波动率停放）· 稳健备选',
+    starship_b: '星舰 B（卫星 + 100% {国债+黄金+纳指} 逆波动率停放）· 观察',
     twin_star: '双子星（港湾 × 卫星 50/50）· 正式并行档',
   };
   const ALL_PICKS = ['STOCK', 'GOLD', 'OIL', 'NASDAQ', 'BOND10', 'REPO'] as const;
@@ -1728,6 +1728,53 @@ function ReturnAttributionCard({
   );
 }
 
+/** M30 baseline card (read-only, no orders): current 120w target for the next monthly rebalance. */
+function M30BaselineCard() {
+  return (
+    <div
+      className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3"
+      data-testid="m30-baseline-card"
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-[12px] font-medium">
+        基线 · 母港M30
+        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">
+          当前基线
+        </span>
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          只读，不下单
+        </span>
+      </div>
+      <p className="text-[11px] leading-5 text-[var(--k-muted)]">
+        120万 = 港湾 84万（70%）＋ B3 36万（30%），每月首个交易日再平衡（5bp/边，单腿偏离超5pt才动，留1%现金防费）。
+      </p>
+      <div className="mt-1.5 flex flex-col gap-1 text-[11px] tabular-nums">
+        <div>
+          <span className="font-medium">B3 36万</span>
+          <span className="text-[var(--k-muted)]">（2026-09-01 60d逆波权重 · B3月频）</span>：
+          511260十年国债 31.14万（86.5%） · 510300沪深300 1.37万（3.8%） ·
+          518880黄金 1.33万（3.7%） · 513100纳指 1.19万（3.3%） · 510500中证500 0.94万（2.6%）
+        </div>
+        <div>
+          <span className="font-medium">港湾 84万</span>
+          <span className="text-[var(--k-muted)]">（S-3股票＋闲置停车）</span>：
+          S-3股票 0（2026-08-10~09-30 holdout 0 closed、idle100%，见H2d §3.5） ＋
+          停车 OIL 513350 84万（08-19~09-30重仓OIL；trail8，09-24 REPO一次，回落即回OIL）
+        </div>
+        <div className="text-[var(--k-muted)]">
+          上次再平衡：2026-09-01（9月首个交易日，B3权重锚） ·
+          下次：2026-10首个交易日（国庆后，T收→T+1开执行）
+        </div>
+      </div>
+      <div className="mt-1.5 rounded border border-[var(--k-border)]/60 px-2 py-1.5 text-[10px] leading-5 text-[var(--k-muted)]">
+        月5分钟清单：1看NAV＋两腿贡献＋超300（并列long/valid/holdout，不许只引long） ·
+        2看S-3 fills/胜率＋停车换仓＋B3漂移 · 3看成本（实现滑点 vs 5bp/边模型） ·
+        4看数据日期＋ETF快照健康 · 5看星舰复活灯（rolling40 sum转正 AND 月度大盘P&amp;L转正，
+        再叠paper20＋holdout收复＋过滤版valid转正）再决定星舰是否0→10→20%，否则保持0%。
+      </div>
+    </div>
+  );
+}
+
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
@@ -1775,6 +1822,7 @@ export function BacktestPage() {
           <TabsTrigger value="fleet">舰队</TabsTrigger>
         </TabsList>
         <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
+          <M30BaselineCard />
           <StrategyCatalogPanel selectedKey={catalogKey} onSelect={setCatalogKey} />
           <TimelineCard
             strategy={catalogKeyToTimeline(catalogKey)}
