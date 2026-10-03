@@ -5,6 +5,7 @@
 - [A_lookahead.md](A_lookahead.md) — Karios 星舰 B 审计 A：未来函数 / 信息泄漏（只读对手审计，2026-10-03）
 - [BOLLKDJ_report.md](BOLLKDJ_report.md) — BOLL+KDJ 苗头验证——能否成为 Karios 策略（只读研究，2026-10-03）
 - [B_overfit.md](B_overfit.md) — Karios 星舰 B 审计 B：过拟合 / 稳健性（只读对手审计，2026-10-03）
+- [CAPACITY_MAP_report.md](CAPACITY_MAP_report.md) — 容量地图 CAPACITY MAP（<=200万为主，2026-10-04，只读，无Crimson，无可见浏览器，未开png）
 - [COMPARE_report.md](COMPARE_report.md) — 全策略同尺子大比较（只读研究，2026-10-03）
 - [C_data_reality.md](C_data_reality.md) — Karios 星舰 B 审计 C：数据质量与交易现实
 - [DATAFIX_report.md](DATAFIX_report.md) — Karios 数据同步修复报告（2026-10-03，无人值守执行）
@@ -29,8 +30,10 @@
 - [M30_BASELINE_report.md](M30_BASELINE_report.md) — M30 基线切换报告（Yuan 2026-10-03 19:44 决策执行，只读研究）
 - [M30_REGIME_report.md](M30_REGIME_report.md) — M30牛熊与加减仓规则（只读研究，2026-10-03）
 - [NEWLEGS_report.md](NEWLEGS_report.md) — 新腿搜寻报告（只读研究，2026-10-03）
+- [NICHE_QDII_report.md](NICHE_QDII_report.md) — 小众 QDII / LOF / 跨境 / 特种 ETF 扫描报告（只读研究，2026-10-04）
 - [NOCOMMOD_report.md](NOCOMMOD_report.md) — 去商品去S-gap：能不能扔掉我们控制不了的东西（只读研究，2026-10-03）
 - [PARKCAP_report.md](PARKCAP_report.md) — 分散/限仓停车：留住商品收益、砍掉单腿风险（只读研究，2026-10-03）
+- [QDII_PREMIUM_report.md](QDII_PREMIUM_report.md) — QDII真实溢价成本：港湾与M30（只读研究，2026-10-04）
 - [REGIME_LEAD_report.md](REGIME_LEAD_report.md) — 牛熊领先信号：能不能比什么都不知道好（只读研究，2026-10-03）
 - [RESTRUCTURE_plan.md](RESTRUCTURE_plan.md) — Karios 重整方案（2026-10-03）：1.星舰B保留，是live和唯一基线，其他都跟它比（只写方案不改代码）
 - [SGAP_10Y_report.md](SGAP_10Y_report.md) — 顶部摘要(给Yuan,5行)
