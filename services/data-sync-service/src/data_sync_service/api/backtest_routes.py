@@ -583,6 +583,29 @@ def backtest_paper_vs_backtest() -> dict[str, Any]:
     return {"ok": True, "report": report}
 
 
+@router.get("/sgap-decay")
+def backtest_sgap_decay() -> dict[str, Any]:
+    """S-gap decay series for the Backtest page "S-gap 失效趋势" tab.
+
+    Read-only display data (data/backtest_reports/sgap_decay.json), generated
+    by scripts/generate_sgap_decay.py from h2f_trades.json (no DB queries).
+    404 when the script has never been run; the payload carries rolling
+    40/60-trade means, win rates, random-baseline percentiles (K2 N=40/X=75),
+    monthly counts, crowding medians, large-order edges and trade-space equity.
+    """
+    report_path = REPORTS_DIR / "sgap_decay.json"
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="no sgap-decay report yet — run scripts/generate_sgap_decay.py first",
+        )
+    try:
+        decay = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"report unreadable: {exc}") from exc
+    return {"ok": True, "decay": decay}
+
+
 @router.get("/core-audit")
 def backtest_core_audit(
     day: str = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),

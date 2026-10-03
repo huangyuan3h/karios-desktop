@@ -917,3 +917,50 @@ export function usePaperVsBacktestQuery(enabled = true) {
     enabled,
   });
 }
+
+export type SgapDecayResponse = {
+  ok: boolean;
+  decay: {
+    meta: {
+      source: string;
+      n_trades: number;
+      windows: Record<'OOS2' | 'train' | 'valid' | 'holdout', { start: string; end: string }>;
+      generated_at?: string;
+    };
+    summary: {
+      n_trades: number;
+      date_start: string | null;
+      date_end: string | null;
+      cum_total: number;
+      max_drawdown: number;
+      latest_r40_mean: number | null;
+      latest_r40_win_rate: number | null;
+      latest_r40_percentile: number | null;
+      latest_r40_t: number | null;
+      revival_pos: number;
+    };
+    rolling: Array<{
+      i: number;
+      date: string;
+      r40: { mean: number; sum: number; win_rate: number; t: number; percentile: number } | null;
+      r60: { mean: number; sum: number; win_rate: number; t: number; percentile: number } | null;
+      crowd_amt_w: number | null;
+      crowd_circ: number | null;
+      large_edge: number | null;
+      revival_pos: number | null;
+    }>;
+    monthly: Array<{ month: string; count: number; sum: number }>;
+    equity: Array<{ i: number; date: string; cum: number; drawdown: number }>;
+  };
+};
+
+/** S-gap 失效趋势: frozen decay series (h2f_trades.json, no DB work). */
+export function useSgapDecayQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'sgap-decay'],
+    queryFn: () => apiGetJson<SgapDecayResponse>('/api/backtest/sgap-decay'),
+    staleTime: 30 * 60_000,
+    retry: false,
+    enabled,
+  });
+}

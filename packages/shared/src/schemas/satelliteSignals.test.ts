@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  SatelliteLast1430ResponseSchema,
   SatelliteLivePanelResponseSchema,
   SatelliteSignalsResponseSchema,
 } from './satelliteSignals';
@@ -89,5 +90,16 @@ describe('SatelliteLivePanelResponseSchema', () => {
   it('accepts a missing snapshot (card shows "待 14:30 判定")', () => {
     const out = SatelliteLivePanelResponseSchema.parse({ ok: true, panel: null });
     expect(out.panel).toBeNull();
+  });
+});
+
+describe('SatelliteLast1430ResponseSchema', () => {
+  it('parses the latest 14:30 prints', () => {
+    const out = SatelliteLast1430ResponseSchema.parse({
+      ok: true,
+      asOf: '2026-09-28',
+      prices: { '002982.SZ': 12.34 },
+    });
+    expect(out.prices['002982.SZ']).toBe(12.34);
   });
 });

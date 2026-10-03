@@ -101,3 +101,11 @@ export const SatelliteExitDueResponseSchema = z.object({
   exitDue: z.record(z.string(), z.string().nullable()),
 });
 export type SatelliteExitDueResponse = z.infer<typeof SatelliteExitDueResponseSchema>;
+
+/** Latest 14:30 raw print per ts_code (the satellite exit price on due day). */
+export const SatelliteLast1430ResponseSchema = z.object({
+  ok: z.boolean(),
+  asOf: z.string().nullable(),
+  prices: z.record(z.string(), z.number()),
+});
+export type SatelliteLast1430Response = z.infer<typeof SatelliteLast1430ResponseSchema>;

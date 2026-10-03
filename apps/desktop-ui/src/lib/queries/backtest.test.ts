@@ -17,6 +17,7 @@ import {
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   useSensitivityQuery,
+  useSgapDecayQuery,
   useSleeveReconQuery,
   type CorrelationStatusResponse,
 } from './backtest';
@@ -186,5 +187,28 @@ describe('clusterExposureForSymbol', () => {
 
   it('returns null when symbol not in any cluster', () => {
     expect(clusterExposureForSymbol(status, 'HK:00700')).toBeNull();
+  });
+});
+
+describe('useSgapDecayQuery', () => {
+  beforeEach(() => {
+    mockedApiGetJson.mockReset();
+    mockedUseQuery.mockClear();
+  });
+
+  it('fetches the frozen sgap-decay endpoint with a long stale time', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true, decay: { summary: { n_trades: 1130 } } });
+    useSgapDecayQuery();
+    const opts = lastOptions();
+    expect(opts.queryKey).toEqual(['backtest', 'sgap-decay']);
+    expect(opts.staleTime).toBe(30 * 60_000);
+    await opts.queryFn();
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/sgap-decay');
+  });
+
+  it('respects the enabled flag', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true });
+    useSgapDecayQuery(false);
+    expect(lastOptions().enabled).toBe(false);
   });
 });
