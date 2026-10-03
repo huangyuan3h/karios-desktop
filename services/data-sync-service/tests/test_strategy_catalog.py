@@ -16,6 +16,7 @@ def test_catalog_has_three_tiers_plus_sunset_in_order() -> None:
         "starship",
         "starship_robust",
         "starship_b",
+        "fleet",
         "starport",
         "homeport",
         "harbor",
@@ -25,6 +26,7 @@ def test_catalog_has_three_tiers_plus_sunset_in_order() -> None:
         "星舰",
         "稳健星舰 H2-a25",
         "星舰 B",
+        "舰队",
         "星港",
         "母港",
         "港湾",
@@ -35,6 +37,7 @@ def test_catalog_has_three_tiers_plus_sunset_in_order() -> None:
         ("balanced", "稳健"),
         ("balanced", "稳健"),
         ("balanced", "均衡"),
+        ("balanced", "均衡"),
         ("defense", "防守"),
         ("live", "Live 底座"),
         ("balanced", "均衡"),
@@ -43,7 +46,7 @@ def test_catalog_has_three_tiers_plus_sunset_in_order() -> None:
 
 def test_catalog_rows_are_complete() -> None:
     for row in strategy_catalog():
-        assert row["updated"] in {"2026-09-21", "2026-09-24"}
+        assert row["updated"] in {"2026-09-21", "2026-09-24", "2026-10-03"}
         assert row["structure"] and row["statusLabel"] and row["doc"] and row["tag"]
         assert row["role"] and row["roleLabel"]
         assert set(row["windows"]) == WINDOW_KEYS
@@ -81,7 +84,7 @@ def test_catalog_returns_fresh_copies() -> None:
 def test_catalog_route_contract() -> None:
     out = br.backtest_strategy_catalog()
     assert out["ok"] is True
-    assert len(out["strategies"]) == 7
+    assert len(out["strategies"]) == 8
     by_key = {r["key"]: r for r in out["strategies"]}
     assert by_key["starship"]["timelineStrategy"] == "starship"
     assert by_key["starship"]["windows"]["long"] == {

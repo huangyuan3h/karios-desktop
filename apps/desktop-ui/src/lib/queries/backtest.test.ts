@@ -17,6 +17,7 @@ import {
   useCorrelationStatusQuery,
   useExitAttributionQuery,
   useFactorVaultQuery,
+  useFleetQuery,
   useSensitivityQuery,
   useSgapDecayQuery,
   useSleeveReconQuery,
@@ -233,6 +234,29 @@ describe('useFactorVaultQuery', () => {
   it('respects the enabled flag', async () => {
     mockedApiGetJson.mockResolvedValue({ ok: true });
     useFactorVaultQuery(false);
+    expect(lastOptions().enabled).toBe(false);
+  });
+});
+
+describe('useFleetQuery', () => {
+  beforeEach(() => {
+    mockedApiGetJson.mockReset();
+    mockedUseQuery.mockClear();
+  });
+
+  it('fetches the frozen fleet endpoint with a long stale time', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true, fleet: { windows: {} } });
+    useFleetQuery();
+    const opts = lastOptions();
+    expect(opts.queryKey).toEqual(['backtest', 'fleet']);
+    expect(opts.staleTime).toBe(30 * 60_000);
+    await opts.queryFn();
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/fleet');
+  });
+
+  it('respects the enabled flag', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true });
+    useFleetQuery(false);
     expect(lastOptions().enabled).toBe(false);
   });
 });

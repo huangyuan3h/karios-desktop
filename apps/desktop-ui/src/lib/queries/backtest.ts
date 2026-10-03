@@ -1023,3 +1023,35 @@ export function useFactorVaultQuery(enabled = true) {
     enabled,
   });
 }
+
+export type FleetWindowMetrics = {
+  total?: number | null;
+  cagr?: number | null;
+  mdd?: number | null;
+  sharpe?: number | null;
+  calmar?: number | null;
+  worst_month?: string | null;
+  worst_month_ret?: number | null;
+  recover_days?: number | null;
+};
+
+export type FleetResponse = {
+  ok: boolean;
+  fleet: {
+    meta?: { source?: string; generated_at?: string | null; note?: string };
+    windows?: { fleet?: Record<string, FleetWindowMetrics>; base?: Record<string, FleetWindowMetrics> };
+    defense?: { days?: number; L1_days?: number; L2_days?: number; L3_days?: number; L4_days?: number; recommendation?: string };
+    equity?: { dates?: string[]; fleet?: Array<number | null>; base?: Array<number | null>; starship_b?: Array<number | null>; hs300?: Array<number | null> };
+  };
+};
+
+/** 舰队: frozen fleet display (scratch/fleet audit, no DB work). Research only; starship B stays live. */
+export function useFleetQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'fleet'],
+    queryFn: () => apiGetJson<FleetResponse>('/api/backtest/fleet'),
+    staleTime: 30 * 60_000,
+    retry: false,
+    enabled,
+  });
+}

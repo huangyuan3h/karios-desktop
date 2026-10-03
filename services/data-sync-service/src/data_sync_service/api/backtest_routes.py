@@ -643,6 +643,30 @@ def backtest_factor_vault() -> dict[str, Any]:
     return {"ok": True, "vault": vault, "history": history}
 
 
+@router.get("/fleet")
+def backtest_fleet() -> dict[str, Any]:
+    """Fleet (Jian Dui) for the Backtest page "舰队" tab.
+
+    Read-only display data (data/backtest_reports/fleet.json), generated
+    by scripts/generate_fleet.py from the frozen audit (scratch/fleet;
+    no DB queries). 404 when the script has never been run; the payload
+    carries the 4-window metrics table (fleet + base), defense-line
+    states, and equity vs starship-B/base/HS300. Starship B stays the
+    live baseline; fleet is research/display only (no orders).
+    """
+    report_path = REPORTS_DIR / "fleet.json"
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="no fleet report yet — run scripts/generate_fleet.py first",
+        )
+    try:
+        fleet = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"report unreadable: {exc}") from exc
+    return {"ok": True, "fleet": fleet}
+
+
 @router.get("/core-audit")
 def backtest_core_audit(
     day: str = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),
