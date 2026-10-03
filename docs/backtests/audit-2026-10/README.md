@@ -1,0 +1,47 @@
+# Karios 审计与策略研究（2026-10）
+
+从 `~/Projects/wealth-ideas` 同步的快照（`sync_docs_to_karios_desktop.sh`）。基准：母港 M30。账本见 [STRATEGY_LEDGER.md](STRATEGY_LEDGER.md)。
+
+- [A_lookahead.md](A_lookahead.md) — Karios 星舰 B 审计 A：未来函数 / 信息泄漏（只读对手审计，2026-10-03）
+- [BOLLKDJ_report.md](BOLLKDJ_report.md) — BOLL+KDJ 苗头验证——能否成为 Karios 策略（只读研究，2026-10-03）
+- [B_overfit.md](B_overfit.md) — Karios 星舰 B 审计 B：过拟合 / 稳健性（只读对手审计，2026-10-03）
+- [COMPARE_report.md](COMPARE_report.md) — 全策略同尺子大比较（只读研究，2026-10-03）
+- [C_data_reality.md](C_data_reality.md) — Karios 星舰 B 审计 C：数据质量与交易现实
+- [DATAFIX_report.md](DATAFIX_report.md) — Karios 数据同步修复报告（2026-10-03，无人值守执行）
+- [D_better.md](D_better.md) — Karios 审计 D：有没有更好的策略或收益结构（只读对手审计，2026-10-03）
+- [FACTOR_VAULT_report.md](FACTOR_VAULT_report.md) — 因子冷库 Tab 交付报告（2026-10-03）
+- [FINAL_REPORT.md](FINAL_REPORT.md) — Karios 综合报告（最终，2026-10-03，只读对手审计综合）
+- [FLEET_report.md](FLEET_report.md) — 舰队组合回测与防线分析（只读研究，2026-10-03）
+- [F_placebo_sensitivity.md](F_placebo_sensitivity.md) — Karios 审计 F：补齐 A–E 都承认没做的三项关键验证（只读对手审计，2026-10-03）
+- [G_portfolio_100w.md](G_portfolio_100w.md) — Karios G：100 万规模下的最优策略组合研究（只读、预注册，2026-10-03）
+- [H1_hypotheses.md](H1_hypotheses.md) — Karios H1：新赚钱策略挖掘第1轮（假设库 + 预注册 + 粗回测）· 2026-10-03
+- [H2_backtests.md](H2_backtests.md) — Karios H2：新策略严格回测第2轮（2026-10-03）
+- [H2b_capacity_switch.md](H2b_capacity_switch.md) — Karios H2b：200万容量版星舰B + 星舰B/港湾切换规则（2026-10-03，主人点名最高优先）
+- [H2d_core_legs_200w.md](H2d_core_legs_200w.md) — Karios H2d：核心腿（港湾 + 母港 M30）200万实战压力测试（只读审计，2026-10-03）
+- [H2e_national_team.md](H2e_national_team.md) — Karios H2e：「跟着国家队」能不能赚钱（只读审计，2026-10-03）
+- [H2f_sgap_who_pays.md](H2f_sgap_who_pays.md) — Karios H2f：S-gap 到底赚的是谁的钱？（北向 + 国家队归因，只读审计，2026-10-03）
+- [H2g_flow_correlation.md](H2g_flow_correlation.md) — Karios H2g：2026-07 以后国家队/北向撤退与 S-gap 失灵的相关性（只读审计，2026-10-03）
+- [H2h_national_team_timing.md](H2h_national_team_timing.md) — Karios H2h：国家队「低买高卖」与「国家队满仓时不大跌」的时点可得性检验（只读审计，2026-10-03）
+- [H2i_timeline_check.md](H2i_timeline_check.md) — Karios H2i：Timeline 页面数据真实性核查 + 「国家队满仓时爬升、下跌与北向同向」检验（只读审计，2026-10-03）
+- [H2j_capital_tiers.md](H2j_capital_tiers.md) — Karios H2j — 按资金量分档的策略方案（只读研究，2026-10-03）
+- [H2k_sgap_revival.md](H2k_sgap_revival.md) — Karios H2k — S-gap（星舰B族）是暂时失灵还是彻底失效？+ 预注册「复活信号」（只读研究，2026-10-03）
+- [H3_review.md](H3_review.md) — Karios H3：对抗复核第3轮（挑刺审稿人，2026-10-03）
+- [M30_BASELINE_report.md](M30_BASELINE_report.md) — M30 基线切换报告（Yuan 2026-10-03 19:44 决策执行，只读研究）
+- [M30_REGIME_report.md](M30_REGIME_report.md) — M30牛熊与加减仓规则（只读研究，2026-10-03）
+- [NEWLEGS_report.md](NEWLEGS_report.md) — 新腿搜寻报告（只读研究，2026-10-03）
+- [NOCOMMOD_report.md](NOCOMMOD_report.md) — 去商品去S-gap：能不能扔掉我们控制不了的东西（只读研究，2026-10-03）
+- [PARKCAP_report.md](PARKCAP_report.md) — 分散/限仓停车：留住商品收益、砍掉单腿风险（只读研究，2026-10-03）
+- [REGIME_LEAD_report.md](REGIME_LEAD_report.md) — 牛熊领先信号：能不能比什么都不知道好（只读研究，2026-10-03）
+- [RESTRUCTURE_plan.md](RESTRUCTURE_plan.md) — Karios 重整方案（2026-10-03）：1.星舰B保留，是live和唯一基线，其他都跟它比（只写方案不改代码）
+- [SGAP_10Y_report.md](SGAP_10Y_report.md) — 顶部摘要(给Yuan,5行)
+- [SGAP_TAB_report.md](SGAP_TAB_report.md) — S-gap 失效趋势 Tab 交付报告（2026-10-03）
+- [SOLUTION_report.md](SOLUTION_report.md) — 含国债的稳健组合方案（只读研究，2026-10-03）
+- [STARB_FILL_report.md](STARB_FILL_report.md) — 星舰B只排除接不住的单精确容量版（只读研究，2026-10-03）
+- [STARB_HISTORY_report.md](STARB_HISTORY_report.md) — 星舰B过去5年有没有类似“近期失灵”（只读研究，2026-10-03）
+- [STEP1_report.md](STEP1_report.md) — Karios 重整 第1步报告：新组合层（算档库）—— STEP1_report (2026-10-03)
+- [STRATEGY_LEDGER.md](STRATEGY_LEDGER.md) — 策略账本（持久记录：测过什么、结果、裁决）
+- [SUMMARY.md](SUMMARY.md) — Karios 审计 E：交叉复核与总结论（第二审计员，只读对手审计，2026-10-03）
+- [THIRD_LEG_report.md](THIRD_LEG_report.md) — Karios 第三条腿搜寻报告（只读研究，2026-10-04）
+- [VOLT_AUDIT_report.md](VOLT_AUDIT_report.md) — VOLT15 审计：有没有偷看未来、是不是过拟合、蒙特卡洛能不能活（2026-10-04，只读）
+- [VOLT_ROBUST_report.md](VOLT_ROBUST_report.md) — VOLT15 稳健性压测：执行成本、走廊、跨时代、冲击、容量（只读研究，2026-10-04）
+- [profit-leads.md](profit-leads.md) — 回测中发现的赚钱苗头（持续记录，仅历史回测，不构成投资建议）
