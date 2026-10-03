@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type {
   B3State,
   SatelliteExitDueResponse,
+  SatelliteLast1430Response,
   SatelliteLivePanelResponse,
   SatellitePaper,
   SatellitePaperResponse,
@@ -181,6 +182,10 @@ export type FundFlowRow = {
   marginD20Pct: number | null;
   northDailyYi: number | null;
   northD20Yi: number | null;
+  /** True when the north value is turnover caliber (on/after 2024-08-19 break). */
+  northIsTurnover?: boolean | null;
+  /** True when this date had partial margin publication (<3 exchanges). */
+  marginIncompleteDate?: boolean | null;
   smNetPct: number | null;
   /** 国家队 daily net subscription (Σ Δshare×NAV, 亿元). */
   natDailyYi: number | null;
@@ -196,6 +201,10 @@ export type FundFlowResponse = {
   start: string;
   end: string;
   rows: FundFlowRow[];
+  /** Dates with partial margin publication (excluded from aggregates). */
+  marginIncompleteDates?: string[];
+  /** North-bound caliber break date (post-break values are turnover). */
+  hsgtBreakDate?: string;
 };
 
 /** 国家队(宽基份额+B闸) / 两融 / 北向 / 散户 — daily flow panorama. */
@@ -778,6 +787,23 @@ export function useSatelliteExitDueQuery(entries: string[], enabled = true) {
         `/api/backtest/satellite-signals/exit-due?entries=${encodeURIComponent(key)}`,
       ),
     staleTime: 60 * 60_000,
+    enabled: enabled && key.length > 0,
+  });
+}
+
+/**
+ * Latest 14:30 raw print per ts_code — the actual satellite exit price on the
+ * due day (not the last close). Used to show/record a held leg's sell price.
+ */
+export function useSatelliteLast1430Query(symbols: string[], enabled = true) {
+  const key = [...symbols].filter(Boolean).sort().join(',');
+  return useQuery({
+    queryKey: ['backtest', 'satellite-last-1430', key],
+    queryFn: () =>
+      apiGetJson<SatelliteLast1430Response>(
+        `/api/backtest/satellite-signals/last-1430?symbols=${encodeURIComponent(key)}`,
+      ),
+    staleTime: 60_000,
     enabled: enabled && key.length > 0,
   });
 }

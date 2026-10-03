@@ -288,7 +288,7 @@ export function FundFlowPanel({
       </div>
 
       <SectionHeader
-        title="三路资金叠加（20 日累计净流入 · 亿元 1:1:1）"
+        title="三路资金叠加（20 日累计 · 亿元 1:1:1，北向 2024-08-19 后为成交额）"
         chips={[
           { text: '国家队 20日', color: FF_COLORS.etf },
           { text: '两融 20日', color: FF_COLORS.margin },
@@ -445,7 +445,7 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
-        title="两融余额（万亿元，全市场）"
+        title="两融余额（万亿元，全市场 · 仅完整日）"
         chips={[
           { text: `20日Δ ${fmtSigned(last?.marginD20Pct, 1, '%')}`, color: FF_COLORS.margin },
         ]}
@@ -493,9 +493,9 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
-        title="北向资金（亿元）"
+        title="北向资金（亿元 · 2024-08-19 后为成交额口径，非净买）"
         chips={[
-          { text: '日线净买', color: FF_COLORS.north },
+          { text: '日线成交额', color: FF_COLORS.north },
           { text: `20日累计 ${fmtSigned(last?.northD20Yi, 0, '亿')}`, color: FF_COLORS.northCum },
         ]}
       />
@@ -530,7 +530,7 @@ export function FundFlowPanel({
               fields={[
                 {
                   key: 'northDailyYi',
-                  label: '当日净买',
+                  label: '当日成交额',
                   color: FF_COLORS.north,
                   digits: 1,
                   unit: ' 亿',
@@ -606,8 +606,15 @@ export function FundFlowPanel({
 
       <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
         显示层 · 不影响交易 · 同步模式下十字线与上方 NAV 图联动（按 index 同步 → 同窗口才对齐）·
-        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye、北向 = 日净买 · 份额
-        2021-22 起完整 · 两融 2021+ · 北向 2021+ · 小单 2023+（2025-09~2026-07 缺口已回填）
+        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye（仅 3 交易所完整日）、北向 =
+        2024-08-19 前日净买 / 后成交额（跨口径 20 日累计已断开，不混算）· 份额 2021-22 起完整 ·
+        两融 2021+ · 北向净买仅 2021–2024-08-18 有效 · 小单 2023+（2025-09~2026-07 缺口已回填）
+        {q.data?.marginIncompleteDates?.length ? (
+          <span className="text-red-600 dark:text-red-400">
+            {' '}
+            · 两融部分发布日已剔除（{q.data.marginIncompleteDates.slice(-3).join('、')}）：当日余额仅供参考，不计入累计。
+          </span>
+        ) : null}
       </div>
     </div>
   );

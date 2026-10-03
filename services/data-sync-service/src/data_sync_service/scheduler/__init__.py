@@ -29,6 +29,7 @@ from data_sync_service.scheduler import (
     eastmoney_industry_job,
     em_probe_job,
     etf_daily_job,
+    etf_snapshot_job,
     factor_signals_job,
     fund_basic_job,
     hk_basic_job,
@@ -57,6 +58,7 @@ from data_sync_service.scheduler import (
     timeline_warmup_job,
     trading_brief_job,
     watchlist_automation_job,
+    watchlist_retry_job,
     webhook_delivery_job,
     weekly_review_job,
     xq_follow_job,
@@ -108,6 +110,22 @@ def create_scheduler() -> BackgroundScheduler:
         etf_daily_job.run_full,
         CronTrigger.from_crontab(etf_daily_job.FULL_CRON_EXPRESSION, timezone="Asia/Shanghai"),
         id=etf_daily_job.FULL_JOB_ID,
+        replace_existing=True,
+    )
+    # 2026-10 datafix: monthly research-panel CSV snapshot (was manual-only,
+    # went stale 2026-09-11). Day-2 19:30 avoids the fragile day-1 full run.
+    scheduler.add_job(
+        etf_snapshot_job.run,
+        etf_snapshot_job.build_trigger(),
+        id=etf_snapshot_job.JOB_ID,
+        replace_existing=True,
+    )
+    # 2026-10 datafix: 20:30 late retry for the 17:30 watchlist race
+    # (close_sync regularly lands after 17:30 on heavy days).
+    scheduler.add_job(
+        watchlist_retry_job.run,
+        watchlist_retry_job.build_trigger(),
+        id=watchlist_retry_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

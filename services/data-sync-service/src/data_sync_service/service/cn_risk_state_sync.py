@@ -103,7 +103,14 @@ def sync_margin_total(
     pro_factory=None,
     sleep=time.sleep,
 ) -> dict:
-    """Market-wide margin balance per exchange (tushare margin, per trade_date)."""
+    """Market-wide margin balance per exchange (tushare margin, per trade_date).
+
+    Partial publication guard (2026-09-30 lesson): SSE often publishes a day
+    before SZSE/BSE, so a fresh date may hold only 1/3 exchanges. Such dates
+    are kept (per-exchange rows are valid) but reported as
+    ``incomplete_dates`` — aggregates must exclude them until complete,
+    otherwise the full-market SUM halves overnight (-49.6% fake drop).
+    """
     try:
         pro = (pro_factory or _default_pro_factory)()
         days = _open_dates(start_date, end_date, pro_factory=pro_factory)
@@ -111,6 +118,7 @@ def sync_margin_total(
             days = [start_date.replace("-", "")] if start_date else []
         days = [d.replace("-", "") for d in days]
         total = 0
+        per_day_exchanges: dict[str, set[str]] = {}
         for td in days:
             df = pro.margin(trade_date=td)
             if df is not None and not df.empty:
@@ -129,8 +137,21 @@ def sync_margin_total(
                     for r in df.itertuples()
                 ]
                 total += cn_risk_state.upsert_margin_total(rows)
+                for r in rows:
+                    day = cn_risk_state._date(r.get("trade_date")) or td
+                    ex = str(r.get("exchange_id") or "").strip()
+                    if ex:
+                        per_day_exchanges.setdefault(str(day), set()).add(ex)
             sleep(0.25)
-        return {"ok": True, "updated": total, "days": len(days)}
+        incomplete = sorted(
+            d for d, exs in per_day_exchanges.items() if len(exs) < len(cn_risk_state.MARGIN_EXCHANGES)
+        )
+        if incomplete:
+            logger.warning(
+                "sync_margin_total incomplete days (partial publication, excluded from aggregates): %s",
+                incomplete,
+            )
+        return {"ok": True, "updated": total, "days": len(days), "incomplete_dates": incomplete}
     except Exception as exc:  # noqa: BLE001
         logger.warning("sync_margin_total failed: %s", exc)
         return {"ok": False, "error": str(exc)}

@@ -321,6 +321,36 @@ def satellite_signals_exit_due(
     return {"ok": True, "body": BODY, "exitDue": due}
 
 
+@router.get("/satellite-signals/last-1430")
+def satellite_signals_last_1430(
+    symbols: str = Query(..., description="comma-separated ts_codes (e.g. 002982.SZ)"),
+) -> dict[str, Any]:
+    """Latest 14:30 raw print per ts_code (``bar_5min``), for held-leg exit pricing.
+
+    The satellite exit is the 14:30 print on the due day, so the card must
+    show/record that price — not the last close (2026-09-28: a recorded exit
+    used the 09-24 close, off by 2.5%/5.3%).
+    """
+    from data_sync_service.db import get_connection
+
+    codes = [s.strip() for s in symbols.split(",") if s.strip()]
+    prices: dict[str, float] = {}
+    as_of: str | None = None
+    if codes:
+        with get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ON (ts_code) ts_code, trade_date, close FROM bar_5min "
+                "WHERE trade_time = '1430' AND ts_code = ANY(%s) AND close IS NOT NULL "
+                "ORDER BY ts_code, trade_date DESC",
+                (codes,),
+            )
+            for ts, d, c in cur.fetchall():
+                ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                prices[str(ts)] = float(c)
+                as_of = ds if as_of is None or ds > as_of else as_of
+    return {"ok": True, "asOf": as_of, "prices": prices}
+
+
 @router.get("/satellite-paper/user")
 def satellite_paper_user(
     start: str | None = None,
@@ -679,6 +709,17 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
     net flow (亿元, 1:1:1 money trio).
     400-day warm lookback feeds every MA/window; T+1 publications (margin/north)
     forward-fill per field (5-session staleness cap).
+
+    Data-quality guards (2026-10 datafix):
+    - margin: only dates with all 3 exchanges (SSE/SZSE/BSE) feed totals;
+      partial days (e.g. 2026-09-30 SSE-only) are dropped from marg_map so
+      the full-market SUM never halves overnight. Dropped dates surface as
+      ``marginIncomplete`` on the following complete row's tooltip context
+      via the /flow-series meta (see backtest_flow_series).
+    - north: 2024-08-19 caliber break — pre-break north_money is daily net
+      inflow (万元), post-break it is turnover scale (always positive).
+      Post-break rows carry ``northIsTurnover=True`` and the 20-session
+      cumulative restarts at the break (never mixes net + turnover).
     """
     try:
         from datetime import date as date_type
@@ -736,6 +777,8 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
         marg = _levels(
             "SELECT trade_date, SUM(rzye) FROM cn_margin_total WHERE trade_date "
             "BETWEEN %s::date - INTERVAL '400 days' AND %s::date "
+            "AND trade_date IN (SELECT trade_date FROM cn_margin_total "
+            "GROUP BY trade_date HAVING COUNT(DISTINCT exchange_id) >= 3) "
             "GROUP BY trade_date ORDER BY trade_date",
             (start, end),
         )
@@ -744,6 +787,19 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
             "BETWEEN %s::date - INTERVAL '400 days' AND %s::date ORDER BY trade_date",
             (start, end),
         )
+        # Incomplete margin days (partial publication) for the UI warning.
+        try:
+            with get_connection() as _conn:
+                with _conn.cursor() as _cur:
+                    _cur.execute(
+                        "SELECT trade_date FROM cn_margin_total WHERE trade_date "
+                        "BETWEEN %s::date AND %s::date "
+                        "GROUP BY trade_date HAVING COUNT(DISTINCT exchange_id) < 3",
+                        (start, end),
+                    )
+                    margin_incomplete_dates = sorted(str(r[0]) for r in _cur.fetchall())
+        except Exception:  # noqa: BLE001
+            margin_incomplete_dates = []
 
         # Per-code forward fill → totals (identical to the B-gate convention).
         last_by_code: dict[str, float] = {}
@@ -780,9 +836,25 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
             marg20sum[marg[i][0]] = round((marg[i][1] - marg[i - 20][1]) / 1e8, 1)
 
         north_daily = {d: round(v / 1e4, 1) for d, v in hsgt}  # 万元 → 亿元
+        # Caliber break 2024-08-19: post-break north_money is turnover, not
+        # net inflow. The 20-session cumulative must not mix the two regimes,
+        # so it restarts at the first post-break observation.
+        try:
+            from data_sync_service.db.cn_risk_state import HSGT_BREAK_DATE
+        except Exception:  # noqa: BLE001
+            HSGT_BREAK_DATE = "2024-08-19"
         north20: dict[str, float] = {}
-        for i in range(19, len(hsgt)):
-            north20[hsgt[i][0]] = round(sum(v for _, v in hsgt[i - 19 : i + 1]) / 1e4, 1)
+        run: list[tuple[str, float]] = []
+        for d, v in hsgt:
+            if run and d >= HSGT_BREAK_DATE > run[0][0]:
+                run = []
+            run.append((d, v))
+            if len(run) >= 20:
+                # Only emit when the 20-day window sits in one regime.
+                window = run[-20:]
+                if (window[0][0] >= HSGT_BREAK_DATE) == (window[-1][0] >= HSGT_BREAK_DATE):
+                    north20[d] = round(sum(x for _, x in window) / 1e4, 1)
+        north_is_turnover = {d: (d >= HSGT_BREAK_DATE) for d, _ in hsgt}
 
         sm_net_pct: dict[str, float] = {}
         with get_connection() as conn:
@@ -824,6 +896,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
             "marginD20Yi": marg20sum,
         }
         etf_age = marg_age = 99
+        north20_regime: str | None = None  # regime of last consumed north20 value
         for d in calendar:
             if totals.get(d) is not None:
                 etf_yi = round(totals[d] / 1e4, 1)
@@ -839,9 +912,20 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
                 if d in m:
                     last20[k] = m[d]
                     since[k] = 0
+                    if k == "northD20Yi":
+                        north20_regime = "turnover" if d >= HSGT_BREAK_DATE else "net"
                 else:
                     since[k] += 1
+            # Never forward-fill the 20d cumulative across the caliber break:
+            # a post-break day showing a pre-break net-buy sum (or vice versa)
+            # would mix two different series.
+            cur_regime = "turnover" if d >= HSGT_BREAK_DATE else "net"
+            if north20_regime is not None and north20_regime != cur_regime:
+                stale_north = None
+            else:
+                stale_north = last20["northD20Yi"] if since["northD20Yi"] <= 5 else None
             stale = {k: (v if since[k] <= 5 else None) for k, v in last20.items()}
+            stale["northD20Yi"] = stale_north
             rows.append(
                 {
                     "date": d,
@@ -852,6 +936,8 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
                     "marginD20Pct": stale["marginD20Pct"],
                     "northDailyYi": north_daily.get(d),
                     "northD20Yi": stale["northD20Yi"],
+                    "northIsTurnover": bool(north_is_turnover.get(d, d >= "2024-08-19")),
+                    "marginIncompleteDate": d in set(margin_incomplete_dates),
                     "smNetPct": stale["smNetPct"],
                     "natDailyYi": nat_daily.get(d),
                     "natD20Yi": stale["natD20Yi"],
@@ -859,6 +945,15 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
                     "marginD20Yi": stale["marginD20Yi"],
                 }
             )
+        # Attach quality meta on the function for the endpoint (no signature change).
+        rows_meta = {  # type: ignore[attr-defined]
+            "marginIncompleteDates": margin_incomplete_dates,
+            "hsgtBreakDate": "2024-08-19",
+        }
+        try:
+            _load_flow_rows.meta = rows_meta  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
         return rows
     except Exception:  # noqa: BLE001 — display-only; panel renders empty on failure
         return []
@@ -893,7 +988,12 @@ def backtest_flow_series(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or date_type.today().isoformat()
     _validate_window(start, end)
-    return {"ok": True, "start": start, "end": end, "rows": _load_flow_rows(start, end)}
+    rows = _load_flow_rows(start, end)
+    meta = getattr(_load_flow_rows, "meta", None) or {
+        "marginIncompleteDates": [],
+        "hsgtBreakDate": "2024-08-19",
+    }
+    return {"ok": True, "start": start, "end": end, "rows": rows, **meta}
 
 
 def _get_or_build_timeline(

@@ -27,6 +27,19 @@ HSGT_TABLE = "cn_moneyflow_hsgt"
 GLOBAL_INDEX_TABLE = "global_index_daily"
 FLOW_DAILY_TABLE = "cn_flow_daily"
 
+# Exchanges expected in a complete margin-trading day (SSE/SZSE/BSE).
+# A day with fewer exchanges is a partial publication (e.g. SZSE T+1 lag)
+# and must not feed full-market SUM aggregates (2026-09-30: SSE-only
+# 1.32tn vs 2.61tn prior day, -49.6% fake drop).
+MARGIN_EXCHANGES: tuple[str, ...] = ("SSE", "SZSE", "BSE")
+
+# North-bound flow caliber break: since 2024-08-19 the exchange stopped
+# publishing daily net inflow; tushare moneyflow_hsgt north_money/hgt/sgt
+# switched to a turnover-scale series (100% positive, min +77584.24 vs
+# pre-break min -17911.52). Post-break values must be labelled turnover,
+# never "net buy".
+HSGT_BREAK_DATE = "2024-08-19"
+
 ETF_SHARE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {ETF_SHARE_TABLE} (
     trade_date   DATE NOT NULL,
@@ -286,3 +299,30 @@ def upsert_global_index(rows: list[dict]) -> int:
         low=excluded.low, close=excluded.close, updated_at=now()""",
         vals,
     )
+
+
+def margin_exchange_counts(start_date: str, end_date: str) -> dict[str, int]:
+    """Per-date exchange coverage for cn_margin_total in [start, end]."""
+    ensure_margin_total()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT trade_date, COUNT(DISTINCT exchange_id)
+                FROM {MARGIN_TOTAL_TABLE}
+                WHERE trade_date BETWEEN %s::date AND %s::date
+                GROUP BY trade_date""",
+                (start_date, end_date),
+            )
+            return {str(d): int(n) for d, n in cur.fetchall()}
+
+
+def incomplete_margin_dates(start_date: str, end_date: str) -> list[str]:
+    """Dates with fewer than the expected 3 exchanges (partial publication)."""
+    return sorted(
+        d for d, n in margin_exchange_counts(start_date, end_date).items() if n < len(MARGIN_EXCHANGES)
+    )
+
+
+def is_hsgt_turnover_date(trade_date: str) -> bool:
+    """True when hsgt north_money is turnover caliber (on/after the break)."""
+    return str(trade_date) >= HSGT_BREAK_DATE

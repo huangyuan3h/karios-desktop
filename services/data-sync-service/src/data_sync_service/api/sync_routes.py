@@ -375,6 +375,9 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "sleeve_paper_recon",
     # OPT-222: live 14:30 satellite panel snapshot (watchlist card)
     "satellite_live_panel",
+    # 2026-10 datafix: monthly ETF panel snapshot + 20:30 watchlist retry
+    "etf_snapshot_sync",
+    "watchlist_automation_retry",
     # P0-13 attention: Snowball follow daily snapshot (forward-only panel)
     "xq_follow_snapshot",
     # P0-13 B18: EM limit-up pools daily snapshot (forward-only panel)

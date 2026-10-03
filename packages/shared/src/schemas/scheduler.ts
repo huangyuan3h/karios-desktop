@@ -292,6 +292,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     20,
     { endpoint: '/sync/etf-daily', method: 'POST', label: '立即同步' },
   ),
+  meta(
+    'etf_snapshot_sync',
+    'etf',
+    'ETF 研究面板月快照',
+    '每月 2 日 19:30 刷新 data/etf/etf_daily.csv（fund_daily+fund_adj close_adj，45 天窗口增量合并；2026-10 前为纯手动，曾滞后 22 天）。',
+    '每月 2 日 19:30',
+    '30 19 2 * *',
+    'cron',
+    true,
+    21,
+  ),
 
   /* Index + Macro --------------------------------------------------------- */
   meta(
@@ -401,12 +412,23 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'watchlist_automation',
     'watchlistAutomation',
     '自选股收盘自动化',
-    '工作日 17:30 收盘后，自动剔除弱势从 screener 导入新标的并附加 Alpha Radar 强信号。',
+    '工作日 17:30 收盘后，自动剔除弱势从 screener 导入新标的并附加 Alpha Radar 强信号。close 常晚于 17:30 落地，close 未就绪时记 skip 并由 18:05 watchdog / 18:40 post_5min / 20:30 retry 补跑。',
     '工作日 17:30',
     '30 17 * * 1-5',
     'cron',
     true,
     10,
+  ),
+  meta(
+    'watchlist_automation_retry',
+    'watchlistAutomation',
+    '自选池深夜补跑',
+    '工作日 20:30 仅当 close 已落地且当日尚无 applied 池时补跑 17:30 跳过的任务（close 常 19–21 点才落地，18:05 watchdog 仍太早）。',
+    '工作日 20:30',
+    '30 20 * * 1-5',
+    'cron',
+    true,
+    11,
   ),
   meta(
     'intraday_score',

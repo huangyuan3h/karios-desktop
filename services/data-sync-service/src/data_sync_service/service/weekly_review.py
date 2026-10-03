@@ -150,6 +150,24 @@ def build_weekly_review(*, end_date: str) -> dict[str, Any]:
         logger.warning("weekly_review recon failed: %s", exc)
         recon = []
 
+    # 2026-10 datafix: key-table freshness snapshot (read-only, fail-open).
+    data_health: list[dict[str, Any]] = []
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+
+        _scripts = _Path(__file__).resolve().parents[3] / "scripts"
+        if str(_scripts) not in _sys.path:
+            _sys.path.insert(0, str(_scripts))
+        import data_health_check as _dhc
+
+        from datetime import date as _date
+
+        data_health = _dhc.check_tables(_date.today())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("weekly_review data health failed: %s", exc)
+        data_health = []
+
     stats: dict[str, Any] = {
         "week": {"start": start, "end": end},
         "decisionVolume": {"total": fired_total, "bySource": fired},
@@ -169,6 +187,7 @@ def build_weekly_review(*, end_date: str) -> dict[str, Any]:
         "funnel": automation,
         "registry": registry,
         "recon": recon,
+        "dataHealth": data_health,
     }
 
     return {"ok": True, **stats, "markdown": _render_markdown(stats)}
@@ -256,6 +275,26 @@ def _render_markdown(stats: dict[str, Any]) -> str:
                 f"- {drift} {r['reconDate']} {r['market']}：回测应持有 {r['expected']} · "
                 f"paper 实持 {r['actual']} · 一致 {r['aligned']} · 缺 {r['missing']} · 多 {r['extra']}"
             )
+        lines.append("")
+
+    # 4b) 数据健康（2026-10 datafix：一命令自查，滞后>2交易日标红，单日跳变>30%报警）
+    health = stats.get("dataHealth") or []
+    if health:
+        lines.append("## 4b. 数据健康（关键表最大日期/滞后/跳变）")
+        for h in health:
+            if h.get("error"):
+                lines.append(f"- ⚠ {h.get('table')}: 读取失败 {h.get('error')}")
+            elif h.get("lag_alarm"):
+                lines.append(
+                    f"- 🔴 {h.get('table')}: {h.get('rows')} 行至 {h.get('max_date')}，"
+                    f"滞后 {h.get('lag_open_days')} 个交易日（>2）"
+                )
+            else:
+                lines.append(
+                    f"- ✅ {h.get('table')}: {h.get('rows')} 行至 {h.get('max_date')}，"
+                    f"滞后 {h.get('lag_open_days')} 个交易日"
+                )
+        lines.append("- 自查命令：`PYTHONPATH=src python3 scripts/data_health_check.py`")
         lines.append("")
 
     # 5) 自动结论

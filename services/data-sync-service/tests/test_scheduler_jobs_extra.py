@@ -189,6 +189,8 @@ class TestCreateScheduler:
             "risk_state_sync",
             "xq_follow_snapshot",
             "zt_pool_snapshot",
+            "etf_snapshot_sync",
+            "watchlist_automation_retry",
         }
         assert ids == expected
 
