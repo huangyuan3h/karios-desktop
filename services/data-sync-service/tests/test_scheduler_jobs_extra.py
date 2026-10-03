@@ -191,6 +191,7 @@ class TestCreateScheduler:
             "zt_pool_snapshot",
             "etf_snapshot_sync",
             "watchlist_automation_retry",
+            "factor_vault_refresh",
         }
         assert ids == expected
 

@@ -31,6 +31,7 @@ from data_sync_service.scheduler import (
     etf_daily_job,
     etf_snapshot_job,
     factor_signals_job,
+    factor_vault_job,
     fund_basic_job,
     hk_basic_job,
     hk_daily_job,
@@ -434,6 +435,14 @@ def create_scheduler() -> BackgroundScheduler:
         timeline_warmup_job.run,
         timeline_warmup_job.build_trigger(),
         id=timeline_warmup_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Factor vault daily refresh (weekdays 19:10 — read-only file recompute,
+    # never touches live params/orders/broker; fail-open keeps yesterday).
+    scheduler.add_job(
+        factor_vault_job.run,
+        factor_vault_job.build_trigger(),
+        id=factor_vault_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

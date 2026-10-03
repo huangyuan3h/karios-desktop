@@ -964,3 +964,62 @@ export function useSgapDecayQuery(enabled = true) {
     enabled,
   });
 }
+
+export type FactorVaultHistoryPoint = {
+  window: string;
+  date: string | null;
+  percentile: number | null;
+  net: number;
+  trades: number;
+  revived: boolean;
+};
+
+export type FactorVaultRow = {
+  id: string;
+  name: string;
+  family: string;
+  source: string;
+  doc: string;
+  unit: string;
+  status: 'cold' | 'watch' | 'revived';
+  badge: string;
+  percentile: number | null;
+  net: number;
+  win_rate: number | null;
+  trades: number;
+  trades_raw: number;
+  rolling_window: string | null;
+  spark: Array<number | null>;
+  history: FactorVaultHistoryPoint[];
+  position: number;
+  confirmations: number;
+  days_since_change: number;
+  updated: string | null;
+};
+
+export type FactorVaultResponse = {
+  ok: boolean;
+  vault: {
+    meta: {
+      source: string;
+      n_factors: number;
+      generated_at?: string | null;
+      revival: { rule: string; N: number; X: number; off_below: number; steps: number[]; min_trades: number; step_gap: number; note: string };
+      cost: string;
+    };
+    summary: { n_factors: number; n_cold: number; n_watch: number; n_revived: number };
+    factors: FactorVaultRow[];
+  };
+  history?: Array<{ date: string; states: Record<string, string> }>;
+};
+
+/** 因子冷库: uniform H2k health table (frozen audit inputs, no DB work). */
+export function useFactorVaultQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'factor-vault'],
+    queryFn: () => apiGetJson<FactorVaultResponse>('/api/backtest/factor-vault'),
+    staleTime: 30 * 60_000,
+    retry: false,
+    enabled,
+  });
+}

@@ -16,6 +16,7 @@ import {
   useBacktestRunQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
+  useFactorVaultQuery,
   useSensitivityQuery,
   useSgapDecayQuery,
   useSleeveReconQuery,
@@ -209,6 +210,29 @@ describe('useSgapDecayQuery', () => {
   it('respects the enabled flag', async () => {
     mockedApiGetJson.mockResolvedValue({ ok: true });
     useSgapDecayQuery(false);
+    expect(lastOptions().enabled).toBe(false);
+  });
+});
+
+describe('useFactorVaultQuery', () => {
+  beforeEach(() => {
+    mockedApiGetJson.mockReset();
+    mockedUseQuery.mockClear();
+  });
+
+  it('fetches the frozen factor-vault endpoint with a long stale time', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true, vault: { summary: { n_factors: 27 } } });
+    useFactorVaultQuery();
+    const opts = lastOptions();
+    expect(opts.queryKey).toEqual(['backtest', 'factor-vault']);
+    expect(opts.staleTime).toBe(30 * 60_000);
+    await opts.queryFn();
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/backtest/factor-vault');
+  });
+
+  it('respects the enabled flag', async () => {
+    mockedApiGetJson.mockResolvedValue({ ok: true });
+    useFactorVaultQuery(false);
     expect(lastOptions().enabled).toBe(false);
   });
 });
