@@ -42,6 +42,8 @@ from .api.v1_explain_routes import router as v1_explain_router
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
 from .api.webhook_routes import router as webhook_router
+# RESTRUCTURE PR1 (2026-10-03): read-only combo-tier plan (no orders, no params).
+from .api.portfolio_routes import router as portfolio_router
 from .scheduler import create_scheduler
 
 
@@ -145,3 +147,5 @@ app.include_router(v1_business_router)
 app.include_router(v1_explain_router)
 # OPT-051 §12 #5: /v1/quota.
 app.include_router(v1_quota_router)
+# RESTRUCTURE PR1 (2026-10-03): read-only combo-tier plan.
+app.include_router(portfolio_router)
