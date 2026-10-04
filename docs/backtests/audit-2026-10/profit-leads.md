@@ -97,3 +97,21 @@
 - 严禁记lead：溢价反转lag1版（油+864%/纳指+4700%）系未来函数（QDII净值T+2公布，JSL表头T-2净值作证），lag3诚实版即归零/跑输买持，特此记录为风险教训而非lead。
 - 观察（不单独立项，需完整严格套件才有名分）：511090三十年债/511380可转债/511880货币作停车候选；溢价>10%降仓闸想法未测。
 - 来源：`~/Projects/wealth-ideas/karios-audit-2026-10/NICHE_QDII_report.md`+`scratch/niche_qdii/screens_final.json`（非 Crimson 数据）
+
+## 2026-10-04 · 回填四腿 BACKFILL_LEGS（9个全REJECT，无新增lead，特此声明）
+- 口径：红利低波股票版3（Top10复合/Top15/纯股息率Top10月持，53只采样，16bp/边）/ 港股3（H低波10/H等权30/小AH溢价Top5H月持，20bp/边+0.92FX）/ LOF折价2（Top3/Top2日持，5bp/边，ann<=信号日诚实）/ 转债强赎过滤1（双底20%+4过滤周持20bp），同COMPARE尺子（M30连续=+152.6/+48.5/+12.4/-7.3），120万起，种子42。
+- 为什么不记：9个无一三窗超M30（DIV10 long140.7 valid-0.1 holdout+0.4；DIV15 long112 valid+4 holdout+2；YIELD long198.8 valid+0.5 holdout-1.2，long超46pt但OOS2输16pt+valid输12pt；HK long0.7~44 valid-11~-27；LOF3 long587 valid+19 holdout+2表面超但OOS2输26pt+延迟崩455pt+诚实腰斩至98；LOF2 long862 valid+15 holdout+3.9同崩779pt；CB long64.7 valid-9.7）。YIELD随机100%+走廊7/10+延迟稳但跨窗不一致（valid挂），LOF随机100%+走廊9/10+MC p5+15但延迟崩+OOS2挂+诚实腰斩，不满足跨窗一致+延迟线规则。
+- 严禁记lead：LOF折价TRAP版（+587%/+862%）系1天前视嫌疑（NAV T+1公布，ann<=sd审计+270%，再滞1天+98%腰斩，延迟+1天valid+19→-17崩），与NICHE lag1陷阱同构，特记为风险教训而非lead。
+- 观察（不单独立项，需full市场+50笔重裁）：DIV_YIELD10（低相关0.18/0.10+WF7/10+延迟稳，但valid薄弱，采样53只非全市场）。
+- 来源：`~/Projects/wealth-ideas/karios-audit-2026-10/BACKFILL_LEGS_report.md`+`scratch/backfill/backfill_legs.json`+`data-backfill/*/SOURCES.md`（非 Crimson 数据）
+
+## 2026-10-04 · 研报视频低成本合规片源（research-report-sources，具体钱路）
+- 口径：做外资研报解读视频，不买终端（Bloomberg $31,980/年单座、FactSet中位 $20,523/年、Wind 39800元/年），只用免费公开源：JPM Guide to Markets 4Q2026 PDF、BlackRock BII Q4 Outlook、IMF WEO 2026-07更新 + 华尔街见闻/财联社二手引用找选题；中文券商查缺用东方财富研报中心免费 https://data.eastmoney.com/report/ 或 Choice <5000元/年代替 Wind，慧博/萝卜只找选题不转贴PDF。
+- 为什么记：单集成本从数万终端费降到 0–5000元/年，且避开 Drive 挂PDF侵权 + 无证荐股（福州吴某某2年4个月+1300万、广东吴某平没收255万+罚200万先例）导致的封号/罚款风险；3个现成选题已验证公开可下载（JPM/BlackRock/IMF见 `~/Projects/wealth-ideas/research-report-sources/REPORT_SOURCES.md`）。
+- 来源：`~/Projects/wealth-ideas/research-report-sources/REPORT_SOURCES.md`（websearch/webfetch 实测，Goldman/MS/JPM/BlackRock/IMF官网 + Vendr/WallStreetPrep报价 + Wind报价单 + 证监案例）
+
+## 2026-10-04 · 需求调研具体钱路（demand-research，49条实取，未验证付费，需小步测价）
+- 口径：见 `~/Projects/wealth-ideas/demand-research/DEMAND_REPORT.md` + `evidence.csv`（49条，全部 webfetch 实取，搜索摘要不计数；自有观众 0条需补）。
+- 为什么记：具体可测价的三条：① faceless 代工 Fiverr $5-500/单（5764服务，$45/479评价例）+ IndieHackers $229/月/客户 + faceless.so $29/月起 + 小蜜蜂 AI视频 10-20K/月 + 闲鱼代剪5-50/条；② 指标打假 TrendSpider $59-349/月（无免费档被骂）+ TradingView $12.95/月+数据费 + Vectester $49一次性（WFA+Monte Carlo）+ 中国公式定制/付费下载（60lt/zbgs518）；③ 复用分发 repurpose.io $35-179/月 + repurpose-ai $9-49/月（不支持B站/小红书/知乎，空位）。简报订阅判负（$0.03/次-$5/月，国内免费为主），只做引流。
+- 下一步：跑三 preview build（faceless-batch / indicator-falsifier / crosspost-cn），只测 waitlist“我愿付”点击，不收款、不公开发布、不发帖（spec 见 demand-research/build_*_prompt.md）。
+- 来源：Fiverr `https://www.fiverr.com/gigs/faceless-video` + IndieHackers faceless pipeline + Pictory `https://pictory.ai/pricing` + TrendSpider `https://trendspider.com/pricing` + Vectester `https://www.pyquantlab.com/apps/Vectester.html` + repurpose.io `https://repurpose.io/`（全 2026-10-04 实取）

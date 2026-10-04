@@ -3,6 +3,7 @@
 从 `~/Projects/wealth-ideas` 同步的快照（`sync_docs_to_karios_desktop.sh`）。基准：母港 M30。账本见 [STRATEGY_LEDGER.md](STRATEGY_LEDGER.md)。
 
 - [A_lookahead.md](A_lookahead.md) — Karios 星舰 B 审计 A：未来函数 / 信息泄漏（只读对手审计，2026-10-03）
+- [BACKFILL_LEGS_report.md](BACKFILL_LEGS_report.md) — Karios 回填四腿测试报告（只读研究，2026-10-04）
 - [BOLLKDJ_report.md](BOLLKDJ_report.md) — BOLL+KDJ 苗头验证——能否成为 Karios 策略（只读研究，2026-10-03）
 - [B_overfit.md](B_overfit.md) — Karios 星舰 B 审计 B：过拟合 / 稳健性（只读对手审计，2026-10-03）
 - [CAPACITY_MAP_report.md](CAPACITY_MAP_report.md) — 容量地图 CAPACITY MAP（<=200万为主，2026-10-04，只读，无Crimson，无可见浏览器，未开png）
@@ -27,6 +28,7 @@
 - [H2j_capital_tiers.md](H2j_capital_tiers.md) — Karios H2j — 按资金量分档的策略方案（只读研究，2026-10-03）
 - [H2k_sgap_revival.md](H2k_sgap_revival.md) — Karios H2k — S-gap（星舰B族）是暂时失灵还是彻底失效？+ 预注册「复活信号」（只读研究，2026-10-03）
 - [H3_review.md](H3_review.md) — Karios H3：对抗复核第3轮（挑刺审稿人，2026-10-03）
+- [KARIOS_STATE_2026-10-04.md](KARIOS_STATE_2026-10-04.md) — Karios 当前状态与最新发现（2026-10-04，给接手的 agent 先读这份）
 - [M30_BASELINE_report.md](M30_BASELINE_report.md) — M30 基线切换报告（Yuan 2026-10-03 19:44 决策执行，只读研究）
 - [M30_REGIME_report.md](M30_REGIME_report.md) — M30牛熊与加减仓规则（只读研究，2026-10-03）
 - [NEWLEGS_report.md](NEWLEGS_report.md) — 新腿搜寻报告（只读研究，2026-10-03）
