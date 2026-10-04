@@ -87,6 +87,15 @@ const HOLDING = {
   action: 'HOLD',
 };
 
+/** Same Shanghai-weekend source of truth as the card: weekends relabel buys to view-only 候选. */
+function shanghaiWeekendNow(): boolean {
+  const wd = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+  }).format(new Date());
+  return wd === '周六' || wd === '周日';
+}
+
 function renderCard(props: ComponentProps<typeof PortfolioHealthCard> = {}) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -257,7 +266,12 @@ describe('PortfolioHealthCard (harbor)', () => {
     // Parking guidance: idle cash only, core untouched.
     expect(await screen.findByText(/停车只停闲钱/)).toBeDefined();
     // Harbor: an ETF parking pick must NOT disable the S-3 core buys.
-    expect(await screen.findByText(/股票篮买入/)).toBeDefined();
+    // (Weekends relabel the list to view-only 候选 — same assertion, both days.)
+    if (shanghaiWeekendNow()) {
+      expect(await screen.findByText(/周末 · 股票篮候选/)).toBeDefined();
+    } else {
+      expect(await screen.findByText(/股票篮买入/)).toBeDefined();
+    }
     expect(screen.getByText('贵州茅台')).toBeDefined();
     expect(screen.queryByText(/应轮出/)).toBeNull();
     // Parking block must use the canonical key from the API (OPT-206).

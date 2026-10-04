@@ -41,6 +41,15 @@ vi.mock('@/lib/queries/backtest', async () => {
   };
 });
 
+/** Same Shanghai-weekend source of truth as the card: weekend candidates are info-level, not counted. */
+function shanghaiWeekendNow(): boolean {
+  const wd = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+  }).format(new Date());
+  return wd === '周六' || wd === '周日';
+}
+
 function renderCard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -96,10 +105,16 @@ describe('TodayTodoCard', () => {
     const onScroll = vi.fn();
     window.addEventListener('karios-scroll-to', onScroll as EventListener);
     renderCard();
-    expect(await screen.findByText(/今日待办（3）/)).toBeDefined();
+    // Weekend: the candidate row drops to info level, so the counted total is 2, not 3.
+    const weekend = shanghaiWeekendNow();
+    expect(await screen.findByText(new RegExp(`今日待办（${weekend ? 2 : 3}）`))).toBeDefined();
     expect(await screen.findByText(/停车腿偏离：缺买 ETF:513350/)).toBeDefined();
     expect(await screen.findByText(/持仓卖出 1 只：茅台/)).toBeDefined();
-    expect(await screen.findByText(/股票篮 1 只候选/)).toBeDefined();
+    if (weekend) {
+      expect(await screen.findByText(/股票篮 1 只候选（周末先看，不下单）/)).toBeDefined();
+    } else {
+      expect(await screen.findByText(/股票篮 1 只候选，14:30 前决定买哪几只/)).toBeDefined();
+    }
     const links = await screen.findAllByText('去处理 →');
     expect(links.length).toBe(3);
     fireEvent.click(links[0]);

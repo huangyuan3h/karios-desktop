@@ -683,7 +683,7 @@ export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
 export function useTimelineQuery(
   start: string,
   end: string,
-  strategy: TimelineStrategy = 'harbor',
+  strategy: TimelineStrategy = 'homeport_m30',
   enabled = true,
 ) {
   const q = new URLSearchParams({ start, end, strategy });

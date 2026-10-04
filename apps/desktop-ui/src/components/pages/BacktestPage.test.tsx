@@ -769,11 +769,11 @@ describe('BacktestPage', () => {
     expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
   });
 
-  it('defaults the timeline to the configured 星舰 B strategy', async () => {
+  it('defaults the timeline to the 母港M30 baseline', async () => {
     window.localStorage.removeItem('karios.strategyMode.v2');
     renderPage();
     fireEvent.click(await screen.findByText('对比'));
-    expect(await screen.findByText(/Timeline（星舰 B/)).toBeDefined();
+    expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
   });
 
   it('renders auto-segmented holding blocks and per-day hover details', async () => {

@@ -54,6 +54,7 @@ STRATEGY_MODES = (
     "starport",
     "starship",
     "starship_robust",
+    "starship_b",
     "twin_star",
     STRATEGY_MODE_LEGACY,
 )
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT user_trades_leg_check CHECK (leg IN ('s3', 'parking', 'satellite', 'h2', 'b3')),
     CONSTRAINT user_trades_strategy_mode_check CHECK (
-        strategy_mode IN ('harbor', 'homeport', 'starport', 'starship', 'starship_robust', 'twin_star', 'legacy_unknown')
+        strategy_mode IN ('harbor', 'homeport', 'starport', 'starship', 'starship_robust', 'starship_b', 'twin_star', 'legacy_unknown')
     )
 );
 
