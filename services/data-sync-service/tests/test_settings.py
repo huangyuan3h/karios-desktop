@@ -83,3 +83,19 @@ class TestSettingsRoute:
         assert sr.selected_strategy_mode() == sr.DEFAULT_STRATEGY_MODE
         monkeypatch.setattr(sr.app_settings, "get_setting", lambda key, default=None: "harbor")
         assert sr.selected_strategy_mode() == "harbor"
+
+    def test_default_mode_is_homeport_m30_baseline(self, monkeypatch) -> None:
+        """Unify 2026-10-04: the unset default is 母港M30 (homeport), not 星舰B."""
+        from data_sync_service.api import settings_routes as sr
+
+        assert sr.DEFAULT_STRATEGY_MODE == "homeport"
+        seen: dict[str, object] = {}
+
+        def fake_get(key: str, default: object = None) -> object:
+            seen["default"] = default
+            return default
+
+        monkeypatch.setattr(sr.app_settings, "get_setting", fake_get)
+        assert sr.get_strategy_mode() == {"ok": True, "mode": "homeport"}
+        assert sr.selected_strategy_mode() == "homeport"
+        assert seen["default"] == "homeport"

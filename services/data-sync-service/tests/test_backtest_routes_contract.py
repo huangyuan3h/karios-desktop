@@ -20,6 +20,32 @@ def test_timeline_rejects_unknown_strategy() -> None:
     )
 
 
+def test_timeline_default_strategy_is_homeport_m30(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unify 2026-10-04: the timeline default is 母港M30 (not 港湾)."""
+    import inspect
+
+    from fastapi.params import Query as FastAPIQuery
+
+    seen: dict[str, str] = {}
+    payload = {"ok": True, "strategy": "母港M30", "rows": [], "summary": {"fusedPct": 0.0}}
+
+    def fake_build(start: str, end: str, **kw) -> tuple[dict, None]:
+        seen["strategy"] = kw["strategy"]
+        return payload, None
+
+    real_builder = br._get_or_build_timeline
+    monkeypatch.setattr(br, "_get_or_build_timeline", fake_build)
+    # Explicit M30 routes to the M30 line (FastAPI resolves the omitted
+    # Query param to the declared default below when serving HTTP).
+    out = br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="homeport_m30")
+    assert seen["strategy"] == "homeport_m30"
+    assert out["strategy"] == "母港M30"
+    # The declared Query default and the builder default agree.
+    param_default = inspect.signature(br.backtest_timeline).parameters["strategy"].default
+    assert isinstance(param_default, FastAPIQuery) and param_default.default == "homeport_m30"
+    assert inspect.signature(real_builder).parameters["strategy"].default == "homeport_m30"
+
+
 def test_timeline_accepts_twin_star(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {"ok": True, "strategy": "双子星", "rows": [], "summary": {"fusedPct": 0.0}}
     monkeypatch.setattr(br, "_get_or_build_timeline", lambda s, e, **kw: (payload, None))

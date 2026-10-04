@@ -28,13 +28,13 @@ export const STRATEGY_MODES: readonly StrategyMode[] = [
 ];
 
 /**
- * Selected strategy (user decision 2026-09-24): 星舰 B (3-leg parking) is the
- * default — shallower drawdown, stronger 2022-23 stress, and a 3-ETF parking
- * leg that is easier to replicate by hand than H2-a25's H2+B3.
- * Display/push only — Live orders stay 港湾 (S-3 + parking); 星舰 B needs its
- * paper 3/20 + risk authorization before it can trade Live.
+ * Selected strategy (user decision 2026-10-04): 母港 M30 (70% harbor + 30%
+ * B3 risk-budget, monthly rebalance) is the baseline and default everywhere.
+ * 星舰 B stays selectable but is observation-only (revival needs rolling-40
+ * sum positive AND monthly large-cap P&L positive).
+ * Display/push only — the selected mode does not rewire order execution.
  */
-export const DEFAULT_STRATEGY_MODE: StrategyMode = 'starship_b';
+export const DEFAULT_STRATEGY_MODE: StrategyMode = 'homeport';
 
 export const STRATEGY_MODE_LABELS: Record<StrategyMode, string> = {
   harbor: '港湾',

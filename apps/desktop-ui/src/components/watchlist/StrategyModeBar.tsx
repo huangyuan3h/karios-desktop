@@ -20,7 +20,7 @@ export function StrategyModeBar() {
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="text-[12px] font-medium">策略视图</span>
         <span className="text-[10px] text-[var(--k-muted)]">
-          选中哪个策略，本页就显示对应组件；Live 恒为港湾
+          选中哪个策略，本页就显示对应组件；基线为母港M30（港湾70%+B3 30%，月初再平衡）
         </span>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">

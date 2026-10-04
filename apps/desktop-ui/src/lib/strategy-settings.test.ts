@@ -17,21 +17,21 @@ afterEach(() => {
 });
 
 describe('getStrategyMode', () => {
-  it('defaults to starship_b when unset', () => {
-    expect(DEFAULT_STRATEGY_MODE).toBe('starship_b');
-    expect(getStrategyMode()).toBe('starship_b');
-    expect(window.localStorage.getItem('karios.strategyMode.v2')).toBe('"starship_b"');
+  it('defaults to homeport (母港M30 baseline) when unset', () => {
+    expect(DEFAULT_STRATEGY_MODE).toBe('homeport');
+    expect(getStrategyMode()).toBe('homeport');
+    expect(window.localStorage.getItem('karios.strategyMode.v2')).toBe('"homeport"');
   });
 
   it('migrates the legacy key to the new default and removes it', () => {
     window.localStorage.setItem('karios.strategyMode', JSON.stringify('harbor'));
-    expect(getStrategyMode()).toBe('starship_b');
+    expect(getStrategyMode()).toBe('homeport');
     expect(window.localStorage.getItem('karios.strategyMode')).toBeNull();
   });
 
   it('migrates a retired mode to the current default', () => {
     window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('legacy_satellite'));
-    expect(getStrategyMode()).toBe('starship_b');
+    expect(getStrategyMode()).toBe('homeport');
   });
 
   it('keeps the twin_star parallel mode (restored 2026-09-17)', () => {
@@ -41,7 +41,7 @@ describe('getStrategyMode', () => {
 
   it('ignores corrupt storage and falls back to the default', () => {
     window.localStorage.setItem('karios.strategyMode.v2', 'not-json');
-    expect(getStrategyMode()).toBe('starship_b');
+    expect(getStrategyMode()).toBe('homeport');
   });
 
   it('keeps explicit selections for every registered mode', () => {
@@ -51,6 +51,7 @@ describe('getStrategyMode', () => {
       'starport',
       'starship',
       'starship_robust',
+      'starship_b',
       'twin_star',
     ] as const) {
       setStrategyMode(mode);

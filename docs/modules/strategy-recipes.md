@@ -98,7 +98,7 @@
 
 - 启动补跑 `catchup_missed_eod_chain`（`scheduler/__init__.py:641-715`）：按守卫时刻补 17:30 后的各步；**skip ≠ done**（判据 `automation_applied_on`，OPT-220）。
 - 唯一自动实盘记账 = paper book（S-3 + 港湾停车）；真实账户人工执行。前端"所选策略"只决定推送文案（`api/settings_routes.py`），不是下单开关。
-- **所选策略（2026-09-24 用户拍板固化）= 星舰 B**：`app_settings.strategy_mode='starship_b'`；代码默认 `settings_routes.DEFAULT_STRATEGY_MODE` 与前端 `strategy-settings.DEFAULT_STRATEGY_MODE` 同步。它是现行研究/展示/人工操作默认档（§5b2）；**Live 下单仍=港湾**；星舰 B 进 Live 前置 = paper 3/20 + 风险授权（未满）。并列可选 **稳健星舰 H2-a25**（§5b）——报告裁决为 K3 风险下的 REJECT，不能写成全门 PASS。
+- **所选策略（2026-10-04 用户拍板统一）= 母港 M30**：`app_settings.strategy_mode='homeport'`；代码默认 `settings_routes.DEFAULT_STRATEGY_MODE` 与前端 `strategy-settings.DEFAULT_STRATEGY_MODE` 同步；Timeline 缺省 `strategy=homeport_m30`。它是现行基线（§2，M30）；星舰 B 为观察档（§5b2，复活需 rolling-40-trade sum 转正 AND 月度大盘 P&L 转正）。并列可选 **稳健星舰 H2-a25**（§5b）——报告裁决为 K3 风险下的 REJECT，不能写成全门 PASS。
 
 ---
 
@@ -118,7 +118,7 @@
 ## §2 母港 Homeport（产品候选 · M30 展示档 / M50 冻结档）
 
 - 腿构成：`w_harbor × Harbor + (1−w_harbor) × B3`；**B3** = 5 资产逆波动率月频（`510300.SH / 510500.SH / 518880.SH / 513100.SH / 511260.SH`，60 日 `pstdev(日收益)`，`w∝1/σ`，当月首个交易日调仓；月内随价漂移不再平衡）。
-- **现行权重裁决（2026-09-16 起）**：展示档 = **M30（w_harbor=0.7）**，`timelineStrategy=homeport_m30`，tag `h-mix-m30-20260916`；**M50（0.5）保留为冻结审计快照**（`?strategy=homeport` 路由默认仍是 0.5）。
+- **现行权重裁决（2026-09-16 起）**：展示档 = **M30（w_harbor=0.7）**，`timelineStrategy=homeport_m30`，tag `h-mix-m30-20260916`；**M50（0.5）保留为冻结审计快照**（显式 `?strategy=homeport` 仍可取 M50；缺省已切 `homeport_m30`，2026-10-04）。
 - 成本：B3 换手 `5bp×Σ|Δw|/2`；月复位 `5bp×|w_harbor漂移|`。
 - 状态：**display only**（无 paper / 无 Live 接线）。代码 `service/homeport.py`；证据 `backtests/stable/homeport-weight-tune-2026-09-16.md`。
 
@@ -150,16 +150,16 @@
 
 - **定义**：卫星 standalone（§0.2）+ 闲置现金 `w_t=cashShare(T−1)` 停 **`0.25 × H2 套筒 + 0.75 × B3`**。
   H2 = `mom60+MA200` 趋势 ETF，挑战者领先现持 ≥2pt 才换仓；转移 5bp/边。
-- **身份**：`starship_robust` 是稳健研究/展示配方之一。**默认选择档 2026-09-24 起改为 `starship_b`（星舰 B，§5b2）**。canonical 只表示系统口径统一，不表示研究门全 PASS。
+- **身份**：`starship_robust` 是稳健研究/展示配方之一。**默认选择档 2026-10-04 起改为母港 M30（`homeport`，§2）**；星舰 B（§5b2）为观察档。canonical 只表示系统口径统一，不表示研究门全 PASS。
 - **报告**：`sat_h2_a25_2026-09-24.json`；H2-a25 = OOS2/train/valid/long **+238.4/+55.9/+3.2/+738.5**，MDD **−8.4**，SR **3.50**。
 - **裁决**：K1/K2/K4/K5 PASS；K3 FAIL（long MDD 相对纯 B3 **−1.6pt**，门槛 −1.0pt）→ 总状态 **REJECT（仅 K3 风险）**。
 - **边界**：只用于研究、展示和人工操作；Live 自动执行仍为港湾，前置为 paper 20 笔 + 用户风险授权。
 - **历史对照**：0pt `a25` 报告（+728.4/−6.9）保留为历史，不作为 H2-a25 现行数字。
 
-## §5b2 星舰 B（现行默认档 · 研究/展示/人工操作 · 不进 Live）2026-09-24
+## §5b2 星舰 B（观察档 · 研究/展示/人工操作 · 不进 Live）2026-09-24（2026-10-04 起基线已切母港M30）
 
 - **定义**：卫星 standalone（§0.2）+ 闲置现金 100% 停 **`{国债 511260, 黄金 518880, 纳指 513100}` 逆波动率**（60d，月频再平衡，5bp/边；3 腿各 1/3 预热）。复用 B3 数学（`homeport.starship_b_run`）。
-- **身份**：`starship_b` 是研究/展示/人工操作**现行默认档**（`DEFAULT_STRATEGY_MODE`，与 H2-a25 并列可选），不接 Live 自动下单。
+- **身份**：`starship_b` 是研究/展示/人工操作**观察档**（2026-10-04 起基线=母港M30；与 H2-a25 并列可选），不接 Live 自动下单。
 - **数字**：OOS2/train/valid/long **+231.7/+51.5/+5.4/+669.6**；long MDD **−5.5**、SR **3.90**；**stress(22–23) +124.0 / −7.4**。
 - **vs H2-a25**：long 少 69pt、回撤浅 2.9pt、Sharpe 高 0.40、stress 强 20pt；停放腿只 3 只 ETF，**实盘好复制**。
 - **组件真值**：`homeport.starship_b_run/starship_b_nav/load_starship_b_closes`；`state_bucket_track.STARSIP_B_PARKING_MODE`；Timeline `strategy=starship_b`。报告 [`starship-b-2026-09-24.md`](../backtests/stable/starship-b-2026-09-24.md)。
@@ -174,11 +174,11 @@
 
 | 项 | 现行值 | 冻结/参考值 | 说明 |
 |---|---|---|---|
-| 母港权重 | **M30 = 0.7**（展示/产品） | M50 = 0.5（审计快照 + 路由默认） | `?strategy=homeport_m30` vs `homeport` |
+| 母港权重 | **M30 = 0.7**（展示/产品/缺省） | M50 = 0.5（审计快照） | `?strategy=homeport_m30`（缺省） vs `homeport`（显式） |
 | 星港权重 | **0.2**（展示） | 1/3（H-B3-SAT 审计参考） | 1/3 在当前数据下挂 K1 |
 | 星舰停车 | **H2（2pt）** | 0pt canonical sleeve（历史对照） | Live/paper/Timeline/watchlist 统一 H2；0pt 仅复现冻结实验 |
-| 星舰稳健版 | **H2-a25 = 25% H2 套筒 + 75% B3** | 0pt a25（历史对照） | 现行可选稳健档（与默认档星舰 B 并列）；K3 风险，总裁决 REJECT |
-| 星舰 B | **100% 停 {国债+黄金+纳指} 逆波动率** | — | **现行默认研究/展示档**（2026-09-24）；收益略低/回撤浅/熊市强/好复制，不进 Live |
+| 星舰稳健版 | **H2-a25 = 25% H2 套筒 + 75% B3** | 0pt a25（历史对照） | 现行可选稳健档（与观察档星舰 B 并列）；K3 风险，总裁决 REJECT |
+| 星舰 B | **100% 停 {国债+黄金+纳指} 逆波动率** | — | **观察档**（2026-10-04 起基线=母港M30）；收益略低/回撤浅/熊市强/好复制，不进 Live |
 | 星舰激进对照 | H2 纯套筒 | 0pt A2_true（历史对照） | 研究/展示对照，不进 Live |
 | 港湾 Live 停车 | **H2（2pt）· 统一 2026-09-18** | canonical `hyst_band=0`（研究参考） | H-H2-UNIFY；`harbor_h2` 线/影子账本已删除（OPT-226） |
 | 双子星 | 并行对照（50/50） | 曾判 REJECT | 不是实盘方案，勿引 scorecard §2 |

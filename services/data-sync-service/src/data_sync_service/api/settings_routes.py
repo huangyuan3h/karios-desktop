@@ -27,11 +27,10 @@ STRATEGY_MODES = (
     "starship_b",
     "twin_star",
 )
-# User decision 2026-09-24 (updated): 星舰 B is the default research/display
-# mode (shallower DD, stronger stress, 3-ETF parking that is easier to
-# replicate). 稳健星舰 H2-a25 stays selectable. The selected mode still does
-# not control Live order routing (Live = 港湾).
-DEFAULT_STRATEGY_MODE = "starship_b"
+# User decision 2026-10-04 (unify): 母港 M30 (homeport) is the baseline and
+# default everywhere. 星舰 B stays selectable as observation. The selected
+# mode still does not rewire order execution.
+DEFAULT_STRATEGY_MODE = "homeport"
 
 
 class StrategyModeBody(BaseModel):
@@ -52,6 +51,6 @@ def put_strategy_mode(body: StrategyModeBody) -> dict[str, Any]:
 
 
 def selected_strategy_mode() -> str:
-    """Mode for background copy; falls back to the UI default (星舰稳健版)."""
+    """Mode for background copy; falls back to the UI default (母港M30)."""
     mode = app_settings.get_setting(STRATEGY_MODE_KEY, DEFAULT_STRATEGY_MODE)
     return str(mode) if mode in STRATEGY_MODES else DEFAULT_STRATEGY_MODE

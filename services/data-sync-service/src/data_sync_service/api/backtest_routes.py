@@ -690,7 +690,7 @@ def backtest_timeline(
     start: str | None = Query(None, description="Start YYYY-MM-DD, default 1y ago"),
     end: str | None = Query(None, description="End YYYY-MM-DD, default today"),
     strategy: str = Query(
-        "harbor",
+        "homeport_m30",
         description=(
             "harbor | homeport | homeport_m30 | starport | starship | starship_robust "
             "| starship_b | twin_star | pick_strong | state_bucket"
@@ -702,9 +702,9 @@ def backtest_timeline(
     Query ``start``/``end`` select the window. UI labels trailing vs product
     past-year vs OOS2/train/valid (gate) vs holdout (read-only).
 
-    - strategy=harbor: 港湾 baseline (S-3 core + idle-cash ETF parking, H2 2pt).
+    - strategy=harbor: 港湾 (S-3 core + idle-cash ETF parking, H2 2pt; sunset base).
     - strategy=homeport: 母港 M50 = 港湾 x B3 risk-budget 50/50 (frozen; starport's base).
-    - strategy=homeport_m30: 母港 M30 defensive tier = 港湾 70% x B3 30% (H-MIX-TUNE).
+    - strategy=homeport_m30: 母港 M30 defensive tier = 港湾 70% x B3 30% (H-MIX-TUNE, current baseline).
     - strategy=starport: 星港 = 母港 x satellite overlay w=1/3 (H-B3-SAT, display only).
     - strategy=starship: 星舰 = satellite standalone + H2 ETF parking (research
       display; current H2 pure-sleeve arm).
@@ -752,7 +752,7 @@ def backtest_strategy_catalog() -> dict[str, Any]:
     """Frozen strategy-family catalog for the Backtest page 策略总览 tab.
 
     Display only (2026-09-14 clean caliber, costs included); every row cites its
-    authoritative doc. Live stays 港湾.
+    authoritative doc. Baseline is 母港M30 (Yuan 2026-10-04); 星舰B is observation.
     """
     from data_sync_service.service.strategy_catalog import strategy_catalog
 
@@ -1084,7 +1084,7 @@ def _get_or_build_timeline(
     start: str,
     end: str,
     *,
-    strategy: str = "harbor",
+    strategy: str = "homeport_m30",
     need_engine: bool = False,
     force: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
