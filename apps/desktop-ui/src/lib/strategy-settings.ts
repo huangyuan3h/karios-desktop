@@ -18,11 +18,11 @@ const STORAGE_KEY = 'karios.strategyMode.v2';
 const LEGACY_STORAGE_KEY = 'karios.strategyMode';
 
 export const STRATEGY_MODES: readonly StrategyMode[] = [
+  'homeport',
   'starship_b',
   'starship_robust',
   'starship',
   'starport',
-  'homeport',
   'harbor',
   'twin_star',
 ];
@@ -58,7 +58,7 @@ export const STRATEGY_MODE_TAGS: Record<StrategyMode, string> = {
 
 export const STRATEGY_MODE_DESCRIPTIONS: Record<StrategyMode, string> = {
   harbor: 'S-3 择强核心 + 闲置现金 ETF 停车场。实盘（日落模式：维持运行，不再开发）；live决策由Yuan定。',
-  homeport: '港湾 70% × B3 风险预算 30%（M30当前基线，月初再平衡 5bp/边）。回撤浅、长期年化 21%。候选需三窗全超M30。',
+  homeport: '港湾 70% × B3 风险预算 30%（M30当前基线，回测月初再平衡 5bp/边；跟仓每周一次）。回撤浅、长期年化 21%。候选需三窗全超M30。',
   starport: '母港 × 卫星 0.2 曝露（当前数据验收最大权重）。数据收集默认档。',
   starship:
     '激进对照 = 卫星 + 闲置现金 100% 停 H2 趋势 ETF（2pt 迟滞换仓；long +962.7% / MDD −30.5 / SR 2.14）。卫星执行审计 ✅（容量 ≤5M）；进 Live 前置 = paper 3/20 + 用户风险授权。',

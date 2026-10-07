@@ -5,7 +5,17 @@ import { useQuery } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { useBacktestReconQuery, useSleeveReconQuery } from '@/lib/queries/backtest';
+import { useAccountSettings } from '@/lib/account-settings';
+import { getShanghaiTodayIso } from '@/lib/market-hours';
+import {
+  buildM30Targets,
+  cadenceStatus,
+  rebalanceGate,
+  useFollowCadence,
+  type M30Holding,
+} from '@/lib/m30-follow';
+import { useStrategyMode, type StrategyMode } from '@/lib/strategy-settings';
+import { useBacktestReconQuery, useB3StateQuery, useSleeveReconQuery } from '@/lib/queries/backtest';
 import {
   fetchPortfolioHealth,
   type PortfolioHealthResponse,
@@ -61,7 +71,9 @@ type TodoItem = {
  * 数据全部复用已有缓存（portfolio-health / sleeve-recon / recon），不新增请求；
  * 只读展示，所有动作跳到对应区块，不碰下单链。
  */
-export function TodayTodoCard() {
+export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) {
+  const modeFromStore = useStrategyMode();
+  const mode = modeProp ?? modeFromStore;
   // Shared cache with PortfolioHealthCard (passive observer, no extra fetch).
   const healthQ = useQuery({
     queryKey: ['portfolio-health'],
@@ -70,6 +82,10 @@ export function TodayTodoCard() {
   });
   const sleeveQ = useSleeveReconQuery(true);
   const reconQ = useBacktestReconQuery(2);
+  // M30 follow (homeport only): shares the b3-state cache with B3LegBlock.
+  const b3Q = useB3StateQuery(mode === 'homeport');
+  const { capital } = useAccountSettings();
+  const cadence = useFollowCadence();
   const [remindersTick, setRemindersTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -86,6 +102,60 @@ export function TodayTodoCard() {
   const recon = (sleeveQ.data as { recon?: import('@/lib/queries/backtest').SleeveRecon } | undefined)?.recon;
   const { mins, weekday } = shanghaiParts();
   const weekend = weekday >= 6;
+
+  // M30 follow state (homeport only): rebalance todos fire on the rebalance
+  // day or past the 5pt drift thresholds; S-3 hard exits bypass this gate
+  // (they already surface as 持仓卖出 above).
+  const m30 = React.useMemo(() => {
+    if (mode !== 'homeport' || !data) return null;
+    const universe = b3Q.data?.ok ? (b3Q.data.universe ?? []) : null;
+    if (!universe) return null;
+    const holdings: M30Holding[] = [
+      ...(data.holdings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      })),
+      ...(data.hkHealth?.holdings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      })),
+      ...(data.multiAssetHoldings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name ?? null,
+        lastClose:
+          h.marketData && typeof h.marketData.close === 'number' ? h.marketData.close : null,
+      })),
+    ];
+    const sleeve = data.multiAssetSleeve;
+    const report = buildM30Targets({
+      capital,
+      pickKey: sleeve?.pick?.key ?? 'REPO',
+      pickSymbol: sleeve?.pick?.symbol ?? null,
+      pickPrice: typeof sleeve?.pick?.close === 'number' ? sleeve.pick.close : null,
+      b3: universe.map((u) => ({
+        symbol: u.symbol,
+        name: u.name,
+        targetPct: Number(u.targetPct) || 0,
+        px: u.px ?? null,
+      })),
+      holdings,
+    });
+    const today = getShanghaiTodayIso();
+    const status = cadenceStatus(cadence, today);
+    const gate = rebalanceGate({
+      isRebalanceDay: status.isRebalanceDay,
+      legDriftPt: report.legDriftPt,
+      maxLineDriftPt: report.maxLineDriftPt,
+    });
+    return { report, status, gate };
+  }, [mode, data, b3Q.data, capital, cadence]);
 
   const items: TodoItem[] = React.useMemo(() => {
     if (!data) return [];
@@ -153,6 +223,25 @@ export function TodayTodoCard() {
         anchor: 'buy-list',
       });
     }
+    // 6b) 母港M30需再平衡（仅 homeport；S-3 硬退出走上面的持仓卖出，不重复）。
+    if (m30 && m30.gate.needsRebalance) {
+      const rebal = m30.report.actions.filter((a) => a.reason !== 'S-3 硬退出');
+      if (rebal.length > 0) {
+        const sells = rebal.filter((a) => a.side === 'SELL').length;
+        const buys = rebal.filter((a) => a.side === 'BUY').length;
+        const why =
+          m30.gate.reason === 'rebalance-day'
+            ? '再平衡日'
+            : m30.gate.reason === 'leg-drift'
+              ? `腿偏离 ${m30.report.legDriftPt}pt`
+              : `单线偏离 ${m30.report.maxLineDriftPt}pt`;
+        out.push({
+          level: 'todo',
+          text: `母港M30需再平衡（${why}）：卖 ${sells} / 买 ${buys}`,
+          anchor: 'm30-follow',
+        });
+      }
+    }
     // 7) 买入提醒。
     if (reminders.length > 0) {
       out.push({
@@ -162,7 +251,7 @@ export function TodayTodoCard() {
       });
     }
     return out;
-  }, [data, recon, reconQ.data, reminders, weekend]);
+  }, [data, recon, reconQ.data, reminders, weekend, m30]);
 
   if (healthQ.isPending) {
     return (

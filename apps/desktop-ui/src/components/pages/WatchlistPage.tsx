@@ -340,7 +340,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         ) : null}
         <StrategyModeBar />
         <AccountBar />
-        <TodayTodoCard />
+        <TodayTodoCard mode={strategyMode} />
         {/* The banner aligns the account against the HARBOR core leg (target
             100% ETF). The satellite-standalone modes hold no core leg, so it
             only reports "idle too high" — pure noise for 星舰/稳健星舰. */}
