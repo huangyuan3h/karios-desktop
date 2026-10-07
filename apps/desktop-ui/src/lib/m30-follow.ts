@@ -13,6 +13,14 @@
  *   first trading day of month, 5bp/side). `b3-state` `universe[].targetPct` is
  *   % *within the B3 leg* (sums 100); scale by 0.3 for % of total.
  *
+ * - The Harbor leg is CN-only: `homeport_m30` blends the `strategy=harbor`
+ *   timeline, which never overlays the HK S-3 leg (`backtest_routes`
+ *   `if strategy != "harbor"`). HK holdings are therefore non-M30 lines.
+ * - Three Harbor parking ETFs are also B3 members (GOLD 518880, NASDAQ 513100,
+ *   BOND10 511260). When the pick's ETF is a B3 ETF the two targets are merged
+ *   into ONE line (B3 share + Harbor park share) so a holding is never counted
+ *   twice; leg split attributes that line's holding pro rata to its targets.
+ *
  * UI follow cadence (this file): weekly default (configurable), first trading
  * day of the ISO week. The backtest stays monthly — the weekly cadence only
  * controls when the panel raises "needs rebalancing" todos, never the engine.
@@ -129,6 +137,12 @@ export type M30TargetLine = {
   /** Rebalance-size lots for |delta| (null when price/capital missing). */
   deltaShares: number | null;
   side: 'BUY' | 'SELL' | 'HOLD';
+  /**
+   * Part of `targetPct` that belongs to the Harbor leg (% of total). Equals
+   * targetPct for harbor lines, 0 for pure B3 lines, and the park share for a
+   * B3 line merged with the Harbor parking ETF.
+   */
+  harborSharePct: number;
   /** True when the delta was suppressed by the min-trade rule. */
   suppressed: boolean;
 };
@@ -208,6 +222,11 @@ function sharesFor(symbol: string, price: number | null, capital: number | null,
 function isStockSymbol(symbol: string): boolean {
   const s = String(symbol || '').toUpperCase();
   return s.startsWith('CN:') || s.startsWith('HK:');
+}
+
+/** M30's Harbor S-3 leg is CN-only (see header). */
+function isCnStock(symbol: string): boolean {
+  return String(symbol || '').toUpperCase().startsWith('CN:');
 }
 
 function currentForB3(symbol: string, holdings: M30Holding[]): number {
@@ -307,11 +326,15 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   }
 
   const holdStocks = holdings.filter(
-    (h) => isStockSymbol(h.symbol) && String(h.action || '').toUpperCase() !== 'EXIT',
+    (h) => isCnStock(h.symbol) && String(h.action || '').toUpperCase() !== 'EXIT',
   );
   const exitStocks = holdings.filter(
-    (h) => isStockSymbol(h.symbol) && String(h.action || '').toUpperCase() === 'EXIT',
+    (h) => isCnStock(h.symbol) && String(h.action || '').toUpperCase() === 'EXIT',
   );
+  const b3Codes = new Set(b3.map((u) => etfCode(u.symbol)));
+  const parkCode = parkSymbol ? bareCode(parkSymbol) : null;
+  /** Harbor pick ETF is itself a B3 member → one merged line. */
+  const parkMerged = parkCode != null && b3Codes.has(parkCode);
   const stockLegCount = Math.min(M30_S3_MAX_LEGS, holdStocks.length);
   const isStockPick = pickKey === 'STOCK';
   const harborStockTargetTotal = isStockPick ? 70 : round2(stockLegCount * M30_STOCK_LEG_PCT_TOTAL);
@@ -359,6 +382,7 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       targetPct: M30_STOCK_LEG_PCT_TOTAL,
       currentPct: cur,
       deltaPct: round2(M30_STOCK_LEG_PCT_TOTAL - cur),
+      harborSharePct: M30_STOCK_LEG_PCT_TOTAL,
     });
   }
   for (const h of exitStocks) {
@@ -375,16 +399,25 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       targetPct: 0,
       currentPct: cur,
       deltaPct: round2(0 - cur),
+      harborSharePct: 0,
     });
   }
 
-  // Harbor parking leg (ETF) or cash when REPO/STOCK.
+  // Harbor parking holdings (pick ETF + its non-B3 aliases). Alias holdings
+  // that are B3 members (e.g. 513100 under NASDAQ) are counted on their B3
+  // line only — never twice.
+  let parkCurrent = 0;
   if (parkSymbol) {
-    let parkCurrent = 0;
     for (const h of holdings) {
+      if (b3Codes.has(bareCode(h.symbol))) continue;
       if (holdingMatchesPick(h.symbol, pickKey)) parkCurrent += Number(h.positionPct) || 0;
     }
-    parkCurrent = round2(parkCurrent);
+  }
+  parkCurrent = round2(parkCurrent);
+
+  // Harbor parking line (ETF) or cash when REPO/STOCK. Merged into the B3
+  // line below when the pick ETF is a B3 member.
+  if (parkSymbol && !parkMerged) {
     const price = priceForSymbol(parkSymbol, { b3, parkPrice: input.pickPrice ?? null, stockCloses });
     pushLine({
       id: `harbor-park-${parkSymbol}`,
@@ -396,14 +429,19 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       targetPct: harborParkTargetTotal,
       currentPct: parkCurrent,
       deltaPct: round2(harborParkTargetTotal - parkCurrent),
+      harborSharePct: harborParkTargetTotal,
     });
   }
 
   // B3 leg (5 ETFs at 0.3 × within-leg weight).
   for (const u of b3) {
     const sym = `ETF:${etfCode(u.symbol)}`;
-    const targetPct = b3TotalPct(Number(u.targetPct) || 0);
-    const current = currentForB3(sym, holdings);
+    const b3Pct = b3TotalPct(Number(u.targetPct) || 0);
+    const merged = parkMerged && etfCode(u.symbol) === parkCode;
+    const harborShare = merged ? harborParkTargetTotal : 0;
+    const targetPct = round2(b3Pct + harborShare);
+    // Merged line also carries the pick's non-B3 alias holdings (e.g. 518800).
+    const current = round2(currentForB3(sym, holdings) + (merged ? parkCurrent : 0));
     const price =
       u.px != null && Number.isFinite(u.px) && (u.px as number) > 0 ? (u.px as number) : null;
     pushLine({
@@ -411,26 +449,36 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       leg: 'b3',
       symbol: sym,
       ts: u.symbol,
-      name: u.name || sym,
+      name: merged ? `${u.name || sym}（B3+港湾停车）` : u.name || sym,
       price,
       targetPct,
       currentPct: current,
       deltaPct: round2(targetPct - current),
+      harborSharePct: harborShare,
     });
   }
 
-  // Leg-split currents (% of total).
+  // Leg-split currents (% of total). A merged B3+park line splits its holding
+  // pro rata to its two target shares.
   let harborCurrentPct = 0;
   let b3CurrentPct = 0;
   for (const t of targets) {
     if (t.leg === 'harbor-stock' || t.leg === 'harbor-park') harborCurrentPct += t.currentPct;
-    if (t.leg === 'b3') b3CurrentPct += t.currentPct;
+    if (t.leg === 'b3') {
+      const hShare = t.targetPct > 0 ? (t.currentPct * t.harborSharePct) / t.targetPct : 0;
+      harborCurrentPct += hShare;
+      b3CurrentPct += t.currentPct - hShare;
+    }
   }
-  harborCurrentPct = round2(harborCurrentPct);
-  b3CurrentPct = round2(b3CurrentPct);
   const totalDeployed = holdings.reduce((s, h) => s + (Number(h.positionPct) || 0), 0);
   const cashCurrentPct = round2(Math.max(0, 100 - Math.min(100, totalDeployed)));
   const cashTargetPct = parkSymbol ? 0 : round2(harborParkTargetTotal);
+  // pick=REPO/STOCK: the Harbor remainder legitimately sits in cash, so idle
+  // cash counts toward the Harbor leg (otherwise an aligned REPO book would
+  // always read as a ≥5pt leg drift).
+  if (!parkSymbol) harborCurrentPct += cashCurrentPct;
+  harborCurrentPct = round2(harborCurrentPct);
+  b3CurrentPct = round2(b3CurrentPct);
 
   // Non-target holdings: not in any target line (B3 ETFs are targets in the
   // M30 view — they must never be flagged as "非今日停车 ETF" here).
@@ -442,8 +490,9 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
     if (s.startsWith('ETF:') && targetBare.has(bareCode(s))) return false;
     // Anything matching the harbor pick is covered by the park line.
     if (parkSymbol && holdingMatchesPick(h.symbol, pickKey)) return false;
-    // S-3 stocks are always covered (HOLD 7% / EXIT 0 lines above).
-    if (isStockSymbol(s)) return false;
+    // CN S-3 stocks are always covered (HOLD 7% / EXIT 0 lines above). HK
+    // names are not part of M30's Harbor leg → non-target.
+    if (isCnStock(s)) return false;
     return true;
   });
 
@@ -463,7 +512,9 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       shares: t.deltaShares,
       reason:
         t.leg === 'b3'
-          ? 'B3 月频目标'
+          ? t.harborSharePct > 0
+            ? `B3 月频目标+港湾停车 ${pickKey}`
+            : 'B3 月频目标'
           : t.leg === 'harbor-park'
             ? `港湾停车 ${pickKey}`
             : String(t.id).startsWith('harbor-exit-')
@@ -479,14 +530,16 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
     if (cur < M30_MIN_TRADE_PCT) continue;
     const sym = String(h.symbol).toUpperCase();
     const price = priceForSymbol(sym, { b3, stockCloses });
+    const isHk = sym.startsWith('HK:');
     actions.push({
       side: 'SELL',
       symbol: sym,
       name: h.name || sym,
       pct: round2(cur),
       amt: amtOf(capital, cur),
-      shares: sharesFor(sym, price, capital, cur),
-      reason: '非M30目标',
+      // Full exit: HK prices are HKD vs 总资金 in CNY, so no share estimate.
+      shares: isHk ? null : sharesFor(sym, price, capital, cur),
+      reason: isHk ? '非M30目标（港股不在M30港湾腿）' : '非M30目标',
       leg: sym.startsWith('ETF:') ? 'b3' : 'harbor-stock',
     });
   }

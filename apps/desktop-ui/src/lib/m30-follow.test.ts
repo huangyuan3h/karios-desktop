@@ -193,6 +193,79 @@ describe('buildM30Targets', () => {
   });
 });
 
+describe('buildM30Targets — overlap / HK / REPO (review fixes)', () => {
+  it('merges the Harbor park ETF with its B3 line when the pick is a B3 member (no double count)', () => {
+    // pick=BOND10 → 511260, which is also a B3 member.
+    const r = buildM30Targets({
+      capital: 1_000_000,
+      pickKey: 'BOND10',
+      pickSymbol: 'ETF:511260',
+      pickPrice: 134,
+      b3: B3,
+      holdings: [{ symbol: 'ETF:511260', positionPct: 69.3 }],
+    });
+    const lines = r.targets.filter((t) => t.symbol === 'ETF:511260');
+    expect(lines).toHaveLength(1);
+    expect(r.targets.some((t) => t.leg === 'harbor-park')).toBe(false);
+    // 70 (Harbor park) + 0.3 × 20 (B3) = 76.
+    expect(lines[0]?.targetPct).toBeCloseTo(76, 5);
+    expect(lines[0]?.harborSharePct).toBeCloseTo(70, 5);
+    expect(lines[0]?.currentPct).toBeCloseTo(69.3, 5);
+    expect(r.targets.reduce((s, t) => s + t.targetPct, 0)).toBeCloseTo(100, 5);
+    // Holding counted once across both legs.
+    expect(r.harborCurrentPct + r.b3CurrentPct).toBeCloseTo(69.3, 1);
+  });
+
+  it('counts a B3-member NASDAQ alias (513100) on its B3 line only', () => {
+    const r = buildM30Targets({
+      capital: 1_000_000,
+      pickKey: 'NASDAQ',
+      pickSymbol: 'ETF:513110',
+      pickPrice: 1.5,
+      b3: B3,
+      holdings: [{ symbol: 'ETF:513100', positionPct: 6 }],
+    });
+    const park = r.targets.find((t) => t.leg === 'harbor-park');
+    expect(park?.symbol).toBe('ETF:513110');
+    expect(park?.currentPct).toBe(0);
+    expect(r.targets.find((t) => t.symbol === 'ETF:513100')?.currentPct).toBeCloseTo(6, 5);
+    expect(r.harborCurrentPct + r.b3CurrentPct).toBeCloseTo(6, 5);
+  });
+
+  it('treats HK names as non-M30 (Harbor leg is CN-only)', () => {
+    const r = buildM30Targets({
+      capital: 1_000_000,
+      pickKey: 'OIL',
+      pickSymbol: 'ETF:513350',
+      pickPrice: 1.42,
+      b3: B3,
+      holdings: [{ symbol: 'HK:00700', positionPct: 5, action: 'HOLD', lastClose: 400 }],
+    });
+    expect(r.targets.some((t) => t.symbol === 'HK:00700')).toBe(false);
+    expect(r.stockLegCount).toBe(0);
+    expect(r.nonTargets.map((h) => h.symbol)).toContain('HK:00700');
+    const a = r.actions.find((x) => x.symbol === 'HK:00700');
+    expect(a?.side).toBe('SELL');
+    expect(a?.shares).toBeNull();
+  });
+
+  it('pick=REPO: idle cash counts toward the Harbor leg (aligned book has no leg drift)', () => {
+    const r = buildM30Targets({
+      capital: 1_000_000,
+      pickKey: 'REPO',
+      pickSymbol: null,
+      pickPrice: null,
+      b3: B3,
+      holdings: B3.map((u) => ({ symbol: `ETF:${u.symbol.split('.')[0]}`, positionPct: 6 })),
+    });
+    expect(r.cashTargetPct).toBeCloseTo(70, 5);
+    expect(r.cashCurrentPct).toBeCloseTo(70, 5);
+    expect(r.harborCurrentPct).toBeCloseTo(70, 5);
+    expect(r.legDriftPt).toBe(0);
+    expect(r.actions).toHaveLength(0);
+  });
+});
+
 describe('cadenceStatus', () => {
   it('weekly: Monday is the rebalance day', () => {
     // 2026-10-05 is a Monday.

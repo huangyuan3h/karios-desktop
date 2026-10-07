@@ -266,7 +266,7 @@ export function M30FollowBlock() {
                   {t.suppressed ? '（小）' : ''}
                 </td>
                 <td className="py-1 text-right tabular-nums text-[var(--k-muted)]">
-                  {t.deltaShares != null && t.deltaShares > 0
+                  {t.side !== 'HOLD' && t.deltaShares != null && t.deltaShares > 0
                     ? `${t.side === 'SELL' ? '卖' : '买'} ${t.deltaShares.toLocaleString('zh-CN')} 份`
                     : t.targetShares != null && t.targetShares > 0
                       ? `目标 ${t.targetShares.toLocaleString('zh-CN')} 份`
@@ -311,7 +311,9 @@ export function M30FollowBlock() {
                 {pct(a.pct)} · {cny(a.amt)}
                 {a.shares != null && a.shares > 0
                   ? ` · ${a.shares.toLocaleString('zh-CN')} 份`
-                  : ' · 不足1手按%执行'}
+                  : a.reason.startsWith('非M30目标')
+                    ? ' · 全部卖出'
+                    : ' · 不足1手按%执行'}
               </span>{' '}
               <span className="opacity-80">（{a.reason}）</span>
             </li>
@@ -328,7 +330,8 @@ export function M30FollowBlock() {
         <summary className="cursor-pointer">口径说明</summary>
         <ul className="mt-1 list-disc space-y-0.5 pl-4">
           <li>回测定义：港湾70%+B3 30%，每月首个交易日复位（5bp/边）；跟仓每周一次只定何时动手，不改引擎。</li>
-          <li>港湾腿内：S-3 每腿 7%（引擎 10%×0.7，上限 10 腿），余量停当日 harbor pick ETF；pick=REPO 时余量留现金。</li>
+          <li>港湾腿内：S-3 每腿 7%（引擎 10%×0.7，上限 10 腿，仅 A 股；港股不属于 M30），余量停当日 harbor pick ETF；pick=REPO 时余量留现金（计入港湾腿）。</li>
+          <li>停车 ETF 若本身是 B3 成分（黄金 518880 / 纳指 513100 / 国债 511260），两份目标合并成一行，持仓不重复计。</li>
           <li>再平衡：再平衡日全量提示；非再平衡日仅腿偏离≥{M30_DRIFT_LEG_PT}pt 或单线≥{M30_DRIFT_LINE_PT}pt 才提示；S-3 硬退出不受此限。</li>
           <li>价格：B3 用 b3-state raw px（可交易价），停车用 sleeve pick close，股票用持仓 lastClose；缺价时只给 %。</li>
         </ul>
