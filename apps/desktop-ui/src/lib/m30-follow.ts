@@ -36,6 +36,16 @@ import { lotRuleFor, roundToLot } from '@/lib/lot-sizing';
 import { PARKING_META, type ParkingKey } from '@/lib/parking-universe';
 import { loadJson, saveJson } from '@/lib/storage';
 
+/** B3 universe bare codes (frozen 5-ETF definition, `service/homeport.py`). */
+export const M30_B3_CODES: readonly string[] = ['510300', '510500', '518880', '513100', '511260'];
+
+/** True when a watchlist/ts symbol is one of the 5 B3 ETFs. */
+export function isM30B3Symbol(symbol: string): boolean {
+  const s = String(symbol || '').toUpperCase();
+  const code = (s.includes(':') ? s.split(':')[1]! : s).split('.')[0]!;
+  return M30_B3_CODES.includes(code);
+}
+
 /** Harbor leg weight of total assets (M30). */
 export const M30_HARBOR_WEIGHT = 0.7;
 /** B3 leg weight of total assets (M30). */

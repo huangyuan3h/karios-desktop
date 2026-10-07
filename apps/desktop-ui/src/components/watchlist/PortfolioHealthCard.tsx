@@ -96,12 +96,15 @@ function PickStrongOpsPanel({
   stockHoldingsCount,
   onBuyEtf,
   coreBuyable = true,
+  m30 = false,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
   onBuyEtf?: (symbol: string, name: string | null) => void;
   /** False when pick=STOCK but no executable basket names today. */
   coreBuyable?: boolean;
+  /** 母港 M30 view: park sizing = Harbor 70% leg (see 母港M30跟仓), not 100%. */
+  m30?: boolean;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
@@ -128,7 +131,9 @@ function PickStrongOpsPanel({
       action === 'HOLD'
         ? `闲置现金 ${fmt(idlePct)} · 继续持有 ${meta.label}（${etfSym ?? pickKey}）· 停车只停闲钱`
         : action === 'ROTATE' || action === 'BUY'
-          ? `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
+          ? m30
+            ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，金额/份数见上方「母港M30跟仓」（B3 腿 ETF 不卖）`
+            : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
           : `闲置现金 ${fmt(idlePct)} → 逆回购 · 股票核心不动`,
     );
     if (stockHoldingsCount > 0) {
@@ -1266,6 +1271,7 @@ export function PortfolioHealthCard({
             stockHoldingsCount={stockHoldingsCount}
             onBuyEtf={handleBuyEtf}
             coreBuyable={stockBuyable}
+            m30={mode === 'homeport'}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
@@ -1277,6 +1283,7 @@ export function PortfolioHealthCard({
           sleeve={sleeve}
           onOpen={onOpenStock}
           coreDestinationReady={coreDestinationReady}
+          m30={mode === 'homeport'}
         />
         <SleeveReconBlock
           recon={sleeveReconQ.data?.recon}

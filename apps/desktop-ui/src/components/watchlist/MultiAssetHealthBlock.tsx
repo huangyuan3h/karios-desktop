@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { isM30B3Symbol } from '@/lib/m30-follow';
 import { PARKING_META, parkingKeyForSymbol } from '@/lib/parking-universe';
 import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 
@@ -33,12 +34,18 @@ export function MultiAssetHealthBlock({
   sleeve,
   onOpen,
   coreDestinationReady = true,
+  m30 = false,
 }: {
   holdings: MultiHolding[] | undefined | null;
   sleeve: MultiSleeve | undefined | null;
   onOpen?: (symbol: string) => void;
   /** When pick=STOCK but the basket has 0 executable names, keep ETFs parked. */
   coreDestinationReady?: boolean;
+  /**
+   * 母港 M30 view: the 5 B3 ETFs are the 30% B3 leg, not stale parking — never
+   * tag them 卖出 here; sizing lives in the 母港M30跟仓 panel.
+   */
+  m30?: boolean;
 }) {
   const openHoldings = (holdings ?? []).filter(
     (h) => typeof h.positionPct === 'number' && h.positionPct > 0,
@@ -80,9 +87,19 @@ export function MultiAssetHealthBlock({
       pickKey != null &&
       (pickKey !== 'STOCK' || coreDestinationReady) ? (
         <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
-          今日动作：用闲置 {sleeve.parkPct ?? sleeve.idlePct}% 停进{' '}
-          {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}
-          （港湾停车只停闲钱，股票核心不动）
+          {m30 ? (
+            <>
+              母港M30：港湾腿（70%）的停车部分停进{' '}
+              {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}
+              ；金额/份数以上方「母港M30跟仓」为准（B3 腿 ETF 不卖）
+            </>
+          ) : (
+            <>
+              今日动作：用闲置 {sleeve.parkPct ?? sleeve.idlePct}% 停进{' '}
+              {sleeve.pick?.symbol ?? sleeve.etfPick?.symbol ?? pickKey}
+              （港湾停车只停闲钱，股票核心不动）
+            </>
+          )}
         </div>
       ) : null}
 
@@ -109,8 +126,14 @@ export function MultiAssetHealthBlock({
                 : isPick
                   ? '今日 pick（mom60+MA200 选趋势最好）· 目标 = 闲置现金'
                   : undefined;
-            const adjust =
-              pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
+            const m30B3 = m30 && isM30B3Symbol(h.symbol);
+            const adjust = m30B3
+              ? {
+                  label: 'B3 腿',
+                  cls: 'bg-sky-500/10 text-sky-700',
+                  tip: '母港M30：B3 成分（30% 腿），按上方「母港M30跟仓」目标调整，不按港湾停车轮动卖出',
+                }
+              : pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
                 ? pickKey === 'STOCK' && !coreDestinationReady
                   ? null
                   : {
