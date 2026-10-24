@@ -10,10 +10,16 @@
 #     running Postgres container. We auto-detect the container instead of
 #     hardcoding a name, because the dev box uses `postgres-db` and the
 #     compose stack uses `karios-postgres`.
-#   - Last-backup-age check: even if launchd missed the 03:00 trigger while
-#     the Mac was asleep, the script forces a fresh backup when the previous
-#     one is > 25h old. This is the safety net for sleep periods.
-#   - Local retention: keep last 30 days in ~/.karios/backups/postgres.
+#   - Daily-guarantee check: skip only when the newest dump is already from
+#     TODAY (local calendar date parsed from the karios-YYYYMMDD-HHMMSS
+#     filename). A 03:00 launchd run the day after a successful dump (~24h
+#     later) must still dump — a pure age threshold (e.g. 25h) skips those runs
+#     and stretches the effective RPO to ~48h (seen 2026-10-16..24: every even
+#     day skipped at ~85660s < 90000s). After a week asleep, the next 03:00 run
+#     sees a different calendar date and dumps immediately.
+#   - Local retention: keep last N days (plist: 7) in ~/.karios/backups/postgres.
+#   - NAS: ~/bin/nas-sync.sh copies dumps to the G1 NAS daily (03:17); old iCloud
+#     dumps are deleted only after a verified NAS copy exists.
 #   - Off-machine copy: mirror to ~/Library/Mobile Documents/com~apple~CloudDocs/
 #     Karios/backups/postgres (iCloud Drive). iCloud's own daemon syncs even
 #     while the Mac is asleep, so this is the truly remote copy.
@@ -35,8 +41,10 @@
 #   KARIOS_PG_CONTAINER   — pin a specific container (default: auto-detect)
 #   KARIOS_BACKUP_LOCAL_DIR  — local backup root (default: ~/.karios/backups/postgres)
 #   KARIOS_BACKUP_ICLOUD_DIR — iCloud backup root (default: ~/Library/Mobile Documents/com~apple~CloudDocs/Karios/backups/postgres)
-#   KARIOS_LOCAL_RETENTION_DAYS  (default 30)
-#   KARIOS_ICLOUD_RETENTION_DAYS (default 14)
+#   KARIOS_LOCAL_RETENTION_DAYS  (default 30; launchd plist sets 7)
+#   KARIOS_ICLOUD_RETENTION_DAYS (default 14; only deletes dumps already verified on the NAS)
+#   KARIOS_ICLOUD_INDEX / KARIOS_NAS_LEDGER — see retention section
+#   KARIOS_ICLOUD_MIRROR  (default 0 = off since 2026-10-07, iCloud quota full; set 1 to re-enable iCloud mirror + iCloud retention)
 #
 # Exit codes:
 #   0 — success
@@ -69,7 +77,9 @@ LOCAL_DIR="${KARIOS_BACKUP_LOCAL_DIR:-$HOME/.karios/backups/postgres}"
 ICLOUD_DIR="${KARIOS_BACKUP_ICLOUD_DIR:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/Karios/backups/postgres}"
 LOCAL_RETENTION="${KARIOS_LOCAL_RETENTION_DAYS:-30}"
 ICLOUD_RETENTION="${KARIOS_ICLOUD_RETENTION_DAYS:-14}"
-STALE_THRESHOLD_SEC=$((25 * 3600))   # 25h — backup is "stale" if older
+ICLOUD_MIRROR="${KARIOS_ICLOUD_MIRROR:-0}"   # 0 = skip iCloud mirror + iCloud retention (local + NAS only)
+ICLOUD_INDEX="${KARIOS_ICLOUD_INDEX:-$(dirname "$LOCAL_DIR")/icloud-index.txt}"   # names mirrored to iCloud
+NAS_LEDGER="${KARIOS_NAS_LEDGER:-$(dirname "$LOCAL_DIR")/nas-archived.txt}"       # dumps verified on NAS (written by ~/bin/nas-sync.sh)
 
 # ---- helpers ---------------------------------------------------------------
 _log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
@@ -111,14 +121,19 @@ LAST_BACKUP_FILE="$(ls -1t "$LOCAL_DIR"/karios-*.dump 2>/dev/null | grep -v '\.c
 NOW_EPOCH="$(date +%s)"
 
 if [ -n "$LAST_BACKUP_FILE" ] && [ "$FORCE" -eq 0 ]; then
+  LAST_NAME="$(basename "$LAST_BACKUP_FILE")"
+  # Calendar date from the filename (karios-YYYYMMDD-HHMMSS.dump). Unparsable
+  # names fail open toward dumping — one backup too many beats one too few.
+  LAST_DATE="$(printf '%s' "$LAST_NAME" | sed -E 's/^karios-([0-9]{8})-[0-9]{6}\.dump$/\1/')"
+  TODAY_DATE="$(date +%Y%m%d)"
   LAST_MTIME_EPOCH="$(stat -f %m "$LAST_BACKUP_FILE" 2>/dev/null || echo 0)"
   AGE_SEC=$((NOW_EPOCH - LAST_MTIME_EPOCH))
-  if [ "$AGE_SEC" -lt "$STALE_THRESHOLD_SEC" ]; then
-    _log "skip — last backup is ${AGE_SEC}s old ($(basename "$LAST_BACKUP_FILE")), threshold ${STALE_THRESHOLD_SEC}s"
+  if [ -n "$LAST_DATE" ] && [ "$LAST_DATE" != "$LAST_NAME" ] && [ "$LAST_DATE" = "$TODAY_DATE" ]; then
+    _log "skip — already dumped today ($LAST_NAME, ${AGE_SEC}s old)"
     _log "use --force to override"
     exit 0
   fi
-  _log "last backup is ${AGE_SEC}s old (> ${STALE_THRESHOLD_SEC}s threshold) — forcing fresh dump"
+  _log "last dump is from ${LAST_DATE:-unknown-date} ($LAST_NAME, ${AGE_SEC}s old; today $TODAY_DATE) — dumping fresh"
 fi
 
 # ---- prepare ---------------------------------------------------------------
@@ -131,7 +146,7 @@ MANIFEST_FILE="$LOCAL_DIR/karios-$TIMESTAMP.manifest.json"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   _log "DRY-RUN: would dump into $BACKUP_FILE"
-  _log "DRY-RUN: would mirror to $ICLOUD_DIR"
+  if [ "$ICLOUD_MIRROR" = "1" ]; then _log "DRY-RUN: would mirror to $ICLOUD_DIR"; else _log "DRY-RUN: iCloud mirror disabled (KARIOS_ICLOUD_MIRROR=$ICLOUD_MIRROR)"; fi
   _log "DRY-RUN: would keep last ${LOCAL_RETENTION}d local / ${ICLOUD_RETENTION}d iCloud"
   exit 0
 fi
@@ -185,11 +200,14 @@ EOF
 _log "verified — $BACKUP_SIZE_HUMAN ($BACKUP_SIZE_BYTES bytes) / $TABLE_COUNT tables / pg $PG_VERSION"
 
 # ---- mirror to iCloud ------------------------------------------------------
-if [ -d "$HOME/Library/Mobile Documents/com~apple~CloudDocs" ]; then
+if [ "$ICLOUD_MIRROR" != "1" ]; then
+  _log "iCloud mirror disabled (KARIOS_ICLOUD_MIRROR=$ICLOUD_MIRROR) — local + NAS only"
+elif [ -d "$HOME/Library/Mobile Documents/com~apple~CloudDocs" ]; then
   if mkdir -p "$ICLOUD_DIR" 2>/dev/null; then
     if cp "$BACKUP_FILE" "$MANIFEST_FILE" "$ICLOUD_DIR/" 2>"$LOCAL_DIR/karios-$TIMESTAMP.icp.err"; then
       rm -f "$LOCAL_DIR/karios-$TIMESTAMP.icp.err"
       _log "mirrored to iCloud: $ICLOUD_DIR"
+      printf '%s\n' "$(basename "$BACKUP_FILE")" "$(basename "$MANIFEST_FILE")" >> "$ICLOUD_INDEX"
     else
       _log "WARN: iCloud copy failed (local backup is still good) — see $LOCAL_DIR/karios-$TIMESTAMP.icp.err"
       # Non-fatal: local backup is intact.
@@ -202,17 +220,68 @@ else
 fi
 
 # ---- retention -------------------------------------------------------------
-DELETED_LOCAL="$(find "$LOCAL_DIR" -maxdepth 1 -name 'karios-*.dump' -mtime +"$LOCAL_RETENTION" -print -delete 2>/dev/null | wc -l | awk '{print $1}')"
-DELETED_LOCAL_MF="$(find "$LOCAL_DIR" -maxdepth 1 -name 'karios-*.manifest.json' -mtime +"$LOCAL_RETENTION" -print -delete 2>/dev/null | wc -l | awk '{print $1}')"
-_log "retention: deleted $DELETED_LOCAL dumps + $DELETED_LOCAL_MF manifests older than ${LOCAL_RETENTION}d"
+# Dates are parsed from the filename (karios-YYYYMMDD-HHMMSS.*) instead of -mtime, and every
+# rm failure is logged (no more `2>/dev/null`).
+#
+# Why the old iCloud cleanup always logged "deleted 0": when this script runs from launchd,
+# macOS privacy (TCC) blocks *listing* the iCloud Drive folder ("Operation not permitted"),
+# while creating/unlinking a file by its full path still works. `find ... 2>/dev/null` therefore
+# saw no files at all. iCloud file names now come from $ICLOUD_INDEX (appended on every mirror),
+# merged with a directory listing when one is permitted.
+#
+# Safety: an old iCloud dump is only removed once nas-sync.sh has verified a copy on the NAS
+# (listed in $NAS_LEDGER). Otherwise it is kept and reported as "deferred".
+_file_date() {  # karios-20260804-195239.dump -> 20260804
+  local b; b="$(basename "$1")"
+  if [[ "$b" =~ ^karios-([0-9]{8})-[0-9]{6}\. ]]; then echo "${BASH_REMATCH[1]}"; fi
+}
+_rm_logged() {  # path -> 0 on success; logs failures
+  local err
+  if err="$(rm -f -- "$1" 2>&1)" && [ ! -e "$1" ]; then return 0; fi
+  _log "WARN: retention: could not delete $1: ${err:-still present}"
+  return 1
+}
 
-if [ -d "$ICLOUD_DIR" ]; then
-  DELETED_ICL="$(find "$ICLOUD_DIR" -maxdepth 1 -name 'karios-*.dump' -mtime +"$ICLOUD_RETENTION" -print -delete 2>/dev/null | wc -l | awk '{print $1}')"
-  DELETED_ICL_MF="$(find "$ICLOUD_DIR" -maxdepth 1 -name 'karios-*.manifest.json' -mtime +"$ICLOUD_RETENTION" -print -delete 2>/dev/null | wc -l | awk '{print $1}')"
-  _log "retention (iCloud): deleted $DELETED_ICL dumps + $DELETED_ICL_MF manifests older than ${ICLOUD_RETENTION}d"
+LOCAL_CUTOFF="$(date -v-"${LOCAL_RETENTION}"d +%Y%m%d)"
+DELETED_LOCAL=0; DELETED_LOCAL_MF=0; LOCAL_ERRS=0
+LATEST_NAME="$(basename "$BACKUP_FILE")"
+for f in "$LOCAL_DIR"/karios-*.dump "$LOCAL_DIR"/karios-*.manifest.json; do
+  [ -e "$f" ] || continue
+  d="$(_file_date "$f")"; [ -n "$d" ] || continue
+  [ "$(basename "$f")" = "$LATEST_NAME" ] && continue
+  if [ "$d" -lt "$LOCAL_CUTOFF" ]; then
+    if _rm_logged "$f"; then
+      case "$f" in *.dump) DELETED_LOCAL=$((DELETED_LOCAL+1)) ;; *) DELETED_LOCAL_MF=$((DELETED_LOCAL_MF+1)) ;; esac
+    else LOCAL_ERRS=$((LOCAL_ERRS+1)); fi
+  fi
+done
+_log "retention: deleted $DELETED_LOCAL dumps + $DELETED_LOCAL_MF manifests dated before $LOCAL_CUTOFF (${LOCAL_RETENTION}d), errors=$LOCAL_ERRS"
+
+if [ "$ICLOUD_MIRROR" = "1" ] && [ -d "$ICLOUD_DIR" ]; then
+  ICLOUD_CUTOFF="$(date -v-"${ICLOUD_RETENTION}"d +%Y%m%d)"
+  LISTING="$(ls -1 "$ICLOUD_DIR" 2>&1)"; LIST_RC=$?
+  [ "$LIST_RC" -eq 0 ] || { LISTING=""; _log "note: iCloud dir not listable here (TCC) — using index $ICLOUD_INDEX"; }
+  NAMES="$( { cat "$ICLOUD_INDEX" 2>/dev/null; printf '%s\n' "$LISTING"; } | grep -E '^karios-[0-9]{8}-[0-9]{6}\.dump$' | sort -u )"
+  DELETED_ICL=0; DELETED_ICL_MF=0; DEFERRED_ICL=0; ICL_ERRS=0; GONE=""
+  for n in $NAMES; do
+    d="$(_file_date "$n")"; [ -n "$d" ] && [ "$d" -lt "$ICLOUD_CUTOFF" ] || continue
+    stem="${n%.dump}"
+    if [ ! -e "$ICLOUD_DIR/$n" ]; then GONE="$GONE $stem"; continue; fi
+    if ! grep -q "^$n	" "$NAS_LEDGER" 2>/dev/null; then DEFERRED_ICL=$((DEFERRED_ICL+1)); continue; fi
+    if _rm_logged "$ICLOUD_DIR/$n"; then
+      DELETED_ICL=$((DELETED_ICL+1)); GONE="$GONE $stem"
+      if [ -e "$ICLOUD_DIR/$stem.manifest.json" ] && _rm_logged "$ICLOUD_DIR/$stem.manifest.json"; then DELETED_ICL_MF=$((DELETED_ICL_MF+1)); fi
+    else ICL_ERRS=$((ICL_ERRS+1)); fi
+  done
+  # drop removed entries from the index
+  if [ -n "$GONE" ] && [ -f "$ICLOUD_INDEX" ]; then
+    pat="$(printf '%s\n' $GONE | sed 's/^/^/; s/$/\\./' | paste -sd'|' -)"
+    grep -Ev "$pat" "$ICLOUD_INDEX" > "$ICLOUD_INDEX.tmp" && mv "$ICLOUD_INDEX.tmp" "$ICLOUD_INDEX"
+  fi
+  _log "retention (iCloud): deleted $DELETED_ICL dumps + $DELETED_ICL_MF manifests dated before $ICLOUD_CUTOFF (${ICLOUD_RETENTION}d); deferred $DEFERRED_ICL (no verified NAS copy yet); errors=$ICL_ERRS"
 fi
 
 # ---- prune corrupt markers older than 14d (forensics only) -----------------
-find "$LOCAL_DIR" -maxdepth 1 -name 'karios-*.dump.corrupt' -mtime +14 -delete 2>/dev/null || true
+find "$LOCAL_DIR" -maxdepth 1 -name 'karios-*.dump.corrupt' -mtime +14 -delete || true
 
 _log "done — latest: $(ls -1t "$LOCAL_DIR"/karios-*.dump | head -1 | xargs -I{} basename {})"

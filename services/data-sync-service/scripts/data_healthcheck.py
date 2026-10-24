@@ -8,10 +8,17 @@ Checks, against the local dev database and filesystem:
   5. watchlist TrendOK scores: freshness vs latest open trading day
   6. DB backup age: newest ~/.karios/backups/postgres/*.dump mtime
 
-Exit codes: 0 = all ok, 1 = warnings only, 2 = at least one failure.
+Severity: each check returns status ok/warn/fail plus an explicit severity
+tag (OK/WARN/CRITICAL). Trading-critical regressions (bars/scores/industry/
+close sync, watchlist_automation, decision_snapshot, morning_brief, backup
+age) FAIL as CRITICAL; environment-owned gaps (missing TU_SHARE_API_KEY,
+dead alpha_radar model id, xq cookie/JSON, long-stale TV snapshots) WARN.
+Stdout lines are tagged [OK  ]/[WARN]/[CRIT].
+
+Exit codes: 0 = all ok, 1 = warnings only, 2 = at least one CRITICAL failure.
 Usage:
   python3 scripts/data_healthcheck.py            # stdout report
-  python3 scripts/data_healthcheck.py --notify   # + macOS notification on FAIL
+  python3 scripts/data_healthcheck.py --notify   # + macOS notification on CRITICAL only
 """
 
 from __future__ import annotations
@@ -51,6 +58,10 @@ CRITICAL_JOB_FRESH_DAYS: dict[str, int] = {
     "eastmoney_industry_sync": 7,
     "cn_industry_post_close_sync": 7,
 }
+# Jobs whose failures are environment-owned (missing keys/models/cookies),
+# not trading-signal regressions — a failed last run surfaces as WARN,
+# never CRITICAL. Everything else keeps FAIL-on-last-error.
+WARN_ONLY_JOB_PREFIXES = ("alpha_radar_", "hk_basic_sync", "xq_follow_snapshot")
 # Every other known job must at least have *a* successful run on record.
 OTHER_JOB_MAX_AGE_DAYS = 14
 
@@ -60,19 +71,33 @@ def _now_sh() -> datetime:
 
 
 def _ok(msg: str) -> dict[str, Any]:
-    return {"status": "ok", "message": msg}
+    return {"status": "ok", "severity": "OK", "message": msg}
 
 
 def _warn(msg: str) -> dict[str, Any]:
-    return {"status": "warn", "message": msg}
+    return {"status": "warn", "severity": "WARN", "message": msg}
 
 
 def _fail(msg: str) -> dict[str, Any]:
-    return {"status": "fail", "message": msg}
+    return {"status": "fail", "severity": "CRITICAL", "message": msg}
+
+
+def _is_warn_only_job(job: str) -> bool:
+    return job.startswith(WARN_ONLY_JOB_PREFIXES)
+
+
+def _is_trading_critical_job(job: str) -> bool:
+    """Jobs whose last-run failure pages CRITICAL.
+
+    Kept close to CRITICAL_JOB_FRESH_DAYS (bars/scores/industry/close sync,
+    watchlist_automation, decision_snapshot, morning_brief) minus the
+    environment-owned exclusions. Every other job's failure is WARN.
+    """
+    return job in CRITICAL_JOB_FRESH_DAYS and not _is_warn_only_job(job)
 
 
 def check_scheduler_jobs() -> dict[str, Any]:
-    fails: list[str] = []
+    crits: list[str] = []
     warns: list[str] = []
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -94,11 +119,22 @@ def check_scheduler_jobs() -> dict[str, Any]:
                     continue
                 age_days = (_now_sh() - (sync_at + SHANGHAI_OFFSET)).days
                 if not success:
-                    fails.append(f"{job}: last run failed: {(err or '')[:120]}")
+                    line = f"{job}: last run failed: {(err or '')[:120]}"
+                    if _is_trading_critical_job(job):
+                        crits.append(line)
+                    else:
+                        warns.append(line)
                 elif age_days > fresh_days:
+                    # Stale (but last run green) stays WARN for every job, even
+                    # trading-critical ones: weekday-only crons (e.g.
+                    # morning_brief_am, fresh 2d) legitimately gap over weekends
+                    # and holidays, which would otherwise page every Monday.
                     warns.append(f"{job}: last success {age_days}d ago")
-    if fails:
-        return _fail("; ".join(fails))
+    if crits:
+        msg = "; ".join(crits)
+        if warns:
+            msg += " | warn: " + "; ".join(warns)
+        return _fail(msg)
     if warns:
         return _warn("; ".join(warns))
     return _ok(f"{len(SYNC_JOB_TYPES)} jobs all green")
@@ -142,8 +178,10 @@ def check_tv_snapshots() -> dict[str, Any]:
     if isinstance(latest, str):
         latest = datetime.fromisoformat(latest.replace("Z", "+00:00"))
     age_hours = (_now_sh() - (latest + SHANGHAI_OFFSET)).total_seconds() / 3600
+    # TV snapshots have been stale since ~2026-08-12 (upstream owned) — always
+    # WARN, never CRITICAL; trading decisions do not depend on them.
     if age_hours > 48:
-        return _fail(f"tv snapshots stale ({age_hours:.0f}h)")
+        return _warn(f"tv snapshots stale ({age_hours:.0f}h)")
     if age_hours > 12:
         return _warn(f"tv snapshots stale ({age_hours:.0f}h)")
     return _ok(f"tv snapshots {age_hours:.0f}h fresh")
@@ -188,10 +226,13 @@ def check_backup_age() -> dict[str, Any]:
         return _fail("no backup dumps found")
     mtime = datetime.fromtimestamp(dumps[-1].stat().st_mtime, tz=UTC)
     age_hours = (_now_sh() - (mtime + SHANGHAI_OFFSET)).total_seconds() / 3600
-    # db_backup.sh skips when the newest dump is < 25h old (sleep safety net),
-    # so the max legit gap is ~49h; FAIL only beyond that (50h).
-    if age_hours > 50:
+    # Daily 03:00 launchd + calendar-day dump guarantee ⇒ >26h means yesterday's
+    # dump went missing (CRITICAL); 20-26h is the soft aging window (WARN) ahead
+    # of tonight's run.
+    if age_hours > 26:
         return _fail(f"backup stale ({age_hours:.0f}h, {dumps[-1].name})")
+    if age_hours > 20:
+        return _warn(f"backup aging ({age_hours:.0f}h, {dumps[-1].name})")
     return _ok(f"backup {age_hours:.0f}h ago ({dumps[-1].name})")
 
 
@@ -205,44 +246,60 @@ CHECKS = [
 ]
 
 _STATUS_RANK = {"ok": 0, "warn": 1, "fail": 2}
+_STATUS_TAG = {"ok": "OK  ", "warn": "WARN", "fail": "CRIT"}
 
 
-def run() -> int:
-    worst = 0
-    lines: list[str] = []
+def run_checks() -> list[tuple[str, dict[str, Any]]]:
+    results: list[tuple[str, dict[str, Any]]] = []
     for name, fn in CHECKS:
         try:
             result = fn()
         except Exception as exc:  # noqa: BLE001 - one check failing must not kill the report
             result = _fail(f"check crashed: {exc}")
-        lines.append(f"[{result['status'].upper():4s}] {name}: {result['message']}")
+        results.append((name, result))
+    return results
+
+
+def run() -> int:
+    worst = 0
+    for name, result in run_checks():
+        print(f"[{_STATUS_TAG[result['status']]}] {name}: {result['message']}")
         worst = max(worst, _STATUS_RANK[result["status"]])
-    for line in lines:
-        print(line)
     return worst
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Karios data-source health check")
-    parser.add_argument("--notify", action="store_true", help="macOS notification on FAIL")
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="macOS notification on CRITICAL only (WARN-only stays quiet)",
+    )
     args = parser.parse_args()
 
-    code = run()
-    if args.notify and code >= 2:
+    results = run_checks()
+    worst = 0
+    for name, result in results:
+        print(f"[{_STATUS_TAG[result['status']]}] {name}: {result['message']}")
+        worst = max(worst, _STATUS_RANK[result["status"]])
+    if args.notify and worst >= 2:
+        crit_names = [name for name, r in results if r["status"] == "fail"]
+        body = "Data health CRITICAL: " + ", ".join(crit_names)
+        if len(body) > 200:
+            body = body[:197] + "..."
         try:
             subprocess.run(
                 [
                     "osascript",
                     "-e",
-                    'display notification "Data health FAIL — see console output" '
-                    'with title "Karios Health Check"',
+                    f'display notification "{body}" with title "Karios Health Check"',
                 ],
                 check=False,
                 capture_output=True,
             )
         except OSError:
             pass
-    sys.exit(code)
+    sys.exit(worst)
 
 
 if __name__ == "__main__":

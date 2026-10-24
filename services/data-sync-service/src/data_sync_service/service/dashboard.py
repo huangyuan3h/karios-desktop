@@ -377,10 +377,29 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     out = sync_cn_sentiment(date_str=d, force=bool(force))
     etf_out = sync_etf_fund_flow_watchlist(force=bool(force))
     top_inst_out = sync_top_inst_watchlist(force=bool(force))
-    option_iv_out = sync_option_iv_daily(force=bool(force))
+    try:
+        option_iv_out = sync_option_iv_daily(force=bool(force))
+    except Exception as exc:  # noqa: BLE001 - IV is optional; never fail the step on it
+        option_iv_out = {
+            "ok": False,
+            "error": str(exc) or "option_iv_failed",
+            "jobType": "option_iv_daily",
+        }
+    # IV is an optional sub-step: a live-fetch miss (e.g. no_iv_data when
+    # eastmoney blocks the egress IP) must not turn the whole marketSentiment
+    # step red — the sentiment rows are already persisted and the Put IV card
+    # falls back to the latest DB value (resolve_put_iv_for_snapshot).
+    # Neutralize its ok flag here (sync_option_iv_daily itself stays strict
+    # and keeps success=False in sync_job_record) and surface the miss as a
+    # warning instead.
+    warnings: list[str] = []
+    if isinstance(option_iv_out, dict) and option_iv_out.get("ok") is False:
+        err = str(option_iv_out.get("error") or option_iv_out.get("message") or "no_iv_data")
+        warnings.append(f"option_iv: {err}")
+        option_iv_out = {**option_iv_out, "ok": True, "degraded": True, "warning": err}
     items = out.get("items") if isinstance(out, dict) else []
     last = items[-1] if isinstance(items, list) and items else {}
-    return {
+    result: dict[str, Any] = {
         "asOfDate": out.get("asOfDate") if isinstance(out, dict) else d,
         "riskMode": str((last or {}).get("riskMode") or ""),
         "premium": (last or {}).get("yesterdayLimitUpPremium"),
@@ -389,6 +408,19 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         "topInstWatchlist": top_inst_out,
         "optionIvDaily": option_iv_out,
     }
+    if warnings:
+        result["warnings"] = warnings
+    # Step ok is driven by the hard sub-steps only (sentiment + etf + top-inst).
+    # IV is deliberately excluded — see above.
+    hard_failure = _sync_failure_message(
+        {"sentiment": out, "etfFundFlow": etf_out, "topInstWatchlist": top_inst_out}
+    )
+    if hard_failure:
+        result["ok"] = False
+        result["error"] = hard_failure
+    else:
+        result["ok"] = True
+    return result
 
 
 def _progress_from_job(job: dict[str, Any], *, name: str) -> dict[str, Any]:
@@ -431,6 +463,22 @@ def _sync_news_step() -> dict[str, Any]:
     return out
 
 
+def _collect_step_warnings(steps: list[dict[str, Any]]) -> list[str]:
+    """Aggregate soft-degraded sub-step warnings (e.g. Put IV) for honest UI.
+
+    These never flip overall ``ok`` — they ride alongside ``ok=true`` so Sync
+    All can show OK-with-warnings instead of painting the run FAILED.
+    """
+    warnings: list[str] = []
+    for step in steps:
+        meta = step.get("meta")
+        if isinstance(meta, dict):
+            ws = meta.get("warnings")
+            if isinstance(ws, list):
+                warnings.extend(str(w) for w in ws if w)
+    return warnings
+
+
 def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     steps: list[dict[str, Any]] = []
@@ -445,6 +493,7 @@ def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
     }
 
 
@@ -477,6 +526,7 @@ def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
     }
 
 
@@ -523,6 +573,7 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
     }
     summary_data: dict[str, Any] = {}
     summary_error: str | None = None

@@ -204,7 +204,101 @@ class TestSyncSteps:
         out = dash._sync_sentiment_step(force=True)
         assert out["asOfDate"] == "2026-08-07" and out["riskMode"] == ""
 
-    def test_news_step(self, monkeypatch) -> None:
+    def test_sentiment_step_iv_soft_fail_stays_green(self, monkeypatch) -> None:
+        """IV no_iv_data must degrade to a warning, not fail the sentiment step."""
+        monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
+        monkeypatch.setattr(
+            dash,
+            "sync_cn_sentiment",
+            lambda **kw: {
+                "items": [
+                    {
+                        "riskMode": "extreme_caution",
+                        "yesterdayLimitUpPremium": 0.5,
+                        "failedLimitUpRate": 10.0,
+                    }
+                ],
+                "asOfDate": "2026-08-07",
+            },
+        )
+        monkeypatch.setattr(dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(
+            dash,
+            "sync_option_iv_daily",
+            lambda **kw: {"ok": False, "error": "no_iv_data", "jobType": "option_iv_daily"},
+        )
+        out = dash._sync_sentiment_step(force=True)
+        assert out["ok"] is True
+        assert out["warnings"] == ["option_iv: no_iv_data"]
+        assert out["optionIvDaily"]["ok"] is True
+        assert out["optionIvDaily"]["degraded"] is True
+        assert out["optionIvDaily"]["warning"] == "no_iv_data"
+        # Full step wrapper must also stay green with no bare no_iv_data message.
+        step = dash._run_step("marketSentiment", lambda: dash._sync_sentiment_step(force=True))
+        assert step["ok"] is True
+        assert step["message"] is None
+
+    def test_sentiment_step_iv_exception_stays_green(self, monkeypatch) -> None:
+        monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
+        monkeypatch.setattr(
+            dash,
+            "sync_cn_sentiment",
+            lambda **kw: {"items": [], "asOfDate": "2026-08-07"},
+        )
+        monkeypatch.setattr(dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
+
+        def _boom(**kw):
+            raise RuntimeError("eastmoney_ip_ban_latched")
+
+        monkeypatch.setattr(dash, "sync_option_iv_daily", _boom)
+        out = dash._sync_sentiment_step(force=True)
+        assert out["ok"] is True
+        assert out["warnings"] == ["option_iv: eastmoney_ip_ban_latched"]
+
+    def test_sentiment_step_hard_fail_still_red(self, monkeypatch) -> None:
+        """sync_cn_sentiment failure must still fail the step."""
+        monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
+        monkeypatch.setattr(
+            dash,
+            "sync_cn_sentiment",
+            lambda **kw: {"ok": False, "error": "sentiment compute failed"},
+        )
+        monkeypatch.setattr(dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(
+            dash,
+            "sync_option_iv_daily",
+            lambda **kw: {"ok": False, "error": "no_iv_data", "jobType": "option_iv_daily"},
+        )
+        out = dash._sync_sentiment_step(force=True)
+        assert out["ok"] is False
+        assert out["error"] == "sentiment compute failed"
+        step = dash._run_step("marketSentiment", lambda: dash._sync_sentiment_step(force=True))
+        assert step["ok"] is False
+        assert step["message"] == "sentiment compute failed"
+
+    def test_sentiment_step_etf_fail_still_red_iv_soft(self, monkeypatch) -> None:
+        """ETF hard failure still fails; IV alone never does (message is ETF's)."""
+        monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
+        monkeypatch.setattr(
+            dash,
+            "sync_cn_sentiment",
+            lambda **kw: {"items": [], "asOfDate": "2026-08-07"},
+        )
+        monkeypatch.setattr(
+            dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": False, "error": "etf down"}
+        )
+        monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
+        monkeypatch.setattr(
+            dash,
+            "sync_option_iv_daily",
+            lambda **kw: {"ok": False, "error": "no_iv_data", "jobType": "option_iv_daily"},
+        )
+        step = dash._run_step("marketSentiment", lambda: dash._sync_sentiment_step(force=True))
+        assert step["ok"] is False
+        assert step["message"] == "etf down"
         monkeypatch.setattr(dash, "fetch_all_sources", lambda: {"a": 3, "b": 0, "c": -1})
         out = dash._sync_news_step()
         assert out == {
@@ -364,3 +458,67 @@ class TestSyncFlows:
         payload = json.loads(chunks[-1])
         assert payload["result"]["ok"] is False
         assert payload["result"]["error"] == "x"
+
+
+def _patch_iv_soft_fail(monkeypatch) -> None:
+    """Sentiment step green with an IV warning; everything else green."""
+    monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
+    monkeypatch.setattr(
+        dash,
+        "sync_cn_sentiment",
+        lambda **kw: {"items": [], "asOfDate": "2026-08-07"},
+    )
+    monkeypatch.setattr(dash, "sync_etf_fund_flow_watchlist", lambda **kw: {"ok": True})
+    monkeypatch.setattr(dash, "sync_top_inst_watchlist", lambda **kw: {"ok": True})
+    monkeypatch.setattr(
+        dash,
+        "sync_option_iv_daily",
+        lambda **kw: {"ok": False, "error": "no_iv_data", "jobType": "option_iv_daily"},
+    )
+
+
+class TestWarningsAggregation:
+    def test_dashboard_sync_iv_only_warning_stays_ok(self, monkeypatch) -> None:
+        """Overall ok=true with top-level warnings when only Put IV degrades."""
+        monkeypatch.setattr(dash, "_now_iso", lambda: "now")
+        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
+        _patch_iv_soft_fail(monkeypatch)
+        out = dash.dashboard_sync(force=True)
+        assert out["ok"] is True
+        assert out["warnings"] == ["option_iv: no_iv_data"]
+        sentiment = next(s for s in out["steps"] if s["name"] == "marketSentiment")
+        assert sentiment["ok"] is True
+        assert sentiment["message"] is None
+
+    def test_dashboard_sync_parallel_iv_only_warning_stays_ok(self, monkeypatch) -> None:
+        monkeypatch.setattr(dash, "_now_iso", lambda: "now")
+        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
+        _patch_iv_soft_fail(monkeypatch)
+        out = dash.dashboard_sync_parallel(force=True)
+        assert out["ok"] is True
+        assert out["warnings"] == ["option_iv: no_iv_data"]
+
+    def test_dashboard_sync_stream_iv_only_warning_stays_ok(self, monkeypatch) -> None:
+        monkeypatch.setattr(dash, "_now_iso", lambda: "now")
+        monkeypatch.setattr(dash, "_sync_industry_step", lambda **kw: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
+        monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True})
+        _patch_iv_soft_fail(monkeypatch)
+        monkeypatch.setattr(dash, "dashboard_summary", lambda **kw: {"asOfDate": "d"})
+        chunks = list(dash.dashboard_sync_stream(force=True))
+        payload = json.loads(chunks[-1])
+        assert payload["result"]["ok"] is True
+        assert payload["result"]["warnings"] == ["option_iv: no_iv_data"]
+
+    def test_collect_step_warnings_ignores_steps_without_meta(self) -> None:
+        assert dash._collect_step_warnings([]) == []
+        assert dash._collect_step_warnings([{"name": "x", "ok": True, "meta": {}}]) == []
+        steps = [
+            {"name": "a", "ok": True, "meta": {"warnings": ["w1", "w2"]}},
+            {"name": "b", "ok": False, "meta": {}},
+        ]
+        assert dash._collect_step_warnings(steps) == ["w1", "w2"]

@@ -39,7 +39,39 @@ export type SyncStep = {
   ok: boolean | null;
   durationMs: number | null;
   message?: string | null;
+  /** Soft-degraded sub-step notes (e.g. Put IV) — never flips overall ok. */
+  warnings?: string[] | null;
 };
+
+/**
+ * Collect soft warnings from a Sync All result without affecting ok.
+ * Reads the top-level `warnings` list plus per-step `meta.warnings`
+ * (e.g. `option_iv: no_iv_data` when Put IV falls back to the DB value).
+ */
+export function dashboardSyncWarnings(result: unknown): string[] {
+  const out: string[] = [];
+  if (!result || typeof result !== 'object') return out;
+  const record = result as { warnings?: unknown; steps?: unknown };
+  if (Array.isArray(record.warnings)) {
+    for (const w of record.warnings) {
+      if (typeof w === 'string' && w) out.push(w);
+    }
+  }
+  if (Array.isArray(record.steps)) {
+    for (const step of record.steps) {
+      if (!step || typeof step !== 'object') continue;
+      const meta = (step as { meta?: unknown }).meta;
+      if (!meta || typeof meta !== 'object') continue;
+      const warnings = (meta as { warnings?: unknown }).warnings;
+      if (Array.isArray(warnings)) {
+        for (const w of warnings) {
+          if (typeof w === 'string' && w) out.push(w);
+        }
+      }
+    }
+  }
+  return out;
+}
 
 export type DashboardSyncCallbacks = {
   applySummaryToCache: (s: DashboardSummary) => void;
@@ -147,9 +179,17 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
               ok: boolean;
               durationMs: number;
               message?: string;
+              meta?: { warnings?: unknown };
             };
+            const stepWarnings = Array.isArray(step.meta?.warnings)
+              ? (step.meta.warnings as unknown[]).filter(
+                  (w): w is string => typeof w === 'string' && w.length > 0,
+                )
+              : null;
             setSyncSteps((prev) => {
-              const updated = prev.map((s) => (s.name === step.name ? { ...step } : s));
+              const updated = prev.map((s) =>
+                s.name === step.name ? { ...step, warnings: stepWarnings } : s,
+              );
               const completed = updated.filter((s) => s.ok !== null).length;
               setSyncProgress(Math.round((completed / stepNames.length) * 100));
               return updated;
