@@ -49,6 +49,9 @@ HIGH_JOB_TYPES = {
     "index_basic_sync",
     "sleeve_etf_daily_sync",
     "stock_daily_basic_sync",
+    # 2026-10-25 factor/S-gap monitor-dark pages Yuan (必达 MVP).
+    "factor_vault_refresh",
+    "sgap_decay_refresh",
 }
 
 

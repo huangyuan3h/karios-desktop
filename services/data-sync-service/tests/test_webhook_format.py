@@ -147,3 +147,45 @@ def test_satellite_action_push_lines() -> None:
     assert r["title"] == "🛰 星舰 v2 · 2026.09.17 14:30"
     assert "卖出资金停入 H2 停车腿" in r["body"]
     assert "闸关" in r["body"]
+
+
+def test_factor_status_up_push() -> None:
+    """2026-10-25 必达 MVP: cold→watch upgrade pages the phone."""
+    r = format_bark(
+        "factor_status_up",
+        {
+            "factor_id": "starship_b",
+            "name": "星舰B默认",
+            "from": "cold",
+            "to": "watch",
+            "percentile": 55.2,
+            "net": -3.5,
+            "date": "2026-10-26",
+        },
+    )
+    assert r["title"] == "🧬 星舰B默认 冷库→观察"
+    assert "分位 55.2" in r["body"]
+    assert "净 -3.5" in r["body"]
+
+
+def test_factor_revived_push() -> None:
+    r = format_bark(
+        "factor_revived",
+        {
+            "factor_id": "harbor",
+            "name": "港湾 (参考)",
+            "from": "watch",
+            "to": "revived",
+            "percentile": 99.8,
+            "net": 37.5,
+            "date": "2026-10-26",
+        },
+    )
+    assert r["title"] == "🟢 因子复活 港湾 (参考)"
+    assert "分位 99.8" in r["body"]
+
+
+def test_sgap_revival_push() -> None:
+    r = format_bark("sgap_revival", {"old_pos": 10, "new_pos": 20, "date": "2026-10-26"})
+    assert r["title"] == "🟢 S-gap 复活位 10→20"
+    assert "星舰B" in r["body"]

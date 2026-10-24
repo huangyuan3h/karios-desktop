@@ -54,6 +54,7 @@ from data_sync_service.scheduler import (
     risk_state_sync_job,
     rolling_oos_job,
     satellite_live_job,
+    sgap_decay_job,
     sleeve_paper_job,
     stock_basic_job,
     timeline_warmup_job,
@@ -443,6 +444,14 @@ def create_scheduler() -> BackgroundScheduler:
         factor_vault_job.run,
         factor_vault_job.build_trigger(),
         id=factor_vault_job.JOB_ID,
+        replace_existing=True,
+    )
+    # S-gap decay daily refresh (weekdays 19:15 — revival_pos step-up emits
+    # sgap_revival; fail-open keeps yesterday on error).
+    scheduler.add_job(
+        sgap_decay_job.run,
+        sgap_decay_job.build_trigger(),
+        id=sgap_decay_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

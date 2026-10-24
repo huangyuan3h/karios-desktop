@@ -192,6 +192,7 @@ class TestCreateScheduler:
             "etf_snapshot_sync",
             "watchlist_automation_retry",
             "factor_vault_refresh",
+            "sgap_decay_refresh",
         }
         assert ids == expected
 

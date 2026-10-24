@@ -143,6 +143,56 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
             "body": _lines(str(error), *extra) or "见控制台",
         }
 
+    if event_type == "factor_status_up":
+        name = str(p.get("name") or p.get("factor_id") or "")
+        old = str(p.get("from") or "")
+        new = str(p.get("to") or "")
+        bits = []
+        if p.get("percentile") is not None:
+            try:
+                bits.append(f"分位 {float(p['percentile']):.1f}")
+            except (TypeError, ValueError):
+                pass
+        if p.get("net") is not None:
+            try:
+                bits.append(f"净 {float(p['net']):+.1f}")
+            except (TypeError, ValueError):
+                pass
+        return {
+            "title": f"🧬 {name} 冷库→观察",
+            "body": _lines(
+                f"{old} → {new}" if old and new else None,
+                " · ".join(bits) or None,
+                str(p.get("date") or ""),
+            ),
+        }
+
+    if event_type == "factor_revived":
+        name = str(p.get("name") or p.get("factor_id") or "")
+        bits = []
+        if p.get("percentile") is not None:
+            try:
+                bits.append(f"分位 {float(p['percentile']):.1f}")
+            except (TypeError, ValueError):
+                pass
+        if p.get("net") is not None:
+            try:
+                bits.append(f"净 {float(p['net']):+.1f}")
+            except (TypeError, ValueError):
+                pass
+        return {
+            "title": f"🟢 因子复活 {name}",
+            "body": _lines(" · ".join(bits) or None, str(p.get("date") or "")),
+        }
+
+    if event_type == "sgap_revival":
+        old = p.get("old_pos")
+        new = p.get("new_pos")
+        return {
+            "title": f"🟢 S-gap 复活位 {old}→{new}",
+            "body": _lines("星舰B / K2", str(p.get("date") or "")),
+        }
+
     if event_type == "test":
         return {"title": "✅ Karios 连通测试", "body": "Webhook 链路正常"}
 

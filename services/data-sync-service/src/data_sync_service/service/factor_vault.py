@@ -809,6 +809,69 @@ def apply_history(
     return rows
 
 
+def diff_factor_transitions(
+    prev_states: dict[str, str] | None,
+    factors: list[dict[str, Any]],
+    day: str,
+) -> list[dict[str, Any]]:
+    """Detect cold->watch upgrades and *->revived revivals vs yesterday.
+
+    Emit-only-on-transition helper for the 必达 monitor (2026-10-25 MVP):
+    compares today's factor rows against the previous history entry's
+    ``states`` mapping. Factors with no prior record are skipped (no
+    baseline, no page). Returns transition dicts carrying the exact
+    ``factor_status_up`` / ``factor_revived`` event types.
+    """
+    if not prev_states:
+        return []
+    out: list[dict[str, Any]] = []
+    for row in factors or []:
+        try:
+            fid = str(row.get("id") or "")
+            new_status = str(row.get("status") or "")
+        except Exception:
+            continue
+        if not fid or not new_status:
+            continue
+        prev = prev_states.get(fid)
+        if prev is None or prev == new_status:
+            continue
+        if new_status == "revived":
+            event_type = "factor_revived"
+        elif prev == "cold" and new_status == "watch":
+            event_type = "factor_status_up"
+        else:
+            # watch->cold (fade) and revived->watch/cold (loss) are not
+            # phone pushes in this MVP round — Hub history shows them.
+            continue
+        try:
+            pct = row.get("percentile")
+            pct_f = float(pct) if pct is not None else None
+        except (TypeError, ValueError):
+            pct_f = None
+        try:
+            net_f = float(row.get("net"))
+        except (TypeError, ValueError):
+            net_f = 0.0
+        out.append(
+            {
+                "date": day,
+                "kind": "factor",
+                "event_type": event_type,
+                "factor_id": fid,
+                "name": row.get("name") or fid,
+                "from": prev,
+                "to": new_status,
+                "percentile": pct_f,
+                "net": net_f,
+                "dedupe_key": f"{event_type}:{fid}:{new_status}:{day}"
+                if event_type == "factor_status_up"
+                else f"{event_type}:{fid}:{day}",
+            }
+        )
+    return out
+
+
 def compute_factor_vault(
     overrides: dict[str, dict[str, Any] | None] | None = None,
     prev_history: list[dict[str, Any]] | None = None,
