@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
+import { dashboardRefetchIntervalMs } from '@/lib/queries/intervals';
 import { useNewsItemsQuery } from '@/lib/queries/news';
 import { useIndustryFundFlowQuery } from '@/lib/queries/industryFlow';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
@@ -154,7 +155,7 @@ export function MobileDashboardPage() {
   const health = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
-    refetchInterval: 5 * 60_000,
+    refetchInterval: dashboardRefetchIntervalMs,
   });
   const news = useNewsItemsQuery(24, 5);
   const flow = useIndustryFundFlowQuery(10, 200);

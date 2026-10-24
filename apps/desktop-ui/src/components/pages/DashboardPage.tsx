@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
 import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { useDashboardAutoSync } from '@/hooks/useDashboardAutoSync';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
@@ -103,6 +104,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       void captureDecisionSnapshot('sync_all');
     },
   });
+
+  const { lastAutoSyncAt } = useDashboardAutoSync({ onSync: onSyncAll, busy });
 
   const {
     rows: watchlistRiskRows,
@@ -340,6 +343,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         ) : null}
         {!summaryLoading && summary && !isShanghaiSyncWindow() ? (
           <span>盘后模式：仅读缓存，同步跳过实时抓取</span>
+        ) : null}
+        {lastAutoSyncAt ? (
+          <span>上次自动同步 {fmtDateTime(lastAutoSyncAt)}</span>
         ) : null}
       </div>
       {copyAllStatus ? (
