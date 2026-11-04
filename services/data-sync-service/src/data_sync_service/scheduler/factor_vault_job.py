@@ -98,7 +98,7 @@ def run() -> None:
     reports_dir = _reports_dir()
     prev_states = _load_prev_states(reports_dir)
     today_iso = date.today().isoformat()
-    script = Path(__file__).resolve().parents[2] / "scripts" / "generate_factor_vault.py"
+    script = Path(__file__).resolve().parents[3] / "scripts" / "generate_factor_vault.py"
     try:
         proc = subprocess.run(
             [sys.executable, str(script)],

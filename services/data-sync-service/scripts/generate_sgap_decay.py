@@ -48,7 +48,7 @@ def main() -> int:
     if isinstance(trades, dict):
         # Accept {"trades": [...]} wrappers defensively.
         trades = trades.get("trades", [])
-    payload = compute_sgap_decay(trades)
+    payload = compute_sgap_decay(trades, as_of=date.today())
     payload["meta"]["generated_at"] = date.today().isoformat()
     payload["meta"]["source_path"] = str(src)
     out = Path(args.output)

@@ -62,7 +62,7 @@ def run() -> None:
     reports_dir = _reports_dir()
     old_pos = _read_revival_pos(reports_dir)
     today_iso = date.today().isoformat()
-    script = Path(__file__).resolve().parents[2] / "scripts" / "generate_sgap_decay.py"
+    script = Path(__file__).resolve().parents[3] / "scripts" / "generate_sgap_decay.py"
     try:
         proc = subprocess.run(
             [sys.executable, str(script)],
