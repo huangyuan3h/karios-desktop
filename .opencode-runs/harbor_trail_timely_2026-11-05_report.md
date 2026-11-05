@@ -3,6 +3,8 @@
 Branch: `feat/watchlist-follow-m30` · unattended run · **no TRAIL_PCT / clock change**
 (`close signal → next open execute` unchanged).
 
+Commit: **80aab82f** — `feat(harbor): pending trail overrides 今日操作 + 14:30 今日调整 Bark`
+
 ## TL;DR
 
 The 08:19 screenshot had **two** independent root causes, both now fixed:
