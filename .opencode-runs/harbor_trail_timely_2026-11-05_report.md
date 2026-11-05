@@ -4,6 +4,12 @@ Branch: `feat/watchlist-follow-m30` · unattended run · **no TRAIL_PCT / clock 
 (`close signal → next open execute` unchanged).
 
 Commit: **80aab82f** — `feat(harbor): pending trail overrides 今日操作 + 14:30 今日调整 Bark`
+(+ **87d5af80** — `fix(harbor): 14:30 trail warning falls back to the latest intraday print`)
+
+**Status: HARBOUR TRAIL TIMELY DONE** — live API returns the pending trail, the
+Watchlist 今日操作 first row is the Must-act sell → 逆回购, Bark「今日调整」covers
+homeport/harbor (and appends the harbor leg in satellite modes). No push to the
+remote, no TRAIL_PCT / clock change.
 
 ## TL;DR
 
@@ -115,6 +121,14 @@ It **never changes `action`** (close still decides) and it **blocks adds** on
 that symbol in the UI. The 14:30 Bark gets the same line (`mustWatch: true`,
 conditional adjustment), so a warned day is never silent and never shows 买油.
 
+Price source order (steer: 当时价 **或** 最新价), DB-only, never network:
+1. `live_1430` snapshot row for the day (written by the 14:30 panel job **before**
+   it composes/pushes — so the 14:30 push always has it for quoted symbols);
+2. fallback: the **latest stored intraday print** of the day (`bar_5min`, any
+   slot) when the `live_1430` row is missing for that symbol;
+3. none → no warning (never guess). The payload carries `pxSource`
+   (`live_1430` / `bar_5min_latest`) so the copy can be audited.
+
 ## Tests
 
 Backend (`services/data-sync-service`, `.venv/bin/python -m pytest`, `-o addopts=""`):
@@ -122,7 +136,7 @@ Backend (`services/data-sync-service`, `.venv/bin/python -m pytest`, `-o addopts
 - `tests/test_multi_asset_trail.py` — fire on close, sticky pending next morning
   **without today bar**, within band none, no look-ahead, raw fallback, engine
   peak parity, **0% ghost leg regression**, 14:30 warn (breached / near / calm),
-  warn does not flip `action`.
+  warn does not flip `action`, **latest-intraday-print fallback** (`pxSource`).
 - `tests/test_daily_adjust.py` (new) — homeport pending trail → sell→repo;
   HOLD → `今日无需调整`; rotate; satellite exits; missing panel; intraday warn
   is conditional (`mustWatch`, `mustAct=false`).
@@ -176,20 +190,39 @@ Frontend (`apps/desktop-ui`):
 - **What actually happened**: killing the uvicorn made `turbo dev` cancel its
   sibling tasks (Next :3000 / AI :4310 went down too, ~30 s), so the stack was
   relaunched as a whole (`pnpm dev`, nohup, log
-  `.opencode-runs/pnpm-dev-2026-11-05.log`). After the final code edits it was
-  relaunched once more. Current healthy state:
-  - data-sync :4330 → PID **10387**
-  - Next :3000 → PID **10393**
-  - AI :4310 → PID **10394** (Hono, `/` 404 is normal — no root route)
-  - `pnpm dev` wrapper → PID **9795** (background)
-  - PIDs that no longer exist: 61461/61483 (original uvicorn), 5548 (temporary
-    standalone uvicorn, stopped), 5673 & 7796 (earlier `pnpm dev` wrappers).
-- Exactly one listener per port; nothing was killed twice.
-- Live API after the restart
-  (`/v1/agent/portfolio-health?markets=CN`):
-  `action=SELL_TO_REPO, symbol=ETF:513350, pendingOpenSell=true,
-  signalDate=2026-11-03`, holdings row `ETF:513350 positionPct=63.51
-  action=SELL_TO_REPO` — exactly the expected Must-act state.
+  `.opencode-runs/pnpm-dev-2026-11-05.log`). It was relaunched twice more while
+  iterating on the final code (each relaunch = the same cascade).
+  - Killed: **61461** `uv run uvicorn` + **61483** uvicorn (started 2026-11-04
+    13:19), **5548** (temporary standalone uvicorn, stopped before relaunch),
+    **5673** / **7796** (earlier `pnpm dev` wrappers).
+  - Intermediate relaunch (the one the steer saw): uv **6231**, uvicorn **6269**
+    :4330, Next **6270** :3000, AI **6272** :4310 — replaced by the final code.
+  - **Current (final) listeners**, Asia/Shanghai:
+    - data-sync :4330 → uvicorn PID **10387**
+    - Next :3000 → PID **10393**
+    - AI :4310 → PID **10394** (Hono, `/` 404 is normal — no root route)
+    - `pnpm dev` wrapper → PID **9795** (background, nohup)
+  - Exactly one listener per port; nothing was killed a second time beyond the
+    two relaunches above.
+- Live verify (pasted, after the final relaunch):
+  ```
+  $ curl -s 'http://127.0.0.1:4330/v1/agent/portfolio-health?markets=CN'
+  multiAssetSleeve = {action: SELL_TO_REPO, label: 卖出转repo(止损),
+    symbol: ETF:513350, pendingOpenSell: true, signalDate: 2026-11-03,
+    executeHint: 待开盘卖出转逆回购（信号已触发，未执行）, intradayWarn: null,
+    idlePct: 0.0, parkPct: 100.0}
+  message = ETF:513350峰值回撤8.5% ≥8% → 次日开盘卖转逆回购（信号日 2026-11-03，待开盘执行）
+  pick    = OIL ETF:513350 mom60 9.94
+  multiAssetHoldings = [("ETF:513350", 63.51, action=SELL_TO_REPO, pendingOpenSell=true),
+                        ("ETF:511260", 36.66, action=None)]
+  ```
+  Note the correct route is **`/v1/agent/portfolio-health`**;
+  `/api/portfolio/health` 404s.
+- The last patch (intraday-print fallback, `87d5af80`) is **not** in the running
+  process (no further restart, per the steer). Live impact today: none — the
+  14:30 job persists the `live_1430` snapshot **before** it composes/pushes, so
+  the primary source is always present for that push. The fallback becomes
+  active on the next natural restart.
 - 14:30 dry-run with the real settings (`selected_strategy_mode()=starship_b`):
   title `📋 星舰 B · 今日调整 2026.11.05`, body includes
   `港湾停车腿 · 卖出：ETF:513350 → 逆回购（…峰值回撤8.5% ≥8%）· 待开盘卖出转逆回购（信号已触发，未执行）（信号日 2026-11-03）`.
