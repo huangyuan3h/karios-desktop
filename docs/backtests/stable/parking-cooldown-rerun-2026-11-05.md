@@ -133,4 +133,4 @@ PYTHONPATH=src:scripts python3 -m pytest tests/test_eval_parking_cooldown_whip.p
 - 基线：[`etf-parking-baseline-2026-09-13.md`](etf-parking-baseline-2026-09-13.md)（B11 §3.3）· 配方：[`strategy-recipes.md`](../../modules/strategy-recipes.md)
 - 实现：`service/harbor.py`（`pick_parking(exclude_keys=...)` + `parking_replay(cooldown_days=...)`，默认零变化，本次**未改**）· 测试 `tests/test_harbor_parking.py`、`tests/test_eval_parking_cooldown_whip.py`
 - 运行记录：`.opencode-runs/harbor_trail_reentry_cooldown_2026-11-05_report.md`
-- 提交：`<COMMIT>`（本报告 + JSON + 脚本指标 + 单测；未 push）
+- 提交：`8c740cf4`（本报告 + JSON + 脚本指标 + 单测；未 push；紧随其后一个仅回填本行 hash 的 docs 提交）

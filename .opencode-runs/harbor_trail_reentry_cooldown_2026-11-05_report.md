@@ -35,7 +35,7 @@
 - `services/data-sync-service/data/backtest_reports/parking_cooldown_rerun_2026-11-05.json`
 - `services/data-sync-service/scripts/eval_parking_cooldown.py` (metrics + `--report-name`)
 - `services/data-sync-service/tests/test_eval_parking_cooldown_whip.py`
-- Commit: `<COMMIT>` — local only, no push; unrelated dirty files untouched.
+- Commit: `8c740cf4` — local only, no push; unrelated dirty files untouched. (Followed by a docs-only commit that backfills this hash line.)
 
 ## Safety
 
