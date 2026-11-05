@@ -116,7 +116,13 @@ def _sleeve_lines(sleeve: dict[str, Any]) -> tuple[list[str], list[dict[str, Any
         _adj("BUY", sym, message or "闲置现金停车", hint_text=hint)
     elif action == "HOLD":
         pick = (sleeve.get("pick") or {}).get("symbol") or (sleeve.get("pick") or {}).get("key")
-        lines.append(f"持有：{pick or symbol}（{message or '停车腿持有'}）")
+        warn_pre = sleeve.get("intradayWarn") or {}
+        if warn_pre.get("active"):
+            # Steer: once the print is at/under the line, never print 持有 —
+            # the warning below is the instruction (close confirms the exit).
+            pass
+        else:
+            lines.append(f"持有：{pick or symbol}（{message or '停车腿持有'}）")
         if pending:
             # Defensive: a sticky trail must never be hidden behind HOLD.
             lines = [
@@ -132,7 +138,7 @@ def _sleeve_lines(sleeve: dict[str, Any]) -> tuple[list[str], list[dict[str, Any
     warn = sleeve.get("intradayWarn") or {}
     if warn.get("active") and action != "SELL_TO_REPO":
         warn_sym = str(warn.get("symbol") or symbol or "停车 ETF").upper()
-        warn_hint = str(warn.get("executeHint") or "若收盘仍低于阈值价 → 明日开盘卖出转逆回购")
+        warn_hint = str(warn.get("executeHint") or "若收盘仍低于门槛价 → 明日开盘卖出转逆回购")
         lines.append(f"⚠ {warn.get('message') or f'{warn_sym}现价触线'}")
         lines.append(warn_hint)
         adjustments.append(

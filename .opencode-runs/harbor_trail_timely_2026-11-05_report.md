@@ -113,21 +113,36 @@ same as the daily series basis) or within **1pt above** it (`near`):
 
 ```
 {active, status: breached|near, px, thresholdPx, peak, drawdownPct, gapPct,
- message: "…现价X ≤ 卖出阈值价Y（峰值… 回撤…）→ 现价已达卖出条件",
- executeHint: "若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）"}
+ pxSource: live_1430|bar_5min_latest,
+ message: "…现价X ≤ 门槛价Y（峰值… 回撤…）→ 现价已达卖出条件",
+ executeHint: "若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）"}
 ```
 
-It **never changes `action`** (close still decides) and it **blocks adds** on
-that symbol in the UI. The 14:30 Bark gets the same line (`mustWatch: true`,
-conditional adjustment), so a warned day is never silent and never shows 买油.
+It **never changes `action`** (close still decides). Every surface shows it:
+
+- **今日操作**: red `⚠ 14:30 现价已达卖出条件：513350 现价 … ≤ 门槛价 …` banner
+  **plus a first row** `⏳ 待收盘确认 · 卖 513350 → 逆回购 · 仓位 … · 现价/门槛价`
+  (`data-conditional="true"`, no 记录成交 button) — the row is first, but it is
+  *not* an executable order: the clock stays 收盘确认 → 次日开盘.
+- **操作引导**: first step `⚠ … 现价已达卖出条件：卖出 513350 → 逆回购（现价 … ≤ 门槛价 …）`
+  + `若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）`; the status chip
+  shows `待收盘确认卖出` instead of 持有.
+- **停车体检**: `⚠ 14:30 现价已达卖出条件：卖出 513350 → 逆回购` block, chip
+  `已触线/临近`, row badge `触线`, bottom 动作 line `现价已达卖出条件（待收盘确认）`
+  — the word 持有 is never rendered for that leg.
+- **Bark 今日调整** (`harbor`/`homeport` and appended in satellite modes):
+  `⚠ …现价X ≤ 门槛价Y… → 现价已达卖出条件` + the next-open hint; when the sleeve
+  says HOLD but the print is at/under, the 持有 line is **dropped** (never both).
+- Adds (buy) on that symbol are suppressed in the M30 target math
+  (`parkBuyBlockedSymbol`), including a merged B3+park line.
 
 Price source order (steer: 当时价 **或** 最新价), DB-only, never network:
 1. `live_1430` snapshot row for the day (written by the 14:30 panel job **before**
    it composes/pushes — so the 14:30 push always has it for quoted symbols);
 2. fallback: the **latest stored intraday print** of the day (`bar_5min`, any
-   slot) when the `live_1430` row is missing for that symbol;
-3. none → no warning (never guess). The payload carries `pxSource`
-   (`live_1430` / `bar_5min_latest`) so the copy can be audited.
+   slot — the table only holds 14:30–15:00 prints, so no morning noise) when the
+   `live_1430` row is missing for that symbol;
+3. none → no warning (never guess). `pxSource` records which one was used.
 
 ## Tests
 
@@ -190,20 +205,19 @@ Frontend (`apps/desktop-ui`):
 - **What actually happened**: killing the uvicorn made `turbo dev` cancel its
   sibling tasks (Next :3000 / AI :4310 went down too, ~30 s), so the stack was
   relaunched as a whole (`pnpm dev`, nohup, log
-  `.opencode-runs/pnpm-dev-2026-11-05.log`). It was relaunched twice more while
-  iterating on the final code (each relaunch = the same cascade).
-  - Killed: **61461** `uv run uvicorn` + **61483** uvicorn (started 2026-11-04
-    13:19), **5548** (temporary standalone uvicorn, stopped before relaunch),
-    **5673** / **7796** (earlier `pnpm dev` wrappers).
-  - Intermediate relaunch (the one the steer saw): uv **6231**, uvicorn **6269**
-    :4330, Next **6270** :3000, AI **6272** :4310 — replaced by the final code.
-  - **Current (final) listeners**, Asia/Shanghai:
-    - data-sync :4330 → uvicorn PID **10387**
-    - Next :3000 → PID **10393**
-    - AI :4310 → PID **10394** (Hono, `/` 404 is normal — no root route)
-    - `pnpm dev` wrapper → PID **9795** (background, nohup)
-  - Exactly one listener per port; nothing was killed a second time beyond the
-    two relaunches above.
+  `.opencode-runs/pnpm-dev-2026-11-05.log`). Each code change that must be live
+  (the scheduler + the 14:30 warning fallback) needs one such relaunch.
+  - Killed originally: **61461** `uv run uvicorn` + **61483** uvicorn
+    (2026-11-04 13:19), **5548** (temporary standalone uvicorn), **5673** /
+    **7796** / **9795** (earlier `pnpm dev` wrappers), **8392/8393/8394** and
+    the steer-era **6231/6269/6270/6272** set (intermediate relaunches).
+  - **Current (final, last relaunch) listeners**, Asia/Shanghai:
+    - data-sync :4330 → uvicorn PID **15523**
+    - Next :3000 → PID **15524**
+    - AI :4310 → PID **15525** (Hono, `/` 404 is normal — no root route)
+    - `pnpm dev` wrapper → PID **14849** (background, nohup)
+  - Exactly one listener per port. This is the last restart of this run; the
+    running process now includes every commit below (fallback + 门槛价 copy).
 - Live verify (pasted, after the final relaunch):
   ```
   $ curl -s 'http://127.0.0.1:4330/v1/agent/portfolio-health?markets=CN'
@@ -218,11 +232,9 @@ Frontend (`apps/desktop-ui`):
   ```
   Note the correct route is **`/v1/agent/portfolio-health`**;
   `/api/portfolio/health` 404s.
-- The last patch (intraday-print fallback, `87d5af80`) is **not** in the running
-  process (no further restart, per the steer). Live impact today: none — the
-  14:30 job persists the `live_1430` snapshot **before** it composes/pushes, so
-  the primary source is always present for that push. The fallback becomes
-  active on the next natural restart.
+- The last patch (intraday-print fallback, `87d5af80`) **is** live now: the stack
+  was relaunched after it (uvicorn **15523**), so the 14:30 job today uses the
+  `live_1430` → latest-print fallback and the 门槛价 copy.
 - 14:30 dry-run with the real settings (`selected_strategy_mode()=starship_b`):
   title `📋 星舰 B · 今日调整 2026.11.05`, body includes
   `港湾停车腿 · 卖出：ETF:513350 → 逆回购（…峰值回撤8.5% ≥8%）· 待开盘卖出转逆回购（信号已触发，未执行）（信号日 2026-11-03）`.

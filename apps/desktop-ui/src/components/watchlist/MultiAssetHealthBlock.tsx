@@ -132,13 +132,18 @@ export function MultiAssetHealthBlock({
           className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-200"
         >
           <div className="font-semibold">
-            ⚠ 14:30 现价{intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}：
-            {intradayWarnCode}
-            {intradayWarn.px != null ? ` 现价 ${intradayWarn.px}` : ''}
-            {intradayWarn.thresholdPx != null ? ` ≤ 门槛价 ${intradayWarn.thresholdPx}` : ''}
+            ⚠ 14:30 {intradayWarn.status === 'breached' ? '现价已达卖出条件' : '现价逼近卖出线'}：
+            卖出 {intradayWarnCode} → 逆回购
           </div>
           <div className="mt-0.5">
-            {intradayWarn.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）'}
+            {intradayWarn.px != null ? `现价 ${intradayWarn.px}` : null}
+            {intradayWarn.thresholdPx != null
+              ? ` ${intradayWarn.status === 'breached' ? '≤' : '≥'} 门槛价 ${intradayWarn.thresholdPx}`
+              : null}
+            {intradayWarn.peak != null ? ` · 峰值 ${intradayWarn.peak}` : null}
+            {intradayWarn.drawdownPct != null ? ` · 回撤 ${intradayWarn.drawdownPct}%` : null}
+            {' · '}
+            {intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）'}
             ；今日不加仓、不买回
           </div>
         </div>
@@ -329,8 +334,23 @@ export function MultiAssetHealthBlock({
       {sleeve?.action && sleeve.action !== 'NONE' ? (
         <div className="text-[11px] text-[var(--k-muted)]">
           动作：
-          <span className="font-medium text-[var(--k-fg)]">{sleeve.label ?? sleeve.action}</span>
-          {pickKey
+          <span
+            className={cn(
+              'font-medium',
+              pendingSell || intradayWarn
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-[var(--k-fg)]',
+            )}
+          >
+            {pendingSell
+              ? '卖出 → 逆回购（止损，待开盘执行）'
+              : intradayWarn
+                ? intradayWarn.status === 'breached'
+                  ? '现价已达卖出条件（待收盘确认）'
+                  : '现价逼近卖出线（观察）'
+                : (sleeve.label ?? sleeve.action)}
+          </span>
+          {pickKey && !pendingSell && !intradayWarn
             ? ` · 停车 ${pickKey} mom60 ${(sleeve as unknown as { pick?: { mom60?: number } }).pick?.mom60 ?? ''}%`
             : ''}
         </div>

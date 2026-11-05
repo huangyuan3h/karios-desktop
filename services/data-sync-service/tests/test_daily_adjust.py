@@ -139,15 +139,17 @@ def test_homeport_intraday_warn_is_conditional_not_silent() -> None:
             "thresholdPx": 1.289,
             "peak": 1.401,
             "drawdownPct": 8.6,
-            "message": "ETF:513350现价1.281 ≤ 卖出阈值价1.289（峰值1.401 回撤8.6%）→ 现价已达卖出条件",
-            "executeHint": "若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）",
+            "message": "ETF:513350现价1.281 ≤ 门槛价1.289（峰值1.401 回撤8.6%）→ 现价已达卖出条件",
+            "executeHint": "若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）",
             "tradeDate": "2026-11-05",
         },
     }
     out = compose_daily_adjust("homeport", trade_date="2026-11-05", sleeve=sleeve)
     joined = "\n".join(out["lines"])
     assert "现价已达卖出条件" in joined
-    assert "若收盘仍低于阈值价" in joined
+    assert "门槛价1.289" in joined
+    assert "若收盘仍低于门槛价" in joined
+    assert "持有：" not in joined  # steer: never 持有 once the print is at/under
     assert NO_CHANGE_TEXT not in joined
     assert out["noChange"] is False
     assert out["mustWatch"] is True

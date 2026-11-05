@@ -302,12 +302,12 @@ def intraday_trail_watch(
     sym = levels["symbol"]
     if status == "breached":
         message = (
-            f"{sym}现价{px:.3f} ≤ 卖出阈值价{threshold:.3f}"
+            f"{sym}现价{px:.3f} ≤ 门槛价{threshold:.3f}"
             f"（峰值{peak:.3f} 回撤{dd:.1f}%）→ 现价已达卖出条件"
         )
     else:
         message = (
-            f"{sym}现价{px:.3f} 逼近卖出阈值价{threshold:.3f}"
+            f"{sym}现价{px:.3f} 逼近门槛价{threshold:.3f}"
             f"（高{gap:.1f}% 回撤{dd:.1f}%）→ 将触线，收盘确认"
         )
     return {
@@ -320,7 +320,7 @@ def intraday_trail_watch(
         "drawdownPct": round(dd, 1),
         "gapPct": round(gap, 1),
         "message": message,
-        "executeHint": "若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）",
+        "executeHint": "若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）",
         "tradeDate": str(day)[:10],
     }
 

@@ -155,14 +155,26 @@ function PickStrongOpsPanel({
   } else if (intradayWarn) {
     // 14:30 现价触线：conditional Must-watch；收盘确认后才改动作（不盘中卖）。
     steps.push(
-      `⚠ 14:30 现价${intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}：${intradayWarnCode}${
-        intradayWarn.px != null ? ` 现价 ${intradayWarn.px}` : ''
-      }${intradayWarn.thresholdPx != null ? ` ≤ 门槛价 ${intradayWarn.thresholdPx}` : ''}`,
+      `⚠ 14:30 ${intradayWarn.status === 'breached' ? '现价已达卖出条件' : '现价逼近卖出线'}：卖出 ${intradayWarnCode} → 逆回购` +
+        (intradayWarn.px != null ? `（现价 ${intradayWarn.px}` : '') +
+        (intradayWarn.thresholdPx != null
+          ? `${intradayWarn.px != null ? ' ' : '（'}${
+              intradayWarn.status === 'breached' ? '≤' : '≥'
+            } 门槛价 ${intradayWarn.thresholdPx}`
+          : '') +
+        `${intradayWarn.px != null || intradayWarn.thresholdPx != null ? '）' : ''}`,
     );
     steps.push(
-      intradayWarn.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）',
+      intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）',
     );
     steps.push('该停车腿今日不加仓、不买回；其余腿按各自目标处理');
+    if (action === 'ROTATE' || action === 'BUY') {
+      steps.push(
+        m30
+          ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
+          : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`,
+      );
+    }
     if (stockHoldingsCount > 0) {
       steps.push(
         `现有 ${stockHoldingsCount} 只股票仓按 S-3 自身规则处理（停车不要求为买 ETF 卖股票）`,
@@ -248,14 +260,24 @@ function PickStrongOpsPanel({
                 : 'border-[var(--k-border)] bg-[var(--k-surface)]',
           )}
         >
-          {sleeve?.label ?? action}
+          {pendingSell
+            ? '卖出转repo(止损)'
+            : intradayWarn
+              ? intradayWarn.status === 'breached'
+                ? '待收盘确认卖出'
+                : '临近门槛'
+              : (sleeve?.label ?? action)}
         </span>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
         停车规则：mom60+MA200 选趋势最好的一只 · 回撤 8% 出场 · 只停闲置现金
       </p>
       {/* 引擎原始决策只保留一处（停车体检/对账不再重复展示）。 */}
-      {sleeve?.message ? (
+      {intradayWarn ? (
+        <p className="mt-1.5 text-[12px] font-medium text-amber-700 dark:text-amber-300">
+          引擎：{intradayWarn.message ?? '14:30 现价触线'}
+        </p>
+      ) : sleeve?.message ? (
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">引擎：{sleeve.message}</p>
       ) : null}
       <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
@@ -468,6 +490,16 @@ function M30OpsSection({
       : '今天无需操作';
   const mustActRow = mustActActions[0] ?? null;
   const mustActSym = mustActRow ? m30BareCode(mustActRow.symbol) : null;
+  /** Backend target line for the warned leg (pct / price for the conditional row). */
+  const intradayWarnLine = intradayWarn
+    ? (report.targets.find(
+        (t) => m30BareCode(t.symbol) === m30BareCode(intradayWarn.symbol),
+      ) ?? null)
+    : null;
+  const intradayWarnAmt =
+    intradayWarnLine != null && capital != null
+      ? Math.round((capital * Math.abs(intradayWarnLine.currentPct)) / 100)
+      : null;
 
   return (
     <div
@@ -518,14 +550,17 @@ function M30OpsSection({
           className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-100"
         >
           <div className="font-semibold">
-            ⚠ 14:30 现价{intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}：
+            ⚠ 14:30 {intradayWarn.status === 'breached' ? '现价已达卖出条件' : '现价逼近卖出线'}：
             {m30BareCode(intradayWarn.symbol)}
             {intradayWarn.px != null ? ` 现价 ${intradayWarn.px}` : ''}
-            {intradayWarn.thresholdPx != null ? ` ≤ 门槛价 ${intradayWarn.thresholdPx}` : ''}
-            {intradayWarn.drawdownPct != null ? `（峰值回撤 ${intradayWarn.drawdownPct}%）` : ''}
+            {intradayWarn.thresholdPx != null
+              ? ` ${intradayWarn.status === 'breached' ? '≤' : '≥'} 门槛价 ${intradayWarn.thresholdPx}`
+              : ''}
+            {intradayWarn.peak != null ? ` · 峰值 ${intradayWarn.peak}` : ''}
+            {intradayWarn.drawdownPct != null ? ` · 回撤 ${intradayWarn.drawdownPct}%` : ''}
           </div>
           <div className="mt-0.5 font-normal">
-            {intradayWarn.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）'}
+            {intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）'}
             ；该腿今日不加仓、不买回
           </div>
         </div>
@@ -568,6 +603,44 @@ function M30OpsSection({
         <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
           B3 状态不可用（{b3Error}）：B3 腿暂按空目标显示，港湾腿不受影响。
         </p>
+      ) : null}
+
+      {intradayWarn && !mustActRow ? (
+        <div
+          data-testid="ops-intraday-row"
+          data-side="SELL"
+          data-symbol={intradayWarn.symbol}
+          data-conditional="true"
+          className="mt-2 rounded-lg border border-dashed border-amber-500/60 bg-amber-500/5 px-2.5 py-1.5 text-[12px]"
+        >
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+              待收盘确认
+            </span>
+            <span className="font-semibold text-red-600 dark:text-red-400">卖</span>
+            <span className="font-medium">
+              {intradayWarnLine?.name ?? '港湾停车'}
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+              {m30BareCode(intradayWarn.symbol)}
+            </span>
+            <span className="rounded border border-[var(--k-border)] px-1 text-[10px] text-[var(--k-muted)]">
+              港湾停车
+            </span>
+            <span className="tabular-nums">
+              {m30Pct(intradayWarnLine?.currentPct ?? 0)}
+              {intradayWarnAmt != null ? ` · ${m30Cny(intradayWarnAmt)}` : ''}
+            </span>
+            <span className="tabular-nums text-[var(--k-muted)]">→ 逆回购</span>
+            <span className="text-[10px] text-[var(--k-muted)]">
+              （现价 {intradayWarn.px ?? '—'} · 门槛价 {intradayWarn.thresholdPx ?? '—'}）
+            </span>
+          </div>
+          <div className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+            {intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）'}
+            ；不盘中挂单，卖出前不加仓、不买回
+          </div>
+        </div>
       ) : null}
 
       {orders.length > 0 ? (

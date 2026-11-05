@@ -65,4 +65,44 @@ describe('MultiAssetHealthBlock', () => {
     // No "park today's idle cash" banner while an exit is pending.
     expect(screen.queryByText(/母港M30：港湾腿（70%）的停车部分/)).toBeNull();
   });
+
+  it('a 14:30 现价触线 shows the conditional Must-watch, not 持有', () => {
+    const warnSleeve = {
+      action: 'HOLD',
+      label: '持有',
+      message: '港湾停车：持有 ETF:513350（mom60 4.98%）',
+      idlePct: 0,
+      parkPct: 70,
+      pick: { key: 'OIL', symbol: 'ETF:513350' },
+      intradayWarn: {
+        active: true,
+        status: 'breached',
+        symbol: 'ETF:513350',
+        px: 1.281,
+        thresholdPx: 1.289,
+        peak: 1.401,
+        drawdownPct: 8.6,
+        message: 'ETF:513350现价1.281 ≤ 门槛价1.289（峰值1.401 回撤8.6%）→ 现价已达卖出条件',
+        executeHint: '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）',
+      },
+    } as never;
+    const holdings = [
+      {
+        symbol: 'ETF:513350',
+        key: 'OIL',
+        positionPct: 40,
+        marketData: { close: 1.281, ma200: 1.5, above: true },
+      },
+    ] as never;
+    render(<MultiAssetHealthBlock holdings={holdings} sleeve={warnSleeve} m30 />);
+    const warn = screen.getByTestId('parking-intraday-warn');
+    expect(warn.textContent).toMatch(/现价已达卖出条件/);
+    expect(warn.textContent).toMatch(/门槛价 1.289/);
+    expect(warn.textContent).toMatch(/明日开盘卖出转逆回购/);
+    expect(screen.getByText('已触线')).toBeDefined();
+    expect(screen.queryByText('加仓')).toBeNull();
+    expect(screen.queryByText('持有')).toBeNull();
+    // No "park the idle cash into OIL" banner while the print is at/under.
+    expect(screen.queryByText(/母港M30：港湾腿（70%）的停车部分/)).toBeNull();
+  });
 });

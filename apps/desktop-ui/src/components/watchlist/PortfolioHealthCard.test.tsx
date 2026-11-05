@@ -792,7 +792,17 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     const warn = await screen.findByTestId('ops-intraday-warn');
     expect(warn.textContent).toMatch(/现价已达卖出条件/);
     expect(warn.textContent).toMatch(/门槛价 1.289/);
+    expect(warn.textContent).toMatch(/现价 1.281/);
     expect(warn.textContent).toMatch(/明日开盘卖出转逆回购/);
+    // Conditional first row: 卖 <park> → 逆回购, 待收盘确认 (not an intraday fill).
+    const condRow = await screen.findByTestId('ops-intraday-row');
+    expect(condRow.getAttribute('data-side')).toBe('SELL');
+    expect(condRow.getAttribute('data-symbol')).toBe('ETF:513350');
+    expect(condRow.getAttribute('data-conditional')).toBe('true');
+    expect(condRow.textContent).toMatch(/待收盘确认/);
+    expect(condRow.textContent).toMatch(/卖/);
+    expect(condRow.textContent).toMatch(/逆回购/);
+    expect(condRow.textContent).toMatch(/门槛价 1\.289/);
     // Clock unchanged: no executable SELL row from the warning alone, but the
     // page must not say 「今天无需操作」 nor suggest buying the same leg.
     expect(

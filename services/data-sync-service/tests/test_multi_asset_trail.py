@@ -292,6 +292,8 @@ def test_intraday_watch_flags_print_under_threshold_without_changing_close() -> 
     assert warn["thresholdPx"] == pytest.approx(92.0, abs=1e-6)
     assert warn["px"] == pytest.approx(91.5)
     assert "现价已达卖出条件" in warn["message"]
+    assert "门槛价" in warn["message"]
+    assert "卖出阈值价" not in warn["message"]
     # Near-miss band is a warning only, with the same next-open clock.
     assert near is not None and near["status"] == "near"
     assert "逼近" in near["message"]
