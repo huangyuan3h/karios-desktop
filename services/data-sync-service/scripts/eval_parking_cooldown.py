@@ -38,13 +38,56 @@ from data_sync_service.service.portfolio_nav_sim import engine_nav_by_day_from_r
 GRID = (0, 1, 2, 3, 5)
 WINS = {k: WINDOWS[k] for k in ("OOS2", "train", "valid", "long")}
 COST = 0.0005
+# 2026-09-13 tag values (parking_cooldown_2026-09-13.json). Display-only anchor:
+# qfq re-basing since then moves k0 by a few pt on OOS2/train/long (valid is stable).
 B11_P1 = {"OOS2": 62.0, "train": 45.3, "valid": 50.3, "long": 219.9}
+WHIP_HORIZONS = (1, 3, 5)
+LEGACY_REPORT = "parking_cooldown_2026-09-13.json"
+
+
+def whip_stats(records: list[dict]) -> dict:
+    """Whip-saw diagnostics for one replay (2026-11-05 rerun).
+
+    ``whip_rebuy_within_N`` = number of trail exits after which the *same key*
+    is held again on any of the next N sessions. The exited key is the key held
+    at the end of the previous record (a trail day always ends in REPO, so any
+    later appearance of that key is a genuine re-entry).
+    """
+    keys = [str(r["pick_key"]) for r in records]
+    trail_exits = 0
+    whips = dict.fromkeys(WHIP_HORIZONS, 0)
+    for i, rec in enumerate(records):
+        if not rec["trail_exit"]:
+            continue
+        trail_exits += 1
+        exited = keys[i - 1] if i > 0 else "REPO"
+        if exited == "REPO":
+            continue
+        for n in WHIP_HORIZONS:
+            if exited in keys[i + 1 : i + 1 + n]:
+                whips[n] += 1
+    days = len(records)
+    days_by_key: dict[str, int] = {}
+    for key in keys:
+        days_by_key[key] = days_by_key.get(key, 0) + 1
+    return {
+        "trail_exits": trail_exits,
+        **{f"whip_rebuy_within_{n}": whips[n] for n in WHIP_HORIZONS},
+        "days_by_key": dict(sorted(days_by_key.items(), key=lambda kv: -kv[1])),
+        "time_in_oil": round(days_by_key.get("OIL", 0) / days, 3) if days else 0.0,
+        "time_in_repo": round(days_by_key.get("REPO", 0) / days, 3) if days else 0.0,
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--grid", default=",".join(str(k) for k in GRID))
     ap.add_argument("--save-report", action="store_true")
+    ap.add_argument(
+        "--report-name",
+        default=LEGACY_REPORT,
+        help=f"JSON filename under data/backtest_reports (default legacy {LEGACY_REPORT})",
+    )
     args = ap.parse_args()
     grid = tuple(int(x) for x in args.grid.split(","))
 
@@ -95,6 +138,7 @@ def main() -> int:
                 "delta": round(100 * (navs[k][-1] - 1) - base_total, 1),
                 "trades": trades[k],
                 "cooldown_days_active": cooling[k],
+                **whip_stats(records[k]),
                 **_metrics(navs[k]),
             }
             for k in grid
@@ -104,9 +148,15 @@ def main() -> int:
         )
         print(f"  {w:<6} {row}")
         print(
-            f"  {'':<6} k0={res[w]['0']['total']:+.1f} (B11 P1 {B11_P1[w]:+.1f})"
+            f"  {'':<6} k0={res[w]['0']['total']:+.1f} (09-13 tag {B11_P1[w]:+.1f})"
             f"  mdd/sr {res[w]['0']['mdd']}/{res[w]['0']['sharpe']}"
         )
+        whip_row = "  ".join(
+            f"k{k}:{res[w][str(k)]['trail_exits']}t/{res[w][str(k)]['whip_rebuy_within_1']}"
+            f"/{res[w][str(k)]['whip_rebuy_within_3']}/{res[w][str(k)]['whip_rebuy_within_5']}"
+            for k in grid
+        )
+        print(f"  {'':<6} whip trail/w1/w3/w5 {whip_row}")
 
     verdicts: dict[str, dict] = {}
     for k in grid:
@@ -154,12 +204,21 @@ def main() -> int:
 
     if args.save_report:
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
-        (REPORT_DIR / "parking_cooldown_2026-09-13.json").write_text(
+        out_path = REPORT_DIR / args.report_name
+        out_path.write_text(
             json.dumps(
                 {
-                    "tag": "parking-cooldown-2026-09-13",
+                    "tag": out_path.stem.replace("_", "-"),
                     "prereg": "docs/designs/parking-cooldown-prereg-2026-09-13.md",
+                    "prior_report": "data/backtest_reports/parking_cooldown_2026-09-13.json",
                     "grid": list(grid),
+                    "etf_panel": {
+                        "path": "data/etf/etf_daily.csv",
+                        "series": len(px),
+                        "sessions": len(etf_days),
+                        "through": max(etf_days),
+                    },
+                    "whip_horizons": list(WHIP_HORIZONS),
                     "results": res,
                     "verdicts": verdicts,
                     "adopted": adopted,
@@ -171,7 +230,7 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
-        print("saved report")
+        print(f"saved report -> {out_path}")
     return 0
 
 
