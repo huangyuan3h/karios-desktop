@@ -340,10 +340,37 @@ def latest_1430_print(ts_code: str, *, day: str) -> float | None:
 
 
 def intraday_trail_watch_for_day(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
-    """Read the 14:30 print then evaluate ``intraday_trail_watch``."""
+    """Read today's 14:30 print (or the latest intraday print) then evaluate.
+
+    Source order (2026-11-05 steer: 当时价**或最新价**):
+      1. ``live_1430`` snapshot row for ``day`` (the 14:30 print);
+      2. newest stored intraday print of ``day`` (``bar_5min``, any slot) when
+         the snapshot row is missing for this symbol.
+    No print → no warning (never guess, never network).
+    """
     held_ts = str(held.get("ts_code") or str(held.get("symbol") or "").upper().replace("ETF:", "") + ".SH")
     px = latest_1430_print(held_ts, day=day)
-    return intraday_trail_watch(held, day=day, px=px)
+    source = "live_1430"
+    if not px:
+        px = latest_intraday_print(held_ts, day=day)
+        source = "bar_5min_latest"
+    warn = intraday_trail_watch(held, day=day, px=px)
+    if warn:
+        warn["pxSource"] = source
+    return warn
+
+
+def latest_intraday_print(ts_code: str, *, day: str) -> float | None:
+    """Newest stored intraday print for one ts_code today (raw, no network)."""
+    if not ts_code:
+        return None
+    try:
+        from data_sync_service.db.bar_5min import fetch_latest_intraday_close
+
+        return fetch_latest_intraday_close(ts_code, str(day)[:10])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("multi-sleeve latest intraday print read failed: %s", exc)
+        return None
 
 
 

@@ -376,3 +376,28 @@ def test_zero_position_registry_row_is_not_a_held_leg() -> None:
     assert out["symbol"] == "ETF:513350"
     assert out["trailExit"] is True
     assert "峰值回撤" in out["message"]
+
+
+def test_intraday_watch_falls_back_to_latest_intraday_print() -> None:
+    """No live_1430 row for the symbol → latest stored print still warns."""
+    held = {"symbol": "ETF:513350", "ts_code": "513350.SH", "entryDate": "2026-10-01"}
+    bars = _preserved("2026-10-01", "2026-11-03", peak=100.0, last=95.0)
+    with (
+        patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)),
+        patch.object(mas, "latest_1430_print", return_value=None),
+        patch.object(mas, "latest_intraday_print", return_value=91.4),
+    ):
+        warn = mas.intraday_trail_watch_for_day(held, day="2026-11-04")
+    assert warn is not None
+    assert warn["status"] == "breached"
+    assert warn["px"] == pytest.approx(91.4)
+    assert warn["pxSource"] == "bar_5min_latest"
+
+    with (
+        patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)),
+        patch.object(mas, "latest_1430_print", return_value=91.0),
+        patch.object(mas, "latest_intraday_print", return_value=91.4),
+    ):
+        warn2 = mas.intraday_trail_watch_for_day(held, day="2026-11-04")
+    assert warn2 is not None and warn2["pxSource"] == "live_1430"
+    assert warn2["px"] == pytest.approx(91.0)

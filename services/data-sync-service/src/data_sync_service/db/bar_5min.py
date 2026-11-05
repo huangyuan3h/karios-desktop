@@ -237,3 +237,32 @@ def fetch_1430_closes(
                 )
                 out.setdefault(str(ts_code), {})[d] = float(close)
     return out
+
+
+def fetch_latest_intraday_close(ts_code: str, day: str) -> float | None:
+    """Newest intraday print for one ts_code on ``day`` (raw, any 5-min slot).
+
+    Fallback for the 14:30 trail early-warning when the ``live_1430`` snapshot
+    row is missing (quote hiccup / symbol skipped in the snapshot): the latest
+    stored print of the day is the best "现价" we already have, no network call.
+    ``None`` = no intraday print today → the caller must not warn.
+    """
+    code = str(ts_code or "").strip().upper()
+    if not code:
+        return None
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT close
+                FROM {TABLE_NAME}
+                WHERE ts_code = %s AND trade_date = %s
+                  AND close IS NOT NULL AND close > 0
+                ORDER BY trade_time DESC
+                LIMIT 1
+                """,
+                (code, str(day)[:10]),
+            )
+            row = cur.fetchone()
+    return float(row[0]) if row else None
