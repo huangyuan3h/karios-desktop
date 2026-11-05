@@ -20,6 +20,7 @@ import {
   M30_DRIFT_LEG_PT,
   M30_DRIFT_LINE_PT,
   M30_MIN_TRADE_PCT,
+  pendingParkSellFromSleeve,
   rebalanceGate,
   setFollowCadence,
   useFollowCadence,
@@ -100,6 +101,7 @@ export function M30FollowBlock() {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const pickSymbol = sleeve?.pick?.symbol ?? null;
   const pickPrice = typeof sleeve?.pick?.close === 'number' ? sleeve.pick.close : null;
+  const pendingParkSell = React.useMemo(() => pendingParkSellFromSleeve(sleeve), [sleeve]);
 
   const report = React.useMemo(
     () =>
@@ -110,8 +112,9 @@ export function M30FollowBlock() {
         pickPrice,
         b3,
         holdings,
+        pendingParkSell,
       }),
-    [capital, pickKey, pickSymbol, pickPrice, b3, holdings],
+    [capital, pickKey, pickSymbol, pickPrice, b3, holdings, pendingParkSell],
   );
 
   const status = React.useMemo(() => cadenceStatus(cadence, today), [cadence, today]);
@@ -125,15 +128,20 @@ export function M30FollowBlock() {
     [status.isRebalanceDay, report.legDriftPt, report.maxLineDriftPt],
   );
 
+  const mustActActions = React.useMemo(
+    () => report.actions.filter((a) => a.mustAct === true),
+    [report.actions],
+  );
   const hardActions = React.useMemo(
     () => report.actions.filter((a) => a.reason === 'S-3 硬退出'),
     [report.actions],
   );
   const rebalanceActions = React.useMemo(
-    () => report.actions.filter((a) => a.reason !== 'S-3 硬退出'),
+    () => report.actions.filter((a) => a.reason !== 'S-3 硬退出' && a.mustAct !== true),
     [report.actions],
   );
   const visibleRebalance = gate.needsRebalance ? rebalanceActions : [];
+  const visibleActions = [...mustActActions, ...hardActions, ...visibleRebalance];
 
   if (healthQ.isPending) {
     return (
@@ -291,9 +299,9 @@ export function M30FollowBlock() {
         </div>
       ) : null}
 
-      {hardActions.length > 0 || visibleRebalance.length > 0 ? (
+      {visibleActions.length > 0 ? (
         <ul className="mt-2 space-y-1.5">
-          {[...hardActions, ...visibleRebalance].map((a, i) => (
+          {visibleActions.map((a, i) => (
             <li
               key={`${a.side}-${a.symbol}-${i}`}
               data-testid="m30-action-row"

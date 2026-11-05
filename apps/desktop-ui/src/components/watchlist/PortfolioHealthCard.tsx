@@ -25,6 +25,7 @@ import {
 } from '@/lib/queries/portfolioHealth';
 import {
   useBacktestReconQuery,
+  useB3StateQuery,
   useSleeveReconQuery,
   type ReconItem,
   type SleeveRecon,
@@ -47,6 +48,21 @@ import { useTimelineQuery, useSatelliteLivePanelQuery, useSatellitePaperQuery, u
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
+import { useAccountSettings } from '@/lib/account-settings';
+import {
+  buildM30Targets,
+  cadenceStatus,
+  FOLLOW_CADENCE_LABELS,
+  intradayTrailWarnFromSleeve,
+  pendingParkSellFromSleeve,
+  rebalanceGate,
+  setFollowCadence,
+  useFollowCadence,
+  type B3Entry,
+  type FollowCadence,
+  type M30Action,
+  type M30Holding,
+} from '@/lib/m30-follow';
 
 function fmtPct(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(v)) return '—';
@@ -94,16 +110,14 @@ type Sleeve = NonNullable<PortfolioHealthResponse['multiAssetSleeve']>;
 function PickStrongOpsPanel({
   sleeve,
   stockHoldingsCount,
-  onBuyEtf,
   coreBuyable = true,
   m30 = false,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
-  onBuyEtf?: (symbol: string, name: string | null) => void;
   /** False when pick=STOCK but no executable basket names today. */
   coreBuyable?: boolean;
-  /** 母港 M30 view: park sizing = Harbor 70% leg (see 母港M30跟仓), not 100%. */
+  /** 母港 M30 view: park sizing = Harbor 70% leg, 份数/金额见上方操作清单. */
   m30?: boolean;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
@@ -118,21 +132,56 @@ function PickStrongOpsPanel({
   const idlePct = sleeve?.idlePct;
   const parkPct = sleeve?.parkPct ?? idlePct;
   const fmt = (v: number | null | undefined) => (v != null ? `${v.toFixed(0)}%` : '—');
+  const pendingSell = pendingParkSellFromSleeve(sleeve);
+  const pendingSellCode = pendingSell ? pendingSell.symbol.replace(/^ETF:/, '').split('.')[0] : null;
+  const intradayWarn = intradayTrailWarnFromSleeve(sleeve);
+  const intradayWarnCode = intradayWarn
+    ? intradayWarn.symbol.replace(/^ETF:/, '').split('.')[0]
+    : null;
   const steps: string[] = [];
-  if (isStock) {
+  if (pendingSell) {
+    // Harbor trail8 / MA200 wipe on a leg still held: Must-act SELL first.
+    steps.push(
+      `⛔ 卖出 ${pendingSellCode} → 逆回购（${sleeve?.label ?? '停车止损'}）· ${
+        pendingSell.executeHint ?? '次日开盘卖出转逆回购'
+      }${pendingSell.signalDate ? ` · 信号日 ${pendingSell.signalDate} 收盘` : ''}`,
+    );
+    steps.push('该停车腿卖出前：不加仓、不买回同一 ETF；其余腿按各自目标处理');
+    if (stockHoldingsCount > 0) {
+      steps.push(
+        `现有 ${stockHoldingsCount} 只股票仓按 S-3 自身规则处理（停车不要求为买 ETF 卖股票）`,
+      );
+    }
+  } else if (intradayWarn) {
+    // 14:30 现价触线：conditional Must-watch；收盘确认后才改动作（不盘中卖）。
+    steps.push(
+      `⚠ 14:30 现价${intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}：${intradayWarnCode}${
+        intradayWarn.px != null ? ` 现价 ${intradayWarn.px}` : ''
+      }${intradayWarn.thresholdPx != null ? ` ≤ 门槛价 ${intradayWarn.thresholdPx}` : ''}`,
+    );
+    steps.push(
+      intradayWarn.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）',
+    );
+    steps.push('该停车腿今日不加仓、不买回；其余腿按各自目标处理');
+    if (stockHoldingsCount > 0) {
+      steps.push(
+        `现有 ${stockHoldingsCount} 只股票仓按 S-3 自身规则处理（停车不要求为买 ETF 卖股票）`,
+      );
+    }
+  } else if (isStock) {
     steps.push(
       coreBuyable
         ? '核心：按下方股票篮买入（见仓位%，停车只停剩下的闲钱）'
         : '核心目标股票篮，但今日 0 只可执行 → 不要为 STOCK 卖光 ETF 停车场',
     );
-    if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：先卖出 ETF，再配股票');
+    if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：按上方操作清单先卖出 ETF，再配股票');
   } else if (isEtf) {
     steps.push(
       action === 'HOLD'
         ? `闲置现金 ${fmt(idlePct)} · 继续持有 ${meta.label}（${etfSym ?? pickKey}）· 停车只停闲钱`
         : action === 'ROTATE' || action === 'BUY'
           ? m30
-            ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，金额/份数见上方「母港M30跟仓」（B3 腿 ETF 不卖）`
+            ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
             : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
           : `闲置现金 ${fmt(idlePct)} → 逆回购 · 股票核心不动`,
     );
@@ -141,11 +190,6 @@ function PickStrongOpsPanel({
         `现有 ${stockHoldingsCount} 只股票仓按 S-3 自身规则处理（停车不要求为买 ETF 卖股票）`,
       );
     }
-    if (action === 'ROTATE' || action === 'BUY')
-      steps.push(sleeve?.message || `买入/轮入 ${etfSym}`);
-    if (action === 'HOLD') steps.push(sleeve?.message || `继续持有 ${etfSym}`);
-    if (action === 'SELL_TO_REPO')
-      steps.push(sleeve?.message || 'ETF 破 MA200 / 峰值−8% → 切逆回购');
   } else {
     steps.push('今日无 ETF 站上 200 日线 → 闲置现金留逆回购（股票核心不动）');
     if (sleeve?.holding) steps.push('卖出停车 ETF 转 REPO');
@@ -161,9 +205,25 @@ function PickStrongOpsPanel({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="rounded bg-emerald-600/15 px-1.5 py-0.5 font-semibold text-emerald-800 dark:text-emerald-200">
-          今日 pick · {pickKey}
-        </span>
+        {pendingSell ? (
+          <span
+            data-testid="pick-pending-sell"
+            className="rounded bg-red-500/15 px-1.5 py-0.5 font-semibold text-red-700 dark:text-red-300"
+          >
+            待卖 · {pendingSellCode} → 逆回购
+          </span>
+        ) : intradayWarn ? (
+          <span
+            data-testid="pick-intraday-warn"
+            className="rounded bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-700 dark:text-amber-300"
+          >
+            {intradayWarn.status === 'breached' ? '已触线' : '临近'} · {intradayWarnCode} 待收盘确认
+          </span>
+        ) : (
+          <span className="rounded bg-emerald-600/15 px-1.5 py-0.5 font-semibold text-emerald-800 dark:text-emerald-200">
+            今日 pick · {pickKey}
+          </span>
+        )}
         <span className="text-[13px] font-semibold">{meta.label}</span>
         {mom != null && (
           <span className="font-mono tabular-nums text-[var(--k-muted)]">mom60 {mom}%</span>
@@ -178,30 +238,31 @@ function PickStrongOpsPanel({
             vs ETF顶 {sleeve.etfPick.key} {sleeve.etfPick.mom60}%
           </span>
         )}
-        <span className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px]">
+        <span
+          className={cn(
+            'ml-auto rounded border px-1.5 py-0.5 text-[10px]',
+            pendingSell
+              ? 'border-red-500/50 bg-red-500/10 font-semibold text-red-700 dark:text-red-300'
+              : intradayWarn
+                ? 'border-amber-500/50 bg-amber-500/10 font-semibold text-amber-700 dark:text-amber-300'
+                : 'border-[var(--k-border)] bg-[var(--k-surface)]',
+          )}
+        >
           {sleeve?.label ?? action}
         </span>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
         停车规则：mom60+MA200 选趋势最好的一只 · 回撤 8% 出场 · 只停闲置现金
       </p>
-      {sleeve?.message && action !== 'HOLD' ? (
-        <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">{sleeve.message}</p>
+      {/* 引擎原始决策只保留一处（停车体检/对账不再重复展示）。 */}
+      {sleeve?.message ? (
+        <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">引擎：{sleeve.message}</p>
       ) : null}
       <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
         {steps.map((s) => (
           <li key={s}>{s}</li>
         ))}
       </ol>
-      {isEtf && etfSym && (action === 'BUY' || action === 'ROTATE') && onBuyEtf ? (
-        <button
-          type="button"
-          onClick={() => onBuyEtf(etfSym, sleeve?.pick?.name ?? meta.label)}
-          className="mt-2 inline-flex items-center rounded border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
-        >
-          记录买入 {etfSym}（模拟盘）
-        </button>
-      ) : null}
       {sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] tabular-nums text-[var(--k-muted)]">
           {Object.entries(sleeve.pick.all_mom).map(([k, v]) => (
@@ -219,6 +280,429 @@ function PickStrongOpsPanel({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function m30Cny(v: number | null): string {
+  if (v == null) return '—';
+  return `¥${Math.round(v).toLocaleString('zh-CN')}`;
+}
+
+function m30Pct(v: number): string {
+  return `${v.toFixed(2).replace(/\.?0+$/, '')}%`;
+}
+
+function m30BareCode(sym: string): string {
+  const s = String(sym || '').toUpperCase();
+  return (s.includes(':') ? s.split(':')[1]! : s).split('.')[0]!;
+}
+
+function m30LegLabel(leg: string): string {
+  if (leg === 'b3') return 'B3';
+  if (leg === 'harbor-park') return '港湾停车';
+  return 'S-3';
+}
+
+/**
+ * 母港M30 · 今日操作（操作引导的顶部清单）。
+ *
+ * 明细行复用 `buildM30Targets`（与跟仓完全同一份计算，不改口径）：
+ * S-3 硬退出永远展示，再平衡类动作只在 `rebalanceGate` 通过时展示
+ * （再平衡日 / 腿偏离≥5pt / 单线≥5pt），未达阈值的在空态里一句话说明。
+ * 回撤熔断 / 弱市 / 恐慌冷却只拦 S-3 股票新开仓（真值 strategy-recipes §1）：
+ * 仅 harbor-stock 买入标灰 + “暂缓”并禁用记录按钮，停车 ETF / B3 买入与
+ * 所有卖出照常；无股票买入被拦时不出现“只卖不买”类标题与风险条。
+ * 停车相关行另注“信号日收盘后、下一交易日开盘执行”（T+1，不盘中成交）。
+ */
+function M30OpsSection({
+  data,
+  capital,
+  b3,
+  b3Error,
+  onRecord,
+}: {
+  data: PortfolioHealthResponse;
+  capital: number | null;
+  b3: B3Entry[];
+  b3Error: string | null;
+  onRecord: (a: M30Action, price: number | null, rank: number) => void;
+}) {
+  const cadence = useFollowCadence();
+  const today = getShanghaiTodayIso();
+
+  const holdings: M30Holding[] = React.useMemo(() => {
+    const out: M30Holding[] = [];
+    for (const h of data.holdings ?? []) {
+      out.push({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      });
+    }
+    for (const h of data.hkHealth?.holdings ?? []) {
+      out.push({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      });
+    }
+    for (const h of data.multiAssetHoldings ?? []) {
+      out.push({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        lastClose:
+          h.marketData && typeof h.marketData.close === 'number' ? h.marketData.close : null,
+      });
+    }
+    return out;
+  }, [data]);
+
+  const sleeve = data.multiAssetSleeve;
+  const pickKey = sleeve?.pick?.key ?? 'REPO';
+  const pickSymbol = sleeve?.pick?.symbol ?? null;
+  const pickPrice = typeof sleeve?.pick?.close === 'number' ? sleeve.pick.close : null;
+  /**
+   * Pending Harbor exit (trail8 / MA200 wipe) on a leg still held. The backend
+   * sleeve owns this decision; the M30 target math below must not out-vote it
+   * (it used to park 70% right back into the same oil leg → 买 513350).
+   */
+  const pendingParkSell = React.useMemo(() => pendingParkSellFromSleeve(sleeve), [sleeve]);
+  /** 14:30 conditional warning (print at/under the trail line; close still decides). */
+  const intradayWarn = React.useMemo(() => intradayTrailWarnFromSleeve(sleeve), [sleeve]);
+
+  const report = React.useMemo(
+    () =>
+      buildM30Targets({
+        capital,
+        pickKey,
+        pickSymbol,
+        pickPrice,
+        b3,
+        holdings,
+        pendingParkSell,
+        parkBuyBlockedSymbol: intradayWarn?.symbol ?? null,
+      }),
+    [capital, pickKey, pickSymbol, pickPrice, b3, holdings, pendingParkSell, intradayWarn],
+  );
+  const priceBy = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of report.targets) {
+      if (t.price != null && Number.isFinite(t.price) && t.price > 0) {
+        m.set(t.symbol.toUpperCase(), t.price);
+      }
+    }
+    return m;
+  }, [report]);
+
+  const status = React.useMemo(() => cadenceStatus(cadence, today), [cadence, today]);
+  const gate = React.useMemo(
+    () =>
+      rebalanceGate({
+        isRebalanceDay: status.isRebalanceDay,
+        legDriftPt: report.legDriftPt,
+        maxLineDriftPt: report.maxLineDriftPt,
+      }),
+    [status.isRebalanceDay, report.legDriftPt, report.maxLineDriftPt],
+  );
+  const hardActions = React.useMemo(
+    () => report.actions.filter((a) => a.reason === 'S-3 硬退出'),
+    [report.actions],
+  );
+  const mustActActions = React.useMemo(
+    () => report.actions.filter((a) => a.mustAct === true),
+    [report.actions],
+  );
+  const rebalanceActions = React.useMemo(
+    () => report.actions.filter((a) => a.reason !== 'S-3 硬退出' && a.mustAct !== true),
+    [report.actions],
+  );
+  // 先卖后买（与跟仓净额顺序一致）；Must-act 停车止损永远第一行、且不受
+  // 再平衡节奏门限制（止损不是再平衡）。
+  const orders = React.useMemo(() => {
+    const list = [
+      ...mustActActions,
+      ...hardActions,
+      ...(gate.needsRebalance ? rebalanceActions : []),
+    ];
+    return [...list].sort((x, y) => {
+      if (!!x.mustAct !== !!y.mustAct) return x.mustAct ? -1 : 1;
+      return x.side !== y.side ? (x.side === 'SELL' ? -1 : 1) : y.pct - x.pct;
+    });
+  }, [mustActActions, hardActions, rebalanceActions, gate.needsRebalance]);
+  const sells = orders.filter((a) => a.side === 'SELL').length;
+  const buys = orders.filter((a) => a.side === 'BUY').length;
+
+  const circuitBlocked = data.circuitBlocked === true;
+  const regimeWeak = data.regime === 'Weak';
+  const panicActive = data.panicCooldown?.active === true;
+  const panicEnd = data.panicCooldown?.cooldownEndDate ?? null;
+  // 真值（strategy-recipes §1/§2）：熔断 / 弱市 / 恐慌冷却只拦 S-3 股票新开仓。
+  // 停车 ETF 与 B3 买入不受闸影响，卖出一律照常。这里只改展示：仅 leg 为
+  // harbor-stock 的 BUY 行标暂缓 + 禁用记录按钮。
+  const riskActive = circuitBlocked || regimeWeak || panicActive;
+  const isStockBuy = (a: M30Action) => a.side === 'BUY' && a.leg === 'harbor-stock';
+  const deferredStockBuys = riskActive ? orders.filter(isStockBuy).length : 0;
+  const hasDeferred = deferredStockBuys > 0;
+  const riskCause = circuitBlocked ? '熔断' : regimeWeak ? '弱市' : '恐慌冷却';
+
+  const why =
+    mustActActions.length > 0
+      ? `停车止损 ${mustActActions.length} 笔（先卖）`
+      : hardActions.length > 0
+        ? `S-3 硬退出 ${hardActions.length} 笔`
+        : gate.reason === 'rebalance-day'
+          ? '今日是再平衡日'
+          : gate.reason === 'leg-drift'
+            ? `腿偏离 ${report.legDriftPt}pt`
+            : `单线偏离 ${report.maxLineDriftPt}pt`;
+  const deferredSuffix = hasDeferred ? `（S-3 买入 ${deferredStockBuys} 笔${riskCause}暂缓）` : '';
+  const headline =
+    orders.length > 0
+      ? `今天：卖 ${sells} 笔、买 ${buys} 笔，共 ${orders.length} 笔（${why}）${deferredSuffix}`
+      : '今天无需操作';
+  const mustActRow = mustActActions[0] ?? null;
+  const mustActSym = mustActRow ? m30BareCode(mustActRow.symbol) : null;
+
+  return (
+    <div
+      data-testid="m30-ops"
+      className="rounded-lg border border-emerald-500/35 bg-emerald-500/5 px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] font-semibold">
+        <span className="h-3 w-[3px] self-center rounded-full bg-emerald-500" />
+        <span>今日操作</span>
+        <span
+          data-testid="ops-conclusion"
+          className={cn(
+            'text-[13px]',
+            orders.length > 0 || hasDeferred
+              ? 'text-amber-700 dark:text-amber-300'
+              : 'text-emerald-700 dark:text-emerald-300',
+          )}
+        >
+          {orders.length > 0 || hasDeferred ? '⚠ ' : '✓ '}
+          {headline}
+        </span>
+        <span className="ml-auto font-mono text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          港湾 {report.harborCurrentPct}%/70% · B3 {report.b3CurrentPct}%/30% · 闲置{' '}
+          {report.cashCurrentPct}% · pick={report.pickKey}
+        </span>
+      </div>
+
+      {mustActRow ? (
+        <div
+          data-testid="ops-must-act"
+          className="mt-1.5 rounded-md border border-red-500/50 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-100"
+        >
+          <div className="font-semibold">
+            ⛔ 停车腿止损待执行：卖出 {mustActSym} → 逆回购
+          </div>
+          <div className="mt-0.5 font-normal">
+            {pendingParkSell?.reason ?? '峰值回撤触线'}
+            {pendingParkSell?.signalDate ? ` · 信号日 ${pendingParkSell.signalDate} 收盘` : ''}
+            {' · '}
+            {mustActRow.execHint ?? '次日开盘卖出转逆回购'}；该腿卖出前不加仓、不买回
+          </div>
+        </div>
+      ) : null}
+
+      {intradayWarn && !mustActRow ? (
+        <div
+          data-testid="ops-intraday-warn"
+          className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-100"
+        >
+          <div className="font-semibold">
+            ⚠ 14:30 现价{intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}：
+            {m30BareCode(intradayWarn.symbol)}
+            {intradayWarn.px != null ? ` 现价 ${intradayWarn.px}` : ''}
+            {intradayWarn.thresholdPx != null ? ` ≤ 门槛价 ${intradayWarn.thresholdPx}` : ''}
+            {intradayWarn.drawdownPct != null ? `（峰值回撤 ${intradayWarn.drawdownPct}%）` : ''}
+          </div>
+          <div className="mt-0.5 font-normal">
+            {intradayWarn.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购（不盘中卖）'}
+            ；该腿今日不加仓、不买回
+          </div>
+        </div>
+      ) : null}
+
+      {hasDeferred && circuitBlocked ? (
+        <div
+          data-testid="ops-risk-note"
+          className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-800 dark:text-red-100"
+        >
+          ⏸ 回撤熔断中：S-3 股票买入暂缓 {deferredStockBuys} 笔（下方 S-3 买入已标“暂缓”）；停车
+          ETF / B3 买入与卖出照常
+        </div>
+      ) : null}
+      {hasDeferred && !circuitBlocked && regimeWeak ? (
+        <div
+          data-testid="ops-risk-note"
+          className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
+        >
+          弱市观望：S-3 股票今日不新开仓（{deferredStockBuys} 笔暂缓），只处理卖出；停车 ETF /
+          B3 买入照常
+        </div>
+      ) : null}
+      {hasDeferred && !circuitBlocked && !regimeWeak && panicActive ? (
+        <div
+          data-testid="ops-risk-note"
+          className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
+        >
+          恐慌冷却中{panicEnd ? `（至 ${panicEnd}）` : ''}：S-3 股票买入暂缓 {deferredStockBuys}
+          笔，停车 ETF / B3 买入与卖出照常
+        </div>
+      ) : null}
+
+      {capital == null ? (
+        <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          在上方「账户」填总资金后列出金额与份数（当前仅显示 %）。
+        </p>
+      ) : null}
+      {b3Error ? (
+        <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          B3 状态不可用（{b3Error}）：B3 腿暂按空目标显示，港湾腿不受影响。
+        </p>
+      ) : null}
+
+      {orders.length > 0 ? (
+        <ol data-testid="ops-list" className="mt-2 list-decimal space-y-1 pl-5 text-[12px]">
+          {orders.map((a, i) => {
+            // 真值：闸只拦 S-3 股票新开仓，停车/B3 买入永不暂缓。
+            const deferred = riskActive && a.side === 'BUY' && a.leg === 'harbor-stock';
+            // 停车换仓 T 收盘信号 → T+1 开盘成交，盘中不立刻成交。
+            const parkExecNote = a.mustAct
+              ? (a.execHint ?? '次日开盘卖出转逆回购')
+              : a.leg === 'harbor-park' || a.reason.includes('港湾停车')
+                ? '信号日收盘后、下一交易日开盘执行'
+                : null;
+            return (
+              <li
+                key={`${a.side}-${a.symbol}-${i}`}
+                data-testid="m30-ops-row"
+                data-side={a.side}
+                data-symbol={a.symbol}
+                data-must-act={a.mustAct ? 'true' : undefined}
+                className={cn(deferred && 'opacity-60')}
+              >
+                <div
+                  className={cn(
+                    'flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border px-2.5 py-1.5',
+                    a.mustAct
+                      ? 'border-red-500/70 bg-red-500/15 ring-1 ring-red-500/40'
+                      : a.side === 'SELL'
+                        ? 'border-red-500/40 bg-red-500/10'
+                        : 'border-emerald-500/40 bg-emerald-500/10',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'font-semibold',
+                      a.side === 'SELL'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-emerald-700 dark:text-emerald-300',
+                    )}
+                  >
+                    {a.side === 'SELL' ? '卖' : '买'}
+                  </span>
+                  <span className="font-medium">{a.name}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+                    {m30BareCode(a.symbol)}
+                  </span>
+                  <span className="rounded border border-[var(--k-border)] px-1 text-[10px] text-[var(--k-muted)]">
+                    {m30LegLabel(a.leg)}
+                  </span>
+                  <span className="tabular-nums">
+                    {a.shares != null && a.shares > 0
+                      ? `${a.shares.toLocaleString('zh-CN')} 份 ≈ ${m30Cny(a.amt)}`
+                      : `${m30Pct(a.pct)} · ${m30Cny(a.amt)}`}
+                  </span>
+                  <span className="tabular-nums text-[var(--k-muted)]">（{m30Pct(a.pct)}）</span>
+                  <span className="text-[10px] text-[var(--k-muted)]">（{a.reason}）</span>
+                  {parkExecNote ? (
+                    <span className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300">
+                      {parkExecNote}
+                    </span>
+                  ) : null}
+                  {deferred ? (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                      暂缓
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-testid="ops-record"
+                    disabled={deferred}
+                    onClick={() => onRecord(a, priceBy.get(a.symbol.toUpperCase()) ?? null, i + 1)}
+                    title={deferred ? '风险状态下买入暂缓' : '记录成交：记入模拟盘'}
+                    className={cn(
+                      'ml-auto rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                      deferred
+                        ? 'cursor-not-allowed border-[var(--k-border)] text-[var(--k-muted)]'
+                        : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300',
+                    )}
+                  >
+                    记录成交
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p
+          data-testid="ops-empty"
+          className="mt-2 rounded-lg border border-[var(--k-border)]/60 bg-[var(--k-bg)]/40 px-3 py-2 text-[12px] text-emerald-700 dark:text-emerald-300"
+        >
+          {pendingParkSell ? (
+            <>
+              ⛔ 待执行：卖出 {m30BareCode(pendingParkSell.symbol)} → 逆回购（
+              {pendingParkSell.executeHint ?? '次日开盘卖出转逆回购'}
+              {pendingParkSell.signalDate ? ` · 信号日 ${pendingParkSell.signalDate}` : ''}）
+            </>
+          ) : intradayWarn ? (
+            <>
+              ⚠ 14:30 现价{intradayWarn.status === 'breached' ? '已达卖出条件' : '逼近卖出线'}（
+              {m30BareCode(intradayWarn.symbol)}）：待收盘确认；收盘破线 → 明日开盘卖出转逆回购
+            </>
+          ) : (
+            <>
+              ✓ 今天无需操作
+              {rebalanceActions.length > 0
+                ? `：${rebalanceActions.length} 项偏离未达阈值（腿 ${report.legDriftPt}pt / 单线最大 ${report.maxLineDriftPt}pt），跟踪中不下单。`
+                : '：与 M30 目标一致，无偏离、无卖出、无待执行。'}
+            </>
+          )}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--k-muted)]">
+        <span>B3 腿只按月频目标调，不随停车轮动换仓。</span>
+        <span className="ml-auto">跟仓 {FOLLOW_CADENCE_LABELS[cadence]} · 上次 {status.last} · 下次 {status.next}</span>
+        <span className="flex gap-1">
+          {(['weekly', 'monthly', 'daily'] as FollowCadence[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setFollowCadence(c)}
+              aria-pressed={c === cadence}
+              className={cn(
+                'rounded border px-1.5 py-0.5 text-[10px]',
+                c === cadence
+                  ? 'border-sky-500/50 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+                  : 'border-[var(--k-border)]',
+              )}
+            >
+              {FOLLOW_CADENCE_LABELS[c]}
+            </button>
+          ))}
+        </span>
+      </div>
     </div>
   );
 }
@@ -987,6 +1471,19 @@ export function PortfolioHealthCard({
   });
   const reconQ = useBacktestReconQuery(2);
   const sleeveReconQ = useSleeveReconQuery(true);
+  // M30 操作清单的 B3 月频目标（与 B3LegBlock 同 query key，共用缓存）。
+  const b3Q = useB3StateQuery();
+  const { capital } = useAccountSettings();
+  const m30B3: B3Entry[] = React.useMemo(() => {
+    const u = b3Q.data?.ok ? (b3Q.data.universe ?? []) : [];
+    return u.map((x) => ({
+      symbol: x.symbol,
+      name: x.name,
+      targetPct: Number(x.targetPct) || 0,
+      px: x.px ?? null,
+    }));
+  }, [b3Q.data]);
+  const b3Error = b3Q.data && !b3Q.data.ok ? (b3Q.data.error ?? '未知') : null;
   const reconByMarket = React.useMemo(() => {
     const m = new Map<string, ReconItem>();
     for (const r of reconQ.data?.items ?? []) m.set(r.market, r);
@@ -1167,14 +1664,18 @@ export function PortfolioHealthCard({
     });
   }
 
-  function handleBuyEtf(symbol: string, name: string | null) {
+  // M30 操作清单每行的“记录成交”：沿用 QuickBuyDialog + 模拟盘记账，
+  // 份数/金额来自 buildM30Targets（与清单同一份计算）。
+  function handleRecordM30Action(a: M30Action, price: number | null, rank: number) {
     setBuyTarget({
-      symbol,
-      name,
+      symbol: a.symbol,
+      name: a.name ?? null,
       score: null,
       rs: null,
-      sizePct: 100,
-      side: 'BUY',
+      sizePct: a.pct,
+      side: a.side,
+      initialPrice: price,
+      rank,
     });
   }
 
@@ -1265,11 +1766,22 @@ export function PortfolioHealthCard({
       <div className="flex flex-col gap-3">
         {coreView ? (
           <>
+        {mode === 'homeport' && data ? (
+          <M30OpsSection
+            data={data}
+            capital={capital}
+            b3={m30B3}
+            b3Error={b3Error}
+            onRecord={handleRecordM30Action}
+          />
+        ) : null}
+        {/* 次要信息：规则说明 / 动量条 / 停车体检 / 对账细节 / 股票篮 ——
+            保留在同一组件内、放在操作清单下面，视觉弱化但不折叠隐藏。 */}
+        <div className="flex flex-col gap-3 opacity-90">
         {sleeve ? (
           <PickStrongOpsPanel
             sleeve={sleeve}
             stockHoldingsCount={stockHoldingsCount}
-            onBuyEtf={handleBuyEtf}
             coreBuyable={stockBuyable}
             m30={mode === 'homeport'}
           />
@@ -1342,6 +1854,7 @@ export function PortfolioHealthCard({
               />
             </div>
           ) : null}
+        </div>
         </div>
           </>
         ) : null}

@@ -41,6 +41,22 @@ def run() -> None:
         return
     insert_record(JOB_ID, success=True)
     logger.info("sleeve_paper_auto %s: %s (%s)", day, out.get("action"), out.get("reason"))
+    # C) Trail fire must reach Bark on the close-of-signal day, not only at the
+    # next 14:30 adjust. Reads the LIVE registry (not the paper book) and emits
+    # once per day+symbol while the leg remains held. Fail-open.
+    try:
+        from data_sync_service.service.daily_adjust import emit_trail_if_active
+
+        alert = emit_trail_if_active(day)
+        if alert:
+            logger.info(
+                "sleeve_paper_auto %s: trail alert pushed (%s pending=%s)",
+                day,
+                alert.get("symbol"),
+                alert.get("pendingOpenSell"),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sleeve_paper_auto: trail alert failed: %s", exc)
     _run_recon(day)
 
 

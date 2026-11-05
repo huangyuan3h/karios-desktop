@@ -33,7 +33,7 @@ import * as React from 'react';
 
 import { holdingMatchesPick } from '@/lib/replica-gap';
 import { lotRuleFor, roundToLot } from '@/lib/lot-sizing';
-import { PARKING_META, type ParkingKey } from '@/lib/parking-universe';
+import { PARKING_META, parkingKeyForSymbol, type ParkingKey } from '@/lib/parking-universe';
 import { loadJson, saveJson } from '@/lib/storage';
 
 /** B3 universe bare codes (frozen 5-ETF definition, `service/homeport.py`). */
@@ -124,6 +124,12 @@ export type M30Holding = {
   /** S-3 per-holding signal from portfolio-health (`EXIT` = hard exit). */
   action?: string | null;
   lastClose?: number | null;
+  /** Backend Harbor parking trail verdict (`multiAssetHoldings[].trailExit`). */
+  trailExit?: boolean;
+  trailMessage?: string | null;
+  pendingOpenSell?: boolean;
+  signalDate?: string | null;
+  executeHint?: string | null;
 };
 
 export type M30TargetLine = {
@@ -167,6 +173,29 @@ export type M30Action = {
   shares: number | null;
   reason: string;
   leg: M30TargetLine['leg'];
+  /**
+   * Hard risk exit that must be the FIRST row (Harbor parking trail8 /
+   * MA200 wipe on a still-held leg). Never suppressed by the rebalance gate.
+   */
+  mustAct?: boolean;
+  /** Execution clock hint (`次日开盘卖出转逆回购`). */
+  execHint?: string | null;
+};
+
+/**
+ * Pending Harbor parking exit carried by the API (`multiAssetSleeve`).
+ * The backend owns the trail math — the UI only renders it as a Must-act
+ * SELL → 逆回购, so a target-vs-current delta can never buy the same leg.
+ */
+export type M30PendingParkSell = {
+  /** Held parking symbol being exited (`ETF:513350`). */
+  symbol: string;
+  /** Display reason (峰值回撤/MA200). */
+  reason?: string | null;
+  /** Completed close that fired the signal (`2026-11-03`). */
+  signalDate?: string | null;
+  /** `次日开盘卖出转逆回购` / `待开盘卖出转逆回购（信号已触发，未执行）`. */
+  executeHint?: string | null;
 };
 
 function round2(v: number): number {
@@ -287,6 +316,18 @@ export type BuildM30Input = {
   pickPrice?: number | null;
   b3: B3Entry[];
   holdings: M30Holding[];
+  /**
+   * Pending Harbor exit from `multiAssetSleeve` (`action=SELL_TO_REPO`). When
+   * set, the Harbor park target is 0 (repo) for the held leg and EVERY add to
+   * that symbol is suppressed — a trail-fired leg must never be bought more.
+   */
+  pendingParkSell?: M30PendingParkSell | null;
+  /**
+   * Symbol whose adds must be suppressed even without a pending exit: the
+   * 14:30 print is at/under the trail line (conditional Must-watch). Never
+   * turns into a sell order by itself — the clock stays close → next open.
+   */
+  parkBuyBlockedSymbol?: string | null;
 };
 
 export type M30FollowReport = {
@@ -308,6 +349,8 @@ export type M30FollowReport = {
   /** Max |line delta| across target lines (pt of total). */
   maxLineDriftPt: number;
   stockLegCount: number;
+  /** Pending parking exit symbol (`ETF:513350`) when one is active. */
+  pendingParkSell: string | null;
 };
 
 /**
@@ -326,7 +369,16 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   const holdings = (input.holdings || []).filter((h) => (Number(h.positionPct) || 0) > 0);
   const b3 = Array.isArray(input.b3) ? input.b3 : [];
   const capital = input.capital;
-  const parkSymbol = parkingSymbolForPick(pickKey, input.pickSymbol ?? null);
+  // Hard exit (Harbor trail8 / MA200 wipe) on a leg still in holdings: the
+  // target for that leg is 0 (→ 逆回购), and it REPLACES the parking target —
+  // even when the mom60 pick points at the same ETF. This is what kept the
+  // Watchlist printing 买 513350 while the sleeve said SELL_TO_REPO.
+  const pendingSell = input.pendingParkSell ?? null;
+  const pendingSellSym = pendingSell?.symbol
+    ? `ETF:${bareCode(pendingSell.symbol)}`
+    : null;
+  const parkSymbol = pendingSellSym ?? parkingSymbolForPick(pickKey, input.pickSymbol ?? null);
+  const pendingSellKey = pendingSellSym ? parkingKeyForSymbol(pendingSellSym) : null;
 
   const stockCloses = new Map<string, number>();
   for (const h of holdings) {
@@ -349,6 +401,11 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   const isStockPick = pickKey === 'STOCK';
   const harborStockTargetTotal = isStockPick ? 70 : round2(stockLegCount * M30_STOCK_LEG_PCT_TOTAL);
   const harborParkTargetTotal = isStockPick ? 0 : round2(70 - harborStockTargetTotal);
+  /**
+   * Harbor parking target after the pending-exit override: 0 (逆回购) while a
+   * trail/MA200 sell is pending, else the normal park weight.
+   */
+  const parkTargetTotal = pendingSellSym ? 0 : harborParkTargetTotal;
 
   const targets: M30TargetLine[] = [];
   const pushLine = (line: Omit<M30TargetLine, 'targetAmt' | 'currentAmt' | 'deltaAmt' | 'targetShares' | 'deltaShares' | 'side' | 'suppressed'> & { price: number | null }): M30TargetLine => {
@@ -420,7 +477,10 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   if (parkSymbol) {
     for (const h of holdings) {
       if (b3Codes.has(bareCode(h.symbol))) continue;
-      if (holdingMatchesPick(h.symbol, pickKey)) parkCurrent += Number(h.positionPct) || 0;
+      const matches = pendingSellSym
+        ? bareCode(h.symbol) === bareCode(pendingSellSym)
+        : holdingMatchesPick(h.symbol, pickKey);
+      if (matches) parkCurrent += Number(h.positionPct) || 0;
     }
   }
   parkCurrent = round2(parkCurrent);
@@ -434,12 +494,14 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       leg: 'harbor-park',
       symbol: parkSymbol,
       ts: '',
-      name: parkingNameForPick(pickKey),
+      name: pendingSellSym
+        ? (pendingSellKey ? PARKING_META[pendingSellKey].short : pendingSellSym)
+        : parkingNameForPick(pickKey),
       price,
-      targetPct: harborParkTargetTotal,
+      targetPct: parkTargetTotal,
       currentPct: parkCurrent,
-      deltaPct: round2(harborParkTargetTotal - parkCurrent),
-      harborSharePct: harborParkTargetTotal,
+      deltaPct: round2(parkTargetTotal - parkCurrent),
+      harborSharePct: parkTargetTotal,
     });
   }
 
@@ -448,7 +510,7 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
     const sym = `ETF:${etfCode(u.symbol)}`;
     const b3Pct = b3TotalPct(Number(u.targetPct) || 0);
     const merged = parkMerged && etfCode(u.symbol) === parkCode;
-    const harborShare = merged ? harborParkTargetTotal : 0;
+    const harborShare = merged ? parkTargetTotal : 0;
     const targetPct = round2(b3Pct + harborShare);
     // Merged line also carries the pick's non-B3 alias holdings (e.g. 518800).
     const current = round2(currentForB3(sym, holdings) + (merged ? parkCurrent : 0));
@@ -482,7 +544,13 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   }
   const totalDeployed = holdings.reduce((s, h) => s + (Number(h.positionPct) || 0), 0);
   const cashCurrentPct = round2(Math.max(0, 100 - Math.min(100, totalDeployed)));
-  const cashTargetPct = parkSymbol ? 0 : round2(harborParkTargetTotal);
+  // Pending exit: proceeds park in repo, so the harbor park weight becomes the
+  // cash target (not 0 as when a live park leg is meant to hold it).
+  const cashTargetPct = pendingSellSym
+    ? round2(harborParkTargetTotal)
+    : parkSymbol
+      ? 0
+      : round2(harborParkTargetTotal);
   // pick=REPO/STOCK: the Harbor remainder legitimately sits in cash, so idle
   // cash counts toward the Harbor leg (otherwise an aligned REPO book would
   // always read as a ≥5pt leg drift).
@@ -507,9 +575,24 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   });
 
   // Actions: sells first (exits + trims), then buys; dust suppressed already.
+  // NOTE: reason strings below are display copy only — weights, shares and
+  // side/direction math above is untouched. A pure-B3 SELL that fires while
+  // the Harbor leg is underweight mostly returns cash to refill Harbor
+  // parking (leg drift), not a change of the B3 monthly weight itself, so it
+  // gets a leg-rebalance label instead of the plain monthly label.
+  const harborNeedPct = round2(70 - harborCurrentPct);
   const actions: M30Action[] = [];
   for (const t of targets) {
     if (t.side === 'HOLD') continue;
+    const isPendingExitLine =
+      pendingSellSym != null && bareCode(t.symbol) === bareCode(pendingSellSym);
+    const isBuyBlockedLine =
+      input.parkBuyBlockedSymbol != null &&
+      bareCode(t.symbol) === bareCode(input.parkBuyBlockedSymbol);
+    // Hard rule: while an exit on this park leg is pending, never add to it —
+    // even when a merged B3 line is underweight.
+    if (t.side === 'BUY' && (isPendingExitLine || isBuyBlockedLine)) continue;
+    const mustAct = isPendingExitLine && t.side === 'SELL';
     actions.push({
       side: t.side,
       symbol: t.symbol,
@@ -520,17 +603,25 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
           ? Math.abs(t.deltaAmt)
           : amtOf(capital, Math.abs(t.deltaPct)),
       shares: t.deltaShares,
-      reason:
-        t.leg === 'b3'
+      reason: mustAct
+        ? `港湾停车止损 → 逆回购（${pendingSell?.reason?.trim() || '峰值回撤'}）`
+        : t.leg === 'b3'
           ? t.harborSharePct > 0
             ? `B3 月频目标+港湾停车 ${pickKey}`
-            : 'B3 月频目标'
+            : t.side === 'SELL' && harborNeedPct >= M30_MIN_TRADE_PCT
+              ? 'B3 回月频目标 · 腿偏离腾资金补港湾停车'
+              : 'B3 月频目标'
           : t.leg === 'harbor-park'
-            ? `港湾停车 ${pickKey}`
+            ? pendingSellSym
+              ? `港湾停车止损 → 逆回购（${pendingSell?.reason?.trim() || '峰值回撤'}）`
+              : `港湾停车 ${pickKey}`
             : String(t.id).startsWith('harbor-exit-')
               ? 'S-3 硬退出'
               : 'S-3 核心腿',
       leg: t.leg,
+      ...(mustAct
+        ? { mustAct: true, execHint: pendingSell?.executeHint ?? '次日开盘卖出转逆回购' }
+        : {}),
     });
   }
   // Non-target holdings (stale parking ETF / off-book names): suggest a full
@@ -554,6 +645,8 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
     });
   }
   actions.sort((a, b) => {
+    // A pending hard exit always leads the list (Must-act first row).
+    if (!!a.mustAct !== !!b.mustAct) return a.mustAct ? -1 : 1;
     if (a.side !== b.side) return a.side === 'SELL' ? -1 : 1;
     return b.pct - a.pct;
   });
@@ -578,6 +671,89 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
     legDriftPt,
     maxLineDriftPt,
     stockLegCount,
+    pendingParkSell: pendingSellSym,
+  };
+}
+
+/**
+ * Pending Harbor exit carried by `multiAssetSleeve` (backend owns the trail
+ * math). `action=SELL_TO_REPO` = trail8 fired or every candidate broke MA200;
+ * the leg must be sold to 逆回购 at the next open while it is still held.
+ */
+export function pendingParkSellFromSleeve(
+  sleeve:
+    | {
+        action?: string | null;
+        symbol?: string | null;
+        signalDate?: string | null;
+        executeHint?: string | null;
+        message?: string | null;
+      }
+    | null
+    | undefined,
+): M30PendingParkSell | null {
+  if (!sleeve) return null;
+  if (String(sleeve.action || '').toUpperCase() !== 'SELL_TO_REPO') return null;
+  const symbol = String(sleeve.symbol || '').trim().toUpperCase();
+  if (!symbol) return null;
+  return {
+    symbol,
+    reason: sleeve.message ?? null,
+    signalDate: sleeve.signalDate ?? null,
+    executeHint: sleeve.executeHint ?? null,
+  };
+}
+
+/** 14:30 trail early-warning carried by `multiAssetSleeve.intradayWarn`. */
+export type M30IntradayWarn = {
+  symbol: string;
+  status: 'breached' | 'near';
+  px?: number | null;
+  thresholdPx?: number | null;
+  peak?: number | null;
+  drawdownPct?: number | null;
+  message?: string | null;
+  executeHint?: string | null;
+};
+
+/**
+ * Conditional Must-watch: the 14:30 print is at/under the trail threshold.
+ * Warning only — the close still decides, execution stays next-open.
+ */
+export function intradayTrailWarnFromSleeve(
+  sleeve:
+    | {
+        action?: string | null;
+        intradayWarn?: {
+          active?: boolean;
+          status?: string | null;
+          symbol?: string | null;
+          px?: number | null;
+          thresholdPx?: number | null;
+          peak?: number | null;
+          drawdownPct?: number | null;
+          message?: string | null;
+          executeHint?: string | null;
+        } | null;
+      }
+    | null
+    | undefined,
+): M30IntradayWarn | null {
+  const warn = sleeve?.intradayWarn;
+  if (!sleeve || !warn || warn.active !== true) return null;
+  // A confirmed exit is stronger copy — never show both as equal.
+  if (String(sleeve.action || '').toUpperCase() === 'SELL_TO_REPO') return null;
+  const symbol = String(warn.symbol || '').trim().toUpperCase();
+  if (!symbol) return null;
+  return {
+    symbol,
+    status: warn.status === 'breached' ? 'breached' : 'near',
+    px: warn.px ?? null,
+    thresholdPx: warn.thresholdPx ?? null,
+    peak: warn.peak ?? null,
+    drawdownPct: warn.drawdownPct ?? null,
+    message: warn.message ?? null,
+    executeHint: warn.executeHint ?? null,
   };
 }
 

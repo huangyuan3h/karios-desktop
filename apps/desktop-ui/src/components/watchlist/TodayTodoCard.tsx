@@ -10,6 +10,7 @@ import { getShanghaiTodayIso } from '@/lib/market-hours';
 import {
   buildM30Targets,
   cadenceStatus,
+  pendingParkSellFromSleeve,
   rebalanceGate,
   useFollowCadence,
   type M30Holding,
@@ -146,6 +147,7 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
         px: u.px ?? null,
       })),
       holdings,
+      pendingParkSell: pendingParkSellFromSleeve(sleeve),
     });
     const today = getShanghaiTodayIso();
     const status = cadenceStatus(cadence, today);
@@ -210,6 +212,16 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
         level: 'todo',
         text: `回测对账有缺口：${gapMarkets.map((r) => `${r.market} 缺${r.missing ?? 0}/多${r.extra ?? 0}`).join('；')}`,
         anchor,
+      });
+    }
+    // 5b) 港湾停车止损（Must-act）：sleeve 已判 SELL_TO_REPO，腿仍持有。
+    //     与模式无关（harbor/homeport 都显示），先卖后再说其它。
+    const pendingParkSell = pendingParkSellFromSleeve(data.multiAssetSleeve);
+    if (pendingParkSell) {
+      out.push({
+        level: 'todo',
+        text: `停车腿止损待执行：卖出 ${pendingParkSell.symbol} → 逆回购（${pendingParkSell.reason ?? '峰值回撤触线'}；${pendingParkSell.executeHint ?? '次日开盘卖出转逆回购'}）`,
+        anchor: 'm30-follow',
       });
     }
     // 6) 股票篮候选。

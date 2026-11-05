@@ -881,6 +881,9 @@ def build_portfolio_health(
                     holding["trailExit"] = True
                     holding["action"] = trail["action"]
                     holding["message"] = trail["message"]
+                    holding["pendingOpenSell"] = bool(trail.get("pendingOpenSell"))
+                    holding["signalDate"] = trail.get("signalDate")
+                    holding["executeHint"] = trail.get("executeHint")
             except Exception:
                 pass
             multi_holdings.append(holding)

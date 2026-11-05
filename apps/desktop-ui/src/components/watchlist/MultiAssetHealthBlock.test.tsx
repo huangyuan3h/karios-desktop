@@ -27,5 +27,42 @@ describe('MultiAssetHealthBlock', () => {
     expect(screen.queryByText('卖出')).toBeNull();
     expect(screen.getAllByText('B3 腿')).toHaveLength(2);
     expect(screen.getByText(/母港M30：港湾腿（70%）的停车部分/)).toBeDefined();
+    // 份数/金额只在操作清单里算：这里只给入口，不再引用已下线的跟仓卡，
+    // 也不再断言“B3 腿 ETF 不卖”（B3 腿按月频目标会产生买卖单）。
+    expect(screen.getByText(/份数\/金额见上方操作清单/)).toBeDefined();
+    expect(screen.queryByText(/母港M30跟仓/)).toBeNull();
+    expect(screen.queryByText(/B3 腿 ETF 不卖/)).toBeNull();
+  });
+
+  it('a pending trail exit shows Must-act 待卖 instead of 持有/加仓', () => {
+    const pendingSleeve = {
+      action: 'SELL_TO_REPO',
+      label: '卖出转repo(止损)',
+      message: 'ETF:513350峰值回撤8.5% ≥8% → 次日开盘卖转逆回购（信号日 2026-11-03）',
+      symbol: 'ETF:513350',
+      pendingOpenSell: true,
+      signalDate: '2026-11-03',
+      executeHint: '待开盘卖出转逆回购（信号已触发，未执行）',
+      idlePct: 0,
+      parkPct: 63.5,
+      pick: { key: 'OIL', symbol: 'ETF:513350' },
+    } as never;
+    const holdings = [
+      {
+        symbol: 'ETF:513350',
+        key: 'OIL',
+        positionPct: 63.5,
+        marketData: { close: 1.28, ma200: 1.5, above: false },
+      },
+    ] as never;
+    render(<MultiAssetHealthBlock holdings={holdings} sleeve={pendingSleeve} m30 />);
+    expect(screen.getByTestId('parking-must-act').textContent).toMatch(/卖出 513350 → 逆回购/);
+    expect(screen.getByText('待卖 · 止损')).toBeDefined();
+    // The leg holds only one row: no 加仓/持有 on the exiting ETF.
+    expect(screen.queryByText('加仓')).toBeNull();
+    expect(screen.queryByText('持有')).toBeNull();
+    expect(screen.getByText('待卖')).toBeDefined();
+    // No "park today's idle cash" banner while an exit is pending.
+    expect(screen.queryByText(/母港M30：港湾腿（70%）的停车部分/)).toBeNull();
   });
 });

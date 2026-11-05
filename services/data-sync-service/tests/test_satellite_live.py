@@ -306,6 +306,7 @@ class TestSatelliteLiveJob:
         monkeypatch.setattr(job, "insert_record", lambda *a, **kw: records.append(kw))
         monkeypatch.setattr("data_sync_service.db.trade_calendar.is_trading_day", lambda *a: True)
         monkeypatch.setattr(sl, "report_path", lambda: tmp_path / "panel.json")
+        monkeypatch.setattr(job, "_emit_action", lambda panel: None)  # no webhook/DB writes
         (tmp_path / "panel.json").write_text(
             json.dumps({"tradeDate": shanghai_today().isoformat()}), encoding="utf-8"
         )
@@ -478,19 +479,63 @@ class TestSatelliteLiveJob:
         assert "卖出资金停入 H2 停车腿（富国油气QDII 513350.SH）" in payload["lines"]
         assert any("闸关" in ln for ln in payload["lines"])
 
-    def test_emit_action_skips_non_satellite_modes(self, monkeypatch) -> None:
+    def test_emit_action_homeport_always_pushes_daily_adjust(self, monkeypatch) -> None:
+        """2026-11-05: default/live homeport must get the fixed 14:30 push."""
         from data_sync_service.scheduler import satellite_live_job as job
+        from data_sync_service.service import daily_adjust
 
         emitted: list[dict] = []
         monkeypatch.setattr(
-            "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "harbor"
+            "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "homeport"
         )
         monkeypatch.setattr(
             "data_sync_service.db.webhook.emit_event",
-            lambda *a, **kw: emitted.append((a, kw)),
+            lambda et, payload, dedupe_key: emitted.append(
+                {"type": et, "payload": payload, "key": dedupe_key}
+            ),
         )
-        job._emit_action({"tradeDate": "2026-09-17", "decisionAvailable": True})
-        assert emitted == []
+        monkeypatch.setattr(
+            daily_adjust,
+            "load_live_sleeve",
+            lambda day: {"action": "HOLD", "message": "港湾停车：持有 ETF:513350"},
+        )
+        job._emit_action({"tradeDate": "2026-11-05"})
+        assert len(emitted) == 1
+        payload = emitted[0]["payload"]
+        assert emitted[0]["type"] == "satellite_action"
+        assert emitted[0]["key"] == "satellite_action:2026-11-05:homeport"
+        assert payload["dailyAdjust"] is True
+        assert payload["noChange"] is True
+        assert payload["lines"][0] == "今日无需调整"
+
+    def test_emit_action_homeport_trail_lists_sell(self, monkeypatch) -> None:
+        from data_sync_service.scheduler import satellite_live_job as job
+        from data_sync_service.service import daily_adjust
+
+        emitted: list[dict] = []
+        monkeypatch.setattr(
+            "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "homeport"
+        )
+        monkeypatch.setattr(
+            "data_sync_service.db.webhook.emit_event",
+            lambda et, payload, dedupe_key: emitted.append(payload),
+        )
+        monkeypatch.setattr(
+            daily_adjust,
+            "load_live_sleeve",
+            lambda day: {
+                "action": "SELL_TO_REPO",
+                "message": "ETF:513350峰值回撤8.6% ≥8%",
+                "symbol": "ETF:513350",
+                "pendingOpenSell": True,
+                "signalDate": "2026-11-03",
+                "executeHint": "待开盘卖出转逆回购",
+            },
+        )
+        job._emit_action({"tradeDate": "2026-11-05"})
+        assert len(emitted) == 1
+        assert emitted[0]["noChange"] is False
+        assert any("ETF:513350" in ln for ln in emitted[0]["lines"])
 
     def test_incomplete_panel_records_failure(self, monkeypatch, tmp_path) -> None:
         from data_sync_service.scheduler import satellite_live_job as job

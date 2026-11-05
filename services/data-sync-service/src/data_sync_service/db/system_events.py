@@ -49,6 +49,9 @@ HIGH_JOB_TYPES = {
     "index_basic_sync",
     "sleeve_etf_daily_sync",
     "stock_daily_basic_sync",
+    # 2026-11-05: the fixed 14:30 「今日调整」 Bark rides this job; a silent
+    # failure would mean no daily push (the 513350 trail miss).
+    "satellite_live_panel",
     # 2026-10-25 factor/S-gap monitor-dark pages Yuan (必达 MVP).
     "factor_vault_refresh",
     "sgap_decay_refresh",

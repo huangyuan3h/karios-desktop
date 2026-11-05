@@ -108,6 +108,17 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
         label = str(p.get("strategyLabel") or "卫星")
         lines = list(p.get("lines") or [])
         day = str(p.get("tradeDate") or "").replace("-", ".")
+        if p.get("trailAlert"):
+            return {
+                "title": f"🛑 {label}止损 · {day}",
+                "body": _lines(*lines) or "停车腿退出",
+            }
+        if p.get("dailyAdjust"):
+            prefix = "✅ " if p.get("noChange") else "⚠️ "
+            return {
+                "title": f"📋 {label} · 今日调整 {day}",
+                "body": _lines(prefix + (lines[0] if lines else ""), *lines[1:]) or "今日调整",
+            }
         return {
             "title": f"🛰 {label} · {day} 14:30",
             "body": _lines(*lines) or "无",

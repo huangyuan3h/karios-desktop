@@ -143,6 +143,32 @@ export interface PortfolioHealthResponse {
       n?: number;
     } | null;
     holding?: boolean;
+    /** Sticky pending trail exit — sell at the next open, not yet executed. */
+    pendingOpenSell?: boolean;
+    /** Completed session whose close first breached the 8% trail. */
+    signalDate?: string | null;
+    /** e.g. 「次日开盘卖出转逆回购」/「待开盘卖出转逆回购」. */
+    executeHint?: string | null;
+    trailExit?: boolean;
+    /** Canonical held symbol for a SELL_TO_REPO / ROTATE sleeve action. */
+    symbol?: string | null;
+    /**
+     * 14:30 early warning: today's print is at/under the trail threshold.
+     * Conditional Must-watch only — the close still decides (next-open execute).
+     */
+    intradayWarn?: {
+      active?: boolean;
+      status?: 'breached' | 'near';
+      symbol?: string;
+      px?: number;
+      thresholdPx?: number;
+      peak?: number;
+      drawdownPct?: number;
+      gapPct?: number;
+      message?: string;
+      executeHint?: string;
+      tradeDate?: string;
+    } | null;
     note?: string;
   } | null;
   multiAssetHoldings?: Array<{
@@ -155,6 +181,14 @@ export interface PortfolioHealthResponse {
     entryDate?: string | null;
     ts_code?: string | null;
     isMulti?: boolean;
+    /** Per-holding S-3 action (parking trail uses SELL_TO_REPO). */
+    action?: string | null;
+    message?: string | null;
+    /** Backend trail verdict for this parking leg (sticky after first fire). */
+    trailExit?: boolean;
+    pendingOpenSell?: boolean;
+    signalDate?: string | null;
+    executeHint?: string | null;
     marketData?: {
       close?: number;
       ma200?: number;
