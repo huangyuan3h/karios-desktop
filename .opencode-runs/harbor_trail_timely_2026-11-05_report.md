@@ -4,7 +4,9 @@ Branch: `feat/watchlist-follow-m30` · unattended run · **no TRAIL_PCT / clock 
 (`close signal → next open execute` unchanged).
 
 Commit: **80aab82f** — `feat(harbor): pending trail overrides 今日操作 + 14:30 今日调整 Bark`
-(+ **87d5af80** — `fix(harbor): 14:30 trail warning falls back to the latest intraday print`)
+(+ **87d5af80** — 14:30 warning falls back to the latest intraday print,
++ **8c3b284d** — 14:30 现价预警 as the first conditional row / 门槛价 copy,
++ **7a41626b** — Bark line glyph de-dup)
 
 **Status: HARBOUR TRAIL TIMELY DONE** — live API returns the pending trail, the
 Watchlist 今日操作 first row is the Must-act sell → 逆回购, Bark「今日调整」covers
