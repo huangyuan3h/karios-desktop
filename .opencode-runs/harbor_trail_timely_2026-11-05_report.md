@@ -218,8 +218,12 @@ Frontend (`apps/desktop-ui`):
     - Next :3000 → PID **15524**
     - AI :4310 → PID **15525** (Hono, `/` 404 is normal — no root route)
     - `pnpm dev` wrapper → PID **14849** (background, nohup)
-  - Exactly one listener per port. This is the last restart of this run; the
-    running process now includes every commit below (fallback + 门槛价 copy).
+  - Exactly one listener per port. This is the last restart of this run: the
+    running process has every **functional** commit (sticky trail, 0% ghost-leg
+    fix, 14:30 warn + latest-print fallback, 门槛价 copy, 持有 suppression,
+    daily-adjust wiring). Only the cosmetic glyph de-dup (`7a41626b`, removes a
+    duplicated ⚠️ in the Bark body) is not loaded — no restart for that; it takes
+    effect on the next natural reload.
 - Live verify (pasted, after the final relaunch):
   ```
   $ curl -s 'http://127.0.0.1:4330/v1/agent/portfolio-health?markets=CN'
