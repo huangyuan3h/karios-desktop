@@ -247,3 +247,20 @@ Frontend (`apps/desktop-ui`):
 - The worktree keeps unrelated pre-existing dirt (AccountBar / MobileShell /
   WatchlistPage / em_push2 / factor_vault / zt_pool / audit docs): **not staged,
   not reverted**.
+
+## Post-DONE reload (Asia/Shanghai 2026-11-05 08:53)
+
+To load `87d5af80` (latest-intraday-print fallback) into the live process, data-sync
+was restarted once more. Killing only the uvicorn child briefly cascaded turbo
+(Next/AI dropped); full `pnpm dev` relaunched and is healthy:
+
+- `pnpm dev` wrapper PID **12304** (log `.opencode-runs/pnpm-dev-2026-11-05-reload87d5.log`)
+- data-sync :4330 → PID **13055**
+- Next :3000 → PID **13056** (`GET /` 200)
+- AI :4310 → PID **13057**
+
+Live re-verify `/v1/agent/portfolio-health?markets=CN`:
+`action=SELL_TO_REPO, symbol=ETF:513350, pendingOpenSell=true, signalDate=2026-11-03`.
+`intradayWarn=null` this morning (no today live_1430 / no intraday print yet — expected).
+Fallback path is loaded (`pxSource` / `latest_intraday_print` in process code).
+No push.
