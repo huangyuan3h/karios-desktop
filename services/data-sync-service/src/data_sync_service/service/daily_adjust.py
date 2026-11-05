@@ -139,7 +139,7 @@ def _sleeve_lines(sleeve: dict[str, Any]) -> tuple[list[str], list[dict[str, Any
     if warn.get("active") and action != "SELL_TO_REPO":
         warn_sym = str(warn.get("symbol") or symbol or "停车 ETF").upper()
         warn_hint = str(warn.get("executeHint") or "若收盘仍低于门槛价 → 明日开盘卖出转逆回购")
-        lines.append(f"⚠ {warn.get('message') or f'{warn_sym}现价触线'}")
+        lines.append(f"{warn.get('message') or f'{warn_sym}现价触线'}")
         lines.append(warn_hint)
         adjustments.append(
             {
