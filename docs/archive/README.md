@@ -59,6 +59,7 @@ docs/archive/
 | 2026-09-24 | OPT-242 · H2-a25 canonical 口径收敛 | [`2026-09-24-h2-a25-canonical.md`](./2026-09-24-h2-a25-canonical.md) | H2-a25 统一为现行研究/展示/人工操作口径；独立报告 +238.4/+55.9/+3.2/+738.5，K3 风险下 REJECT；旧 0pt 报告降为 historical；Live 仍为港湾 |
 | 2026-09-24 | P0-13 B21 VIX 风险 regime 砖 | [`2026-09-24-vix-regime.md`](./2026-09-24-vix-regime.md) | **REJECT/方向证伪**：VIX 高分位后 B3 `fwd20` 反而更高（+0.82 vs +0.58）、闸 long +43.3 vs +46.2 → "VIX 高→去风险"不成立，反向属恐慌后反弹（B4/B6 同族）。同批 VIX + CN/US 收益率曲线接每日增量（`sync_vix`/`sync_bond_yields`） |
 | 2026-09-24 | P0-13 B22 星舰 B 卫星左尾解剖 + H-SAT-AMP-CAP | [`2026-09-24-starship-b-loss-anatomy.md`](./2026-09-24-starship-b-loss-anatomy.md) | **无免费午餐**：亏损=卫星脉冲左尾（477/1080 全 body_exit、无止损）、离散非 regime、同日篮子≈一个赌注。S1 gap 关 / **S1b amp1430 真信号但回放 REJECT（臂 B 降波动换 −68pt）** / S2 行业不集中关 / S3 早出更差关。唯一产物=可选防守档（amp≤1%），Live 不动 |
+| 2026-11-06 | OPT-244 · 东财数据源切换/降级补齐 | [`2026-11-06-em-source-swap.md`](./2026-11-06-em-source-swap.md) | 熔断按 host+path 分域（clist 失败不再误伤 stock/get / reportapi）；Tushare 实时行情 token 路径修复（satellite 14:30 真因）；行业资金流 Tushare moneyflow→SW L1 回退；ETF 份额历史修复 + 主力/份额估算分开标注；Harbor 14:30 加停车场 ETF 打印 |
 
 ---
 
