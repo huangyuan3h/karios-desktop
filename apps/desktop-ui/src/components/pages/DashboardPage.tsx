@@ -13,7 +13,7 @@ import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
-import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { dashboardSyncDegradedNote, useDashboardSync } from '@/hooks/useDashboardSync';
 import { useDashboardAutoSync } from '@/hooks/useDashboardAutoSync';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
@@ -360,6 +360,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         </div>
       ) : null}
 
+      {!busy && syncResp && dashboardSyncDegradedNote(syncResp) ? (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          {dashboardSyncDegradedNote(syncResp)}
+        </div>
+      ) : null}
+
       {busy && syncSteps.length > 0 ? (
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -390,6 +396,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
                 ) : null}
                 {s.message ? <span className="text-red-600 truncate">{s.message}</span> : null}
+                {s.warnings && s.warnings.length ? (
+                  <span className="text-amber-600 truncate">
+                    {s.warnings.slice(0, 2).join('；')}
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
@@ -411,21 +422,25 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             >
               {syncResp.ok ? 'OK' : 'FAILED'}
             </span>
+            {syncResp.ok && (syncResp as any).degraded ? (
+              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-700">部分降级</span>
+            ) : null}
             {((syncResp.steps as any[]) ?? []).length ? (
               <span className="text-[var(--k-muted)]">
                 {(syncResp.steps as any[]).map((s: any) => {
                   const ok = Boolean(s.ok);
+                  const degraded = Boolean(s?.meta?.degraded);
                   const name = String(s.name ?? '');
                   const ms = Number(s.durationMs ?? 0);
                   return (
                     <span
                       key={name}
                       className={`ml-2 inline-flex items-center gap-1 font-mono ${
-                        ok ? 'text-emerald-700' : 'text-red-700'
+                        ok ? (degraded ? 'text-amber-700' : 'text-emerald-700') : 'text-red-700'
                       }`}
-                      title={String(s.message ?? '')}
+                      title={String(s.message ?? s?.meta?.message ?? '')}
                     >
-                      {ok ? '✓' : '✗'} {name} {ms}ms
+                      {ok ? (degraded ? '◐' : '✓') : '✗'} {name} {ms}ms
                     </span>
                   );
                 })}

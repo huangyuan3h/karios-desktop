@@ -20,6 +20,11 @@ from data_sync_service.db.market_sentiment import (
 )
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
+from data_sync_service.service.em_source_status import (
+    EM_DEGRADED_ZH_SHORT,
+    is_em_source_unavailable,
+    neutralize_em_substep,
+)
 from data_sync_service.service.etf_fund_flow import (
     build_etf_flow_signal,
     build_etf_fund_flow_bundle,
@@ -372,6 +377,33 @@ def _sync_industry_step(*, force: bool = False) -> dict[str, Any]:
     return out if isinstance(out, dict) else {"ok": True}
 
 
+def _neutralize_top_inst_em_unavailable(
+    result: dict[str, Any] | Any,
+) -> dict[str, Any] | None:
+    """Degrade top-inst only when EVERY failure segment is EM-upstream.
+
+    The default provider chain tries tushare first — a tushare failure is a
+    real error and must stay red even when the eastmoney fallback also fails.
+    Only a purely-EM failure (e.g. eastmoney-only config during an EM
+    outage) degrades.
+    """
+    if not isinstance(result, dict) or result.get("ok") is not False:
+        return None
+    segments: list[str] = []
+    for key in ("error", "message"):
+        v = result.get(key)
+        if isinstance(v, str) and v.strip():
+            segments.append(v)
+    provider_errors = result.get("providerErrors")
+    if isinstance(provider_errors, list):
+        for e in provider_errors:
+            if isinstance(e, str) and e.strip():
+                segments.append(e)
+    if not segments or not all(is_em_source_unavailable(s) for s in segments):
+        return None
+    return neutralize_em_substep(result, leg="top_inst")
+
+
 def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     d = shanghai_today_iso()
     out = sync_cn_sentiment(date_str=d, force=bool(force))
@@ -397,6 +429,39 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         err = str(option_iv_out.get("error") or option_iv_out.get("message") or "no_iv_data")
         warnings.append(f"option_iv: {err}")
         option_iv_out = {**option_iv_out, "ok": True, "degraded": True, "warning": err}
+    # 2026-11-06: same treatment for identifiably-EM-upstream sub-failures
+    # (etf realtime flow, eastmoney-only top-inst). Sentiment compute itself
+    # stays strict — tushare/AKShare/DB errors are real and must remain red.
+    degraded_count = 0
+    neutralized_etf = neutralize_em_substep(etf_out, leg="etf_fund_flow")
+    if neutralized_etf is not None:
+        etf_out = neutralized_etf
+        degraded_count += 1
+        warnings.append(str(neutralized_etf.get("warning") or "etf_fund_flow: degraded"))
+    neutralized_top = _neutralize_top_inst_em_unavailable(top_inst_out)
+    if neutralized_top is not None:
+        top_inst_out = neutralized_top
+        degraded_count += 1
+        warnings.append(str(neutralized_top.get("warning") or "top_inst: degraded"))
+    # Propagate warnings from already-degraded sub-results (e.g. the new
+    # etf_fund_flow_watchlist degraded shape) so they surface at step level
+    # and in the top-level warnings list. Dedup keeps neutralized entries
+    # (appended above) from repeating.
+    for sub in (etf_out, top_inst_out):
+        if isinstance(sub, dict) and sub.get("degraded"):
+            sub_ws = sub.get("warnings")
+            if isinstance(sub_ws, list):
+                for w in sub_ws:
+                    if w and str(w) not in warnings:
+                        warnings.append(str(w))
+            elif isinstance(sub.get("warning"), str) and sub["warning"] not in warnings:
+                warnings.append(sub["warning"])
+    # Count ok=True degraded sub-results (new shape) toward the step flag.
+    if degraded_count == 0 and any(
+        isinstance(sub, dict) and sub.get("ok") is True and sub.get("degraded")
+        for sub in (etf_out, top_inst_out)
+    ):
+        degraded_count = 1
     items = out.get("items") if isinstance(out, dict) else []
     last = items[-1] if isinstance(items, list) and items else {}
     result: dict[str, Any] = {
@@ -411,7 +476,8 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     if warnings:
         result["warnings"] = warnings
     # Step ok is driven by the hard sub-steps only (sentiment + etf + top-inst).
-    # IV is deliberately excluded — see above.
+    # IV is deliberately excluded — see above. EM-upstream sub-failures were
+    # neutralized above and ride as degraded warnings instead.
     hard_failure = _sync_failure_message(
         {"sentiment": out, "etfFundFlow": etf_out, "topInstWatchlist": top_inst_out}
     )
@@ -420,6 +486,10 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         result["error"] = hard_failure
     else:
         result["ok"] = True
+    if degraded_count:
+        result["degraded"] = True
+        result["unavailable"] = True
+        result["message"] = EM_DEGRADED_ZH_SHORT
     return result
 
 
@@ -479,6 +549,26 @@ def _collect_step_warnings(steps: list[dict[str, Any]]) -> list[str]:
     return warnings
 
 
+def _final_degraded_extra(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Top-level degradation marker for Sync All results.
+
+    Set when any step returned ``ok=True`` degraded (e.g. East Money
+    upstream unavailable): the run completed with stale-but-valid cached
+    data, not FAILED. Additive only — old clients ignore the new keys.
+    """
+    degraded = any(
+        isinstance(s.get("meta"), dict) and bool(s["meta"].get("degraded")) for s in steps
+    )
+    if not degraded:
+        return {}
+    return {
+        "degraded": True,
+        "degradedMessage": (
+            "同步完成（部分降级）：东方财富实时行情源暂时不可用，已沿用上次有效数据，未写入空值；源恢复后自动恢复。"
+        ),
+    }
+
+
 def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     steps: list[dict[str, Any]] = []
@@ -494,6 +584,7 @@ def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
         "finishedAt": finished_at,
         "steps": steps,
         "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
 
 
@@ -527,6 +618,7 @@ def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
         "finishedAt": finished_at,
         "steps": steps,
         "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
 
 
@@ -574,6 +666,7 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
         "finishedAt": finished_at,
         "steps": steps,
         "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
     summary_data: dict[str, Any] = {}
     summary_error: str | None = None

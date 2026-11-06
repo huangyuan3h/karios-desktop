@@ -14,24 +14,54 @@ export function isDashboardSyncResultOk(result: unknown): boolean {
 }
 
 function syncResultErrorMessage(result: unknown): string {
+  // 2026-11-06: cap banner length — a raw upstream transport stack (EM
+  // RemoteDisconnected × requests/curl/urllib) must never again render as an
+  // enormous red banner. Full diagnostics stay in the per-step meta.
+  const truncate = (s: string) =>
+    s.length > 300 ? `${s.slice(0, 300)}…（详情见同步步骤）` : s;
   if (!result || typeof result !== 'object') return 'Sync returned an invalid result';
   const record = result as {
     error?: unknown;
     message?: unknown;
     steps?: unknown;
   };
-  if (typeof record.error === 'string' && record.error) return record.error;
-  if (typeof record.message === 'string' && record.message) return record.message;
+  if (typeof record.error === 'string' && record.error) return truncate(record.error);
+  if (typeof record.message === 'string' && record.message) return truncate(record.message);
   if (Array.isArray(record.steps)) {
     for (const step of record.steps) {
       if (!step || typeof step !== 'object') continue;
       const detail = step as { ok?: unknown; message?: unknown };
       if (detail.ok === false && typeof detail.message === 'string' && detail.message) {
-        return detail.message;
+        return truncate(detail.message);
       }
     }
   }
   return 'Sync failed';
+}
+
+/**
+ * Chinese degraded note for a completed-with-degradation Sync All result
+ * (2026-11-06: East Money upstream unavailable). Returns null when the
+ * result is not degraded. Pure helper — never affects the ok contract.
+ */
+export function dashboardSyncDegradedNote(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const record = result as { degraded?: unknown; degradedMessage?: unknown; warnings?: unknown };
+  if (record.degraded === true) {
+    if (typeof record.degradedMessage === 'string' && record.degradedMessage) {
+      return record.degradedMessage;
+    }
+    return '同步完成（部分降级）：部分上游数据源暂时不可用，已沿用上次有效数据；源恢复后自动恢复。';
+  }
+  if (Array.isArray(record.warnings) && record.warnings.length > 0) {
+    const shown = record.warnings
+      .filter((w): w is string => typeof w === 'string' && w.length > 0)
+      .slice(0, 2);
+    if (!shown.length) return null;
+    const extra = record.warnings.length > 2 ? `（等 ${record.warnings.length} 项）` : '';
+    return `同步完成（部分降级）：${shown.join('；')}${extra}`;
+  }
+  return null;
 }
 
 export type SyncStep = {

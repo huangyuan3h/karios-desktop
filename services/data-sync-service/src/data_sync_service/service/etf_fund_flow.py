@@ -21,6 +21,12 @@ from data_sync_service.db.etf_fund_flow import (
 )
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
+from data_sync_service.service.em_source_status import (
+    EM_DEGRADED_ZH_SHORT,
+    EM_UNAVAILABLE_REASON,
+    em_degraded_warning,
+    is_em_source_unavailable,
+)
 from data_sync_service.service.etf_fund_flow_em import (
     EM_ETF_FLOW_SOURCE,
     fetch_em_etf_realtime_flow_for_symbols,
@@ -528,6 +534,34 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
     error_message = (
         None if success else (fetch_error or "no realtime ETF flow rows from East Money")
     )
+    if not success and is_em_source_unavailable(error_message):
+        # 2026-11-06: East Money realtime egress down (RemoteDisconnected /
+        # empty reply / ban latch). Report explicit degradation: keep the
+        # failure audit row (success=False so last-success never advances),
+        # write NO rows (no fake zeros), and return ok=True degraded so the
+        # dashboard Sync no longer cascades to FAILED on this leg alone.
+        insert_record(
+            job_type=JOB_TYPE,
+            success=False,
+            last_ts_code=None,
+            error_message=f"{EM_UNAVAILABLE_REASON}: {str(error_message)[:300]}",
+        )
+        return {
+            "ok": True,
+            "degraded": True,
+            "unavailable": True,
+            "reason": EM_UNAVAILABLE_REASON,
+            "message": EM_DEGRADED_ZH_SHORT,
+            "warning": em_degraded_warning(leg="etf_fund_flow"),
+            "warnings": [em_degraded_warning(leg="etf_fund_flow")],
+            "source": EM_ETF_FLOW_SOURCE,
+            "fetchError": fetch_error,
+            "rawError": str(error_message)[:500],
+            "missingSymbols": missing_symbols,
+            "staleSymbols": stale_symbols,
+            "historyUpdated": history_rows,
+            "historyError": history_error,
+        }
     insert_record(
         job_type=JOB_TYPE,
         success=success,
