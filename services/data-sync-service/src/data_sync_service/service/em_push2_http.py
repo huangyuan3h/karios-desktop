@@ -16,6 +16,8 @@ from typing import Any
 # get_settings() was never called. Mirrors industry_fund_flow.py.
 from dotenv import load_dotenv  # noqa: E402
 
+from data_sync_service.service import em_breaker
+
 load_dotenv(Path(__file__).resolve().parents[5] / ".env")
 
 _PROXY = os.environ.get("EASTMONEY_PROXY", "").strip()
@@ -63,6 +65,25 @@ def breaker_status() -> dict[str, Any]:
             "cooldown_remaining_s": 0,
             "fail_streak": 0,
             "proxy_degraded": False,
+        }
+
+
+def breaker_scope_status(cooldown_s: float = _EM_BLOCK_COOLDOWN_SECONDS) -> dict[str, Any]:
+    """Per-host/path breaker detail (2026-11-06).
+
+    ``breaker_status()`` keeps its legacy four-key contract (and legacy module
+    globals) for existing callers/tests. The production latch is path-scoped
+    in :mod:`em_breaker`; the health banner merges both views.
+    """
+    try:
+        return em_breaker.snapshot(cooldown_s=cooldown_s)
+    except Exception:  # noqa: BLE001
+        return {
+            "ban_latched": False,
+            "cooldown_remaining_s": 0,
+            "fail_streak": 0,
+            "latched_scopes": [],
+            "scopes": {},
         }
 
 
@@ -209,15 +230,22 @@ def em_get_json(
 ) -> dict[str, Any]:
     global _PROXY_DEGRADED, _EM_BLOCKED, _EM_BLOCKED_AT, _EM_FAIL_STREAK
     errors: list[str] = []
+    # 2026-11-06: the real circuit breaker is path-scoped (em_breaker). A
+    # clist/push2his outage must not fail-fast-ban healthy routes such as
+    # push2 stock/get or reportapi. The legacy globals below are kept as an
+    # explicit process-wide override (tests/operator emergency only); they are
+    # no longer written by the failure path.
+    scope = em_breaker.scope_for(url)
+    em_breaker.check(scope, cooldown_s=_EM_BLOCK_COOLDOWN_SECONDS)
     if _EM_BLOCKED:
         if time.time() - _EM_BLOCKED_AT < _EM_BLOCK_COOLDOWN_SECONDS:
-            # Eastmoney is temporarily throttling this process — fail fast
-            # instead of burning every sync cycle on retries.
-            raise RuntimeError("eastmoney_ip_ban_latched")
+            # Legacy global latch (explicit operator/test override).
+            raise RuntimeError(f"{em_breaker.LATCH_ERROR_PREFIX}:{scope}")
         # A long-lived uvicorn must be allowed to retry after the external
         # rate limit cools down; do not require a process restart.
         _EM_BLOCKED = False
         _EM_FAIL_STREAK = 0
+        em_breaker.record_success(scope)
         _PROXY_DEGRADED = False
 
     # 2026-08-20: DIRECT connection is the primary path for ALL eastmoney
@@ -227,6 +255,7 @@ def em_get_json(
     try:
         result = _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
         _EM_FAIL_STREAK = 0
+        em_breaker.record_success(scope)
         _PROXY_DEGRADED = False
         return result
     except Exception as e:  # noqa: BLE001
@@ -253,6 +282,7 @@ def em_get_json(
                 raise RuntimeError(f"non_object_json:{type(j).__name__}")
             _PROXY_DEGRADED = False
             _EM_FAIL_STREAK = 0
+            em_breaker.record_success(scope)
             _EM_BLOCKED = False
             return j
         except Exception as e:  # noqa: BLE001
@@ -262,6 +292,7 @@ def em_get_json(
             result = _curl_get_json(url, params=params, referer=referer, timeout=timeout)
             _PROXY_DEGRADED = False
             _EM_FAIL_STREAK = 0
+            em_breaker.record_success(scope)
             return result
         except Exception as e:  # noqa: BLE001
             errors.append(f"curl_proxy:{e}")
@@ -270,6 +301,7 @@ def em_get_json(
             result = _urllib_get_json(url, params=params, referer=referer, timeout=timeout)
             _PROXY_DEGRADED = False
             _EM_FAIL_STREAK = 0
+            em_breaker.record_success(scope)
             return result
         except Exception as e:  # noqa: BLE001
             errors.append(f"urllib_proxy:{e}")
@@ -278,8 +310,10 @@ def em_get_json(
         _PROXY_DEGRADED = True
 
     _EM_FAIL_STREAK += 1
-    if _EM_FAIL_STREAK >= 3:
-        _EM_BLOCKED = True
-        _EM_BLOCKED_AT = time.time()
+    em_breaker.record_failure(
+        scope,
+        threshold=3,
+        cooldown_s=_EM_BLOCK_COOLDOWN_SECONDS,
+    )
 
     raise RuntimeError("; ".join(errors[-3:]))
