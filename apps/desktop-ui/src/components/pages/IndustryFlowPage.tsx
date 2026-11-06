@@ -582,6 +582,11 @@ export function IndustryFlowPage() {
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             EOD net inflow by industry. Cached in Postgres and reusable by Strategy.
           </div>
+          {resp?.fallbackUsed ? (
+            <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              部分日期来源：Tushare 个股大单按申万一级汇总（东财暂不可用；口径=大单+超大单净额，非东财原值）。
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Button

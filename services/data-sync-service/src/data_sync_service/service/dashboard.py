@@ -564,7 +564,8 @@ def _final_degraded_extra(steps: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "degraded": True,
         "degradedMessage": (
-            "同步完成（部分降级）：东方财富实时行情源暂时不可用，已有有效数据予以保留、缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
+            "同步完成（部分降级）：东方财富源暂不可用，已自动切换非东财备用源并标注来源；"
+            "无可用备用源的缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
         ),
     }
 
