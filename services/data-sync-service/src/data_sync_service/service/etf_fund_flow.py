@@ -534,7 +534,11 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
     error_message = (
         None if success else (fetch_error or "no realtime ETF flow rows from East Money")
     )
-    if not success and is_em_source_unavailable(error_message):
+    # 2026-11-06 review: classify over BOTH failure fields (AND semantics) —
+    # an EM transport error must not mask a simultaneous real history failure.
+    if not success and is_em_source_unavailable(
+        {"error": error_message, "historyError": history_error}
+    ):
         # 2026-11-06: East Money realtime egress down (RemoteDisconnected /
         # empty reply / ban latch). Report explicit degradation: keep the
         # failure audit row (success=False so last-success never advances),

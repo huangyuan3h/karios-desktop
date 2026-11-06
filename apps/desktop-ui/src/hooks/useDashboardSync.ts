@@ -51,7 +51,7 @@ export function dashboardSyncDegradedNote(result: unknown): string | null {
     if (typeof record.degradedMessage === 'string' && record.degradedMessage) {
       return record.degradedMessage;
     }
-    return '同步完成（部分降级）：部分上游数据源暂时不可用，已沿用上次有效数据；源恢复后自动恢复。';
+    return '同步完成（部分降级）：部分上游数据源暂时不可用，已有有效数据予以保留、缺失仍记为缺失；源恢复后自动恢复。';
   }
   if (Array.isArray(record.warnings) && record.warnings.length > 0) {
     const shown = record.warnings

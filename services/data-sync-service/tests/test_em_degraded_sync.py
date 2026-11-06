@@ -39,9 +39,11 @@ class TestClassifier:
         assert is_em_source_unavailable("eastmoney_ip_ban_latched") is True
 
     def test_em_chain_signature_is_unavailable(self) -> None:
+        # Chain signature WITH EM attribution (screenshot shape, trimmed).
         assert (
             is_em_source_unavailable(
-                "direct:requests timeout; curl:curl: (52) Empty reply; urllib:timeout"
+                "push2.eastmoney.com direct:requests timeout; curl:curl: (52) Empty reply; "
+                "urllib:Remote end closed connection without response"
             )
             is True
         )
@@ -54,6 +56,67 @@ class TestClassifier:
         assert is_em_source_unavailable("") is False
         assert is_em_source_unavailable(None) is False
         assert is_em_source_unavailable({"ok": True}) is False
+
+    def test_bare_host_mention_without_transport_stays_failed(self) -> None:
+        # 2026-11-06 review: mere host mention (payload/schema failure naming
+        # the URL) is NOT upstream-unavailable.
+        assert (
+            is_em_source_unavailable("eastmoney.com response missing_symbols: 510300")
+            is False
+        )
+        assert (
+            is_em_source_unavailable("eastmoney_etf_no_rows: schema mismatch on diff")
+            is False
+        )
+        assert (
+            is_em_source_unavailable(
+                "push2his.eastmoney.com returned empty diff: schema error"
+            )
+            is False
+        )
+        assert (
+            is_em_source_unavailable("push2delay.eastmoney.com invalid_json: programming bug")
+            is False
+        )
+
+    def test_generic_chain_from_another_host_is_not_em(self) -> None:
+        assert (
+            is_em_source_unavailable(
+                "tushare: direct:requests timeout; curl:curl: (52) Empty reply; "
+                "urllib:timeout after 25s"
+            )
+            is False
+        )
+
+    def test_em_transport_plus_real_error_in_another_field_stays_failed(self) -> None:
+        # AND semantics: one EM transport error must not mask a simultaneous
+        # real failure carried in a separate field.
+        assert (
+            is_em_source_unavailable(
+                {
+                    "ok": False,
+                    "error": BANNER_1106,
+                    "errors": [{"error": "DB integrity violation: checksum mismatch"}],
+                }
+            )
+            is False
+        )
+        assert (
+            is_em_source_unavailable(
+                {
+                    "ok": False,
+                    "error": BANNER_1106,
+                    "providerErrors": ["tushare: quota exceeded"],
+                }
+            )
+            is False
+        )
+        assert (
+            is_em_source_unavailable(
+                {"ok": False, "error": BANNER_1106, "historyError": "tushare: auth failed"}
+            )
+            is False
+        )
 
 
 class TestNeutralize:
@@ -121,6 +184,18 @@ class TestEtfWatchlistDegraded:
 
     def test_real_failure_stays_failed(self, monkeypatch) -> None:
         upserted, records = _patch_etf_common(monkeypatch, fetch_error=None)
+        out = eff.sync_etf_fund_flow_watchlist(force=True)
+        assert out["ok"] is False
+        assert out.get("degraded") is not True
+        assert records and records[0]["success"] is False
+
+    def test_em_outage_plus_real_history_error_stays_failed(self, monkeypatch) -> None:
+        upserted, records = _patch_etf_common(monkeypatch, fetch_error=BANNER_1106)
+
+        def _boom(**kw):
+            raise RuntimeError("tushare: auth failed")
+
+        monkeypatch.setattr(eff, "_sync_tushare_history_if_available", _boom)
         out = eff.sync_etf_fund_flow_watchlist(force=True)
         assert out["ok"] is False
         assert out.get("degraded") is not True
@@ -246,6 +321,19 @@ class TestSentimentStep:
         out = dash._sync_sentiment_step(force=True)
         assert out["ok"] is True
         assert out.get("degraded") is True
+
+    def test_em_transport_masking_integrity_error_stays_failed(self, monkeypatch) -> None:
+        self._patch(
+            monkeypatch,
+            etf={
+                "ok": False,
+                "error": BANNER_1106,
+                "errors": [{"error": "DB integrity violation: checksum mismatch"}],
+            },
+        )
+        out = dash._sync_sentiment_step(force=True)
+        assert out["ok"] is False
+        assert out.get("degraded") is not True
 
 
 class TestOverallSync:

@@ -21,14 +21,23 @@
 
 ## 2. 改动（共 7 个文件，均为加法/小手术）
 
+> 2026-11-06 复核收紧（review follow-up）：分类器改为
+> **传输签名 + EM 归因双重要求**（`eastmoney_ip_ban` latch 为唯一例外），
+> 多字段 **AND 语义**——任一字段出现真实失败即整体保持红；
+> 文案不再断言“已沿用上次有效数据”，改为“已有有效数据予以保留、缺失仍记为缺失”。
+
 后端（`services/data-sync-service/`）：
 
 1. **新增** `src/data_sync_service/service/em_source_status.py`
    - `is_em_source_unavailable()`：仅当错误可识别为东财上游时 True
-     （`eastmoney.com` / `eastmoney_ip_ban` / `push2delay` / `push2his` /
-     `datacenter-web.eastmoney`；或 `eastmoney + transport 词`；
-     或 `direct:+curl:+urllib:` 三连签名）。
-     `no_iv_data / no_rows / missing_symbols / suspicious_empty_lhb / tushare 超时` 等一律 False。
+     （`eastmoney_ip_ban` latch 单独充分；否则需 EM 归因
+     [`eastmoney`/`push2delay`/`push2his`/`datacenter-web.eastmoney`]
+     **+** 传输签名[RemoteDisconnected/empty reply/(52)/abort/reset/timeout/502-504 等]，
+     或带 EM 归因的三连签名 `direct:+curl:+urllib:`）。
+     `no_iv_data / no_rows / missing_symbols / suspicious_empty_lhb / tushare 超时`、
+     仅提及 EM URL 的 payload/schema/编程错误、别家 host 的三连签名一律 False。
+     多字段 AND：`error` 为 EM 传输错但 `errors[]/providerErrors/historyError`
+     任一段是真实错误 → 整体 False。
    - `neutralize_em_substep()`：`ok=False` → `ok=True + degraded/unavailable + 中文 message`，
      raw 文本保留在 `rawError` 供审计；非东财失败返回 None（保持红）。
 2. `src/data_sync_service/service/etf_fund_flow.py`
@@ -67,7 +76,8 @@
 
 ## 4. 测试/验证结果
 
-- 后端：`pytest -k "dashboard or etf or sentiment or top_inst or em_"` → **644 passed, 3 skipped**（含新增 18 例：分类器 6、中和 3、ETF 降级/真失败/恢复 3、情绪步 5、总装混合/真失败 2）。
+- 后端：`pytest -k "dashboard or etf or sentiment or top_inst or em_"` → **649 passed, 3 skipped**（含新增 23 例：分类器 7〈正向 3：截图 banner/latch/带归因三连；负向 4：既有真错误/裸 host 提及/别家三连/多字段 AND〉、中和 3、ETF 4〈降级/真失败/恢复/history 混合真失败〉、情绪步 7〈含 EM 掩盖 integrity 错误仍失败〉、总装 2）。
+  tsc/eslint/vitest 均以真实退出码验证通过（无管道遮掩）。
 - 组合验证（mock fetch + 真实 `_sync_sentiment_step` + 真实 `dashboard_sync_parallel`）：
   `ok=True, degraded=True`，中文 `degradedMessage`，`upserts=[[]]`（零写入），审计行 `success=False`，JSON 可序列化（SSE 安全）。
 - 前端：`vitest useDashboardSync.test.ts` → **14 passed**；`tsc --noEmit` 干净；`eslint` 干净。
@@ -75,14 +85,17 @@
 
 ## 5. 生效方式（需要 coordinator 手动 reload，**不要 kill -9**）
 
-- 运行中进程：PID **50090**，`uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330`
-  （启动于 ~11-05，加载的是旧代码）。
+- 运行中进程：PID **50090**（uvicorn worker），父 **50076**
+ （`uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330`，
+  cwd `services/data-sync-service`，启动于 2026-11-05 13:44，跑的是旧代码）。
+- 归属：50076 的父是 **50001 `pnpm run dev`**（repo 根 `pnpm dev`  supervisory 链，
+  再上是 pnpm 10.28.2 的 `pnpm run dev` 49998）——**无 launchd/supervisord 接管**，
+  就是开发态 pnpm dev 树。`lsof` 确认仅 `127.0.0.1:4330` 监听。
 - 本次改动是纯 Python 源码变更，**必须 reload 服务才生效**；未做任何自动重启。
-- 安全 reload（二选一，推荐热 reload 无缝）：
-  1. 若 uvicorn 以 `--reload` 启动：无需操作，存盘即自动重载（可用 `curl --noproxy '*' localhost:4330/sync/jobs` 确认进程仍活）。
-  2. 否则优雅重启：在 repo 根执行
-     `cd services/data-sync-service && PYTHONPATH=src nohup python3 -m uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330 > .reload.log 2>&1 &`
-     前提是先让旧进程自行退出（`kill 50090`，等其 drain；**不要 `-9`**），并确认新进程监听 4330 后再离场。
+- 安全 reload 精确命令（cwd=`services/data-sync-service`）：
+  `uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330`
+  做法：优雅退出旧链（`kill 50090` 等其 drain；**不要 `-9**），或直接重启 `pnpm dev` 树；
+  确认新进程监听 4330 后再离场。
 - 验证（东财 outage 持续期间也可做，均为读或幂等 Sync All）：
   1. Dashboard 点 Sync → 应显示 **OK + 「部分降级」** 琥珀提示，不再是 FAILED + raw 栈；
   2. `curl --noproxy '*' 'http://127.0.0.1:4330/api/health/job-failures?hours=1'` 仍可见 etf 腿审计行（`em_source_unavailable` 前缀）；

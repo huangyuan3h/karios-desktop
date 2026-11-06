@@ -20,17 +20,22 @@ from __future__ import annotations
 
 from typing import Any
 
-# Strong fingerprints: unambiguously East Money upstream surface.
-_EM_UPSTREAM_MARKERS = (
-    "eastmoney.com",
-    "eastmoney_ip_ban",
+# Attribution markers: East Money surface. A bare host mention is NOT
+# sufficient — it must co-occur with a transport/upstream signature below
+# (a payload/schema/programming failure that merely names the URL stays red).
+_EM_ATTRIBUTION = (
+    "eastmoney",
     "push2delay",
     "push2his",
     "datacenter-web.eastmoney",
 )
 
-# Transport-level markers. Only count when paired with an "eastmoney"
-# mention (bare timeouts from other vendors must stay failures).
+# Explicit latch: the process breaker confirmed EM is throttling/banning
+# this egress. Sufficient on its own (2026-11-06 review).
+_EM_BAN_LATCH = "eastmoney_ip_ban"
+
+# Transport/upstream-unavailable signatures. Only count when paired with
+# _EM_ATTRIBUTION (bare timeouts from other vendors must stay failures).
 _TRANSPORT_MARKERS = (
     "remotedisconnected",
     "empty reply",
@@ -60,11 +65,15 @@ _TRANSPORT_MARKERS = (
 
 # Exact signature of ``em_push2_http._em_get_json_no_proxy`` failure chains
 # (direct requests/curl/urllib all failed) — the banner seen 2026-11-06.
+# Only counts with EM attribution: the same chain shape from another host
+# (e.g. tushare) is not EM and stays red.
 _EM_CHAIN_MARKERS = ("direct:", "curl:", "urllib:")
 
 #: Short user-facing note (Chinese). Shown in the UI instead of the raw stack.
+#: Deliberately makes no claim that cached data exists: existing valid data
+#: is preserved, missing data stays missing (2026-11-06 review).
 EM_DEGRADED_ZH_SHORT = (
-    "东方财富实时行情源暂时不可用（直连失败），已沿用上次有效数据，未写入空值；源恢复后自动恢复。"
+    "东方财富实时行情源暂时不可用（直连失败），已有有效数据予以保留、缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
 )
 
 #: Machine reason code for degraded EM legs.
@@ -76,7 +85,7 @@ def _texts_of(value: Any) -> list[str]:
     out: list[str] = []
     try:
         if isinstance(value, dict):
-            for key in ("error", "message", "fetchError", "reason"):
+            for key in ("error", "message", "fetchError", "historyError", "reason"):
                 v = value.get(key)
                 if isinstance(v, str) and v.strip():
                     out.append(v)
@@ -103,26 +112,44 @@ def _texts_of(value: Any) -> list[str]:
     return out
 
 
+def _is_em_transport_failure(text: str) -> bool:
+    """Single error string: EM-attributed transport/upstream failure?
+
+    - ``eastmoney_ip_ban_latched`` (explicit breaker latch) is sufficient.
+    - Otherwise requires BOTH EM attribution AND a transport signature, so a
+      payload/schema/programming failure that merely mentions an EM URL
+      (``missing_symbols``, ``no_rows``, schema errors ...) stays red.
+    """
+    low = text.lower()
+    if _EM_BAN_LATCH in low:
+        return True
+    if not any(m in low for m in _EM_ATTRIBUTION):
+        return False
+    if any(m in low for m in _TRANSPORT_MARKERS):
+        return True
+    return all(m in low for m in _EM_CHAIN_MARKERS)
+
+
 def is_em_source_unavailable(error: Any) -> bool:
     """True only when the failure is identifiably East-Money-upstream.
+
+    AND semantics across fields: every present failure segment must be an
+    EM transport failure. One EM transport error must not mask a
+    simultaneous real failure carried in another field (integrity /
+    programming / other-vendor errors) — those MUST stay red.
 
     Data-shape / logic errors (``no_iv_data``, ``no_rows``,
     ``missing_symbols``, ``suspicious_empty_lhb`` ...) return False.
     """
-    for text in _texts_of(error):
-        low = text.lower()
-        if any(m in low for m in _EM_UPSTREAM_MARKERS):
-            return True
-        if "eastmoney" in low and any(m in low for m in _TRANSPORT_MARKERS):
-            return True
-        if all(m in low for m in _EM_CHAIN_MARKERS):
-            return True
-    return False
+    texts = [t for t in _texts_of(error) if t.strip()]
+    if not texts:
+        return False
+    return all(_is_em_transport_failure(t) for t in texts)
 
 
 def em_degraded_warning(*, leg: str) -> str:
     """Per-leg Chinese warning line (rides in ``warnings``; never flips ok)."""
-    return f"{leg}：东方财富源暂时不可用，已沿用上次有效数据"
+    return f"{leg}：东方财富源暂时不可用，已有有效数据予以保留、缺失仍记为缺失"
 
 
 def neutralize_em_substep(result: dict[str, Any] | Any, *, leg: str) -> dict[str, Any] | None:
