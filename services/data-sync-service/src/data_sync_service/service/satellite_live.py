@@ -77,12 +77,44 @@ def save_live_panel(panel: dict[str, Any]) -> Path:
     return p
 
 
+def _extra_intraday_ts_codes() -> list[str]:
+    """Parking ETFs + open CN paper holdings for the 14:30 quote snapshot.
+
+    The S-gap stock universe deliberately excludes funds (5xxxxx.SH /
+    1xxxxx.SZ), so before this the ``live_1430`` snapshot never carried the
+    Harbor parking ETF (e.g. 513350.SH). Harbor's 14:30 trail warning reads
+    the ETF's 14:30 print from ``bar_5min`` — without a snapshot row it fell
+    back to "no intraday print". Quoting the ETF here gives it a real
+    non-East-Money 14:30 print. Extra codes are skipped by the satellite
+    injection (they are not in the S-gap context) but still persisted.
+    """
+    out: list[str] = []
+    try:
+        from data_sync_service.service.harbor import MULTI_TS, NASDAQ_ALIASES
+
+        out.extend(str(v) for v in MULTI_TS.values() if v)
+        out.extend(str(v) for v in NASDAQ_ALIASES if v)
+    except Exception:  # noqa: BLE001 - optional context
+        pass
+    try:
+        from data_sync_service.db.paper_trading import list_paper_trades
+
+        for row in list_paper_trades(status="open"):
+            ts = str(row.get("ts_code") or "")
+            if ts.endswith((".SH", ".SZ")):
+                out.append(ts)
+    except Exception:  # noqa: BLE001 - snapshot must not fail on paper book
+        pass
+    return out
+
+
 def _universe_ts_codes() -> list[str]:
     """CN stock universe for the quote snapshot (S-gap shape, cheap query).
 
     Mirrors the frozen universe filters (no ST / no BJ / not delisted); names
     without enough daily history are dropped later by the feature builder, so
-    quoting a superset is safe.
+    quoting a superset is safe. Parking ETFs / open paper holdings are appended
+    so the 14:30 print exists for Harbor's trail warning (2026-11-06).
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -93,7 +125,8 @@ def _universe_ts_codes() -> list[str]:
                 "AND ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$' "
                 "ORDER BY ts_code"
             )
-            return [str(r[0]) for r in cur.fetchall()]
+            codes = [str(r[0]) for r in cur.fetchall()]
+    return list(dict.fromkeys(codes + _extra_intraday_ts_codes()))
 
 
 def _fetch_quotes() -> dict[str, dict[str, Any]]:

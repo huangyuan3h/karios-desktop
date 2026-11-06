@@ -121,3 +121,55 @@ def parse_hq_lines(text: str, *, allow_index: bool = False) -> list[tuple[str, s
         if allow_index and ticker.upper() in {"HSI", "HSTECH"}:
             out.append((ticker.upper(), payload))
     return out
+
+
+def build_cn_hq_url(ts_codes: list[str]) -> str:
+    """Build ``hq.sinajs.cn/list=sh600000,sz000001,...`` for CN A-share/ETF codes.
+
+    Accepts ``600000.SH`` / ``000001.SZ`` / ``510300.SH`` (suffix decides the
+    exchange prefix). Codes without a usable 6-digit ticker are skipped.
+    """
+    markers: list[str] = []
+    for code in ts_codes:
+        raw = str(code or "").strip().upper()
+        if not raw:
+            continue
+        ticker, _, suffix = raw.partition(".")
+        if len(ticker) != 6 or not ticker.isdigit():
+            continue
+        if suffix == "SH":
+            prefix = "sh"
+        elif suffix == "SZ":
+            prefix = "sz"
+        elif suffix == "BJ":
+            prefix = "bj"
+        else:
+            # Infer from the first digit when the suffix is missing.
+            prefix = "sh" if ticker[0] in {"5", "6", "9"} else "sz"
+        markers.append(f"{prefix}{ticker}")
+    encoded = [urllib.parse.quote(m, safe="") for m in markers]
+    return f"https://hq.sinajs.cn/list={','.join(encoded)}"
+
+
+def parse_cn_hq_lines(text: str) -> list[tuple[str, str]]:
+    """Parse CN ``var hq_str_sh600000="..."`` lines into (marker, payload).
+
+    ``marker`` is the raw Sina code (``sh600000``). Lines for HK/index markers
+    and empty payloads are dropped.
+    """
+    out: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("var hq_str_"):
+            continue
+        head, _, rest = line.partition('="')
+        if not rest:
+            continue
+        payload, _, _rem = rest.rpartition('"')
+        if not payload:
+            continue
+        marker = head[len("var hq_str_") :].strip().lower()
+        if not marker.startswith(("sh", "sz", "bj")):
+            continue
+        out.append((marker, payload))
+    return out

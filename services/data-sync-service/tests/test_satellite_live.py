@@ -641,3 +641,31 @@ def test_exit_due_endpoint_uses_the_frozen_body(monkeypatch) -> None:
         "2026-09-22": "due:2026-09-22:3",
         "2026-09-21": "due:2026-09-21:3",
     }
+
+
+def test_intraday_universe_includes_parking_etfs_and_paper_holdings(monkeypatch) -> None:
+    """Harbor's 14:30 warn needs an ETF print; the S-gap stock filter excludes it."""
+    from data_sync_service.service import satellite_live as sl
+
+    monkeypatch.setattr(
+        "data_sync_service.service.harbor.MULTI_TS",
+        {"GOLD": "518880.SH", "OIL": "513350.SH"},
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.harbor.NASDAQ_ALIASES",
+        ("513100.SH",),
+    )
+    monkeypatch.setattr(
+        "data_sync_service.db.paper_trading.list_paper_trades",
+        lambda status="open": [
+            {"ts_code": "513350.SH"},
+            {"ts_code": "600000.SH"},
+            {"ts_code": "00700.HK"},  # HK is not in this snapshot
+        ],
+    )
+    extras = sl._extra_intraday_ts_codes()
+    assert "518880.SH" in extras
+    assert "513350.SH" in extras
+    assert "513100.SH" in extras
+    assert "600000.SH" in extras
+    assert "00700.HK" not in extras
