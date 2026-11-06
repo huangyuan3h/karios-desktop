@@ -112,7 +112,8 @@ export const DASHBOARD_HELP: Record<string, DashboardHelp> = {
     label: '主力净流入',
     sub: 'Main Flow',
     short: '今日主力净流入金额（正=流入 / 负=流出）。',
-    detail: '数据源: 东方财富 ETF 实时资金流；盘后取最新 cache。',
+    detail:
+      '数据源: 东方财富 ETF 实时资金流；盘后取最新 cache。东财不可用时带 * 的值为 Tushare 份额变动估算净流入（非主力净流入，口径不同）。',
   },
   'etf.superLarge': {
     id: 'etf.superLarge',
