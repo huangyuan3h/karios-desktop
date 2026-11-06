@@ -19,6 +19,8 @@
    `(buy_lg+buy_elg)-(sell_lg+sell_elg)`，`source=tushare_moneyflow_sw_l1`。
    2026-11-05/06 与东财 bkzj 对照：Top5 行业名完全一致，数值差 ~2–3%。
    EM 空 → 回退；两者都不可用 → `ok=false` + `providerErrors`，不写零行。
+   > 修正：2026-11-06 实跑 `push2his .../fflow/daykline` 仍可用（`histRows=310`）；
+   > 之前"push2his 必挂"的说法只对 `.../stock/kline/get` 成立。回退是保险，不是当日主路径。
 4. **ETF 资金流历史修复**：`fd_share` 缺失的行会让 `last_date` 跳过该日；改为从最近
    120 天最早缺 `fd_share` 的日期补起，且不覆盖已有 EM 实时主力净流入行。新增
    `netFlowMetric` / `netFlow3dMetric`（`main_net_inflow` / `share_change_implied` /
