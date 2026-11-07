@@ -812,4 +812,74 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     ).toBe(false);
     expect(screen.queryByText(/今天无需操作/)).toBeNull();
   });
+
+  it('shows the achievable execution clock instead of implying a close fill', async () => {
+    fetchPortfolioHealth.mockResolvedValue({ ...ROTATE_HEALTH } as never);
+    renderCard({ mode: 'homeport' });
+    await screen.findByTestId('m30-ops');
+    const strip = await screen.findByTestId('ops-timing-strip');
+    expect(strip.textContent).toMatch(/明日开盘跟|下一交易日开盘跟/);
+    expect(strip.textContent).toMatch(/收盘待确认|明日开盘卖/);
+    expect(strip.textContent).toMatch(/收盘后信号不改单/);
+    // Every order row carries its own clock chip.
+    const rows = await screen.findAllByTestId('m30-ops-row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.querySelector('[data-testid="ops-row-timing"]')).not.toBeNull();
+    }
+    // Headline still says today's plan, but names the next-open execution.
+    const conclusion = screen.getByTestId('ops-conclusion');
+    expect(conclusion.textContent).toMatch(/开盘执行/);
+  });
+
+  it('annotates a post-trail same-key ROTATE as a whip-saw instead of a clean buy', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-11-06',
+      regime: 'Strong',
+      scoreFresh: true,
+      circuitBlocked: false,
+      panicCooldown: null,
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: { holdings: [] },
+      multiAssetHoldings: [
+        {
+          symbol: 'ETF:513350',
+          key: 'OIL',
+          name: '原油 ETF',
+          positionPct: 20,
+          // Sticky backend trail verdict; the holding is still in the book.
+          trailExit: true,
+          pendingOpenSell: true,
+          marketData: { close: 1.28, ma200: 1.5, above: false },
+        },
+      ],
+      multiAssetSleeve: {
+        active: true,
+        action: 'ROTATE',
+        label: '轮动',
+        message: '港湾停车轮动：卖出 513110 → 513350',
+        pick: { key: 'OIL', symbol: 'ETF:513350', close: 1.28, mom60: 4.98 },
+        idlePct: 0,
+        parkPct: 70,
+      },
+    } as never);
+    renderCard({ mode: 'homeport' });
+    const note = await screen.findByTestId('ops-whip-note');
+    expect(note.textContent).toMatch(/刚止损/);
+    expect(note.textContent).toMatch(/回买 = 鞭打，请确认/);
+    const whipRows = (await screen.findAllByTestId('m30-ops-row')).filter(
+      (r) => r.getAttribute('data-whip') === 'true',
+    );
+    expect(whipRows.length).toBeGreaterThan(0);
+    // Whip buys sort after Must-act/sells and never hide a must-act row.
+    const all = await screen.findAllByTestId('m30-ops-row');
+    const firstWhip = all.findIndex((r) => r.getAttribute('data-whip') === 'true');
+    const lastMustAct = all.reduce(
+      (acc, r, i) => (r.getAttribute('data-must-act') === 'true' ? i : acc),
+      -1,
+    );
+    expect(firstWhip).toBeGreaterThan(lastMustAct);
+    expect(screen.getAllByTestId('whip-annotate').length).toBeGreaterThan(0);
+  });
 });

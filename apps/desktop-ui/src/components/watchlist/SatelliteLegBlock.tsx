@@ -17,6 +17,8 @@ import type {
 import { useSatelliteExitDueQuery } from '@/lib/queries/backtest';
 import { invalidateUserTradesQueries, recordUserTrade } from '@/lib/queries/userTrades';
 import { cn } from '@/lib/utils';
+import { isWhipRebuy } from '@/lib/follow-timing';
+import { ExecutionTimingBadge, WhipBadge } from '@/components/watchlist/ExecutionTimingBadge';
 import {
   loadWatchlist,
   saveWatchlist,
@@ -114,6 +116,7 @@ export function SatelliteLegBlock({
   userBook = null,
   stockGateClosed = false,
   hideBuyRows = false,
+  trailExitSymbols,
   timelineUnavailable = null,
   timelineError = null,
   onRetryTimeline,
@@ -134,6 +137,8 @@ export function SatelliteLegBlock({
   stockGateClosed?: boolean;
   /** When the ONE order list above already carries the buys (a25 view). */
   hideBuyRows?: boolean;
+  /** Sticky trail-exit keys (+ short display memory) for the whip annotation. */
+  trailExitSymbols?: Set<string>;
   /** Timeline row state: the frozen reference is loading / failed. */
   timelineUnavailable?: 'loading' | 'error' | null;
   timelineError?: string | null;
@@ -480,6 +485,10 @@ export function SatelliteLegBlock({
             >
               {liveGateOpen ? '闸 开 · 今日 14:30 可补仓' : '闸 关 · 今日只卖不买'}
             </span>
+            <ExecutionTimingBadge
+              kind={liveGateOpen ? 'intraday-buy' : 'close-sell-pending'}
+              testId="satellite-timing"
+            />
             <span className="tabular-nums">
               14:30 广度 {live.breadth1430 != null ? pct(live.breadth1430) : '—'}（阈值 50%）
             </span>
@@ -521,14 +530,18 @@ export function SatelliteLegBlock({
                       ? slotLotShares({ symbol, price, capital, slotPct: perSlot * 100 })
                       : null;
                   const isBought = bought.has(symbol);
+                  const whip = isWhipRebuy('BUY', symbol, trailExitSymbols);
                   return (
                     <div
                       key={e.ts}
                       data-testid="satellite-buy-row"
+                      data-symbol={symbol}
+                      data-whip={whip ? 'true' : undefined}
                       className={cn(
                         'flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-xl px-3 py-2 text-xs',
                         'border border-[var(--k-border)]/60 bg-[var(--k-surface)]/45 backdrop-blur-sm',
                         'transition-colors hover:border-[var(--k-border)] hover:bg-[var(--k-surface)]/70',
+                        whip && 'border-amber-500/60 bg-amber-500/5',
                         isBought && 'opacity-60',
                       )}
                     >
@@ -556,6 +569,8 @@ export function SatelliteLegBlock({
                             ? '待设总资金'
                             : '资金不足 1 手'}
                       </span>
+                      <ExecutionTimingBadge kind="intraday-buy" testId="satellite-row-timing" />
+                      {whip ? <WhipBadge /> : null}
                       {liveGateOpen ? (
                         <Button
                           size="sm"

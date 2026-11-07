@@ -20,6 +20,8 @@ import {
   useUserTradesListQuery,
 } from '@/lib/queries/userTrades';
 import { cn } from '@/lib/utils';
+import { isWhipRebuy } from '@/lib/follow-timing';
+import { ExecutionTimingBadge, WhipBadge } from '@/components/watchlist/ExecutionTimingBadge';
 import {
   loadWatchlist,
   saveWatchlist,
@@ -139,6 +141,7 @@ export function A25TargetBlock({
   satCapacity = null,
   holdingLastClose = null,
   parkMode = 'a25',
+  trailExitSymbols,
 }: {
   parkedHeld?: TimelineParkedHeld | null;
   /** Fallback parking ETF from portfolio-health when the timeline is unavailable. */
@@ -147,6 +150,8 @@ export function A25TargetBlock({
   openPositions?: TimelineOpenPosition[];
   /** Satellite slot capacity from the timeline (never re-derive). */
   satCapacity?: number | null;
+  /** Sticky trail-exit keys (+ short display memory) for the whip annotation. */
+  trailExitSymbols?: Set<string>;
   /**
    * Last close per watchlist symbol ("CN:603019") from portfolio-health. A leg
    * the user entered on a live-panel signal has no engine `openPositions` row
@@ -635,6 +640,10 @@ export function A25TargetBlock({
       <div className="flex flex-wrap items-baseline gap-2 px-1 text-xs">
          <span className="font-semibold">{isB ? '星舰 B' : 'H2-a25'} · {fresh ? '今日下单' : '当前持有'}</span>
          <span className="text-[10px] text-[var(--k-muted)]">人工账本目标</span>
+        <ExecutionTimingBadge
+          kind={fresh ? 'intraday-buy' : 'close-buy'}
+          testId="a25-header-timing"
+        />
 
         <span className="text-[var(--k-muted)]">
           {fresh
@@ -670,14 +679,29 @@ export function A25TargetBlock({
         const unit = lot?.rule.unit ?? '股';
         const value = lot && o.px ? lot.shares * o.px : 0;
         const pnl = o.pnl;
+        const rowSide = trade?.side ?? o.side;
+        const whip = isWhipRebuy(rowSide, o.symbol, trailExitSymbols);
+        const timingKind = o.exitDue
+          ? ('exit-due' as const)
+          : fresh && rowSide === 'BUY'
+            ? ('intraday-buy' as const)
+            : rowSide === 'SELL'
+              ? ('close-sell-confirmed' as const)
+              : rowSide === 'BUY'
+                ? ('close-buy' as const)
+                : ('hold' as const);
         return (
           <div
             key={o.key}
             data-testid="a25-order-row"
+            data-symbol={o.symbol}
+            data-side={rowSide}
+            data-whip={whip ? 'true' : undefined}
             className={cn(
               'flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-lg px-3 py-2 text-xs',
               'border border-[var(--k-border)]/60 bg-[var(--k-bg)]/40',
               'transition-colors hover:border-sky-500/40 hover:bg-[var(--k-bg)]/70',
+              whip && 'border-amber-500/60 bg-amber-500/5',
               done && 'opacity-60',
             )}
           >
@@ -696,6 +720,8 @@ export function A25TargetBlock({
             <span className="w-12 shrink-0 text-right font-medium tabular-nums text-sky-700 dark:text-sky-300">
               {pctOf(o.pct)}
             </span>
+            <ExecutionTimingBadge kind={timingKind} testId="a25-row-timing" />
+            {whip ? <WhipBadge /> : null}
             {o.cost != null || pnl != null || o.exitDue ? (
               <>
                 {o.cost != null ? (

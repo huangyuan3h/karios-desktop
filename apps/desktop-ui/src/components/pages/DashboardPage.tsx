@@ -8,6 +8,8 @@ import { RefreshCw } from 'lucide-react';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
+import { NationalTeamCard } from '@/components/dashboard/NationalTeamCard';
+import { FactorRevivalCard } from '@/components/dashboard/FactorRevivalCard';
 import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
 import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
@@ -250,6 +252,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const cardsById: Record<string, DashCard> = React.useMemo(
     () => ({
       industry: { id: 'industry', title: '行业资金流' },
+      nationalTeam: { id: 'nationalTeam', title: '国家队 / 资金确认' },
+      factorRevival: { id: 'factorRevival', title: '因子 / S-gap 复活' },
       sentiment: { id: 'sentiment', title: '市场情绪' },
       brief: { id: 'brief', title: '新闻简报' },
       watchlistRisk: { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
@@ -269,7 +273,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const columnCards = React.useMemo(() => {
     const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
     return {
-      left: ['industry', 'watchlistRisk', 'decisions'].filter(visible).map((id) => cardsById[id]),
+      left: ['industry', 'nationalTeam', 'factorRevival', 'watchlistRisk', 'decisions']
+        .filter(visible)
+        .map((id) => cardsById[id]),
       right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
     };
   }, [cardsById, watchlistRiskRows.length]);
@@ -494,6 +500,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   onAddReference={addReference}
                   copyStatus={industryCopyStatus}
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
+                />
+              ) : id === 'nationalTeam' ? (
+                <NationalTeamCard onOpenBacktest={() => onNavigate?.('backtest')} />
+              ) : id === 'factorRevival' ? (
+                <FactorRevivalCard
+                  onOpenVault={() => onNavigate?.('backtest')}
+                  onOpenSgap={() => onNavigate?.('backtest')}
                 />
               ) : id === 'brief' ? (
                 <MorningBriefCard

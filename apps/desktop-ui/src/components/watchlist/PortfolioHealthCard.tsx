@@ -43,6 +43,15 @@ import { A25TargetBlock } from '@/components/watchlist/A25TargetBlock';
 import { B3LegBlock } from '@/components/watchlist/B3LegBlock';
 import { SatelliteLegBlock } from '@/components/watchlist/SatelliteLegBlock';
 import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
+import { ExecutionTimingBadge, WhipBadge } from '@/components/watchlist/ExecutionTimingBadge';
+import {
+  collectTrailExitSymbols,
+  followSymbolKey,
+  isWhipRebuy,
+  mergeTrailExitKeys,
+  nextOpenWord,
+  useRecentTrailExits,
+} from '@/lib/follow-timing';
 import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
 import { useTimelineQuery, useSatelliteLivePanelQuery, useSatellitePaperQuery, useUserSatelliteBookQuery, type TimelineStrategy } from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
@@ -112,6 +121,7 @@ function PickStrongOpsPanel({
   stockHoldingsCount,
   coreBuyable = true,
   m30 = false,
+  trailExitSymbols,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
@@ -119,6 +129,8 @@ function PickStrongOpsPanel({
   coreBuyable?: boolean;
   /** 母港 M30 view: park sizing = Harbor 70% leg, 份数/金额见上方操作清单. */
   m30?: boolean;
+  /** Keys with a sticky trail exit — same-key buys get the whip annotation. */
+  trailExitSymbols?: Set<string>;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
@@ -138,6 +150,25 @@ function PickStrongOpsPanel({
   const intradayWarnCode = intradayWarn
     ? intradayWarn.symbol.replace(/^ETF:/, '').split('.')[0]
     : null;
+  /**
+   * Whip-saw guard (UX only): the sleeve's ROTATE/BUY target is the same key
+   * that just triggered a trail/must-act exit. Never render it as a clean buy
+   * — annotate 刚止损，回买=鞭打，请确认 (k=0; no cooldown / weight change).
+   */
+  const pickWhip = isWhipRebuy(
+    action === 'ROTATE' || action === 'BUY' ? 'BUY' : 'HOLD',
+    etfSym,
+    trailExitSymbols,
+  );
+  const timingKind = pendingSell
+    ? ('close-sell-confirmed' as const)
+    : intradayWarn
+      ? ('close-sell-pending' as const)
+      : action === 'ROTATE' || action === 'BUY'
+        ? ('close-buy' as const)
+        : action === 'HOLD'
+          ? ('hold' as const)
+          : ('hold' as const);
   const steps: string[] = [];
   if (pendingSell) {
     // Harbor trail8 / MA200 wipe on a leg still held: Must-act SELL first.
@@ -169,11 +200,15 @@ function PickStrongOpsPanel({
     );
     steps.push('该停车腿今日不加仓、不买回；其余腿按各自目标处理');
     if (action === 'ROTATE' || action === 'BUY') {
-      steps.push(
-        m30
-          ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
-          : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`,
-      );
+      if (pickWhip) {
+        steps.push(`⚠ ${etfSym ?? pickKey} 刚触发止损：回买 = 鞭打，请确认后再按目标补回`);
+      } else {
+        steps.push(
+          m30
+            ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
+            : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`,
+        );
+      }
     }
     if (stockHoldingsCount > 0) {
       steps.push(
@@ -189,13 +224,15 @@ function PickStrongOpsPanel({
     if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：按上方操作清单先卖出 ETF，再配股票');
   } else if (isEtf) {
     steps.push(
-      action === 'HOLD'
-        ? `闲置现金 ${fmt(idlePct)} · 继续持有 ${meta.label}（${etfSym ?? pickKey}）· 停车只停闲钱`
-        : action === 'ROTATE' || action === 'BUY'
-          ? m30
-            ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
-            : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
-          : `闲置现金 ${fmt(idlePct)} → 逆回购 · 股票核心不动`,
+      pickWhip
+        ? `⚠ ${etfSym ?? pickKey} 刚触发止损：回买 = 鞭打，请确认后再按目标补回`
+        : action === 'HOLD'
+          ? `闲置现金 ${fmt(idlePct)} · 继续持有 ${meta.label}（${etfSym ?? pickKey}）· 停车只停闲钱`
+          : action === 'ROTATE' || action === 'BUY'
+            ? m30
+              ? `母港M30：港湾腿停车 → ${meta.label}（${etfSym ?? pickKey}）· 目标 = 港湾 70% − S-3 腿，份数/金额见上方操作清单`
+              : `停车目标 ${fmt(parkPct)}（含换出的旧腿）→ ${meta.label}（${etfSym ?? pickKey}）· 股票核心不动`
+            : `闲置现金 ${fmt(idlePct)} → 逆回购 · 股票核心不动`,
     );
     if (stockHoldingsCount > 0) {
       steps.push(
@@ -211,10 +248,12 @@ function PickStrongOpsPanel({
     <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/5 px-3 py-2.5">
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold">
         <span className="h-3 w-[3px] rounded-full bg-emerald-500" />
-        操作引导
+        {m30 ? '停车体检' : '操作引导'}
         <span className="text-[10px] font-normal text-[var(--k-muted)]">
           港湾：S-3 股票核心 + 闲置现金停车
         </span>
+        <ExecutionTimingBadge kind={timingKind} testId="pick-timing" className="ml-auto" />
+        {pickWhip ? <WhipBadge /> : null}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         {pendingSell ? (
@@ -280,11 +319,20 @@ function PickStrongOpsPanel({
       ) : sleeve?.message ? (
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">引擎：{sleeve.message}</p>
       ) : null}
-      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
-        {steps.map((s) => (
-          <li key={s}>{s}</li>
-        ))}
-      </ol>
+      {m30 ? (
+        <p
+          data-testid="pick-single-voice"
+          className="mt-2 text-[10px] text-[var(--k-muted)]"
+        >
+          执行以上方「今日操作」为准；本卡只做停车体检，不再重复下单指令（避免两个声音打架）。
+        </p>
+      ) : (
+        <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-[var(--k-fg)]">
+          {steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+      )}
       {sleeve?.pick?.all_mom && Object.keys(sleeve.pick.all_mom).length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] tabular-nums text-[var(--k-muted)]">
           {Object.entries(sleeve.pick.all_mom).map(([k, v]) => (
@@ -343,15 +391,19 @@ function M30OpsSection({
   b3,
   b3Error,
   onRecord,
+  trailExitSymbols,
 }: {
   data: PortfolioHealthResponse;
   capital: number | null;
   b3: B3Entry[];
   b3Error: string | null;
   onRecord: (a: M30Action, price: number | null, rank: number) => void;
+  /** Sticky trail-exit keys (+ short display memory) for the whip annotation. */
+  trailExitSymbols?: Set<string>;
 }) {
   const cadence = useFollowCadence();
   const today = getShanghaiTodayIso();
+  const openWord = nextOpenWord();
 
   const holdings: M30Holding[] = React.useMemo(() => {
     const out: M30Holding[] = [];
@@ -446,19 +498,46 @@ function M30OpsSection({
   );
   // 先卖后买（与跟仓净额顺序一致）；Must-act 停车止损永远第一行、且不受
   // 再平衡节奏门限制（止损不是再平衡）。
+  // 同键纪律（UX）：Must-act / pending sell 永远压过同键目标权重回买——
+  // 同键 BUY 直接抑制；已执行过 trail 的键若仍出现在目标里，保留但标
+  // 「刚止损，回买=鞭打，请确认」并排到最后，不改变任何权重/参数（k=0）。
+  const mustActKeys = React.useMemo(
+    () => new Set(mustActActions.map((a) => followSymbolKey(a.symbol))),
+    [mustActActions],
+  );
   const orders = React.useMemo(() => {
     const list = [
       ...mustActActions,
       ...hardActions,
       ...(gate.needsRebalance ? rebalanceActions : []),
-    ];
+    ].filter(
+      (a) => !(a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol))),
+    );
+    const whip = (a: M30Action) => isWhipRebuy(a.side, a.symbol, trailExitSymbols);
     return [...list].sort((x, y) => {
       if (!!x.mustAct !== !!y.mustAct) return x.mustAct ? -1 : 1;
+      if (whip(x) !== whip(y)) return whip(x) ? 1 : -1;
       return x.side !== y.side ? (x.side === 'SELL' ? -1 : 1) : y.pct - x.pct;
     });
-  }, [mustActActions, hardActions, rebalanceActions, gate.needsRebalance]);
+  }, [
+    mustActActions,
+    hardActions,
+    rebalanceActions,
+    gate.needsRebalance,
+    mustActKeys,
+    trailExitSymbols,
+  ]);
   const sells = orders.filter((a) => a.side === 'SELL').length;
   const buys = orders.filter((a) => a.side === 'BUY').length;
+  const suppressedSameKeyBuys = React.useMemo(
+    () =>
+      [
+        ...hardActions,
+        ...(gate.needsRebalance ? rebalanceActions : []),
+      ].filter((a) => a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol))).length,
+    [hardActions, rebalanceActions, gate.needsRebalance, mustActKeys],
+  );
+  const whipBuys = orders.filter((a) => isWhipRebuy(a.side, a.symbol, trailExitSymbols));
 
   const circuitBlocked = data.circuitBlocked === true;
   const regimeWeak = data.regime === 'Weak';
@@ -486,8 +565,8 @@ function M30OpsSection({
   const deferredSuffix = hasDeferred ? `（S-3 买入 ${deferredStockBuys} 笔${riskCause}暂缓）` : '';
   const headline =
     orders.length > 0
-      ? `今天：卖 ${sells} 笔、买 ${buys} 笔，共 ${orders.length} 笔（${why}）${deferredSuffix}`
-      : '今天无需操作';
+      ? `今天：卖 ${sells} 笔、买 ${buys} 笔，共 ${orders.length} 笔（${why}）${deferredSuffix} · ${openWord}开盘执行（收盘信号）`
+      : `今天无需操作 · ${openWord}开盘无单`;
   const mustActRow = mustActActions[0] ?? null;
   const mustActSym = mustActRow ? m30BareCode(mustActRow.symbol) : null;
   /** Backend target line for the warned leg (pct / price for the conditional row). */
@@ -526,6 +605,37 @@ function M30OpsSection({
           {report.cashCurrentPct}% · pick={report.pickKey}
         </span>
       </div>
+
+      {/* 可行执行时钟：信号在收盘算，人不能在收盘成交。 */}
+      <div
+        data-testid="ops-timing-strip"
+        className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-1 text-[10px] text-[var(--k-muted)]"
+      >
+        <span className="font-semibold text-sky-700 dark:text-sky-300">执行时钟</span>
+        <ExecutionTimingBadge
+          kind={mustActActions.length > 0 ? 'close-sell-confirmed' : 'close-sell-pending'}
+          testId="ops-timing-sell"
+        />
+        <ExecutionTimingBadge kind="close-buy" testId="ops-timing-buy" />
+        <span>卖出先于买入；收盘后信号不改单，次日开盘按计划执行。</span>
+      </div>
+
+      {suppressedSameKeyBuys > 0 ? (
+        <p
+          data-testid="ops-same-key-blocked"
+          className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-2.5 py-1 text-[10px] font-medium text-red-800 dark:text-red-200"
+        >
+          ⛔ Must-act 优先：已抑制 {suppressedSameKeyBuys} 笔同键目标回买（先卖后买，避免当天自相矛盾）。
+        </p>
+      ) : null}
+      {whipBuys.length > 0 ? (
+        <p
+          data-testid="ops-whip-note"
+          className="mt-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-200"
+        >
+          ⚠ {whipBuys.map((a) => followSymbolKey(a.symbol)).join('、')} 刚止损：回买 = 鞭打，请确认后再按目标补回（k=0，不设冷却）。
+        </p>
+      ) : null}
 
       {mustActRow ? (
         <div
@@ -617,6 +727,7 @@ function M30OpsSection({
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
               待收盘确认
             </span>
+            <ExecutionTimingBadge kind="close-sell-pending" testId="ops-row-timing" />
             <span className="font-semibold text-red-600 dark:text-red-400">卖</span>
             <span className="font-medium">
               {intradayWarnLine?.name ?? '港湾停车'}
@@ -648,12 +759,14 @@ function M30OpsSection({
           {orders.map((a, i) => {
             // 真值：闸只拦 S-3 股票新开仓，停车/B3 买入永不暂缓。
             const deferred = riskActive && a.side === 'BUY' && a.leg === 'harbor-stock';
+            const whip = isWhipRebuy(a.side, a.symbol, trailExitSymbols);
             // 停车换仓 T 收盘信号 → T+1 开盘成交，盘中不立刻成交。
             const parkExecNote = a.mustAct
               ? (a.execHint ?? '次日开盘卖出转逆回购')
               : a.leg === 'harbor-park' || a.reason.includes('港湾停车')
                 ? '信号日收盘后、下一交易日开盘执行'
                 : null;
+            const rowTiming = a.side === 'BUY' ? 'close-buy' : 'close-sell-confirmed';
             return (
               <li
                 key={`${a.side}-${a.symbol}-${i}`}
@@ -661,6 +774,7 @@ function M30OpsSection({
                 data-side={a.side}
                 data-symbol={a.symbol}
                 data-must-act={a.mustAct ? 'true' : undefined}
+                data-whip={whip ? 'true' : undefined}
                 className={cn(deferred && 'opacity-60')}
               >
                 <div
@@ -668,9 +782,11 @@ function M30OpsSection({
                     'flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border px-2.5 py-1.5',
                     a.mustAct
                       ? 'border-red-500/70 bg-red-500/15 ring-1 ring-red-500/40'
-                      : a.side === 'SELL'
-                        ? 'border-red-500/40 bg-red-500/10'
-                        : 'border-emerald-500/40 bg-emerald-500/10',
+                      : whip
+                        ? 'border-amber-500/70 bg-amber-500/10 ring-1 ring-amber-500/30'
+                        : a.side === 'SELL'
+                          ? 'border-red-500/40 bg-red-500/10'
+                          : 'border-emerald-500/40 bg-emerald-500/10',
                   )}
                 >
                   <span
@@ -702,6 +818,8 @@ function M30OpsSection({
                       {parkExecNote}
                     </span>
                   ) : null}
+                  <ExecutionTimingBadge kind={rowTiming} testId="ops-row-timing" />
+                  {whip ? <WhipBadge /> : null}
                   {deferred ? (
                     <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                       暂缓
@@ -966,6 +1084,7 @@ function BuyList({
     <div id="buy-list" className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
         <span>{buyWindowLabel}（S-3 核心 · score 前 5）</span>
+        <ExecutionTimingBadge kind="intraday-buy" testId="buy-list-timing" />
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -1031,7 +1150,7 @@ function BuyList({
                   type="button"
                   onClick={() => onBuy(c, navSize, i + 1)}
                   className="inline-flex items-center gap-0.5 rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-                  title="立刻买入：设仓位/价格，记入模拟盘（paper trade）"
+                  title="记录买入：设仓位/价格，记入模拟盘（按上方可行窗口执行，不追收盘价）"
                 >
                   买入
                 </button>
@@ -1597,6 +1716,21 @@ export function PortfolioHealthCard({
 
   const data: PortfolioHealthResponse | undefined = q.data;
   const sleeve = data?.multiAssetSleeve;
+  /**
+   * Whip-saw guard inputs. `observed` comes from the backend's sticky trail
+   * flags; `recentTrailExits` keeps a key for a short display-only window so
+   * the *next day's* ROTATE back into the same ETF is annotated too. It never
+   * blocks an order and never changes a target weight (k=0).
+   */
+  const observedTrailExitSymbols = React.useMemo(
+    () => collectTrailExitSymbols(sleeve, data?.multiAssetHoldings),
+    [sleeve, data],
+  );
+  const recentTrailExits = useRecentTrailExits(observedTrailExitSymbols, 10);
+  const trailExitSymbols = React.useMemo(
+    () => mergeTrailExitKeys(observedTrailExitSymbols, recentTrailExits.keys()),
+    [observedTrailExitSymbols, recentTrailExits],
+  );
   // Last close per held symbol — the a25 order surface needs a mark for a leg
   // the engine never booked (no timeline row, not in today's panel gap list).
   const holdingLastClose = React.useMemo(() => {
@@ -1846,6 +1980,7 @@ export function PortfolioHealthCard({
             b3={m30B3}
             b3Error={b3Error}
             onRecord={handleRecordM30Action}
+            trailExitSymbols={trailExitSymbols}
           />
         ) : null}
         {/* 次要信息：规则说明 / 动量条 / 停车体检 / 对账细节 / 股票篮 ——
@@ -1857,6 +1992,7 @@ export function PortfolioHealthCard({
             stockHoldingsCount={stockHoldingsCount}
             coreBuyable={stockBuyable}
             m30={mode === 'homeport'}
+            trailExitSymbols={trailExitSymbols}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
@@ -1940,6 +2076,7 @@ export function PortfolioHealthCard({
             satCapacity={satQ.data?.satCapacity ?? null}
             holdingLastClose={holdingLastClose}
             parkMode={mode === 'starship_b' ? 'starship_b' : 'a25'}
+            trailExitSymbols={trailExitSymbols}
           />
         ) : null}
         {mode === 'homeport' || mode === 'starport' || mode === 'starship_robust' ? (
@@ -1958,6 +2095,7 @@ export function PortfolioHealthCard({
             userBook={satUserBookQ.data ?? null}
             stockGateClosed={gateClosedToday}
             hideBuyRows={mode === 'starship_robust' || mode === 'starship_b'}
+            trailExitSymbols={trailExitSymbols}
             timelineUnavailable={satQ.isLoading ? 'loading' : satQ.error ? 'error' : null}
             timelineError={satQ.error ? String(satQ.error instanceof Error ? satQ.error.message : satQ.error) : null}
             onRetryTimeline={() =>

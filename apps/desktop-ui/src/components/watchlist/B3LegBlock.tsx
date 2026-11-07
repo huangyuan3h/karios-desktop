@@ -2,6 +2,7 @@
 
 import { useB3StateQuery } from '@/lib/queries/backtest';
 import { cn } from '@/lib/utils';
+import { ExecutionTimingBadge } from '@/components/watchlist/ExecutionTimingBadge';
 
 /** B3 risk-budget leg: current-month target / drift / rebalance trades. */
 export function B3LegBlock() {
@@ -25,6 +26,7 @@ export function B3LegBlock() {
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">B3 月再平衡</span>
+        <ExecutionTimingBadge kind="close-buy" testId="b3-timing" />
         <span className="text-[var(--k-muted)]">
           本月基准 {state.rebalanceDate} · 截至 {state.asOf}
         </span>
