@@ -7,6 +7,7 @@ import { RefreshCw } from 'lucide-react';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
+import { FundFlowPanoramaCard } from '@/components/dashboard/FundFlowPanoramaCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { NationalTeamCard } from '@/components/dashboard/NationalTeamCard';
 import { FactorRevivalCard } from '@/components/dashboard/FactorRevivalCard';
@@ -130,6 +131,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   );
 
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
+
+  // 资金流全景 lives as a standalone full-width block below the two columns.
+  const scrollToFundFlowPanel = React.useCallback(() => {
+    document
+      .getElementById('dashboard-fund-flow')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   // Loose JSON schema from API; cast for nested card rendering.
   const dash = summary as any;
@@ -502,7 +510,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
                 />
               ) : id === 'nationalTeam' ? (
-                <NationalTeamCard onOpenBacktest={() => onNavigate?.('backtest')} />
+                <NationalTeamCard onOpenPanel={scrollToFundFlowPanel} />
               ) : id === 'factorRevival' ? (
                 <FactorRevivalCard
                   onOpenVault={() => onNavigate?.('backtest')}
@@ -647,6 +655,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           </>
         );
       })()}
+
+      {/* 资金流全景 — 整幅宽度，与回测页同一 flow-series 数据，三张大图（国家队份额/两融/北向）. */}
+      <FundFlowPanoramaCard className="mt-4" />
     </div>
   );
 }

@@ -22,9 +22,12 @@ import { useFundFlowSeriesQuery } from '@/lib/queries/backtest';
  */
 export function NationalTeamCard({
   onOpenBacktest,
+  onOpenPanel,
   className,
 }: {
   onOpenBacktest?: () => void;
+  /** Scroll to the full-width Dashboard 资金流全景 block (preferred over Backtest). */
+  onOpenPanel?: () => void;
   className?: string;
 }) {
   const win = React.useMemo(() => flowSpanWindow('1y'), []);
@@ -135,13 +138,14 @@ export function NationalTeamCard({
           ) : null}
           <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[var(--k-muted)]">
             <span>只做背景，不进入执行/权重；B 闸仅展示。</span>
-            {onOpenBacktest ? (
+            {onOpenPanel || onOpenBacktest ? (
               <button
                 type="button"
-                onClick={onOpenBacktest}
+                onClick={onOpenPanel ?? onOpenBacktest}
                 className="inline-flex items-center gap-0.5 rounded border border-[var(--k-border)] px-1.5 py-0.5 text-[10px] hover:border-sky-500/50 hover:text-sky-700 dark:hover:text-sky-300"
               >
-                看全图（回测 → 资金流） <ArrowRight size={10} />
+                {onOpenPanel ? '看全图（本页资金流全景）' : '看全图（回测 → 资金流）'}{' '}
+                <ArrowRight size={10} />
               </button>
             ) : null}
           </div>

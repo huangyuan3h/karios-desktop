@@ -69,4 +69,12 @@ describe('NationalTeamCard', () => {
     render(<NationalTeamCard />);
     expect(screen.getByText(/国家队撤退 · B 闸 ON/)).toBeDefined();
   });
+
+  it('opens the on-page full panel when the dashboard supplies a handler', () => {
+    const onOpenPanel = vi.fn();
+    render(<NationalTeamCard onOpenPanel={onOpenPanel} />);
+    const btn = screen.getByRole('button', { name: /看全图（本页资金流全景）/ });
+    btn.click();
+    expect(onOpenPanel).toHaveBeenCalledTimes(1);
+  });
 });
