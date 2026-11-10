@@ -189,15 +189,25 @@ def _sleeve_summary(sleeve: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_decision_contract(*, trade_date: str | None = None) -> dict[str, Any]:
-    """Assemble the agent contract for ``trade_date`` (default: today)."""
+def build_decision_contract(
+    *,
+    trade_date: str | None = None,
+    health: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Assemble the agent contract for ``trade_date`` (default: today).
+
+    ``health`` lets a caller that already built ``build_portfolio_health`` for
+    the same day reuse it (the judgment brief does) instead of paying for a
+    second holdings read + realtime quote round.
+    """
     from data_sync_service.api.settings_routes import selected_strategy_mode
     from data_sync_service.service.portfolio_health import build_portfolio_health
 
     day = str(trade_date or _today_iso())[:10]
     mode = selected_strategy_mode()
     timeline_key = timeline_strategy_for_mode(mode)
-    health = build_portfolio_health(trade_date=day, markets=("CN", "HK"))
+    if not isinstance(health, dict) or not health:
+        health = build_portfolio_health(trade_date=day, markets=("CN", "HK"))
     sleeve = health.get("multiAssetSleeve") or {}
     holdings = health.get("multiAssetHoldings") or []
     whip = health.get("whip")

@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
-import { fetchDashboardSummary } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
 
@@ -60,7 +59,6 @@ vi.mock('@/lib/market-hours', () => ({
 }));
 
 const mockedApiGetJson = vi.mocked(apiGetJson);
-const mockedFetchDashboardSummary = vi.mocked(fetchDashboardSummary);
 const mockedFetchWatchlistMarketSnapshot = vi.mocked(fetchWatchlistMarketSnapshot);
 
 describe('buildIndustryMarkdown', () => {
@@ -542,94 +540,72 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
   });
 });
 
-describe('buildDashboardCopyAllMarkdown cache', () => {
-  it('does not call raw dashboard summary when queryClient prefetched', async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+describe('buildDashboardCopyAllMarkdown (agent judgment brief)', () => {
+  const summary = { asOfDate: '2026-11-10' };
+
+  function mockFetchText(text: string, status = 200) {
+    const seen: string[] = [];
+    const fn = vi.fn(async (url: string) => {
+      seen.push(String(url));
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: status === 200 ? 'OK' : 'Not Found',
+        text: async () => text,
+      };
     });
-    const summary = {
-      asOfDate: '2026-06-18',
-      industryFundFlow: {
-        asOfDate: '2026-06-18',
-        dates: ['2026-06-17', '2026-06-18'],
-        topByDate: [
-          { date: '2026-06-17', top: ['半导体'] },
-          { date: '2026-06-18', top: ['半导体'] },
-        ],
-        flow5d: {
-          dates: ['2026-06-17', '2026-06-18'],
-          top: [
-            { industryName: '半导体', sum5d: 50e8 },
-            { industryName: 'AI应用', sum5d: 40e8 },
-            { industryName: '消费电子', sum5d: 30e8 },
-          ],
-        },
-        dailyRankings: [
-          {
-            date: '2026-06-17',
-            ranked: [{ industryName: '半导体', value: 10e8, rank: 1 }],
-          },
-          {
-            date: '2026-06-18',
-            ranked: [{ industryName: '半导体', value: 12e8, rank: 1 }],
-          },
-        ],
-      },
-      screeners: [],
-      news: { hours: 24, total: 0 },
-      marketSentiment: {
-        executionGate: {
-          mode: 'DEFEND',
-          allowNewEntries: false,
-          marketRegime: 'Weak',
-          indexLight: 'red',
-          srvLevel: 'Extreme_High',
-          srvOverlapCount: 0,
-          downCount: 1000,
-          reasons: ['SRV_EXTREME_HIGH'],
-          positionRangeHint: '0%-10%',
-          satelliteNote: '防守优先',
-        },
-      },
-    };
+    vi.stubGlobal('fetch', fn);
+    return Object.assign(fn, { seenUrls: seen });
+  }
 
-    mockedFetchDashboardSummary.mockResolvedValue(summary);
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    await queryClient.setQueryData(['dashboard', 'summary', 'full'], summary);
-    await queryClient.setQueryData(watchlistMarketQueryOptions(['CN:000001']).queryKey, {
-      trend: {
-        'CN:000001': {
-          symbol: 'CN:000001',
-          name: 'Test',
-          score: 90,
-          asOfDate: '2026-06-18',
-          values: {},
-          missingData: [],
-        },
-      },
-      quotes: {},
-    });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-    const md = await buildDashboardCopyAllMarkdown({
-      summary,
-      queryClient,
-    });
+  it('copies the judgment-brief markdown (backtest included, no Alpha/研报 pack)', async () => {
+    const briefMd = [
+      '# 决策简报 judgment brief',
+      '',
+      '## 4. 回测 backtest',
+      '| 策略 | timeline | OOS2 1y |',
+      '| 母港 | homeport_m30 | +43.4% / DD -11.0% / SR 1.79 |',
+      '',
+    ].join('\n');
+    const fetchMock = mockFetchText(briefMd);
 
-    expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
-    expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
-    expect(md).not.toContain('## AI instructions (embedded)');
-    expect(md).toContain('## Since last copy');
-    expect(md).toContain('## Execution Gate');
-    expect(md).toContain('- mode: DEFEND');
-    expect(md).toContain('## Exec Attention');
-    expect(md).toContain('### Must act');
-    expect(md).toContain('### Fire');
-    expect(md).toContain('Gate blocks new entries');
-    expect(md).toContain('## Cond order draft');
-    expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
-    expect(md).toContain('Mainline');
-    expect(md).toContain('主线绑定');
-    expect(md).toContain('INTRADAY_SURGE_BLOCK');
+    const md = await buildDashboardCopyAllMarkdown({ summary, mode: 'compact' });
+
+    expect(md).toBe(briefMd);
+    expect(md).toContain('回测');
+    expect(md).toContain('homeport_m30');
+    // The old bloated packs must never come back through Copy All.
+    expect(md).not.toContain('Alpha Radar');
+    expect(md).not.toContain('Top Catalyst Stocks');
+    expect(md).not.toContain('Auto-QA');
+
+    const url = String(fetchMock.seenUrls[0] ?? '');
+    expect(url).toContain('/v1/agent/judgment-brief.md');
+    expect(url).toContain('mode=compact');
+  });
+
+  it('fails loudly (Chinese) when the running service has no judgment-brief route', async () => {
+    mockFetchText('{"detail":"Not Found"}', 404);
+
+    await expect(buildDashboardCopyAllMarkdown({ summary })).rejects.toThrow(
+      /data-sync 服务需要重启/,
+    );
+  });
+
+  it('still refuses to copy without a loaded summary', async () => {
+    const fetchMock = mockFetchText('nope');
+    await expect(buildDashboardCopyAllMarkdown({ summary: null })).rejects.toThrow(
+      /No data available/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

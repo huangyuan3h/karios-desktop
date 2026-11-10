@@ -4,13 +4,9 @@ import type { QueryClient } from '@tanstack/react-query';
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
-  buildAutoQaMarkdown,
   buildCatalystPurgeMap,
   buildCatalystStocksMarkdown,
-  buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
-  fetchAlphaRadarTrendsForCopy,
-  fetchAutoQaStats,
   fetchCatalystStocks,
   normalizeCatalystSymbol,
   type CatalystCopyContext,
@@ -27,7 +23,6 @@ import {
   formatExecutionGateMarkdown,
   mdTable,
   escapeMarkdownCell,
-  buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
 import {
   formatCondOrderDraftMarkdown,
@@ -65,6 +60,7 @@ import type {
   ExecutionGate,
   ExecutionSnapshotListResponse,
 } from '@karios/shared';
+import { fetchJudgmentBriefMarkdown } from '@/lib/agent-brief';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
   getShanghaiTodayIso,
@@ -73,11 +69,6 @@ import {
   isShanghaiTradingTime,
 } from '@/lib/market-hours';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
-import {
-  dashboardLiteQueryKey,
-  fetchDashboardLiteSummary,
-  fetchDashboardSummaryPartial,
-} from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import {
@@ -91,11 +82,7 @@ import {
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 import { copyBlockingMissingData } from '@/lib/watchlist-export';
-import {
-  loadWatchlist,
-  ensureWatchlistHydrated,
-  type WatchlistItem,
-} from '@/lib/watchlist-storage';
+import { loadWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 
 type DashboardSummary = any;
 
@@ -529,6 +516,11 @@ async function fetchBacktestOverviewDash(): Promise<{
     return null;
   }
 }
+/**
+ * 2026-11-10: no longer called by Copy All (the agent judgment brief owns the
+ * backtest section). Kept so this change stays small; delete with other
+ * legacy Copy All helpers when they are retired together.
+ */
 function buildStrategyAppendixDash(
   overview: Awaited<ReturnType<typeof fetchBacktestOverviewDash>>,
 ): string {
@@ -812,6 +804,11 @@ export async function buildAlphaRadarCopyContext(
   };
 }
 
+/**
+ * 2026-11-10: legacy Alpha Radar helper — Copy All no longer embeds Alpha
+ * Radar packs (they leave the agent judgment path). Kept for the Research /
+ * Alpha pages; do not call it from `buildDashboardCopyAllMarkdown`.
+ */
 export async function buildCompactCatalystMarkdown(s: DashboardSummary): Promise<string> {
   try {
     const resp = await fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS);
@@ -828,13 +825,23 @@ export async function buildCompactCatalystMarkdown(s: DashboardSummary): Promise
 
 export type DashboardCopyAllOptions = {
   summary: DashboardSummary | null;
+  /** @deprecated 2026-11-10: the brief carries filtered headlines, not an AI essay. */
   newsSummary?: string | null;
+  /** @deprecated 2026-11-10: see `newsSummary`. */
   newsSummaryUpdatedAt?: string | null;
+  /** @deprecated 2026-11-10: see `newsSummary`. */
   newsFallback?: string | null;
   queryClient?: QueryClient;
-  /** Copy mode (2026-08-01): 'compact' trims ~80% of secondary sections for fast scan. */
+  /**
+   * Copy mode (2026-08-01): 'compact' trims secondary sections.
+   * 2026-11-10: both modes are subsets of `/v1/agent/judgment-brief`.
+   */
   mode?: 'full' | 'compact';
-  /** TIP-014: bypass react-query cache and re-fetch market/screener data before building. */
+  /**
+   * TIP-014: retained for callers. The sync stream
+   * (`/dashboard/sync/stream?force=true`) already refreshes the server-side
+   * facts the brief is built from, so the client-side refetch is gone.
+   */
   forceFresh?: boolean;
 };
 
@@ -978,259 +985,17 @@ async function buildSinceLastCopyMarkdown(): Promise<string> {
 export async function buildDashboardCopyAllMarkdown(
   options: DashboardCopyAllOptions,
 ): Promise<string> {
-  await ensureWatchlistHydrated();
-  let { summary: s } = options;
-  const {
-    newsSummary,
-    newsSummaryUpdatedAt,
-    newsFallback,
-    queryClient,
-    mode = 'full',
-    forceFresh = false,
-  } = options;
-  const compact = mode === 'compact';
+  const { summary: s, mode = 'full' } = options;
   if (!s) {
     throw new Error('No data available. Please refresh first.');
   }
-  // TIP-014: force fresh dashboard summary when requested (bypasses cache).
-  if (forceFresh && queryClient) {
-    try {
-      s = await queryClient.fetchQuery({
-        queryKey: dashboardLiteQueryKey(),
-        queryFn: () => fetchDashboardLiteSummary(),
-        staleTime: 0,
-      });
-    } catch {
-      // keep provided summary on refresh failure
-    }
-  }
-  const macroItems = (s as any)?.macroSnapshot?.macro;
-  if (!Array.isArray(macroItems) || macroItems.length === 0) {
-    try {
-      const macroPartial = await fetchDashboardSummaryPartial({
-        includeMacro: true,
-        includeSentiment: false,
-        includeNews: false,
-        includeIndustry: false,
-        includeScreeners: false,
-      });
-      if (macroPartial?.macroSnapshot) {
-        s = { ...s, macroSnapshot: macroPartial.macroSnapshot };
-      }
-    } catch {
-      // keep existing summary
-    }
-  }
-  const sentimentItems = (s as any)?.marketSentiment?.items;
-  if (!Array.isArray(sentimentItems) || sentimentItems.length === 0) {
-    try {
-      const sentimentPartial = await fetchDashboardSummaryPartial({
-        includeMacro: false,
-        includeSentiment: true,
-        includeNews: false,
-        includeIndustry: false,
-        includeScreeners: false,
-      });
-      if (sentimentPartial?.marketSentiment) {
-        s = { ...s, marketSentiment: sentimentPartial.marketSentiment };
-      }
-    } catch {
-      // keep existing summary
-    }
-  }
-  const generatedAt = new Date().toLocaleString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    hour12: false,
-  });
-  const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
-  const mainlineAllow = buildMainlineAllowSet(s);
-  const sectorOutflowBlock = isSectorOutflowBlock(s);
-  const tradingTime = isShanghaiTradingTime();
-  const [watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd, strategyMd] =
-    await Promise.all([
-      buildWatchlistMarkdown(
-        queryClient,
-        executionGate,
-        mainlineAllow,
-        sectorOutflowBlock,
-        forceFresh,
-      ),
-      buildCompactCatalystMarkdown(s),
-      fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
-        .then(({ items, scope }) =>
-          buildAlphaRadarTrendsMarkdown(items, {
-            headingLevel: '##',
-            mode: compact ? 'compact' : 'full',
-            scopeNote:
-              scope === 'recent'
-                ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
-                : 'latest batch',
-          }),
-        )
-        .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
-      buildExecutionCopyBundle({
-        gate: executionGate,
-        mainlineAllow,
-        sectorOutflowBlock,
-        queryClient,
-        forceFresh,
-      }).catch(
-        (): ExecutionCopyBundle => ({
-          attentionMd: formatExecAttentionMarkdown(
-            buildExecAttentionQueue({
-              gate: executionGate,
-              watchlistItems: [],
-              cards: [],
-              changes: [],
-            }),
-            { source: 'none' },
-          ),
-          cards: [],
-          quotes: {},
-          sourceStatsMd: '',
-        }),
-      ),
-      buildSinceLastCopyMarkdown().catch(() =>
-        formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
-      ),
-      fetchBacktestOverviewDash()
-        .then((ov) => buildStrategyAppendixDash(ov))
-        .catch(() => ''),
-    ]);
-  const autoQaMd = buildAutoQaMarkdown(await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20));
-  const attentionMd = execBundle.attentionMd;
-  const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
-    heading: '##',
-    allowNewEntries: executionGate?.allowNewEntries === true,
-    tradingTime,
-    phase: tradingTime ? 'Open' : 'Closed',
-    quotes: execBundle.quotes,
-  });
-  const lines: string[] = [];
-  lines.push(`# Copy all (Dashboard)`);
-  lines.push(`- generatedAt: ${generatedAt}`);
-  lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
-  lines.push('');
-  // 策略体系置顶：外部 agent 第一眼即知回测口径与择强规则
-  if (strategyMd.trim()) {
-    lines.push(strategyMd.trim());
-    lines.push('');
-  }
-  // TIP-013: per-source freshness header (stale sources flagged for the agent).
-  try {
-    const health = await fetchDataSourcesHealth();
-    const freshnessMd = buildDataFreshnessMarkdown(
-      Array.isArray(health?.sources) ? health.sources : [],
-    );
-    if (freshnessMd.trim()) {
-      lines.push(freshnessMd.trim());
-      lines.push('');
-    }
-  } catch {
-    lines.push('## Data freshness');
-    lines.push('- unavailable (health endpoint not reachable)');
-    lines.push('');
-  }
-  // AI behavior lives in System Prompt (docs/modules/downstream-ai-prompt.md); payload stays data-only.
-  lines.push(sinceLastMd.trim());
-  lines.push('');
-  lines.push(
-    formatExecutionGateMarkdown(
-      parseExecutionGate((s as any)?.marketSentiment?.executionGate) ??
-        (s as any)?.marketSentiment?.executionGate,
-      '##',
-    ).trim(),
-  );
-  lines.push('');
-  lines.push(attentionMd.trim());
-  lines.push('');
-  lines.push(condOrderMd.trim());
-  lines.push('');
-  try {
-    const journalMd = await fetchExecutionJournalMarkdown({
-      tradeDate: getShanghaiTodayIso(),
-      days: 5,
-    });
-    if (journalMd.trim()) {
-      lines.push(journalMd.trim());
-      lines.push('');
-    }
-  } catch {
-    lines.push('## Decision Journal');
-    lines.push('- note: unavailable (capture snapshots via Dashboard Sync All or Snapshot now)');
-    lines.push('');
-  }
-  if (execBundle.sourceStatsMd.trim()) {
-    lines.push(execBundle.sourceStatsMd.trim());
-    lines.push('');
-  }
-  // 持仓与执行是 agent 最关心的“现在该做什么”，紧跟 Gate/Attention 之后
-  lines.push(watchlistMd.trim());
-  lines.push('');
-  if (!compact) {
-    lines.push(buildIndustryMarkdown(s, '##').trim());
-    lines.push('');
-    lines.push(buildHotIndustriesMarkdown(s, '##').trim());
-    lines.push('');
-  } else {
-    // Compact mode: keep only the headline industry fund flow summary (no Top5×Date grid).
-    lines.push(
-      buildIndustryMarkdown(s, '##')
-        .split('\n')
-        .slice(0, 6)
-        .concat(['- note: compact mode — full industry tables omitted', ''])
-        .join('\n'),
-    );
-    lines.push('');
-    lines.push('- note: compact mode — Hot industries workflow omitted');
-    lines.push('');
-  }
-  lines.push(buildSentimentMarkdown(s, '##', compact).trim());
-  lines.push('');
-  lines.push(buildMarketAndMacroMarkdown(s, '##').trim());
-  lines.push('');
-  lines.push('## News brief');
-  lines.push('');
-  lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-  const newsItemsCount = Array.isArray((s as any)?.news?.items) ? (s as any).news.items.length : 0;
-  const newsTotal = Number((s as any)?.news?.total ?? 0);
-  const usingFallback = !newsSummary?.trim() && newsFallback?.trim();
-  if (usingFallback) {
-    lines.push(`- total: ${String(newsItemsCount || newsTotal || 0)}`);
-    lines.push(
-      `- note: AI 摘要未生成/未更新（${newsSummaryUpdatedAt ? `上次 ${newsSummaryUpdatedAt}` : '无'}）— 以下为原始标题回退`,
-    );
-  } else {
-    const summaryItemCount = (newsSummary?.match(/^\s*\d+\./gm) ?? []).length;
-    lines.push(`- total: ${String(summaryItemCount || newsTotal || 0)}`);
-  }
-  lines.push(
-    '- note: 关键词白名单过滤（AI/算力/半导体/美联储/降准降息/原油/关税/…）；其他娱乐/边缘政治新闻剔除',
-  );
-  if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
-  lines.push('');
-  let newsBody = '';
-  if (newsSummary?.trim()) newsBody = newsSummary.trim();
-  else if (newsFallback?.trim()) newsBody = newsFallback.trim();
-  if (compact && newsBody) {
-    const numbered = newsBody.split('\n').filter((l) => /^\s*\d+\./.test(l));
-    if (numbered.length > 8) {
-      newsBody = numbered.slice(0, 8).join('\n');
-      lines.push('- note: compact mode — 仅保留前 8 条新闻，完整列表见 News 页');
-    }
-  }
-  if (newsBody) lines.push(newsBody);
-  else lines.push('No summary yet. Last news records are included above.');
-  lines.push('');
-  lines.push(alphaTrendsMd.trim());
-  lines.push('');
-  if (autoQaMd) {
-    lines.push(autoQaMd.trim());
-    lines.push('');
-  }
-  lines.push(catalystMd.trim());
-  lines.push('');
-  return lines.join('\n').trim() + '\n';
+  // 2026-11-10: Sync & Copy is a THIN view of the agent-first judgment brief.
+  // The data-sync service assembles contract + gate + book + market facts +
+  // backtest; this module no longer assembles its own markdown, and never
+  // re-introduces Alpha Radar / catalyst / Auto-QA / 研报 sections.
+  // A 404 (old :4330 process without the route) surfaces a clear Chinese
+  // error from `fetchJudgmentBriefMarkdown` instead of a silent fallback.
+  return fetchJudgmentBriefMarkdown({ mode });
 }
 
 /**

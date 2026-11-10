@@ -125,6 +125,57 @@ def _timeline_mem_drop(cache_key: tuple) -> None:
     _timeline_cache_at.pop(cache_key, None)
 
 
+def warm_timeline_recent_stats(*, strategy: str, sessions: int = 20) -> dict[str, Any] | None:
+    """Compact trailing-``sessions`` stat from an ALREADY WARM timeline cache.
+
+    The agent judgment brief asks for a "recent window" note without paying for
+    an engine rebuild (cold builds take minutes) and without inlining an equity
+    curve. Reading the in-process cache is free; a cold cache simply returns
+    ``None`` and the caller says so. Never builds anything here.
+    """
+    import time
+
+    now = time.time()
+    best: tuple[str, dict[str, Any]] | None = None
+    for key, result in list(_timeline_cache.items()):
+        if not isinstance(key, tuple) or len(key) < 3 or key[2] != strategy:
+            continue
+        if now - _timeline_cache_at.get(key, 0.0) > TIMELINE_MEM_TTL_SECONDS:
+            continue
+        end = str(key[1])
+        if best is None or end > best[0]:
+            best = (end, result)
+    if best is None:
+        return None
+    result = best[1]
+    rows = [r for r in (result.get("rows") or []) if isinstance(r, dict)]
+    if len(rows) < 2:
+        return None
+    tail = rows[-max(2, int(sessions) + 1) :]
+
+    def _nav(row: dict[str, Any]) -> float | None:
+        for field in ("navMulti", "nav", "satNav"):
+            value = row.get(field)
+            if isinstance(value, (int, float)) and value:
+                return float(value)
+        return None
+
+    start_nav = _nav(tail[0])
+    end_nav = _nav(tail[-1])
+    if not start_nav or not end_nav:
+        return None
+    summary = result.get("summary") or {}
+    return {
+        "start": str(tail[0].get("date") or ""),
+        "end": str(tail[-1].get("date") or ""),
+        "sessions": len(tail) - 1,
+        "returnPct": round((end_nav / start_nav - 1.0) * 100.0, 2),
+        "windowTotalPct": summary.get("fusedPct"),
+        "windowMaxDdPct": summary.get("maxDdFusedPct"),
+        "cacheEnd": best[0],
+    }
+
+
 def _timeline_file(start: str, end: str, strategy: str = "pick_strong") -> Path:
     """Per-strategy cache file (strategy + logic mode are both in the name)."""
     safe_strategy = "".join(
