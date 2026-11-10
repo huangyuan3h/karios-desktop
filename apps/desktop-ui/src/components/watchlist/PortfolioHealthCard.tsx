@@ -722,7 +722,7 @@ function M30OpsSection({
           whip={whip}
           overlayBusy={overlayBusy}
           overlayError={overlayError}
-          onOverlay={onWhipOverlay}
+          onOverlay={whip?.pickKey ? onWhipOverlay : undefined}
         />
       ) : null}
 
