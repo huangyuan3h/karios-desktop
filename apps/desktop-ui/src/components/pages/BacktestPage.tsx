@@ -47,6 +47,8 @@ import {
   useReturnAttributionQuery,
   useSensitivityQuery,
   TIMELINE_STRATEGY_LABEL,
+  timelinePrefetchTargets,
+  timelineQueryOptions,
   useTimelineQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
@@ -700,6 +702,22 @@ function TimelineCard({
     onStrategyChange?.(next);
   };
   const q = useTimelineQuery(start, end, strategy, true);
+  /**
+   * P0 cheap cache: once this window's first strategy succeeds, warm the
+   * sibling tabs for the SAME window. Curated (harbor base + M30/星舰B), not
+   * the full matrix — each cold build is a heavy replay (full matrix is P2).
+   */
+  const queryClient = useQueryClient();
+  const prefetchedKey = React.useRef<string>('');
+  React.useEffect(() => {
+    if (!q.isSuccess) return;
+    const key = `${start}|${end}|${strategy}`;
+    if (prefetchedKey.current === key) return;
+    prefetchedKey.current = key;
+    for (const sibling of timelinePrefetchTargets(strategy)) {
+      void queryClient.prefetchQuery(timelineQueryOptions(start, end, sibling));
+    }
+  }, [q.isSuccess, start, end, strategy, queryClient]);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
   const blotter = q.data?.blotter ?? [];

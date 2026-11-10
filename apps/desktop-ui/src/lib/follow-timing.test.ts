@@ -9,6 +9,8 @@ import {
   recentTrailExits,
   rememberTrailExits,
   WHIP_ANNOTATION,
+  WHIP_OVERLAY_COPY,
+  whipCopy,
 } from './follow-timing';
 
 describe('follow-timing · achievable execution clock', () => {
@@ -62,6 +64,9 @@ describe('follow-timing · whip-saw guard', () => {
     expect(isWhipRebuy('SELL', 'ETF:513350.SH', keys)).toBe(false);
     expect(isWhipRebuy('BUY', 'ETF:518880', keys)).toBe(false);
     expect(WHIP_ANNOTATION).toBe('刚止损，回买=鞭打，请确认');
+    expect(WHIP_OVERLAY_COPY).toBe('建议暂缓 · 需确认');
+    expect(whipCopy(false)).toBe(WHIP_ANNOTATION);
+    expect(whipCopy(true)).toBe(WHIP_OVERLAY_COPY);
     expect(followSymbolKey('CN:600519.SH')).toBe('600519');
   });
 

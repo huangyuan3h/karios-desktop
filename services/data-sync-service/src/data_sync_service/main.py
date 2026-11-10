@@ -23,6 +23,9 @@ from .api.journal_routes import router as journal_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.news_routes import router as news_router
 from .api.notifications_routes import router as notifications_router
+
+# RESTRUCTURE PR1 (2026-10-03): read-only combo-tier plan (no orders, no params).
+from .api.portfolio_routes import router as portfolio_router
 from .api.query_routes import router as query_router
 from .api.research_routes import router as research_router
 from .api.settings_routes import router as settings_router
@@ -30,6 +33,9 @@ from .api.sync_routes import router as sync_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.trade_review_routes import router as trade_review_router
 from .api.user_trades_routes import router as user_trades_router
+
+# P0 2026-11-10: agent decision contract + overlays + decision log.
+from .api.v1_agent_routes import router as v1_agent_router
 
 # OPT-045 Phase B / OPT-046: 3 read-only business endpoints under /v1/*.
 # Auth is opt-in (no-op when KARIOS_API_KEYS is empty).
@@ -42,8 +48,6 @@ from .api.v1_explain_routes import router as v1_explain_router
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
 from .api.webhook_routes import router as webhook_router
-# RESTRUCTURE PR1 (2026-10-03): read-only combo-tier plan (no orders, no params).
-from .api.portfolio_routes import router as portfolio_router
 from .scheduler import create_scheduler
 
 
@@ -93,6 +97,10 @@ app = FastAPI(
         },
         {"name": "v1:explain", "description": "Comprehensive context pack for a single symbol."},
         {"name": "v1:quota", "description": "Per-API-key quota usage snapshot."},
+        {
+            "name": "v1:agent",
+            "description": "Agent decision contract, overlays and minimal decision log.",
+        },
     ],
 )
 app.add_middleware(
@@ -143,6 +151,8 @@ app.include_router(webhook_router)
 app.include_router(commodity_router)
 # OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
 app.include_router(v1_business_router)
+# P0 2026-11-10: agent decision contract + overlays + decision log.
+app.include_router(v1_agent_router)
 # OPT-047 Phase C: /v1/explain/{symbol}.
 app.include_router(v1_explain_router)
 # OPT-051 §12 #5: /v1/quota.

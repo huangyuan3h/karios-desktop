@@ -21,6 +21,7 @@ import {
   useSensitivityQuery,
   useSgapDecayQuery,
   useSleeveReconQuery,
+  timelinePrefetchTargets,
   type CorrelationStatusResponse,
 } from './backtest';
 
@@ -238,8 +239,7 @@ describe('useFactorVaultQuery', () => {
   });
 });
 
-describe('useFleetQuery', () => {
-  beforeEach(() => {
+describe('useFleetQuery', () => {  beforeEach(() => {
     mockedApiGetJson.mockReset();
     mockedUseQuery.mockClear();
   });
@@ -258,5 +258,22 @@ describe('useFleetQuery', () => {
     mockedApiGetJson.mockResolvedValue({ ok: true });
     useFleetQuery(false);
     expect(lastOptions().enabled).toBe(false);
+  });
+});
+
+describe('timelinePrefetchTargets', () => {
+  it('warms the harbor base and the product tabs, never the current tab', () => {
+    const harbor = timelinePrefetchTargets('harbor');
+    expect(harbor).toContain('homeport_m30');
+    expect(harbor).toContain('starship_b');
+    expect(harbor).not.toContain('harbor');
+
+    const m30 = timelinePrefetchTargets('homeport_m30');
+    expect(m30).toContain('harbor');
+    expect(m30).not.toContain('homeport_m30');
+
+    const starship = timelinePrefetchTargets('starship_b');
+    expect(starship).toContain('harbor');
+    expect(starship).not.toContain('starship_b');
   });
 });

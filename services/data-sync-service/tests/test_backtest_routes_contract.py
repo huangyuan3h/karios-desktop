@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -164,6 +165,81 @@ def test_timeline_file_cache_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     p.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(br, "TIMELINE_CACHE_TTL_HOURS", -1)
     assert br._load_timeline_file("2026-01-01", "2026-02-01") is None
+
+
+def test_timeline_file_cache_is_per_strategy(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """P0: one file per (start, end, strategy, mode) — switching tabs must not
+    overwrite the expensive harbor baseline with a pick_strong payload."""
+    monkeypatch.setattr(br, "TIMELINE_CACHE_DIR", tmp_path)
+    harbor = {"mode": br._TIMELINE_MODE, "strategy": "港湾", "rows": [1]}
+    m30 = {"mode": br._TIMELINE_MODE, "strategy": "母港M30", "rows": [2]}
+    br._save_timeline_file("2026-01-01", "2026-02-01", harbor, "harbor")
+    br._save_timeline_file("2026-01-01", "2026-02-01", m30, "homeport_m30")
+    assert br._timeline_file("2026-01-01", "2026-02-01", "harbor") != br._timeline_file(
+        "2026-01-01", "2026-02-01", "homeport_m30"
+    )
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") == harbor
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "homeport_m30") == m30
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "pick_strong") is None
+
+
+def test_timeline_file_cache_mode_bump_invalidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(br, "TIMELINE_CACHE_DIR", tmp_path)
+    payload = {"mode": br._TIMELINE_MODE, "rows": [1]}
+    br._save_timeline_file("2026-01-01", "2026-02-01", payload, "harbor")
+    monkeypatch.setattr(br, "_TIMELINE_MODE", "mom_compare_next")
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") is None
+
+
+def test_timeline_file_cache_drops_pre_close_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A startup warmup before 15:00 must not leave pre-close rows all evening."""
+    import os
+
+    monkeypatch.setattr(br, "TIMELINE_CACHE_DIR", tmp_path)
+    payload = {"mode": br._TIMELINE_MODE, "rows": [1]}
+    br._save_timeline_file("2026-01-01", "2026-02-01", payload, "harbor")
+    p = br._timeline_file("2026-01-01", "2026-02-01", "harbor")
+    stale = br._last_session_close_ts() - 60
+    os.utime(p, (stale, stale))
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") is None
+    # Fresh rows (written after the latest close) are still served.
+    fresh = br._last_session_close_ts() + 60
+    os.utime(p, (fresh, fresh))
+    assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") == payload
+
+
+def test_warm_default_timelines_includes_product_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def fake_build(start: str, end: str, **kwargs) -> tuple[dict[str, Any], None]:
+        seen.append(str(kwargs.get("strategy")))
+        return {"ok": True}, None
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(br, "_get_or_build_timeline", fake_build)
+    br.warm_default_timelines()
+    assert "harbor" in seen
+    assert "homeport_m30" in seen
+    assert "starship_b" in seen
+
+
+def test_timeline_route_refresh_forces_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+    payload = {"ok": True, "rows": [], "summary": {"fusedPct": 0.0}}
+
+    def fake_build(start: str, end: str, **kwargs) -> tuple[dict[str, Any], None]:
+        seen.update(kwargs)
+        return payload, None
+
+    monkeypatch.setattr(br, "_get_or_build_timeline", fake_build)
+    br.backtest_timeline(start="2026-01-01", end="2026-01-31", strategy="harbor", refresh=True)
+    assert seen["force"] is True
 
 
 def test_timeline_mem_cache_ttl_and_force_drop() -> None:

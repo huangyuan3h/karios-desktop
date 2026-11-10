@@ -31,6 +31,7 @@ import {
   type SleeveRecon,
 } from '@/lib/queries/backtest';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
+import { mutateAgentOverlay, type AgentWhipState } from '@/lib/queries/agent';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
 import { cn } from '@/lib/utils';
 import {
@@ -122,6 +123,7 @@ function PickStrongOpsPanel({
   coreBuyable = true,
   m30 = false,
   trailExitSymbols,
+  whipOverlayActive = false,
 }: {
   sleeve: Sleeve | null | undefined;
   stockHoldingsCount: number;
@@ -131,6 +133,8 @@ function PickStrongOpsPanel({
   m30?: boolean;
   /** Keys with a sticky trail exit — same-key buys get the whip annotation. */
   trailExitSymbols?: Set<string>;
+  /** Accepted `hold_same_key_rebuy` overlay → softer copy, same engine action. */
+  whipOverlayActive?: boolean;
 }) {
   const pickKey = sleeve?.pick?.key ?? 'REPO';
   const meta = PICK_META[pickKey] ?? { label: pickKey, hint: '' };
@@ -253,7 +257,7 @@ function PickStrongOpsPanel({
           港湾：S-3 股票核心 + 闲置现金停车
         </span>
         <ExecutionTimingBadge kind={timingKind} testId="pick-timing" className="ml-auto" />
-        {pickWhip ? <WhipBadge /> : null}
+        {pickWhip ? <WhipBadge muted={whipOverlayActive} /> : null}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         {pendingSell ? (
@@ -375,6 +379,76 @@ function m30LegLabel(leg: string): string {
 }
 
 /**
+ * Server-side same-key rebuy warning + the `hold_same_key_rebuy` switch.
+ * Display only: the engine action, TRAIL_PCT and k=0 are untouched.
+ */
+function WhipOverlayNote({
+  label,
+  whip,
+  overlayBusy = false,
+  overlayError = null,
+  onOverlay,
+  testId = 'ops-whip-note',
+}: {
+  label: string;
+  whip: AgentWhipState | null | undefined;
+  overlayBusy?: boolean;
+  overlayError?: string | null;
+  onOverlay?: (status: 'accepted' | 'cleared') => void;
+  testId?: string;
+}) {
+  const overlay = whip?.overlay ?? null;
+  const active = overlay?.effectiveStatus === 'accepted';
+  const proposed = overlay?.effectiveStatus === 'proposed';
+  return (
+    <div
+      data-testid={testId}
+      data-overlay={active ? 'accepted' : undefined}
+      className={cn(
+        'mt-1.5 rounded-md border px-2.5 py-1 text-[10px] font-medium',
+        active
+          ? 'border-sky-500/50 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+          : 'border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200',
+      )}
+    >
+      <div>
+        ⚠ {label}{' '}
+        {active
+          ? `刚止损：建议暂缓 · 需确认（已设置至 ${overlay?.validUntil ?? '有效期结束'}）`
+          : '刚止损，回买 = 鞭打，请确认（再按目标补回）'}
+        （k=0，不设冷却）
+      </div>
+      <div className="mt-0.5 flex flex-wrap items-center gap-2 font-normal">
+        {onOverlay ? (
+          <button
+            type="button"
+            data-testid={`${testId}-overlay`}
+            disabled={overlayBusy}
+            onClick={() => onOverlay(active ? 'cleared' : 'accepted')}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px] font-semibold disabled:opacity-50',
+              active
+                ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300'
+                : 'border-amber-500/50 bg-amber-500/10 text-amber-800 hover:bg-amber-500/20 dark:text-amber-200',
+            )}
+          >
+            {overlayBusy
+              ? '保存中…'
+              : active
+                ? '取消暂缓'
+                : proposed
+                  ? '确认暂缓'
+                  : '暂不跟同品种回买'}
+          </button>
+        ) : null}
+        {proposed ? <span>乐乐提议，待确认</span> : null}
+        {overlayError ? <span className="text-red-600">覆盖保存失败：{overlayError}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+/**
  * 母港M30 · 今日操作（操作引导的顶部清单）。
  *
  * 明细行复用 `buildM30Targets`（与跟仓完全同一份计算，不改口径）：
@@ -392,6 +466,10 @@ function M30OpsSection({
   b3Error,
   onRecord,
   trailExitSymbols,
+  whip = null,
+  overlayBusy = false,
+  overlayError = null,
+  onWhipOverlay,
 }: {
   data: PortfolioHealthResponse;
   capital: number | null;
@@ -400,6 +478,11 @@ function M30OpsSection({
   onRecord: (a: M30Action, price: number | null, rank: number) => void;
   /** Sticky trail-exit keys (+ short display memory) for the whip annotation. */
   trailExitSymbols?: Set<string>;
+  /** Server-side same-key rebuy whip (P0). */
+  whip?: AgentWhipState | null;
+  overlayBusy?: boolean;
+  overlayError?: string | null;
+  onWhipOverlay?: (status: 'accepted' | 'cleared') => void;
 }) {
   const cadence = useFollowCadence();
   const today = getShanghaiTodayIso();
@@ -538,6 +621,11 @@ function M30OpsSection({
     [hardActions, rebalanceActions, gate.needsRebalance, mustActKeys],
   );
   const whipBuys = orders.filter((a) => isWhipRebuy(a.side, a.symbol, trailExitSymbols));
+  const whipOverlay = whip?.overlay ?? null;
+  const whipOverlayActive = whipOverlay?.effectiveStatus === 'accepted';
+  const showWhipNote = Boolean(whip?.sameKeyRebuy) || whipBuys.length > 0;
+  const whipLabel =
+    whip?.pickKey ?? whipBuys.map((a) => followSymbolKey(a.symbol)).join('、');
 
   const circuitBlocked = data.circuitBlocked === true;
   const regimeWeak = data.regime === 'Weak';
@@ -628,13 +716,14 @@ function M30OpsSection({
           ⛔ Must-act 优先：已抑制 {suppressedSameKeyBuys} 笔同键目标回买（先卖后买，避免当天自相矛盾）。
         </p>
       ) : null}
-      {whipBuys.length > 0 ? (
-        <p
-          data-testid="ops-whip-note"
-          className="mt-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-200"
-        >
-          ⚠ {whipBuys.map((a) => followSymbolKey(a.symbol)).join('、')} 刚止损：回买 = 鞭打，请确认后再按目标补回（k=0，不设冷却）。
-        </p>
+      {showWhipNote ? (
+        <WhipOverlayNote
+          label={whipLabel}
+          whip={whip}
+          overlayBusy={overlayBusy}
+          overlayError={overlayError}
+          onOverlay={onWhipOverlay}
+        />
       ) : null}
 
       {mustActRow ? (
@@ -819,7 +908,7 @@ function M30OpsSection({
                     </span>
                   ) : null}
                   <ExecutionTimingBadge kind={rowTiming} testId="ops-row-timing" />
-                  {whip ? <WhipBadge /> : null}
+                  {whip ? <WhipBadge muted={whipOverlayActive} /> : null}
                   {deferred ? (
                     <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                       暂缓
@@ -1700,6 +1789,8 @@ export function PortfolioHealthCard({
   const [boughtSymbols, setBoughtSymbols] = React.useState<Set<string>>(new Set());
   const [buyError, setBuyError] = React.useState<string | null>(null);
   const [buyBusy, setBuyBusy] = React.useState(false);
+  const [overlayBusy, setOverlayBusy] = React.useState(false);
+  const [overlayError, setOverlayError] = React.useState<string | null>(null);
   const [reminders, setReminders] = React.useState<BuyReminder[]>([]);
   const [reminderError, setReminderError] = React.useState<string | null>(null);
 
@@ -1727,9 +1818,41 @@ export function PortfolioHealthCard({
     [sleeve, data],
   );
   const recentTrailExits = useRecentTrailExits(observedTrailExitSymbols, 10);
+  /**
+   * P0: the server-side whip memory is the source of truth across days and
+   * browsers. The localStorage memory stays as a display-only supplement.
+   */
   const trailExitSymbols = React.useMemo(
-    () => mergeTrailExitKeys(observedTrailExitSymbols, recentTrailExits.keys()),
-    [observedTrailExitSymbols, recentTrailExits],
+    () =>
+      mergeTrailExitKeys(
+        [...observedTrailExitSymbols, ...(data?.whip?.keys ?? [])],
+        recentTrailExits.keys(),
+      ),
+    [observedTrailExitSymbols, recentTrailExits, data?.whip?.keys],
+  );
+  const whip = data?.whip ?? null;
+  const handleWhipOverlay = React.useCallback(
+    async (status: 'accepted' | 'cleared') => {
+      const pickKey = whip?.pickKey;
+      if (!pickKey) return;
+      setOverlayBusy(true);
+      setOverlayError(null);
+      try {
+        await mutateAgentOverlay({
+          pickKey,
+          symbol: whip?.lastExit?.symbol ?? null,
+          status,
+          source: 'watchlist',
+          validDays: 5,
+        });
+        await queryClient.invalidateQueries({ queryKey: ['portfolio-health'] });
+      } catch (err) {
+        setOverlayError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setOverlayBusy(false);
+      }
+    },
+    [queryClient, whip?.lastExit?.symbol, whip?.pickKey],
   );
   // Last close per held symbol — the a25 order surface needs a mark for a leg
   // the engine never booked (no timeline row, not in today's panel gap list).
@@ -1970,6 +2093,15 @@ export function PortfolioHealthCard({
         </div>
       )}
 
+      {!coreView && whip?.sameKeyRebuy ? (
+        <WhipOverlayNote
+          label={whip.pickKey ? `港湾停车 ${whip.pickKey}` : '同键'}
+          whip={whip}
+          overlayBusy={overlayBusy}
+          overlayError={overlayError}
+        />
+      ) : null}
+
       <div className="flex flex-col gap-3">
         {coreView ? (
           <>
@@ -1981,6 +2113,10 @@ export function PortfolioHealthCard({
             b3Error={b3Error}
             onRecord={handleRecordM30Action}
             trailExitSymbols={trailExitSymbols}
+            whip={whip}
+            overlayBusy={overlayBusy}
+            overlayError={overlayError}
+            onWhipOverlay={handleWhipOverlay}
           />
         ) : null}
         {/* 次要信息：规则说明 / 动量条 / 停车体检 / 对账细节 / 股票篮 ——
@@ -1993,6 +2129,7 @@ export function PortfolioHealthCard({
             coreBuyable={stockBuyable}
             m30={mode === 'homeport'}
             trailExitSymbols={trailExitSymbols}
+            whipOverlayActive={whip?.overlay?.effectiveStatus === 'accepted'}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
@@ -2005,6 +2142,9 @@ export function PortfolioHealthCard({
           onOpen={onOpenStock}
           coreDestinationReady={coreDestinationReady}
           m30={mode === 'homeport'}
+          whip={whip}
+          overlayBusy={overlayBusy}
+          onOverlay={handleWhipOverlay}
         />
         <SleeveReconBlock
           recon={sleeveReconQ.data?.recon}

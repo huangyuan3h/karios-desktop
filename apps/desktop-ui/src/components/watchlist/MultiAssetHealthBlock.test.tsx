@@ -66,6 +66,22 @@ describe('MultiAssetHealthBlock', () => {
     expect(screen.queryByText(/母港M30：港湾腿（70%）的停车部分/)).toBeNull();
   });
 
+  it('shows the server whip state and the accepted-overlay copy', () => {
+    const whip = {
+      sameKeyRebuy: true,
+      pickKey: 'OIL',
+      copy: '建议暂缓 · 需确认',
+      overlay: { id: 'ov-1', effectiveStatus: 'accepted', validUntil: '2026-11-20' },
+    } as never;
+    render(
+      <MultiAssetHealthBlock holdings={HOLDINGS} sleeve={SLEEVE} whip={whip} onOverlay={() => {}} />,
+    );
+    const strip = screen.getByTestId('parking-whip');
+    expect(strip.textContent).toMatch(/建议暂缓 · 需确认/);
+    expect(strip.textContent).toMatch(/已暂缓同键回买至 2026-11-20/);
+    expect(screen.getByTestId('parking-whip-overlay').textContent).toBe('取消暂缓');
+  });
+
   it('a 14:30 现价触线 shows the conditional Must-watch, not 持有', () => {
     const warnSleeve = {
       action: 'HOLD',

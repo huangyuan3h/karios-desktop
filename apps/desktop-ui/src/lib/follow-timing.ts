@@ -99,6 +99,14 @@ export function executionTiming(
 /** Copy shown on a BUY that targets a leg we just stopped out of. */
 export const WHIP_ANNOTATION = '刚止损，回买=鞭打，请确认';
 
+/** Copy after Yuan accepts `hold_same_key_rebuy` (still a confirmation, not a block). */
+export const WHIP_OVERLAY_COPY = '建议暂缓 · 需确认';
+
+/** Badge copy: accepted overlay downgrades the warning, never the engine. */
+export function whipCopy(overlayActive: boolean): string {
+  return overlayActive ? WHIP_OVERLAY_COPY : WHIP_ANNOTATION;
+}
+
 /** Canonical key for cross-mode symbol comparison (ETF:513350.SH → 513350). */
 export function followSymbolKey(symbol: string | null | undefined): string {
   const s = String(symbol || '').trim().toUpperCase();

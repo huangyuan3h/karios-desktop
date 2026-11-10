@@ -680,22 +680,52 @@ export const TIMELINE_STRATEGY_LABEL: Record<TimelineStrategy, string> = {
   twin_star: '双子星',
 };
 
+export function timelineQueryOptions(
+  start: string,
+  end: string,
+  strategy: TimelineStrategy = 'homeport_m30',
+) {
+  const q = new URLSearchParams({ start, end, strategy });
+  return {
+    queryKey: ['backtest', 'timeline', start, end, strategy] as const,
+    queryFn: () =>
+      apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, {
+        timeoutMs: 300_000,
+      }),
+    staleTime: 5 * 60_000,
+  };
+}
+
+/**
+ * Which sibling tabs to warm after the current timeline succeeds.
+ *
+ * Deliberately curated instead of "all seven": each cold build is a heavy
+ * S-3 + Harbor replay, so firing every tab at once would queue seven engine
+ * runs. We prefetch the expensive base (`harbor`) and the two product tabs
+ * Yuan actually switches between (M30 / 星舰 B). The derived tabs are cheap
+ * blends once `harbor` is warm.
+ */
+export function timelinePrefetchTargets(current: TimelineStrategy): TimelineStrategy[] {
+  const curated: Record<TimelineStrategy, TimelineStrategy[]> = {
+    harbor: ['homeport_m30', 'starship_b'],
+    homeport: ['harbor', 'homeport_m30'],
+    homeport_m30: ['harbor', 'starship_b'],
+    starport: ['homeport_m30', 'harbor'],
+    twin_star: ['homeport_m30', 'harbor'],
+    starship: ['starship_b', 'harbor'],
+    starship_robust: ['starship_b', 'harbor'],
+    starship_b: ['homeport_m30', 'harbor'],
+  };
+  return (curated[current] ?? ['harbor', 'homeport_m30']).filter((s) => s !== current);
+}
+
 export function useTimelineQuery(
   start: string,
   end: string,
   strategy: TimelineStrategy = 'homeport_m30',
   enabled = true,
 ) {
-  const q = new URLSearchParams({ start, end, strategy });
-  return useQuery({
-    queryKey: ['backtest', 'timeline', start, end, strategy],
-    queryFn: () =>
-      apiGetJson<TimelineResponse>(`/api/backtest/timeline?${q.toString()}`, {
-        timeoutMs: 300_000,
-      }),
-    staleTime: 5 * 60_000,
-    enabled,
-  });
+  return useQuery({ ...timelineQueryOptions(start, end, strategy), enabled });
 }
 
 export function useStrategyCatalogQuery() {

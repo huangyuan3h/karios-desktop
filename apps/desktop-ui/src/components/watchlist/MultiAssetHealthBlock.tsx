@@ -2,7 +2,9 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { intradayTrailWarnFromSleeve, isM30B3Symbol, pendingParkSellFromSleeve } from '@/lib/m30-follow';
+import { WHIP_ANNOTATION } from '@/lib/follow-timing';
 import { PARKING_META, parkingKeyForSymbol } from '@/lib/parking-universe';
+import type { AgentWhipState } from '@/lib/queries/agent';
 import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 
 type MultiHolding = NonNullable<PortfolioHealthResponse['multiAssetHoldings']>[number];
@@ -41,6 +43,9 @@ export function MultiAssetHealthBlock({
   onOpen,
   coreDestinationReady = true,
   m30 = false,
+  whip = null,
+  overlayBusy = false,
+  onOverlay,
 }: {
   holdings: MultiHolding[] | undefined | null;
   sleeve: MultiSleeve | undefined | null;
@@ -52,6 +57,11 @@ export function MultiAssetHealthBlock({
    * tag them 卖出 here; sizing lives in the 母港M30跟仓 panel.
    */
   m30?: boolean;
+  /** Server-side same-key rebuy whip (P0). */
+  whip?: AgentWhipState | null;
+  overlayBusy?: boolean;
+  /** Confirm / clear the `hold_same_key_rebuy` overlay (annotation only). */
+  onOverlay?: (status: 'accepted' | 'cleared') => void;
 }) {
   const openHoldings = (holdings ?? []).filter(
     (h) => typeof h.positionPct === 'number' && h.positionPct > 0,
@@ -69,6 +79,8 @@ export function MultiAssetHealthBlock({
     sleeve as unknown as Parameters<typeof intradayTrailWarnFromSleeve>[0],
   );
   const intradayWarnCode = intradayWarn ? bareCodeOf(intradayWarn.symbol) : null;
+  const overlayActive = whip?.overlay?.effectiveStatus === 'accepted';
+  const overlayProposed = whip?.overlay?.effectiveStatus === 'proposed';
 
   if (!hasHoldings && !actionable) return null;
 
@@ -110,6 +122,44 @@ export function MultiAssetHealthBlock({
           </span>
         ) : null}
       </div>
+
+      {whip?.sameKeyRebuy ? (
+        <div
+          data-testid="parking-whip"
+          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-200"
+        >
+          <div className="font-semibold">
+            ⚠ {whip.pickKey ?? pickKey} 刚止损：{whip.copy ?? WHIP_ANNOTATION}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 font-normal">
+            <span>
+              {overlayActive
+                ? `已暂缓同键回买至 ${whip.overlay?.validUntil ?? '有效期结束'}；引擎目标不变，回买前请再确认（k=0）`
+                : '引擎目标不变；回买前请确认，不设冷却（k=0）'}
+            </span>
+            {onOverlay ? (
+              <button
+                type="button"
+                data-testid="parking-whip-overlay"
+                disabled={overlayBusy}
+                onClick={() => onOverlay(overlayActive ? 'cleared' : 'accepted')}
+                className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-200"
+              >
+                {overlayBusy
+                  ? '保存中…'
+                  : overlayActive
+                    ? '取消暂缓'
+                    : overlayProposed
+                      ? '确认暂缓'
+                      : '暂不跟同品种回买'}
+              </button>
+            ) : null}
+            {overlayProposed ? (
+              <span className="text-[10px] font-normal">乐乐提议，待确认</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {pendingSell ? (
         <div

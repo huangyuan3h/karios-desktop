@@ -326,6 +326,66 @@ def upsert_actions(actions: list[dict[str, Any]]) -> int:
     return len(actions)
 
 
+def insert_action(
+    *,
+    symbol: str,
+    action: str,
+    rationale: str | None = None,
+    confidence: float | None = None,
+    status: str = "logged",
+    source: str = "agent_contract",
+    snapshot_date: date | None = None,
+    outcome: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Insert one standalone decision log row (no session/message required).
+
+    Used by ``POST /v1/agent/decision-log`` so the agent contract can leave a
+    minimal, reviewable trace without inventing a fifth ledger.
+    """
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {ACTIONS_TABLE}
+                    (symbol, action, rationale, confidence, status, source,
+                     snapshot_date, outcome)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, symbol, action, rationale, confidence, status,
+                          source, snapshot_date, outcome, created_at
+                """,
+                (
+                    symbol,
+                    action,
+                    rationale,
+                    confidence,
+                    status,
+                    source,
+                    snapshot_date,
+                    None if outcome is None else json.dumps(outcome),
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    cols = (
+        "id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshotDate",
+        "outcome",
+        "createdAt",
+    )
+    rec = _row_dict(cols, row)
+    for key in ("snapshotDate", "createdAt"):
+        if rec.get(key) and hasattr(rec[key], "isoformat"):
+            rec[key] = rec[key].isoformat()
+    return rec
+
+
 def list_actions(
     *,
     status: str | None = None,

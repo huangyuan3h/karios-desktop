@@ -1,4 +1,5 @@
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import type { AgentOverlayGroups, AgentWhipState } from '@/lib/queries/agent';
 
 /** Raw response of GET /v1/agent/portfolio-health (S-3 holdings health). */
 export interface PortfolioHolding {
@@ -199,6 +200,13 @@ export interface PortfolioHealthResponse {
   }> | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
+  /**
+   * P0 2026-11-10: server-side same-key rebuy whip (sticky trail exits +
+   * short memory). Display/advice only — never rewrites the sleeve action.
+   */
+  whip?: AgentWhipState | null;
+  /** P0: proposed/accepted/expired `hold_same_key_rebuy` overlays. */
+  overlays?: AgentOverlayGroups | null;
 }
 
 /**
