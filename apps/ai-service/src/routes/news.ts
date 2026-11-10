@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
-import { generateText } from 'ai';
 
 import { NewsSummaryRequestSchema } from '../schemas.js';
-import { getResolvedModel, AiModel } from '../model.js';
+import { generateNewsText, getConfiguredNewsModelId } from '../news_llm.js';
 import { stripModelThinking } from '../model_thinking.js';
 
 export const newsRoutes = new Hono();
@@ -16,20 +15,14 @@ newsRoutes.post('/summary', async (c) => {
 
   const items = parsed.data.items || [];
   const hours = parsed.data.hours || 24;
+  const configuredModel = getConfiguredNewsModelId();
 
   if (!items.length) {
-    return c.json({ summary: '', itemsCount: 0 });
-  }
-
-  let model: AiModel;
-  let modelId: string;
-  try {
-    const r = await getResolvedModel();
-    model = r.model;
-    modelId = r.modelId;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
-    return c.json({ error: message }, 500);
+    return c.json({
+      summary: '',
+      itemsCount: 0,
+      ...(configuredModel ? { model: configuredModel } : {}),
+    });
   }
 
   const newsTitles = items
@@ -56,10 +49,9 @@ ${newsTitles}
 请用数字列表格式（1. 2. 3. ...）总结其中的财经/股票相关重要信息（300-400字）：`;
 
   try {
-    // Thinking models (e.g. MiniMax-M3) may spend many tokens on <think>…</think>
-    // before the visible answer; keep headroom so the summary is not truncated away.
-    const { text } = await generateText({
-      model,
+    // Thinking models may spend many tokens on <think>…</think> before the
+    // visible answer; keep headroom so the summary is not truncated away.
+    const { text, modelId } = await generateNewsText({
       prompt: `${system}\n\n${prompt}`,
       temperature: 0,
       maxOutputTokens: 2048,
@@ -83,6 +75,6 @@ ${newsTitles}
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return c.json({ error: msg }, 500);
+    return c.json({ error: msg, model: configuredModel ?? undefined }, 500);
   }
 });

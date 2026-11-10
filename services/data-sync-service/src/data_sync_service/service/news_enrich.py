@@ -45,10 +45,12 @@ from data_sync_service.db.news import (
 
 logger = logging.getLogger(__name__)
 
-# Default model identifier sent to ai-service. The ai-service ignores this
-# in favour of its own active profile, but we keep the env-var override
-# for tests/CI where you want to record the intended model name.
-ENRICHMENT_MODEL = os.getenv("NEWS_ENRICHMENT_MODEL", "deepseek-v4-flash")
+# Default model identifier sent to ai-service. Since 2026-11-10 ai-service
+# routes this id through the local OpenCode CLI driver
+# (`opencode run --standalone --model opencode-go/deepseek-v4.1-flash`).
+# Set NEWS_ENRICHMENT_MODEL to another id to use the ai-service profile path,
+# or `opencode-go/deepseek-v4.1-flash` explicitly for the local model.
+ENRICHMENT_MODEL = os.getenv("NEWS_ENRICHMENT_MODEL", "opencode-go/deepseek-v4.1-flash")
 
 # Tier 0: batch size per LLM call. Smaller = fewer tokens per call but
 # more round-trips. 5 is a sweet spot for cheap JSON-mode inference.
@@ -247,7 +249,12 @@ def _build_prompt(items: list[dict[str, Any]]) -> str:
 
 
 def _call_llm(prompt: str) -> str:
-    """Call the ai-service /v1/chat/completions endpoint."""
+    """Call the ai-service /v1/chat/completions endpoint.
+
+    ai-service routes `ENRICHMENT_MODEL` (default: local OpenCode DeepSeek
+    v4.1 flash) through its bounded OpenCode driver; any other model id keeps
+    the legacy profile-backed path.
+    """
     settings = get_settings()
     base = settings.ai_service_base_url
 

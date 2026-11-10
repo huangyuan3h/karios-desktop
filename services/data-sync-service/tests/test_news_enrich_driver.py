@@ -56,6 +56,10 @@ def _patch_urlopen(monkeypatch, payload: dict | None = None, exc: Exception | No
 # ---- _call_llm -------------------------------------------------------------
 
 
+def test_default_enrichment_model_is_local_opencode_deepseek() -> None:
+    assert ne.ENRICHMENT_MODEL == "opencode-go/deepseek-v4.1-flash"
+
+
 def test_call_llm_success(monkeypatch) -> None:
     _patch_settings(monkeypatch)
     _patch_urlopen(monkeypatch, {"choices": [{"message": {"content": '[{"id":"i1"}]'}}]})
@@ -106,6 +110,21 @@ def test_call_llm_sends_api_key(monkeypatch) -> None:
     )  # urllib capitalizes header key
 
 
+def test_call_llm_requests_opencode_model(monkeypatch) -> None:
+    """The payload must carry the id ai-service routes to local OpenCode."""
+    _patch_settings(monkeypatch)
+    captured: list[dict] = []
+
+    def fake(req, timeout):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        return _Ctx(_Resp({"choices": [{"message": {"content": "[]"}}]}))
+
+    monkeypatch.setattr(ne.urllib.request, "urlopen", fake)
+    ne._call_llm("p")
+    assert captured[0]["model"] == "opencode-go/deepseek-v4.1-flash"
+    assert captured[0]["messages"] == [{"role": "user", "content": "p"}]
+
+
 # ---- enrich_batch ----------------------------------------------------------
 
 
@@ -122,6 +141,7 @@ def test_enrich_batch_llm_failure_marks_all_failed(monkeypatch) -> None:
     assert out["enriched"] == 0 and out["failed"] == 3 and out["filtered"] == 0
     assert out.get("error") == "net down"
     assert all(c["enrichment_status"] == "failed" for c in calls)
+    assert all(c["enrichment_model"] == ne.ENRICHMENT_MODEL for c in calls)
     assert len(calls) == 3
 
 
@@ -155,6 +175,19 @@ def test_enrich_batch_success(monkeypatch) -> None:
     assert writes[0]["importance"] == 3
     assert writes[0]["tickers"] == ["600519"]
     assert writes[0]["enrichment_status"] == "done"
+    assert writes[0]["enrichment_model"] == "opencode-go/deepseek-v4.1-flash"
+    assert writes[1]["enrichment_model"] == "opencode-go/deepseek-v4.1-flash"
+
+
+def test_enrich_batch_ignores_model_supplied_relevance(monkeypatch) -> None:
+    """Relevance stays Python-owned even if the local model invents a score."""
+    monkeypatch.setattr(ne, "_get_watchlist_symbols", lambda: [])
+    monkeypatch.setattr(ne, "_call_llm", lambda p: '[{"tickers": [], "importance": 2, "relevanceScore": 99, "relevance_score": 99}]')
+    writes: list[dict] = []
+    monkeypatch.setattr(ne, "update_item_enrichment", lambda **kw: writes.append(kw) or True)
+    out = ne.enrich_batch(_items(1))
+    assert out["enriched"] == 1 and out["failed"] == 0
+    assert writes[0]["relevance_score"] == 30  # 2 × 15, not the model's 99
 
 
 def test_enrich_batch_single_item_padded(monkeypatch) -> None:
