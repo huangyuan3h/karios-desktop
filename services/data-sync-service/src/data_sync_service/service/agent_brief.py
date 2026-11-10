@@ -39,8 +39,14 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-10"
+BRIEF_VERSION = "2026-11-11"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+
+# Research closes (qfq adjusted `daily` / panel) vs live raw 净价. A gap at or
+# above this is large enough to change a decision (e.g. 511260 close 141.614
+# vs live 136.05 ≈ 4.1%), so the brief must warn instead of quoting the
+# research close/MA200 as tradable.
+INTEGRITY_MISMATCH_PCT = 1.5
 
 # Packs intentionally left out of the agent judgment brief. Documented in the
 # payload itself so the agent never wonders whether it is missing something.
@@ -343,6 +349,139 @@ def _live_quotes(symbols: list[str]) -> dict[str, Any]:
     return {"available": bool(quotes), "quotes": quotes}
 
 
+def _num(value: Any) -> float | None:
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if num > 0 else None
+
+
+def _price_integrity_block(
+    *,
+    contract: dict[str, Any],
+    health: dict[str, Any],
+    quotes: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Flag when a research close / MA200 is not the live tradable 净价.
+
+    ``daily`` stores qfq closes and the parking panel is adjusted, while
+    ``liveQuotes`` are raw 净价. On 511260 those disagreed by ~4.1%
+    (141.614 vs 136.05) and the old brief gave no warning, so the agent could
+    quote a non-tradable close and an adjusted MA200. This block is display /
+    judgment only: it never rewrites a signal, trail or weight.
+    """
+    sleeve = contract.get("sleeve") or {}
+    pick = sleeve.get("pick") or {}
+    next_leg = contract.get("nextLeg") or {}
+    quote_map = ((quotes or {}).get("quotes") or {}) if isinstance(quotes, dict) else {}
+
+    entries: dict[str, dict[str, Any]] = {}
+    for h in health.get("multiAssetHoldings") or []:
+        if not isinstance(h, dict):
+            continue
+        sym = str(h.get("symbol") or "")
+        md = h.get("marketData") or {}
+        close = _num(md.get("close"))
+        if not sym or close is None:
+            continue
+        entries[sym] = {
+            "symbol": sym,
+            "key": h.get("key"),
+            "name": h.get("name"),
+            "close": close,
+            "ma200": _num(md.get("ma200")),
+            "cost": _num(h.get("costPrice")),
+            "source": "multiAssetHoldings.marketData",
+        }
+
+    pick_sym = str(pick.get("symbol") or sleeve.get("symbol") or next_leg.get("symbol") or "")
+    pick_close = _num(pick.get("close"))
+    if pick_sym and pick_close is not None:
+        row = entries.get(pick_sym)
+        if row is None:
+            entries[pick_sym] = {
+                "symbol": pick_sym,
+                "key": pick.get("key") or next_leg.get("key"),
+                "name": pick.get("name") or next_leg.get("name"),
+                "close": pick_close,
+                "ma200": _num(pick.get("ma200") or next_leg.get("ma200")),
+                "cost": None,
+                "source": "contract.sleeve.pick",
+            }
+        else:
+            # The pick is the signal caliber; prefer it for the close/MA200
+            # comparison while keeping the holding's cost/name.
+            row.setdefault("pickClose", pick_close)
+            if row.get("ma200") is None:
+                row["ma200"] = _num(pick.get("ma200") or next_leg.get("ma200"))
+
+    warnings: list[dict[str, Any]] = []
+    checked = 0
+    for sym, entry in entries.items():
+        quote = quote_map.get(sym) or quote_map.get(sym.upper()) or {}
+        live = _num(quote.get("price"))
+        if live is None:
+            continue
+        checked += 1
+        close = float(entry["close"])
+        close_vs_live = (close / live - 1.0) * 100.0
+        ma200 = _num(entry.get("ma200"))
+        ma_vs_live = (ma200 / live - 1.0) * 100.0 if ma200 else None
+        breach = abs(close_vs_live) >= INTEGRITY_MISMATCH_PCT or (
+            ma_vs_live is not None and abs(ma_vs_live) >= INTEGRITY_MISMATCH_PCT
+        )
+        if not breach:
+            continue
+        cost = _num(entry.get("cost"))
+        name = entry.get("name") or entry.get("key") or sym
+        message = (
+            f"{name}（{sym}）收盘/研究口径 {close:.3f} vs 实时净价 {live:.2f}"
+            f"（差 {close_vs_live:+.1f}%）"
+        )
+        if ma200 is not None and ma_vs_live is not None:
+            message += f"；研究 MA200 {ma200:.3f}（{ma_vs_live:+.1f}% vs 净价，复权口径）"
+        message += "。不要把收盘价 / 研究 MA200 当作可成交价；可成交的是实时净价。"
+        warnings.append(
+            {
+                "symbol": sym,
+                "key": entry.get("key"),
+                "name": entry.get("name"),
+                "severity": "warning",
+                "close": round(close, 4),
+                "live": round(live, 3),
+                "cost": round(cost, 4) if cost else None,
+                "closeVsLivePct": round(close_vs_live, 2),
+                "liveVsCostPct": round((live / cost - 1.0) * 100.0, 2) if cost else None,
+                "ma200": round(ma200, 4) if ma200 else None,
+                "ma200VsLivePct": round(ma_vs_live, 2) if ma_vs_live is not None else None,
+                "ma200Basis": "adjusted_qfq" if ma200 else None,
+                # Explicit null: the server does NOT serve a raw-basis MA200.
+                # Never let the agent treat the research MA200 as tradable.
+                "tradableMa200": None,
+                "tradableMa200Note": (
+                    "服务端没有原始口径 MA200；研究 MA200 只做信号闸门，不能当成交/止损线"
+                ),
+                "source": entry.get("source"),
+                "message": message,
+            }
+        )
+
+    return {
+        "available": checked > 0,
+        "status": "warning" if warnings else ("ok" if checked else "unknown"),
+        "checked": checked,
+        "thresholdPct": INTEGRITY_MISMATCH_PCT,
+        "warnings": warnings,
+        "error": None if checked else "no_live_quotes_for_parking_legs",
+        "note": (
+            "把收盘/研究价（daily qfq、panel 复权）与实时净价（liveQuotes）对齐核对；"
+            "两者差异 ≥1.5% 时，研究收盘价与研究 MA200 不可当成可成交价。"
+            "ETF 的 daily 行已是原始价，研究面板才是复权价。"
+        ),
+    }
+
+
 def _book_block(
     *,
     health: dict[str, Any],
@@ -357,14 +496,19 @@ def _book_block(
     park_rows = [r for r in (health.get("multiAssetHoldings") or []) if isinstance(r, dict)]
     just_sold = _just_sold(day=day, limit=5 if compact else 10)
 
+    sleeve = contract.get("sleeve") or {}
+
     symbols = [str(r.get("symbol") or "") for r in cn_rows + hk_rows + park_rows]
     symbols += [str(r.get("symbol") or "") for r in just_sold]
+    # The parking pick can be a leg we do not hold yet (e.g. the next open
+    # fill). Quote it too so the price-caliber check can compare the research
+    # close against the live 净价 instead of trusting 141.6 as tradable.
+    pick = (sleeve.get("pick") or {}) if isinstance(sleeve, dict) else {}
+    symbols += [str(pick.get("symbol") or sleeve.get("symbol") or "")]
     quote_started = time.perf_counter()
     quotes = _live_quotes(symbols)
     if timings is not None:
         timings["quotesMs"] = round((time.perf_counter() - quote_started) * 1000.0, 1)
-
-    sleeve = contract.get("sleeve") or {}
     return _trim(
         {
             "available": True,
@@ -727,7 +871,112 @@ def _freshness_block() -> dict[str, Any]:
     }
 
 
-def _execution_block(*, day: str, compact: bool) -> dict[str, Any]:
+def _market_of(symbol: Any) -> str:
+    """Same split as the UI: HK: / *.HK → hk gate, everything else (ETF incl.) → cn."""
+    s = str(symbol or "").strip().upper()
+    return "hk" if s.startswith("HK:") or s.endswith(".HK") else "cn"
+
+
+def _attention_line(card: dict[str, Any], bucket: str) -> dict[str, Any]:
+    """One ranked card with its achievable (close-basis) fill clock."""
+    from data_sync_service.service.agent_contract import _fill_clock
+
+    action = str(card.get("action") or "").upper()
+    mapped = {
+        "EXIT": "SELL_TO_REPO",
+        "TRIM": "SELL_TO_REPO",
+        "BUY": "BUY",
+        "ADD": "BUY",
+    }.get(action, "NONE")
+    row = dict(card)
+    row["attentionBucket"] = bucket
+    row["fill"] = _fill_clock({"action": mapped})
+    return row
+
+
+def _rank_attention_cards(
+    cards: list[dict[str, Any]], *, gate: dict[str, Any] | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Server mirror of ``lib/exec-attention.ts`` ranking (before truncation).
+
+    The brief used to dump the first 20/28 journal cards, so a must-act EXIT
+    could be cut while an unrelated BUY survived. Ranking here (exits → trims →
+    gate-eligible fires → blocked fires → others, symbol-sorted inside each
+    bucket) makes truncation safe. Annotation only: no engine change.
+    """
+    cn_gate = (gate or {}).get("cn") or {}
+    hk_gate = (gate or {}).get("hk") or {}
+    allow_cn = cn_gate.get("allowNewEntries") is True
+    allow_hk = hk_gate.get("allowNewEntries") is True
+
+    exits: list[dict[str, Any]] = []
+    trims: list[dict[str, Any]] = []
+    fires_cn: list[dict[str, Any]] = []
+    fires_hk: list[dict[str, Any]] = []
+    others: list[dict[str, Any]] = []
+    for card in cards:
+        action = str(card.get("action") or "").upper()
+        if action == "EXIT":
+            exits.append(_attention_line(card, "exit"))
+        elif action == "TRIM":
+            trims.append(_attention_line(card, "trim"))
+        elif action in {"BUY", "ADD"}:
+            line = _attention_line(card, "fire")
+            (fires_hk if _market_of(line.get("symbol")) == "hk" else fires_cn).append(line)
+        else:
+            others.append(_attention_line(card, "other"))
+
+    def _by_symbol(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(rows, key=lambda r: str(r.get("symbol") or ""))
+
+    exits, trims, others = _by_symbol(exits), _by_symbol(trims), _by_symbol(others)
+    fires_cn, fires_hk = _by_symbol(fires_cn), _by_symbol(fires_hk)
+
+    cn_allowed = (
+        fires_cn
+        if allow_cn
+        else [f for f in fires_cn if str(f.get("why") or "") == "DEFENSIVE_SLEEVE_ALLOW"]
+    )
+    cn_blocked = [f for f in fires_cn if f not in cn_allowed]
+    hk_allowed = fires_hk if allow_hk else []
+    hk_blocked = [] if allow_hk else fires_hk
+
+    ranked = exits + trims + cn_allowed + hk_allowed + cn_blocked + hk_blocked + others
+    must_act = exits + trims
+    attention = _trim(
+        {
+            "source": "latestSnapshot.cards",
+            "ranking": (
+                "must-act(exits→trims) → eligible fires → gate-blocked fires → others; "
+                "symbol-sorted inside each bucket"
+            ),
+            "cardCount": len(cards),
+            "rankedCount": len(ranked),
+            "mustAct": must_act,
+            "fires": cn_allowed + hk_allowed,
+            "blockedFires": cn_blocked + hk_blocked,
+            "counts": {
+                "exits": len(exits),
+                "trims": len(trims),
+                "fires": len(cn_allowed) + len(hk_allowed),
+                "blockedFires": len(cn_blocked) + len(hk_blocked),
+                "other": len(others),
+                "mustAct": len(must_act),
+            },
+            "gates": {"cnGateBlocked": not allow_cn, "hkGateOpen": allow_hk},
+            "note": (
+                "server mirror of apps/desktop-ui/src/lib/exec-attention.ts; "
+                "must-act outranks fires, and ranking is applied BEFORE truncation. "
+                "Every card is close-basis: EXIT/TRIM fill next open, BUY/ADD fill next open."
+            ),
+        }
+    )
+    return ranked, attention
+
+
+def _execution_block(
+    *, day: str, compact: bool, gate: dict[str, Any] | None = None
+) -> dict[str, Any]:
     from data_sync_service.db import execution_journal as ej
 
     block: dict[str, Any] = {"available": True}
@@ -751,6 +1000,8 @@ def _execution_block(*, day: str, compact: bool) -> dict[str, Any]:
         snap = ej.fetch_latest_snapshot(trade_date=day)
         if snap:
             cards = [c for c in (snap.get("cards") or []) if isinstance(c, dict)]
+            ranked, attention = _rank_attention_cards(cards, gate=gate)
+            block["attention"] = attention
             block["latestSnapshot"] = {
                 "id": snap.get("id"),
                 "tradeDate": snap.get("tradeDate"),
@@ -759,7 +1010,8 @@ def _execution_block(*, day: str, compact: bool) -> dict[str, Any]:
                 "gateMode": (snap.get("gate") or {}).get("mode"),
                 "cardCount": len(cards),
                 # The snapshot cards ARE the cond-order draft the UI renders.
-                "cards": cards[
+                # Ranked first so a 20/28 truncation cannot drop a must-act row.
+                "cards": ranked[
                     : SNAPSHOT_CARD_LIMIT_COMPACT if compact else SNAPSHOT_CARD_LIMIT_FULL
                 ],
             }
@@ -767,8 +1019,9 @@ def _execution_block(*, day: str, compact: bool) -> dict[str, Any]:
         block["latestSnapshot"] = None
         block["snapshotError"] = str(exc)
     block["note"] = (
-        "changes = execution journal; latestSnapshot.cards = cond-order draft. "
-        "Exec-attention ranking is computed in the UI (lib/exec-attention.ts) and is not served here."
+        "changes = execution journal; latestSnapshot.cards = cond-order draft, "
+        "already exec-attention ranked on the server (mirrors lib/exec-attention.ts) "
+        "before truncation. All cards are close-basis: next-open fill, never the paper close."
     )
     return _trim(block)
 
@@ -1141,6 +1394,8 @@ def build_judgment_brief(
             finally:
                 timings[name] = _ms_since(started)
 
+        gate_block = _timed("gateMs", lambda: _block("gate", lambda: _gate_block(summary or {})))
+
         brief: dict[str, Any] = {
             "ok": True,
             "briefId": f"jb:{day}:{contract.get('strategy', {}).get('timelineStrategy')}:"
@@ -1154,7 +1409,7 @@ def build_judgment_brief(
             "mode": brief_mode,
             "contract": contract,
             "freshness": _timed("freshnessMs", lambda: _safe("freshness", _freshness_block)),
-            "gate": _timed("gateMs", lambda: _block("gate", lambda: _gate_block(summary or {}))),
+            "gate": gate_block,
             "sentiment": _timed(
                 "sentimentMs",
                 lambda: _block(
@@ -1184,7 +1439,10 @@ def build_judgment_brief(
             ),
             "execution": _timed(
                 "executionMs",
-                lambda: _safe("execution", lambda: _execution_block(day=day, compact=compact)),
+                lambda: _safe(
+                    "execution",
+                    lambda: _execution_block(day=day, compact=compact, gate=gate_block),
+                ),
             ),
             "news": _timed(
                 "newsMs",
@@ -1223,6 +1481,26 @@ def build_judgment_brief(
         quotes_block = (book_block or {}).get("liveQuotes") or {}
         brief["cache"]["quotesHit"] = bool(
             quotes_block.get("cached") if isinstance(quotes_block, dict) else False
+        )
+        # Judgment truth (2026-11-11): price caliber, settings-vs-sleeve path,
+        # achievable fill clock, oil whip context, and cold-factor followability.
+        # All are annotations; none rewrites sleeve.action / TRAIL_PCT / k=0.
+        strategy_block = contract.get("strategy") or {}
+        brief["integrity"] = _price_integrity_block(
+            contract=contract,
+            health=health or {},
+            quotes=quotes_block if isinstance(quotes_block, dict) else {},
+        )
+        brief["judgment"] = _trim(
+            {
+                "settingsMode": strategy_block.get("mode"),
+                "settingsLabel": strategy_block.get("label"),
+                "followability": strategy_block.get("followability"),
+                "pathMismatch": strategy_block.get("pathMismatch"),
+                "fillClock": contract.get("fillClock"),
+                "whipContext": (contract.get("whip") or {}).get("context"),
+                "priceIntegrity": brief["integrity"].get("status"),
+            }
         )
         timings.setdefault("quotesMs", 0.0)
         try:
@@ -1379,6 +1657,71 @@ def _sh_time(value: Any) -> str:
     return ts.astimezone(SHANGHAI_TZ).strftime("%m-%d %H:%M")
 
 
+def _render_alerts(brief: dict[str, Any]) -> list[str]:
+    """Front-loaded judgment alerts — the part that is easy to miss."""
+    contract = brief.get("contract") or {}
+    strat = contract.get("strategy") or {}
+    path = strat.get("pathMismatch") or {}
+    follow = strat.get("followability") or {}
+    fill = contract.get("fillClock") or {}
+    integrity = brief.get("integrity") or {}
+    whip_ctx = (
+        ((contract.get("whip") or {}).get("context") or {})
+        if isinstance(contract.get("whip"), dict)
+        else {}
+    )
+
+    lines = ["## 0. 判断提醒 judgment alerts", ""]
+    alerts = 0
+    if path.get("active"):
+        alerts += 1
+        lines.append(f"- ⚠️ **settings 与停车腿不是同一条路径**：{path.get('message')}")
+    if follow.get("followable") is False:
+        alerts += 1
+        lines.append(
+            f"- ⚠️ **当前 settings `{follow.get('mode')}` 不可跟（{follow.get('status')}）**："
+            f"{follow.get('reason')}"
+        )
+        lines.append(
+            f"  - 建议：`{follow.get('recommendedMode')}`"
+            f"（{follow.get('recommendedModeLabel')}，timeline "
+            f"`{follow.get('recommendedTimeline')}`）—— 仅建议，未改 settings、未强切停车腿"
+        )
+    if integrity.get("status") == "warning":
+        alerts += len(integrity.get("warnings") or [])
+        lines.append("- ⚠️ **价格口径不一致（收盘/研究价 ≠ 可成交净价）**:")
+        for w in integrity.get("warnings") or []:
+            lines.append(f"  - {w.get('message')}")
+            lines.append(
+                f"    - close={w.get('close')} live={w.get('live')} cost={w.get('cost')} "
+                f"closeVsLive={w.get('closeVsLivePct')}% "
+                f"ma200={w.get('ma200')}（{w.get('ma200Basis')}）"
+                f" tradableMa200={w.get('tradableMa200')}"
+            )
+    if fill:
+        lines.append(
+            f"- ⏱ **可成交时钟**：{fill.get('label')} —— {fill.get('detail')}"
+            "（收盘价是信号口径，不可成交）"
+        )
+    else:
+        alerts += 1
+        lines.append("- ⚠️ **缺少执行时钟**：无法确认动作何时可成交。")
+    oil = (whip_ctx or {}).get("oil") or {}
+    if oil.get("active"):
+        alerts += 1
+        lines.append(f"- 🛢 **同键回买（油）**：{oil.get('message')}")
+    elif whip_ctx.get("sameKeyRebuy"):
+        alerts += 1
+        lines.append(
+            f"- 🛢 **同键回买**：pick={whip_ctx.get('pickKey')} 刚止损，"
+            f"先确认再买；覆盖 `/v1/agent/overlays`。"
+        )
+    if not alerts:
+        lines.append("- 无致命提醒（价格口径、路径、时钟、鞭打均正常）。")
+    lines.append("")
+    return lines
+
+
 def _render_contract(brief: dict[str, Any]) -> list[str]:
     contract = brief.get("contract") or {}
     strat = contract.get("strategy") or {}
@@ -1392,6 +1735,25 @@ def _render_contract(brief: dict[str, Any]) -> list[str]:
     lines.append(
         f"- mode: `{strat.get('mode')}`（{strat.get('label')}）→ timeline `{strat.get('timelineStrategy')}`（{strat.get('timelineLabel')}）"
     )
+    path = strat.get("pathMismatch") or {}
+    follow = strat.get("followability") or {}
+    if path.get("active"):
+        lines.append(f"- ⚠️ **settings vs 停车腿**: {path.get('message')}")
+    else:
+        lines.append(
+            f"- settings vs 停车腿: 一致 / 无冲突"
+            f"（sleeveRelevantToMode={strat.get('sleeveRelevantToMode')}）"
+        )
+    lines.append(
+        f"- followability: followable={follow.get('followable')} "
+        f"status={follow.get('status')} · {follow.get('reason')}"
+    )
+    if follow.get("followable") is False:
+        lines.append(
+            f"  - 建议 `{follow.get('recommendedMode')}`"
+            f"（{follow.get('recommendedModeLabel')} / timeline "
+            f"`{follow.get('recommendedTimeline')}`）；仅建议，settings 未改"
+        )
     lines.append(
         "- 映射: settings mode `homeport` = 产品母港 M30 → timeline key `homeport_m30`；"
         "timeline key `homeport` 是冻结的 M50 基准（勿混用）"
@@ -1413,10 +1775,19 @@ def _render_contract(brief: dict[str, Any]) -> list[str]:
             f"mom60={next_leg.get('mom60')} MA200={next_leg.get('ma200')} "
             f"aboveMA200={next_leg.get('aboveMa200')} · {next_leg.get('reason')}"
         )
+    fill = contract.get("fillClock") or {}
+    if fill:
+        lines.append(
+            f"- 可成交时钟: **{fill.get('label')}** · {fill.get('detail')} "
+            f"(basis={fill.get('basis')}, tradableNow={fill.get('tradableNow')})"
+        )
     if whip:
         lines.append(
             f"- 鞭打(whip): sameKeyRebuy={whip.get('sameKeyRebuy')} · {whip.get('copy') or '—'}"
         )
+        oil = ((whip.get("context") or {}).get("oil") or {}) if isinstance(whip, dict) else {}
+        if oil.get("active"):
+            lines.append(f"  - 油: {oil.get('message')}")
     active = overlays.get("active") or []
     if active:
         lines.append(
@@ -1783,16 +2154,43 @@ def _render_execution(brief: dict[str, Any]) -> list[str]:
     if not ex.get("available"):
         return lines + [f"- 不可用: {ex.get('error') or '—'}", ""]
     snap = ex.get("latestSnapshot") or {}
+    attention = ex.get("attention") or {}
     if snap:
         lines.append(
             f"- 最新快照: {snap.get('tradeDate')} @ {snap.get('capturedAt')} "
             f"source={snap.get('source')} gate={snap.get('gateMode')} cards={snap.get('cardCount')}"
         )
-        for card in (snap.get("cards") or [])[:10]:
-            lines.append(
-                f"  - {card.get('symbol')} {card.get('action') or card.get('side') or ''} "
-                f"{card.get('reason') or ''}".rstrip()
+    if attention:
+        counts = attention.get("counts") or {}
+        gates = attention.get("gates") or {}
+        lines.append(
+            "- 关注排序（服务端，先排序后截断）: "
+            f"must-act={counts.get('mustAct')}（EXIT {counts.get('exits')} / TRIM {counts.get('trims')}）"
+            f" · fire={counts.get('fires')} · blocked={counts.get('blockedFires')} "
+            f"· cnGateBlocked={gates.get('cnGateBlocked')} hkGateOpen={gates.get('hkGateOpen')}"
+        )
+
+        def _attention_row(x: dict[str, Any], tag: str) -> str:
+            fill = x.get("fill") or {}
+            return (
+                f"  - [{tag}] {x.get('symbol')} {x.get('action') or ''}".rstrip()
+                + (f" · {x.get('why')}" if x.get("why") else "")
+                + (f" · {fill.get('label')}" if fill.get("label") else "")
             )
+
+        for x in attention.get("mustAct") or []:
+            lines.append(_attention_row(x, "must-act"))
+        for x in attention.get("fires") or []:
+            lines.append(_attention_row(x, "fire"))
+        for x in attention.get("blockedFires") or []:
+            lines.append(_attention_row(x, "blocked"))
+    if snap:
+        if not attention:
+            for card in (snap.get("cards") or [])[:10]:
+                lines.append(
+                    f"  - {card.get('symbol')} {card.get('action') or card.get('side') or ''} "
+                    f"{card.get('reason') or ''}".rstrip()
+                )
     else:
         lines.append("- 快照: 无")
     changes = ex.get("changes") or []
@@ -1826,6 +2224,7 @@ def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = Fal
         "timeline 'homeport' 是冻结 M50，不是产品档）"
     )
     lines.append("")
+    lines.extend(_render_alerts(brief))
     lines.extend(_render_contract(brief))
     lines.extend(_render_gate(brief))
     lines.extend(_render_book(brief))

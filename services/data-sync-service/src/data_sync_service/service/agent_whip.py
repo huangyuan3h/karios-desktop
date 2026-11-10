@@ -193,5 +193,8 @@ def evaluate_whip(
         "lastExit": last_exit,
         "overlay": overlay,
         "keys": sorted(merged),
+        # Key -> latest observed exit date. Lets the contract say "oil was
+        # just sold" even when today's pick already rotated to BOND10.
+        "recentExits": {key: merged[key] for key in sorted(merged)},
         "memoryDays": WHIP_MEMORY_DAYS,
     }

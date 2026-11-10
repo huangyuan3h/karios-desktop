@@ -105,6 +105,105 @@ def _fake_health(*, trade_date: str | None = None, markets: tuple[str, ...] = ("
     }
 
 
+def _parking_health(
+    *,
+    close: float = 141.614,
+    ma200: float = 138.792,
+    cost: float = 134.46,
+    action: str = "HOLD",
+) -> dict:
+    """Harbor parking sleeve holding 511260 (research close vs live 净价)."""
+    health = _fake_health()
+    health["holdings"] = []
+    health["multiAssetSleeve"] = {
+        "active": True,
+        "action": action,
+        "label": "持有",
+        "message": "持有 10年国债ETF",
+        "holding": True,
+        "symbol": "ETF:511260",
+        "trailExit": False,
+        "pendingOpenSell": False,
+        "signalDate": "2026-11-10",
+        "idlePct": 0,
+        "parkPct": 63.5,
+        "pick": {
+            "key": "BOND10",
+            "symbol": "ETF:511260",
+            "name": "10年国债ETF",
+            "mom60": 1.1,
+            "close": close,
+            "ma200": ma200,
+            "above_ma200": close >= ma200,
+            "all_mom": {"OIL": 4.8, "BOND10": 1.1},
+            "all_above": {"OIL": True, "BOND10": True},
+        },
+        "etfPick": {"key": "BOND10", "symbol": "ETF:511260"},
+    }
+    health["multiAssetHoldings"] = [
+        {
+            "symbol": "ETF:511260",
+            "key": "BOND10",
+            "name": "10年国债ETF",
+            "positionPct": 63.5,
+            "costPrice": cost,
+            "marketData": {
+                "ok": True,
+                "close": close,
+                "ma200": ma200,
+                "above": close >= ma200,
+            },
+        }
+    ]
+    return health
+
+
+def _quotes(symbol: str, price: str) -> dict[str, Any]:
+    return {
+        "available": True,
+        "quotes": {
+            symbol: {
+                "price": price,
+                "pctChg": "0.1",
+                "preClose": price,
+                "tradeTime": "2026-11-10 14:30:00",
+                "tsCode": "511260.SH",
+                "source": "realtime_quote",
+            }
+        },
+    }
+
+
+def _patch_factor_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _read(name: str) -> dict[str, Any] | None:
+        if name == "factor_vault.json":
+            return {
+                "factors": [
+                    {
+                        "id": "starship_b",
+                        "name": "星舰B默认",
+                        "status": "cold",
+                        "badge": "冷库",
+                        "percentile": 2.2,
+                        "net": -14.79,
+                        "position": 0,
+                    }
+                ]
+            }
+        if name == "sgap_decay.json":
+            return {
+                "summary": {
+                    "revival_pos": 0,
+                    "latest_r40_mean": -14.79,
+                    "latest_r40_percentile": 2.2,
+                    "latest_r40_win_rate": 0.3,
+                }
+            }
+        return None
+
+    monkeypatch.setattr("data_sync_service.service.agent_contract._read_report_json", _read)
+
+
 def _fake_dashboard_summary(**_: Any) -> dict[str, Any]:
     return {
         "asOfDate": "2026-11-10",
@@ -480,6 +579,8 @@ def test_routes_json_and_markdown(patched: None) -> None:
     assert md.headers["content-type"].startswith("text/markdown")
     text = md.text
     assert "# 决策简报 judgment brief" in text
+    assert "## 0. 判断提醒 judgment alerts" in text
+    assert "可成交时钟" in text
     assert "## 4. 回测 backtest" in text
     assert "homeport_m30" in text
     assert "## 11. 故意省略 omitted" in text
@@ -510,6 +611,208 @@ def test_route_degrades_when_dashboard_summary_fails(
     assert out["gate"]["available"] is False
     assert out["sentiment"]["available"] is False
     assert "db down" in out["gate"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# judgment truth (2026-11-11): price caliber / path / clock / whip / attention
+# ---------------------------------------------------------------------------
+
+
+def test_price_integrity_flags_research_close_vs_live_net_price() -> None:
+    contract = {
+        "sleeve": {
+            "pick": {
+                "key": "BOND10",
+                "symbol": "ETF:511260",
+                "name": "10年国债ETF",
+                "close": 141.614,
+                "ma200": 138.792,
+            }
+        },
+        "nextLeg": {},
+    }
+    health = {
+        "multiAssetHoldings": [
+            {
+                "symbol": "ETF:511260",
+                "key": "BOND10",
+                "name": "10年国债ETF",
+                "costPrice": 134.46,
+                "marketData": {"ok": True, "close": 141.614, "ma200": 138.792},
+            }
+        ]
+    }
+    out = agent_brief._price_integrity_block(
+        contract=contract,
+        health=health,
+        quotes={"quotes": {"ETF:511260": {"price": "136.05"}}},
+    )
+
+    assert out["available"] is True
+    assert out["status"] == "warning"
+    warning = out["warnings"][0]
+    assert warning["symbol"] == "ETF:511260"
+    assert warning["close"] == 141.614
+    assert warning["live"] == 136.05
+    assert warning["cost"] == 134.46
+    assert 4.0 < warning["closeVsLivePct"] < 4.2
+    assert warning["ma200Basis"] == "adjusted_qfq"
+    assert warning["tradableMa200"] is None
+    assert "141.614" in warning["message"]
+    assert "136.05" in warning["message"]
+    assert "可成交价" in warning["message"]
+
+
+def test_price_integrity_ok_when_close_and_live_agree() -> None:
+    contract = {
+        "sleeve": {
+            "pick": {
+                "key": "BOND10",
+                "symbol": "ETF:511260",
+                "close": 136.10,
+                "ma200": 135.80,
+            }
+        },
+        "nextLeg": {},
+    }
+    health = {
+        "multiAssetHoldings": [
+            {
+                "symbol": "ETF:511260",
+                "key": "BOND10",
+                "marketData": {"close": 136.10, "ma200": 135.80},
+            }
+        ]
+    }
+    out = agent_brief._price_integrity_block(
+        contract=contract,
+        health=health,
+        quotes={"quotes": {"ETF:511260": {"price": "136.05"}}},
+    )
+    assert out["status"] == "ok"
+    assert out["warnings"] == []
+
+
+def test_brief_surfaces_integrity_in_json_and_markdown(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        lambda **kw: _parking_health(),
+    )
+    monkeypatch.setattr(
+        agent_brief, "_live_quotes", lambda symbols: _quotes("ETF:511260", "136.05")
+    )
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert out["contract"]["sleeve"]["pick"]["close"] == 141.614
+    assert out["integrity"]["status"] == "warning"
+    assert out["judgment"]["priceIntegrity"] == "warning"
+
+    md = agent_brief.render_judgment_brief_markdown(out)
+    assert "## 0. 判断提醒 judgment alerts" in md
+    assert "价格口径不一致" in md
+    assert "141.614" in md
+    assert "136.05" in md
+    assert "可成交的是实时净价" in md
+
+
+def test_brief_marks_expired_starship_and_recommends_m30(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "starship_b"
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        lambda **kw: _parking_health(),
+    )
+    monkeypatch.setattr(
+        agent_brief, "_live_quotes", lambda symbols: _quotes("ETF:511260", "136.05")
+    )
+    _patch_factor_reports(monkeypatch)
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    strat = out["contract"]["strategy"]
+    assert strat["pathMismatch"]["active"] is True
+    assert strat["followability"]["followable"] is False
+    assert strat["followability"]["recommendedMode"] == "homeport"
+    assert strat["followability"]["recommendedTimeline"] == "homeport_m30"
+    assert out["judgment"]["followability"]["followable"] is False
+
+    md = agent_brief.render_judgment_brief_markdown(out)
+    alerts = md.split("## 1. 契约 contract")[0]
+    assert "settings 与停车腿不是同一条路径" in alerts
+    assert "星舰 B" in alerts
+    assert "港湾" in alerts
+    assert "不可跟" in alerts
+    assert "homeport_m30" in alerts
+    assert "仅建议" in alerts
+    # The close-basis clock is present and never implies a paper close fill.
+    assert "可成交时钟" in alerts
+    assert "收盘价是信号口径，不可成交" in alerts
+
+
+def test_brief_oil_whip_context_even_when_pick_is_bond10(
+    patched: None, monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any]
+) -> None:
+    from data_sync_service.service import agent_whip
+
+    memory_settings[agent_whip.WHIP_MEMORY_KEY] = {"OIL": "2026-11-10"}
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        lambda **kw: _parking_health(),
+    )
+    monkeypatch.setattr(
+        agent_brief, "_live_quotes", lambda symbols: _quotes("ETF:511260", "136.05")
+    )
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    whip = out["contract"]["whip"]
+    assert whip["sameKeyRebuy"] is False
+    assert whip["context"]["oil"]["active"] is True
+    assert "不要自动回买油" in whip["context"]["oil"]["message"]
+    assert "BOND10" in whip["context"]["oil"]["message"]
+    assert "/v1/agent/overlays" in whip["context"]["oil"]["message"]
+
+    md = agent_brief.render_judgment_brief_markdown(out)
+    assert "同键回买（油）" in md
+    assert "不要自动回买油" in md
+    assert "/v1/agent/overlays" in md
+
+
+def test_execution_attention_ranks_must_act_before_truncation(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cards = [{"symbol": f"CN:{i:06d}", "action": "BUY", "why": "MAINLINE_OK"} for i in range(27)]
+    cards.append({"symbol": "CN:999999", "action": "EXIT", "why": "EXIT_NOW"})
+    monkeypatch.setattr(
+        "data_sync_service.db.execution_journal.fetch_latest_snapshot",
+        lambda **kw: {
+            "id": "snap-attn",
+            "tradeDate": "2026-11-10",
+            "capturedAt": "2026-11-10T07:10:00+00:00",
+            "source": "test",
+            "gate": {"mode": "ATTACK"},
+            "cards": cards,
+        },
+    )
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10", mode="compact")
+    ex = out["execution"]
+    att = ex["attention"]
+    assert att["cardCount"] == 28
+    assert att["mustAct"][0]["symbol"] == "CN:999999"
+    assert att["counts"]["mustAct"] == 1
+    # Ranking is applied BEFORE the 10-card compact truncation.
+    assert ex["latestSnapshot"]["cards"][0]["symbol"] == "CN:999999"
+    assert len(ex["latestSnapshot"]["cards"]) == agent_brief.SNAPSHOT_CARD_LIMIT_COMPACT
+    assert ex["latestSnapshot"]["cards"][0]["fill"]["closeBasis"] is True
+    assert ex["latestSnapshot"]["cards"][0]["fill"]["tradableNow"] is False
+
+    md = agent_brief.render_judgment_brief_markdown(out, compact=True)
+    assert "[must-act] CN:999999" in md
+    assert "先排序后截断" in md
 
 
 # ---------------------------------------------------------------------------
@@ -587,8 +890,13 @@ def test_brief_cache_hit_skips_expensive_builders(
     assert second["contract"] == first["contract"]
     assert second["book"] == first["book"]
     assert second["backtest"] == first["backtest"]
+    assert second["integrity"] == first["integrity"]
+    assert second["judgment"] == first["judgment"]
     assert second["omitted"] == first["omitted"]
     assert second["payloadBytes"] == first["payloadBytes"]
+    # The new judgment fields are part of the cached payload, not rebuilt later.
+    for key in ("fillClock", "followability", "pathMismatch", "whipContext"):
+        assert key in second["judgment"], key
 
     # Research / Alpha bodies still absent on a cache hit.
     blob = str(second)

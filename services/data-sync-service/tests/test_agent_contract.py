@@ -94,6 +94,55 @@ def _fake_health(sleeve: dict[str, Any], holdings: list[dict[str, Any]] | None =
     return _build
 
 
+def _patch_factor_reports(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    starship_status: str = "cold",
+    net: float = -14.79,
+    percentile: float = 2.2,
+    revival_pos: int = 0,
+    mean: float = -14.79,
+) -> None:
+    """Deterministic factor-vault / S-gap reports (no file or network read)."""
+
+    def _read(name: str) -> dict[str, Any] | None:
+        if name == "factor_vault.json":
+            return {
+                "factors": [
+                    {
+                        "id": "starship_b",
+                        "name": "星舰B默认",
+                        "status": starship_status,
+                        "badge": "冷库" if starship_status == "cold" else "复活",
+                        "percentile": percentile,
+                        "net": net,
+                        "position": 0,
+                    },
+                    {
+                        "id": "starship_a25",
+                        "name": "H2-a25",
+                        "status": starship_status,
+                        "badge": "冷库" if starship_status == "cold" else "复活",
+                        "percentile": None,
+                        "net": net,
+                        "position": 0,
+                    },
+                ]
+            }
+        if name == "sgap_decay.json":
+            return {
+                "summary": {
+                    "revival_pos": revival_pos,
+                    "latest_r40_mean": mean,
+                    "latest_r40_percentile": percentile,
+                    "latest_r40_win_rate": 0.3,
+                }
+            }
+        return None
+
+    monkeypatch.setattr(agent_contract, "_read_report_json", _read)
+
+
 def test_mode_homeport_maps_to_product_m30_not_m50() -> None:
     assert agent_contract.timeline_strategy_for_mode("homeport") == "homeport_m30"
     assert agent_contract.timeline_strategy_for_mode("harbor") == "harbor"
@@ -251,9 +300,7 @@ def test_overlays_route_shape(monkeypatch: pytest.MonkeyPatch, memory_settings) 
     monkeypatch.setattr(
         "data_sync_service.api.v1_agent_routes.shanghai_today_iso", lambda: "2026-11-10"
     )
-    monkeypatch.setattr(
-        "data_sync_service.service.agent_overlays._today_iso", lambda: "2026-11-10"
-    )
+    monkeypatch.setattr("data_sync_service.service.agent_overlays._today_iso", lambda: "2026-11-10")
     resp = client.post(
         "/v1/agent/overlays",
         json={"pickKey": "OIL", "status": "proposed", "note": "test"},
@@ -291,3 +338,156 @@ def test_decision_log_route(monkeypatch: pytest.MonkeyPatch) -> None:
     assert seen["action"] == "hold_same_key_rebuy"
     assert seen["status"] == "logged"
     assert seen["outcome"]["adoptedOverlay"] is True
+
+
+# ---------------------------------------------------------------------------
+# judgment truth (2026-11-11): path mismatch / followability / fill clock / oil
+# ---------------------------------------------------------------------------
+
+
+def _bond_sleeve(**overrides: Any) -> dict[str, Any]:
+    base = _sleeve(
+        action="HOLD",
+        label="持有",
+        message="持有 10年国债ETF",
+        symbol="ETF:511260",
+        trailExit=False,
+        pendingOpenSell=False,
+        executeHint=None,
+        pick={
+            "key": "BOND10",
+            "symbol": "ETF:511260",
+            "name": "10年国债ETF",
+            "mom60": 1.1,
+            "close": 141.614,
+            "ma200": 138.792,
+            "above_ma200": True,
+            "all_mom": {"OIL": 4.8, "BOND10": 1.1},
+            "all_above": {"OIL": True, "BOND10": True},
+        },
+        etfPick={"key": "BOND10", "symbol": "ETF:511260"},
+    )
+    base.update(overrides)
+    return base
+
+
+def test_starship_b_with_harbor_sleeve_is_prominent_and_not_followable(
+    monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        _fake_health(_bond_sleeve(), []),
+    )
+    monkeypatch.setattr(
+        "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "starship_b"
+    )
+    _patch_factor_reports(monkeypatch)
+
+    out = agent_contract.build_decision_contract(trade_date="2026-11-10")
+    strat = out["strategy"]
+
+    # The mismatch is spelled out, not left as sleeveRelevantToMode=false.
+    assert strat["sleeveRelevantToMode"] is False
+    path = strat["pathMismatch"]
+    assert path["active"] is True
+    assert "星舰 B" in path["message"]
+    assert "港湾" in path["message"]
+    assert "HOLD" in path["message"]
+    assert "不是同一条跟单路径" in path["message"]
+
+    # Cold starship factor → not followable, recommend 母港 M30 (advice only).
+    follow = strat["followability"]
+    assert follow["followable"] is False
+    assert follow["status"] == "cold"
+    assert "starship_b" in follow["reason"]
+    assert follow["recommendedMode"] == "homeport"
+    assert follow["recommendedModeLabel"] == "母港 M30"
+    assert follow["recommendedTimeline"] == "homeport_m30"
+    assert follow["adviceOnly"] is True
+
+    # Close-basis fill clock is always present and never claims tradability.
+    fill = out["fillClock"]
+    assert fill["basis"] == "close"
+    assert fill["closeBasis"] is True
+    assert fill["tradableNow"] is False
+    assert fill["label"]
+    # Settings were not rewritten by the recommendation.
+    assert not any("strategy" in str(key) for key in memory_settings)
+
+
+def test_homeport_is_not_gated_by_cold_starship_reports(
+    monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        _fake_health(_bond_sleeve(), []),
+    )
+    monkeypatch.setattr(
+        "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "homeport"
+    )
+    _patch_factor_reports(monkeypatch)
+
+    out = agent_contract.build_decision_contract(trade_date="2026-11-10")
+    follow = out["strategy"]["followability"]
+    assert follow["followable"] is True
+    assert follow["status"] == "not_gated"
+    assert follow["recommendedMode"] is None
+    assert out["strategy"]["pathMismatch"]["active"] is False
+
+
+def test_starship_followability_fails_closed_when_reports_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_contract, "_read_report_json", lambda name: None)
+    follow = agent_contract._followability("starship_b")
+    assert follow["followable"] is False
+    assert follow["status"] == "unknown"
+    assert follow["recommendedMode"] == "homeport"
+
+
+def test_fill_clock_mirrors_close_basis_timing() -> None:
+    from datetime import datetime
+
+    tz = agent_contract.SHANGHAI_TZ
+    weekday = datetime(2026, 11, 11, 16, 0, tzinfo=tz)
+    sell = agent_contract._fill_clock({"action": "SELL_TO_REPO"}, now=weekday)
+    assert sell["label"] == "明日开盘卖"
+    assert sell["tradableNow"] is False
+    buy = agent_contract._fill_clock({"action": "BUY"}, now=weekday)
+    assert buy["label"] == "明日开盘跟"
+    pending = agent_contract._fill_clock({"pendingOpenSell": True}, now=weekday)
+    assert pending["label"] == "收盘待确认 → 次日开盘卖"
+    weekend = agent_contract._fill_clock(
+        {"action": "BUY"}, now=datetime(2026, 11, 14, 10, 0, tzinfo=tz)
+    )
+    assert weekend["label"] == "下一交易日开盘跟"
+
+
+def test_oil_whip_context_survives_pick_rotation_to_bond10(
+    monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any]
+) -> None:
+    # OIL was stopped out yesterday; today's pick already rotated to BOND10.
+    memory_settings[agent_whip.WHIP_MEMORY_KEY] = {"OIL": "2026-11-10"}
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health",
+        _fake_health(_bond_sleeve(), []),
+    )
+    monkeypatch.setattr(
+        "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "harbor"
+    )
+
+    out = agent_contract.build_decision_contract(trade_date="2026-11-10")
+    whip = out["whip"]
+    assert whip["sameKeyRebuy"] is False
+    assert "OIL" in whip["keys"]
+    ctx = whip["context"]
+    oil = ctx["oil"]
+    assert oil["active"] is True
+    assert oil["lastExitDate"] == "2026-11-10"
+    assert "513350" in oil["message"]
+    assert "BOND10" in oil["message"]
+    assert "不要自动回买油" in oil["message"]
+    assert "/v1/agent/overlays" in oil["message"]
+    assert ctx["priority"] == "must_act_sell > same_key_rebuy"
+    assert ctx["cooldownDays"] == 0
+    assert ctx["engineCooldown"] is False

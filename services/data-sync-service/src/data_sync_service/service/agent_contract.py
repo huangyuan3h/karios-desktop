@@ -18,14 +18,19 @@ cooldown (k=0) or any strategy weight. The authority order is:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from data_sync_service.service.agent_overlays import group_overlays, list_overlays
 from data_sync_service.service.agent_whip import evaluate_whip
 
 logger = logging.getLogger(__name__)
+
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Settings mode -> Timeline strategy key. The trap: settings ``homeport`` is
 # the product M30 tier, whose timeline key is ``homeport_m30``. The timeline's
@@ -74,9 +79,289 @@ AUTHORITY = [
     "chat_narrative",
 ]
 
+# Modes whose economics depend on the S-gap / starship cold-storage factor.
+# These are the only modes that get a factor-vault followability gate; the
+# product baseline (homeport M30) and the Harbor sleeve are not gated here.
+STARSHIP_FAMILY_MODES = frozenset({"starship", "starship_robust", "starship_b"})
+STARSHIP_FACTOR_IDS: dict[str, tuple[str, ...]] = {
+    "starship": ("starship_h2", "starship_b3", "starship_cap50"),
+    "starship_robust": ("starship_a25",),
+    "starship_b": ("starship_b",),
+}
+PARKING_KEYS = frozenset({"GOLD", "OIL", "NASDAQ", "BOND10"})
+# The recommendation is advice in the payload only — the settings mode and the
+# live sleeve are never rewritten by this module.
+FOLLOW_RECOMMENDATION = {
+    "mode": "homeport",
+    "label": MODE_LABELS["homeport"],
+    "timelineStrategy": "homeport_m30",
+}
+CLOSE_BASIS_NOTE = "信号按收盘价计算；收盘价不可成交，只能按下面的执行时钟跟。"
+
 
 def timeline_strategy_for_mode(mode: str | None) -> str:
     return MODE_TO_TIMELINE.get(str(mode or ""), "homeport_m30")
+
+
+def _read_report_json(name: str) -> dict[str, Any] | None:
+    """Read one frozen backtest report (factor vault / S-gap decay).
+
+    Fail-open: a missing file returns ``None`` and the caller decides how
+    conservative to be. No DB, no network, no clock.
+    """
+    try:
+        from data_sync_service.api import backtest_routes as br
+
+        path = Path(br.REPORTS_DIR) / name
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception as exc:  # noqa: BLE001 — display/advice only
+        logger.warning("agent contract %s unavailable: %s", name, exc)
+        return None
+
+
+def _starship_factor_state(mode: str) -> dict[str, Any]:
+    """Frozen factor-vault + S-gap state for a starship-family mode."""
+    ids = STARSHIP_FACTOR_IDS.get(mode) or ()
+    vault = _read_report_json("factor_vault.json") or {}
+    factors = {
+        str(f.get("id")): f
+        for f in (vault.get("factors") or [])
+        if isinstance(f, dict) and f.get("id")
+    }
+    states = [
+        {
+            "id": fid,
+            "name": (factors.get(fid) or {}).get("name"),
+            "status": (factors.get(fid) or {}).get("status"),
+            "badge": (factors.get(fid) or {}).get("badge"),
+            "percentile": (factors.get(fid) or {}).get("percentile"),
+            "net": (factors.get(fid) or {}).get("net"),
+            "position": (factors.get(fid) or {}).get("position"),
+        }
+        for fid in ids
+        if factors.get(fid)
+    ]
+    decay = _read_report_json("sgap_decay.json") or {}
+    summary = decay.get("summary") or {}
+    sgap = {
+        "revivalPos": summary.get("revival_pos"),
+        "latestR40Mean": summary.get("latest_r40_mean"),
+        "latestR40Percentile": summary.get("latest_r40_percentile"),
+        "latestR40WinRate": summary.get("latest_r40_win_rate"),
+    }
+    return {"vaultAvailable": bool(vault), "factors": states, "sgap": sgap}
+
+
+def _followability(mode: str) -> dict[str, Any]:
+    """Can the decision agent follow the selected mode *now*?
+
+    Starship-family modes depend on the S-gap edge. The frozen factor vault
+    marks them 冷库 until the rolling-40 percentile is >= 75 AND net > 0, and
+    the S-gap decay panel must confirm. A cold/expired factor is not
+    followable even though the settings mode is still selectable.
+
+    Non-starship modes (homeport M30 / harbor / starport / twin_star) are not
+    gated here — this function never disables the product baseline.
+    """
+    if mode not in STARSHIP_FAMILY_MODES:
+        return {
+            "mode": mode,
+            "followable": True,
+            "status": "not_gated",
+            "reason": "not a starship-family mode; no cold-factor gate",
+            "recommendedMode": None,
+            "recommendedModeLabel": None,
+            "recommendedTimeline": None,
+            "adviceOnly": True,
+        }
+
+    state = _starship_factor_state(mode)
+    factors = state["factors"]
+    sgap = state["sgap"]
+    cold = [f for f in factors if str(f.get("status") or "") == "cold"]
+    revived = [f for f in factors if str(f.get("status") or "") == "revived"]
+    sgap_cold = (
+        (sgap.get("revivalPos") is not None and float(sgap["revivalPos"]) <= 0)
+        or (sgap.get("latestR40Percentile") is not None and float(sgap["latestR40Percentile"]) < 50)
+        or (sgap.get("latestR40Mean") is not None and float(sgap["latestR40Mean"]) <= 0)
+    )
+    known = bool(factors) or sgap.get("revivalPos") is not None
+    followable = bool(revived) and not sgap_cold and not cold
+    if not known:
+        status = "unknown"
+        reason = (
+            "factor_vault.json / sgap_decay.json unavailable — starship family "
+            "cannot be verified as revived; treated as not followable"
+        )
+    elif followable:
+        status = "revived"
+        reason = "factor vault and S-gap rolling-40 both confirm a revival"
+    else:
+        status = "cold" if cold else "watch"
+        bits = []
+        for f in factors:
+            bits.append(
+                f"{f.get('id')}={f.get('status')}"
+                f"({f.get('badge') or '—'}, net {f.get('net')}, pos {f.get('position')}%)"
+            )
+        if sgap:
+            bits.append(
+                "S-gap rolling40 "
+                f"mean={sgap.get('latestR40Mean')} "
+                f"percentile={sgap.get('latestR40Percentile')} "
+                f"revival_pos={sgap.get('revivalPos')}"
+            )
+        reason = "; ".join(bits) or "cold factor"
+    return {
+        "mode": mode,
+        "followable": followable,
+        "status": status,
+        "reason": reason,
+        "factors": factors,
+        "sgap": sgap,
+        "recommendedMode": FOLLOW_RECOMMENDATION["mode"],
+        "recommendedModeLabel": FOLLOW_RECOMMENDATION["label"],
+        "recommendedTimeline": FOLLOW_RECOMMENDATION["timelineStrategy"],
+        "adviceOnly": True,
+        "note": (
+            "advice only — settings mode and the live sleeve are unchanged; "
+            "Yuan must switch /settings/strategy-mode explicitly"
+        ),
+    }
+
+
+def _path_mismatch(mode: str, sleeve: dict[str, Any]) -> dict[str, Any]:
+    """Spell out settings-mode vs parking-sleeve mismatch (not a buried bool)."""
+    action = str(sleeve.get("action") or "NONE").upper()
+    pick = sleeve.get("pick") or {}
+    pick_key = str(pick.get("key") or "").upper()
+    symbol = sleeve.get("symbol") or pick.get("symbol")
+    holding = bool(sleeve.get("holding"))
+    is_parking = pick_key in PARKING_KEYS or str(symbol or "").upper().startswith("ETF:")
+    active = bool(
+        is_parking
+        and mode not in SLEEVE_MODES
+        and (holding or action in {"SELL_TO_REPO", "BUY", "ROTATE", "HOLD"})
+    )
+    mode_label = MODE_LABELS.get(mode, mode)
+    leg = f"{action} {symbol or pick_key or '—'}"
+    message = (
+        f"settings 是 {mode_label}（`{mode}`），但停车腿仍是 港湾 {leg}。"
+        f"这不是同一条跟单路径：不要把这个港湾停车腿当成 {mode_label} 在跟；"
+        "先看 followability 与回测对照，再决定跟哪条。"
+        if active
+        else f"settings {mode_label} 与当前停车腿一致，或当前没有可执行的停车腿。"
+    )
+    return {
+        "active": active,
+        "settingsMode": mode,
+        "settingsLabel": mode_label,
+        "sleeveFamily": "harbor" if is_parking else None,
+        "sleeveFamilyLabel": "港湾停车腿" if is_parking else None,
+        "sleeveAction": action,
+        "sleeveSymbol": symbol,
+        "sleevePickKey": pick_key or None,
+        "sleeveRelevantToMode": mode in SLEEVE_MODES,
+        "message": message,
+    }
+
+
+def _fill_clock(sleeve: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    """Server mirror of ``follow-timing.ts::executionTiming`` (close-basis).
+
+    A paper close is not tradable. The clock is the only honest answer to
+    "when can this actually be filled": 明日开盘跟 / 盘中可追 /
+    收盘待确认 → 次日开盘卖.
+    """
+    now = now or datetime.now(SHANGHAI_TZ)
+    next_word = "明日" if now.weekday() < 5 else "下一交易日"
+    action = str(sleeve.get("action") or "NONE").upper()
+    pending = bool(sleeve.get("pendingOpenSell"))
+    trail = bool(sleeve.get("trailExit"))
+    if pending:
+        kind, label, detail, tone = (
+            "close-sell-pending",
+            "收盘待确认 → 次日开盘卖",
+            "14:30 现价触线只做预警；收盘仍触发才卖，次日开盘执行",
+            "warn",
+        )
+    elif action == "SELL_TO_REPO" or trail:
+        kind, label, detail, tone = (
+            "close-sell-confirmed",
+            f"{next_word}开盘卖",
+            "信号已在收盘确认 → 次日开盘执行（不盘中挂单）",
+            "sell",
+        )
+    elif action in {"BUY", "ROTATE"}:
+        kind, label, detail, tone = (
+            "close-buy",
+            f"{next_word}开盘跟",
+            "收盘后信号 → 次日开盘执行；不追收盘价",
+            "buy",
+        )
+    else:
+        kind, label, detail, tone = (
+            "hold",
+            "无需操作",
+            "未达阈值/无新腿；下一步仍按收盘信号判断",
+            "muted",
+        )
+    return {
+        "kind": kind,
+        "label": label,
+        "detail": detail,
+        "tone": tone,
+        "basis": "close",
+        "closeBasis": True,
+        "tradableNow": False,
+        "nextSessionWord": next_word,
+        "note": CLOSE_BASIS_NOTE,
+    }
+
+
+def _whip_context(whip: dict[str, Any], sleeve: dict[str, Any]) -> dict[str, Any]:
+    """Make a same-key oil whip visible even when today's pick is BOND10."""
+    keys = [str(k).upper() for k in (whip.get("keys") or []) if k]
+    pick = sleeve.get("pick") or {}
+    pick_key = str(pick.get("key") or "").upper() or None
+    recent = whip.get("recentExits") or {}
+    last = whip.get("lastExit") or {}
+    oil_date = recent.get("OIL") or (last.get("date") if pick_key == "OIL" else None)
+    context: dict[str, Any] = {
+        "keys": keys,
+        "recentExits": recent,
+        "sameKeyRebuy": bool(whip.get("sameKeyRebuy")),
+        "pickKey": pick_key,
+        "priority": "must_act_sell > same_key_rebuy",
+        "mustActSellFirst": True,
+        "overlaysPath": "/v1/agent/overlays",
+        "cooldownDays": 0,
+        "engineCooldown": False,
+        "note": (
+            "judgment annotation only — must-act sell outranks a same-key rebuy; "
+            "the parking cooldown stays k=0 (H-PARK-C REJECT)"
+        ),
+    }
+    if "OIL" in keys or pick_key == "OIL":
+        current = (
+            f"当前 pick={pick_key}，不是 OIL；"
+            if pick_key and pick_key != "OIL"
+            else "当前 pick 仍是 OIL；"
+        )
+        context["oil"] = {
+            "active": True,
+            "key": "OIL",
+            "symbol": "ETF:513350",
+            "lastExitDate": oil_date,
+            "pickIsOil": pick_key == "OIL",
+            "message": (
+                f"刚卖出/止损 OIL（513350，{oil_date or '近10日内'}）。{current}"
+                "不要自动回买油；若下一腿回到 OIL，先确认再买。"
+                f"人工覆盖（annotate only）：{context['overlaysPath']}。"
+            ),
+        }
+    return context
 
 
 def _today_iso() -> str:
@@ -220,6 +505,9 @@ def build_decision_contract(
     action = str(sleeve.get("action") or "NONE")
     pick_key = (sleeve.get("pick") or {}).get("key") or "REPO"
     contract_id = f"dc:{day}:{timeline_key}:{action}:{pick_key}"
+    path_mismatch = _path_mismatch(mode, sleeve)
+    whip_payload = dict(whip)
+    whip_payload["context"] = _whip_context(whip, sleeve)
     return {
         "ok": True,
         "contractId": contract_id,
@@ -232,11 +520,14 @@ def build_decision_contract(
             "timelineLabel": TIMELINE_LABELS.get(timeline_key, timeline_key),
             "mappingNote": MAPPING_NOTE,
             "sleeveRelevantToMode": mode in SLEEVE_MODES,
+            "pathMismatch": path_mismatch,
+            "followability": _followability(mode),
         },
         "sleeve": _sleeve_summary(sleeve),
         "health": _health_summary(health),
         "nextLeg": _next_leg(sleeve),
-        "whip": whip,
+        "fillClock": _fill_clock(sleeve),
+        "whip": whip_payload,
         "overlays": overlays,
         "authority": AUTHORITY,
     }
