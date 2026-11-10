@@ -18,6 +18,14 @@ from data_sync_service.service import agent_brief
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_brief_cache() -> Any:
+    """Every test starts from a cold in-process cache (the module caches by day)."""
+    agent_brief.reset_judgment_brief_cache()
+    yield
+    agent_brief.reset_judgment_brief_cache()
+
+
 @pytest.fixture()
 def memory_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     store: dict[str, Any] = {}
@@ -502,3 +510,223 @@ def test_route_degrades_when_dashboard_summary_fails(
     assert out["gate"]["available"] is False
     assert out["sentiment"]["available"] is False
     assert "db down" in out["gate"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# cache + timings (2026-11-10 speed pass)
+# ---------------------------------------------------------------------------
+
+
+def _counting_builders(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Count how often the expensive builders actually run (they are stubs)."""
+    import data_sync_service.api.backtest_routes as br
+    import data_sync_service.service.strategy_catalog as sc
+
+    calls = {"dashboard": 0, "health": 0, "overview": 0, "catalog": 0}
+
+    def _dashboard(**kwargs: Any) -> dict[str, Any]:
+        calls["dashboard"] += 1
+        return _fake_dashboard_summary(**kwargs)
+
+    def _health(**kwargs: Any) -> dict:
+        calls["health"] += 1
+        return _fake_health(**kwargs)
+
+    base_overview = br.backtest_overview
+    base_catalog = sc.strategy_catalog
+
+    def _overview() -> dict[str, Any]:
+        calls["overview"] += 1
+        return base_overview()
+
+    def _catalog() -> list[dict[str, Any]]:
+        calls["catalog"] += 1
+        return base_catalog()
+
+    monkeypatch.setattr("data_sync_service.service.dashboard.dashboard_summary", _dashboard)
+    monkeypatch.setattr(
+        "data_sync_service.service.portfolio_health.build_portfolio_health", _health
+    )
+    monkeypatch.setattr(br, "backtest_overview", _overview)
+    monkeypatch.setattr(sc, "strategy_catalog", _catalog)
+    return calls
+
+
+def test_brief_cache_hit_skips_expensive_builders(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _counting_builders(monkeypatch)
+
+    first = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert first["cached"] is False
+    assert calls == {"dashboard": 1, "health": 1, "overview": 1, "catalog": 1}
+
+    # Per-block wall times are part of the payload now.
+    timings = first["timingsMs"]
+    for key in (
+        "contractMs",
+        "dashboardSummaryMs",
+        "freshnessMs",
+        "executionMs",
+        "backtestMs",
+        "quotesMs",
+        "totalMs",
+    ):
+        assert key in timings, key
+        assert timings[key] >= 0
+
+    second = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+
+    # No builder ran again: this is a real cache hit.
+    assert calls == {"dashboard": 1, "health": 1, "overview": 1, "catalog": 1}
+    assert second["cached"] is True
+    assert second["cache"]["hit"] is True
+    assert second["timingsMs"]["cacheLookupMs"] >= 0
+
+    # Same meaning, byte-for-byte on the meat (only cache/timings metadata moves).
+    assert second["contract"] == first["contract"]
+    assert second["book"] == first["book"]
+    assert second["backtest"] == first["backtest"]
+    assert second["omitted"] == first["omitted"]
+    assert second["payloadBytes"] == first["payloadBytes"]
+
+    # Research / Alpha bodies still absent on a cache hit.
+    blob = str(second)
+    assert "长文AI点评不应进入简报" not in blob
+    assert "aiSummary" not in blob
+    assert "targetPrice" not in blob
+
+
+def test_brief_refresh_bypasses_cache(patched: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _counting_builders(monkeypatch)
+
+    first = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert first["cached"] is False
+
+    refreshed = agent_brief.build_judgment_brief(trade_date="2026-11-10", refresh=True)
+
+    assert refreshed["cached"] is False
+    assert refreshed["cache"]["hit"] is False
+    assert calls == {"dashboard": 2, "health": 2, "overview": 2, "catalog": 2}
+    assert refreshed["contract"]["contractId"] == first["contract"]["contractId"]
+
+
+def test_brief_cache_expires_after_ttl(patched: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = {"now": 1_000_000.0}
+    monkeypatch.setattr(agent_brief._BRIEF_CACHE, "_clock", lambda: clock["now"])
+
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is False
+
+    clock["now"] += agent_brief.BRIEF_CACHE_TTL_SECONDS - 1
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is True
+
+    clock["now"] += 2  # past the TTL
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is False
+
+
+def test_brief_cache_expires_across_close_boundary(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-close snapshot must not be served as the evening brief."""
+    close_ts = 2_000_010.0
+    clock = {"now": close_ts - 5.0}
+    monkeypatch.setattr(agent_brief, "_last_session_close_ts", lambda: close_ts)
+    monkeypatch.setattr(agent_brief._BRIEF_CACHE, "_clock", lambda: clock["now"])
+
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is False
+
+    clock["now"] = close_ts + 1.0  # inside the 75s TTL, but after the close
+    rebuilt = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert rebuilt["cached"] is False
+
+
+def test_compact_reuses_warm_full_dashboard_and_catalog(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _counting_builders(monkeypatch)
+
+    agent_brief.build_judgment_brief(trade_date="2026-11-10", mode="full")
+    compact = agent_brief.build_judgment_brief(trade_date="2026-11-10", mode="compact")
+
+    # Compact is its own brief entry, but reuses the full run's slow inputs.
+    assert compact["cached"] is False
+    assert compact["cache"]["dashboardHit"] is True
+    assert compact["cache"]["backtestHit"] is True
+    assert calls == {"dashboard": 1, "health": 2, "overview": 1, "catalog": 1}
+    assert compact["backtest"].get("recent") is None
+
+
+def test_invalidation_drops_cached_brief(patched: None) -> None:
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is False
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is True
+
+    agent_brief.invalidate_judgment_brief_cache("test")
+    assert agent_brief.build_judgment_brief(trade_date="2026-11-10")["cached"] is False
+
+
+def test_dashboard_cache_ttl_is_session_aware(monkeypatch: pytest.MonkeyPatch) -> None:
+    import data_sync_service.service.trade_calendar_utils as tcu
+
+    monkeypatch.setattr(tcu, "compute_market_status", lambda now=None: {"isMarketOpen": True})
+    assert agent_brief._dashboard_cache_ttl() == agent_brief.DASHBOARD_CACHE_TTL_SECONDS
+
+    monkeypatch.setattr(tcu, "compute_market_status", lambda now=None: {"isMarketOpen": False})
+    assert agent_brief._dashboard_cache_ttl() == agent_brief.DASHBOARD_IDLE_TTL_SECONDS
+
+
+def test_dashboard_cache_keeps_summary_warm_off_session(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"dashboard": 0}
+    clock = {"now": 1_000_000.0}
+
+    def _dashboard(**kwargs: Any) -> dict[str, Any]:
+        calls["dashboard"] += 1
+        return _fake_dashboard_summary(**kwargs)
+
+    monkeypatch.setattr("data_sync_service.service.dashboard.dashboard_summary", _dashboard)
+    monkeypatch.setattr(agent_brief._DASHBOARD_CACHE, "_clock", lambda: clock["now"])
+    # Off-session TTL (no market open): 15 minutes.
+    monkeypatch.setattr(agent_brief._DASHBOARD_CACHE, "_ttl", lambda: 900.0)
+
+    agent_brief._dashboard_summary()
+    clock["now"] += 300  # well past the in-session 75s, still inside the idle TTL
+    agent_brief._dashboard_summary()
+
+    assert calls["dashboard"] == 1
+
+
+def test_warmup_populates_todays_brief(patched: None) -> None:
+    assert agent_brief.warm_judgment_brief(reason="test") is True
+
+    warm = agent_brief.build_judgment_brief()
+    assert warm["cached"] is True
+    assert warm["asOfDate"] == agent_brief._today_iso()
+
+
+def test_warmup_is_fail_open(patched: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(**_: Any) -> dict[str, Any]:
+        raise RuntimeError("contract down")
+
+    monkeypatch.setattr("data_sync_service.service.agent_contract.build_decision_contract", _boom)
+    # No raise; just a False + a warning log.
+    assert agent_brief.warm_judgment_brief(reason="test") is False
+
+
+def test_route_supports_refresh(patched: None) -> None:
+    first = client.get("/v1/agent/judgment-brief?tradeDate=2026-11-10")
+    assert first.status_code == 200
+    assert first.json()["cached"] is False
+
+    assert first.json()["timingsMs"]["totalMs"] >= 0
+
+    warm = client.get("/v1/agent/judgment-brief?tradeDate=2026-11-10")
+    assert warm.json()["cached"] is True
+
+    forced = client.get("/v1/agent/judgment-brief?tradeDate=2026-11-10&refresh=true")
+    assert forced.status_code == 200
+    assert forced.json()["cached"] is False
+
+    md = client.get("/v1/agent/judgment-brief.md?tradeDate=2026-11-10&refresh=true")
+    assert md.status_code == 200
+    assert md.text.startswith("# 决策简报 judgment brief")

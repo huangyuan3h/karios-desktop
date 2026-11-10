@@ -47,6 +47,19 @@ def run() -> None:
             post.get("macroDaily"),
         )
         record_success(JOB_ID)
+        # 2026-11-10 speed pass: the evening agent read follows the close data.
+        # Drop the pre-close brief cache and rebuild it in the background so
+        # 乐乐's first read is a warm hit instead of a cold build.
+        try:
+            from data_sync_service.service.agent_brief import (
+                invalidate_judgment_brief_cache,
+                warm_judgment_brief_async,
+            )
+
+            invalidate_judgment_brief_cache("close_sync")
+            warm_judgment_brief_async(reason="close_sync")
+        except Exception:  # noqa: BLE001 — warmup must never fail the close job
+            logger.warning("agent brief warmup after close_sync failed", exc_info=True)
     else:
         logger.warning("close_sync failed: %s", result.get("error", "unknown"))
         record_failure(JOB_ID, result.get("error", "unknown"))

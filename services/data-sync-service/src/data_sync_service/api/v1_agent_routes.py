@@ -125,6 +125,10 @@ def get_judgment_brief(
         default="json",
         description="json | md. 'md' returns the same payload as compact Markdown.",
     ),
+    refresh: bool = Query(
+        default=False,
+        description="Bypass the in-process brief/dashboard/backtest caches and rebuild.",
+    ),
 ) -> Any:
     """One-shot judgment brief for the decision agent (乐乐).
 
@@ -132,6 +136,9 @@ def get_judgment_brief(
     penalties (``omitted`` lists them). Research reports survive only as
     freshness flags. Backtest comparison (harbor / homeport_m30 / starship_b +
     the current settings mode) is included without full equity curves.
+
+    The payload is cached in-process for ~75s (``timingsMs`` / ``cache`` report
+    where the time went); ``refresh=true`` forces a rebuild.
     """
     mode_norm = str(mode or "full").strip().lower()
     if mode_norm not in ("full", "compact"):
@@ -140,7 +147,7 @@ def get_judgment_brief(
     if fmt not in ("json", "md", "markdown"):
         raise HTTPException(status_code=422, detail="format must be 'json' or 'md'")
     try:
-        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm)
+        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm, refresh=bool(refresh))
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -162,13 +169,17 @@ def get_judgment_brief_md(
         description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
     ),
     mode: str = Query(default="full", description="full | compact."),
+    refresh: bool = Query(
+        default=False,
+        description="Bypass the in-process brief/dashboard/backtest caches and rebuild.",
+    ),
 ) -> Response:
     """Same payload as ``/v1/agent/judgment-brief``, rendered as Markdown."""
     mode_norm = str(mode or "full").strip().lower()
     if mode_norm not in ("full", "compact"):
         raise HTTPException(status_code=422, detail="mode must be 'full' or 'compact'")
     try:
-        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm)
+        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm, refresh=bool(refresh))
         body = render_judgment_brief_markdown(brief, compact=mode_norm == "compact")
     except HTTPException:
         raise

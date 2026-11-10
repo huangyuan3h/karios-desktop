@@ -16,13 +16,23 @@ Read-only: nothing here rewrites ``sleeve.action``, ``TRAIL_PCT``, the parking
 cooldown (k=0) or any strategy weight. Every block is fail-open — a broken
 sub-source degrades to ``{"available": false, "error": ...}`` instead of
 failing the whole brief. Only a broken decision contract raises.
+
+Speed (2026-11-10): the assembled brief, the dashboard summary it reads and
+the frozen backtest catalog are cached in-process (``timingsMs`` + ``cache``
+in the payload report the cost). Startup, dashboard sync and close sync
+invalidate + re-warm it so the next 乐乐 read is warm; ``?refresh=true``
+forces a rebuild. A cached entry built before the latest weekday 15:00 close
+is never served after it.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
+import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -55,7 +65,115 @@ SNAPSHOT_CARD_LIMIT_COMPACT = 10
 INDUSTRY_TOP_N = 8
 QUOTE_TTL_SECONDS = 30
 
+# In-process cache TTLs (2026-11-10 speed pass). The first live read after an
+# evening restart took ~53s; 乐乐 calls this routinely, so warm reads must stay
+# in seconds. Everything here is process-local + thread-safe (single uvicorn
+# worker is the norm); `?refresh=true` bypasses all of it.
+BRIEF_CACHE_TTL_SECONDS = 75
+DASHBOARD_CACHE_TTL_SECONDS = 75
+# Off-session the dashboard is close-caliber (2026-08-12 rule) and its write
+# paths invalidate this cache, so a 36s vendor round every 75s buys nothing.
+DASHBOARD_IDLE_TTL_SECONDS = 900
+# Frozen backtest catalog / overview files only change when a job rewrites them.
+BACKTEST_CACHE_TTL_SECONDS = 300
+
 _QUOTE_CACHE: dict[str, Any] = {"at": 0.0, "symbols": (), "quotes": {}}
+
+
+def _last_session_close_ts() -> float:
+    """Timestamp of the most recent weekday 15:00 Asia/Shanghai close.
+
+    Same rule as the timeline file cache (``backtest_routes._load_timeline_file``):
+    an entry built before the latest close must not be served after it, so a
+    pre-close snapshot can never become the evening brief without a rebuild.
+    """
+    now = datetime.now(SHANGHAI_TZ)
+    close = now.replace(hour=15, minute=0, second=0, microsecond=0)
+    if now < close:
+        close -= timedelta(days=1)
+    while close.weekday() >= 5:
+        close -= timedelta(days=1)
+    return close.timestamp()
+
+
+def _dashboard_cache_ttl() -> float:
+    """75s while the CN session can move the book; 15 min off-session.
+
+    The dashboard path is deliberately close-caliber (2026-08-12 rule) and the
+    dashboard / close sync hooks invalidate this cache, so repeating a slow
+    vendor round outside market hours buys nothing.
+    """
+    try:
+        from data_sync_service.service.trade_calendar_utils import compute_market_status
+
+        if compute_market_status().get("isMarketOpen"):
+            return float(DASHBOARD_CACHE_TTL_SECONDS)
+    except Exception:  # noqa: BLE001 — fall back to the short TTL
+        return float(DASHBOARD_CACHE_TTL_SECONDS)
+    return float(DASHBOARD_IDLE_TTL_SECONDS)
+
+
+class _TTLCache:
+    """Tiny thread-safe TTL cache with an optional session-close expiry.
+
+    Values are cached by reference; callers that hand the value to a request
+    copy it first (the brief does) so a reader cannot mutate the cache. The
+    TTL may be a fixed number of seconds or a callable evaluated at write time.
+    """
+
+    def __init__(
+        self,
+        ttl_seconds: float | Callable[[], float],
+        *,
+        close_boundary: bool = True,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self._ttl = ttl_seconds
+        self._close_boundary = close_boundary
+        self._clock = clock or time.time
+        self._lock = threading.Lock()
+        self._entries: dict[Any, tuple[float, float, Any]] = {}
+
+    def _ttl_now(self) -> float:
+        return float(self._ttl() if callable(self._ttl) else self._ttl)
+
+    def get(self, key: Any) -> tuple[Any, float] | None:
+        """Return ``(value, age_seconds)`` when fresh, else ``None``."""
+        now = self._clock()
+        with self._lock:
+            row = self._entries.get(key)
+            if row is None:
+                return None
+            built_at, ttl, value = row
+            if self._stale(built_at, now, ttl):
+                self._entries.pop(key, None)
+                return None
+            return value, max(0.0, now - built_at)
+
+    def put(self, key: Any, value: Any) -> None:
+        with self._lock:
+            self._entries[key] = (self._clock(), self._ttl_now(), value)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+    def _stale(self, built_at: float, now: float, ttl: float) -> bool:
+        if now - built_at > ttl:
+            return True
+        if not self._close_boundary:
+            return False
+        close_ts = _last_session_close_ts()
+        return now >= close_ts and built_at < close_ts
+
+
+_DASHBOARD_CACHE = _TTLCache(_dashboard_cache_ttl)
+_BACKTEST_OVERVIEW_CACHE = _TTLCache(BACKTEST_CACHE_TTL_SECONDS, close_boundary=False)
+_BACKTEST_CATALOG_CACHE = _TTLCache(BACKTEST_CACHE_TTL_SECONDS, close_boundary=False)
+_BRIEF_CACHE = _TTLCache(BRIEF_CACHE_TTL_SECONDS)
+# One build at a time: a startup warmup and an incoming request must not both
+# pay for the same cold build (that stampede is what made the first read slow).
+_BRIEF_BUILD_LOCK = threading.Lock()
 
 
 def _today_iso() -> str:
@@ -231,6 +349,7 @@ def _book_block(
     contract: dict[str, Any],
     day: str,
     compact: bool,
+    timings: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     hk = health.get("hkHealth") or {}
     cn_rows = [r for r in (health.get("holdings") or []) if isinstance(r, dict)]
@@ -240,7 +359,10 @@ def _book_block(
 
     symbols = [str(r.get("symbol") or "") for r in cn_rows + hk_rows + park_rows]
     symbols += [str(r.get("symbol") or "") for r in just_sold]
+    quote_started = time.perf_counter()
     quotes = _live_quotes(symbols)
+    if timings is not None:
+        timings["quotesMs"] = round((time.perf_counter() - quote_started) * 1000.0, 1)
 
     sleeve = contract.get("sleeve") or {}
     return _trim(
@@ -273,15 +395,38 @@ def _book_block(
 # ---------------------------------------------------------------------------
 
 
-def _dashboard_summary() -> dict[str, Any]:
+def _dashboard_summary(
+    *,
+    refresh: bool = False,
+    cache_marks: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The brief's one dashboard read, cached for ``DASHBOARD_CACHE_TTL_SECONDS``.
+
+    The key carries the as-of day and the include flags, so a different
+    ``dashboard_summary`` call shape never shares an entry. Compact and full
+    briefs share this cache (compact must not redo the slow dashboard work).
+    """
     from data_sync_service.service.dashboard import dashboard_summary
 
-    return dashboard_summary(
-        include_macro=True,
-        include_sentiment=True,
-        include_news=True,
-        include_industry=True,
-    )
+    flags = {
+        "include_macro": True,
+        "include_sentiment": True,
+        "include_news": True,
+        "include_industry": True,
+    }
+    key = ("dashboard", _today_iso(), tuple(sorted(flags.items())))
+    if not refresh:
+        hit = _DASHBOARD_CACHE.get(key)
+        if hit is not None:
+            if cache_marks is not None:
+                cache_marks["dashboardCacheHit"] = True
+            return hit[0]
+
+    value = dashboard_summary(**flags)
+    _DASHBOARD_CACHE.put(key, value)
+    if cache_marks is not None:
+        cache_marks["dashboardCacheHit"] = False
+    return value
 
 
 def _gate_block(summary: dict[str, Any]) -> dict[str, Any]:
@@ -693,25 +838,75 @@ def _recent_timeline_note(*, strategy: str) -> dict[str, Any] | None:
     return stats
 
 
-def _backtest_block(*, contract: dict[str, Any], compact: bool) -> dict[str, Any]:
+def _backtest_overview_cached(
+    *,
+    refresh: bool = False,
+    cache_marks: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """``backtest_overview()`` behind a short cache (frozen files, cheap I/O)."""
     from data_sync_service.api import backtest_routes as br
-    from data_sync_service.service.strategy_catalog import strategy_catalog
 
-    strategy = contract.get("strategy") or {}
-    mode = str(strategy.get("mode") or "")
-    current_timeline = str(strategy.get("timelineStrategy") or "")
-
-    overview: dict[str, Any] = {}
+    key = ("backtest_overview", _today_iso())
+    if not refresh:
+        hit = _BACKTEST_OVERVIEW_CACHE.get(key)
+        if hit is not None:
+            if cache_marks is not None:
+                cache_marks["backtestCacheHit"] = True
+            return hit[0]
     try:
         overview = br.backtest_overview()
     except Exception as exc:  # noqa: BLE001
         logger.warning("agent judgment brief backtest overview failed: %s", exc)
+        if cache_marks is not None:
+            cache_marks["backtestCacheHit"] = False
+        return {}
+    _BACKTEST_OVERVIEW_CACHE.put(key, overview)
+    if cache_marks is not None:
+        cache_marks["backtestCacheHit"] = False
+    return overview
 
-    catalog_rows: list[dict[str, Any]] = []
+
+def _strategy_catalog_cached(
+    *,
+    refresh: bool = False,
+    cache_marks: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """``strategy_catalog()`` behind the same short cache as the overview."""
+    from data_sync_service.service.strategy_catalog import strategy_catalog
+
+    key = ("strategy_catalog", _today_iso())
+    if not refresh:
+        hit = _BACKTEST_CATALOG_CACHE.get(key)
+        if hit is not None:
+            if cache_marks is not None:
+                cache_marks["backtestCacheHit"] = True
+            return hit[0]
     try:
         catalog_rows = strategy_catalog()
     except Exception as exc:  # noqa: BLE001
         logger.warning("agent judgment brief strategy catalog failed: %s", exc)
+        if cache_marks is not None:
+            cache_marks["backtestCacheHit"] = False
+        return []
+    _BACKTEST_CATALOG_CACHE.put(key, catalog_rows)
+    if cache_marks is not None:
+        cache_marks["backtestCacheHit"] = False
+    return catalog_rows
+
+
+def _backtest_block(
+    *,
+    contract: dict[str, Any],
+    compact: bool,
+    refresh: bool = False,
+    cache_marks: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    strategy = contract.get("strategy") or {}
+    mode = str(strategy.get("mode") or "")
+    current_timeline = str(strategy.get("timelineStrategy") or "")
+
+    overview = _backtest_overview_cached(refresh=refresh, cache_marks=cache_marks)
+    catalog_rows = _strategy_catalog_cached(refresh=refresh, cache_marks=cache_marks)
 
     by_timeline: dict[str, dict[str, Any]] = {}
     for row in catalog_rows:
@@ -815,73 +1010,301 @@ def _build_health(day: str) -> dict[str, Any] | None:
         return None
 
 
-def build_judgment_brief(*, trade_date: str | None = None, mode: str = "full") -> dict[str, Any]:
-    """Assemble the agent judgment brief for ``trade_date`` (default: today)."""
+def _ms_since(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000.0, 1)
+
+
+def _mode_cache_key() -> tuple[str, str]:
+    """Current settings mode + timeline key, so a mode switch misses the cache."""
+    try:
+        from data_sync_service.api.settings_routes import selected_strategy_mode
+        from data_sync_service.service.agent_contract import timeline_strategy_for_mode
+
+        mode = str(selected_strategy_mode() or "")
+        return mode, timeline_strategy_for_mode(mode)
+    except Exception:  # noqa: BLE001 — cache key only, never blocks the read
+        return "", ""
+
+
+def _cached_brief_response(
+    value: dict[str, Any], age_seconds: float, request_started: float
+) -> dict[str, Any]:
+    """Deep-copied cache hit with honest cache + timing metadata (additive)."""
+    brief = copy.deepcopy(value)
+    built_timings = brief.get("timingsMs") or {}
+    brief["cached"] = True
+    brief["cache"] = {
+        **(brief.get("cache") or {}),
+        "hit": True,
+        "ageSeconds": round(age_seconds, 1),
+        "ttlSeconds": BRIEF_CACHE_TTL_SECONDS,
+    }
+    brief["timingsMs"] = {
+        "cacheLookupMs": _ms_since(request_started),
+        "builtTotalMs": built_timings.get("totalMs"),
+        "totalMs": _ms_since(request_started),
+    }
+    return brief
+
+
+def build_judgment_brief(
+    *,
+    trade_date: str | None = None,
+    mode: str = "full",
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Assemble the agent judgment brief for ``trade_date`` (default: today).
+
+    Cached in-process for ``BRIEF_CACHE_TTL_SECONDS``; a cached entry built
+    before the latest weekday 15:00 close is never served after it. The
+    dashboard / close sync hooks invalidate + re-warm this cache. ``refresh``
+    bypasses reads and rebuilds.
+    """
     from data_sync_service.service.agent_contract import build_decision_contract
 
+    request_started = time.perf_counter()
     day = str(trade_date or _today_iso())[:10]
     compact = str(mode or "full").strip().lower() == "compact"
+    brief_mode = "compact" if compact else "full"
+    cache_key = (day, brief_mode, _mode_cache_key(), BRIEF_VERSION)
 
-    health = _build_health(day)
-    contract = build_decision_contract(trade_date=day, health=health)
+    if not refresh:
+        hit = _BRIEF_CACHE.get(cache_key)
+        if hit is not None:
+            value, age = hit
+            logger.info(
+                "judgment brief cache hit mode=%s day=%s age=%.1fs lookup=%.1fms",
+                brief_mode,
+                day,
+                age,
+                _ms_since(request_started),
+            )
+            return _cached_brief_response(value, age, request_started)
 
-    summary: dict[str, Any] | None = None
-    summary_error: Exception | None = None
-    try:
-        summary = _dashboard_summary()
-    except Exception as exc:  # noqa: BLE001 — blocks degrade individually
-        summary_error = exc
-        logger.warning("agent judgment brief dashboard summary failed: %s", exc)
+    lock_started = time.perf_counter()
+    with _BRIEF_BUILD_LOCK:
+        lock_wait_ms = _ms_since(lock_started)
+        if not refresh:
+            # Another thread (startup/warmup or a concurrent read) may have
+            # finished the same build while we waited for the lock.
+            hit = _BRIEF_CACHE.get(cache_key)
+            if hit is not None:
+                value, age = hit
+                logger.info(
+                    "judgment brief cache hit after lock mode=%s day=%s age=%.1fs lookup=%.1fms",
+                    brief_mode,
+                    day,
+                    age,
+                    _ms_since(request_started),
+                )
+                return _cached_brief_response(value, age, request_started)
 
-    def _block(name: str, fn: Any) -> Any:
-        if summary is None:
-            return _fail(name, summary_error or RuntimeError("dashboard summary unavailable"))
+        timings: dict[str, float] = {"lockWaitMs": lock_wait_ms}
+        cache_marks: dict[str, Any] = {}
+
+        block_started = time.perf_counter()
+        health = _build_health(day)
+        timings["healthMs"] = _ms_since(block_started)
+
+        block_started = time.perf_counter()
+        contract = build_decision_contract(trade_date=day, health=health)
+        timings["contractMs"] = _ms_since(block_started)
+
+        block_started = time.perf_counter()
+        summary: dict[str, Any] | None = None
+        summary_error: Exception | None = None
         try:
-            return fn()
-        except Exception as exc:  # noqa: BLE001
-            return _fail(name, exc)
+            summary = _dashboard_summary(refresh=refresh, cache_marks=cache_marks)
+        except Exception as exc:  # noqa: BLE001 — blocks degrade individually
+            summary_error = exc
+            logger.warning("agent judgment brief dashboard summary failed: %s", exc)
+        timings["dashboardSummaryMs"] = _ms_since(block_started)
 
-    def _safe(name: str, fn: Any) -> Any:
+        def _block(name: str, fn: Any) -> Any:
+            if summary is None:
+                return _fail(name, summary_error or RuntimeError("dashboard summary unavailable"))
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                return _fail(name, exc)
+
+        def _safe(name: str, fn: Any) -> Any:
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                return _fail(name, exc)
+
+        def _timed(name: str, fn: Any) -> Any:
+            started = time.perf_counter()
+            try:
+                return fn()
+            finally:
+                timings[name] = _ms_since(started)
+
+        brief: dict[str, Any] = {
+            "ok": True,
+            "briefId": f"jb:{day}:{contract.get('strategy', {}).get('timelineStrategy')}:"
+            f"{contract.get('sleeve', {}).get('action')}:"
+            f"{contract.get('sleeve', {}).get('pickKey') or 'REPO'}:{BRIEF_VERSION}",
+            "briefVersion": BRIEF_VERSION,
+            "generatedAt": _now_utc_iso(),
+            "generatedAtShanghai": _now_shanghai_iso(),
+            "asOfDate": day,
+            "timezone": "Asia/Shanghai",
+            "mode": brief_mode,
+            "contract": contract,
+            "freshness": _timed("freshnessMs", lambda: _safe("freshness", _freshness_block)),
+            "gate": _timed("gateMs", lambda: _block("gate", lambda: _gate_block(summary or {}))),
+            "sentiment": _timed(
+                "sentimentMs",
+                lambda: _block(
+                    "sentiment", lambda: _sentiment_block(summary or {}, compact=compact)
+                ),
+            ),
+            "fund": _timed(
+                "fundMs",
+                lambda: _block("fund", lambda: _fund_block(summary or {}, compact=compact)),
+            ),
+            "macro": _timed(
+                "macroMs",
+                lambda: _block("macro", lambda: _macro_block(summary or {}, compact=compact)),
+            ),
+            "book": _timed(
+                "bookMs",
+                lambda: _safe(
+                    "book",
+                    lambda: _book_block(
+                        health=health or {},
+                        contract=contract,
+                        day=day,
+                        compact=compact,
+                        timings=timings,
+                    ),
+                ),
+            ),
+            "execution": _timed(
+                "executionMs",
+                lambda: _safe("execution", lambda: _execution_block(day=day, compact=compact)),
+            ),
+            "news": _timed(
+                "newsMs",
+                lambda: _block("news", lambda: _news_block(summary or {}, compact=compact)),
+            ),
+            "backtest": _timed(
+                "backtestMs",
+                lambda: _safe(
+                    "backtest",
+                    lambda: _backtest_block(
+                        contract=contract,
+                        compact=compact,
+                        refresh=refresh,
+                        cache_marks=cache_marks,
+                    ),
+                ),
+            ),
+            "omitted": list(OMITTED_PACKS),
+            "omittedNote": (
+                "research_reports / alpha_radar_* / alpha_auto_qa are human-browsing pages; "
+                "they are intentionally not inputs to this judgment brief"
+            ),
+            "cached": False,
+            "cache": {
+                "hit": False,
+                "ageSeconds": 0.0,
+                "ttlSeconds": BRIEF_CACHE_TTL_SECONDS,
+                "dashboardTtlSeconds": _dashboard_cache_ttl(),
+                "backtestTtlSeconds": BACKTEST_CACHE_TTL_SECONDS,
+                "dashboardHit": bool(cache_marks.get("dashboardCacheHit")),
+                "backtestHit": bool(cache_marks.get("backtestCacheHit")),
+                "quotesHit": False,
+            },
+        }
+        book_block = brief.get("book") if isinstance(brief.get("book"), dict) else {}
+        quotes_block = (book_block or {}).get("liveQuotes") or {}
+        brief["cache"]["quotesHit"] = bool(
+            quotes_block.get("cached") if isinstance(quotes_block, dict) else False
+        )
+        timings.setdefault("quotesMs", 0.0)
         try:
-            return fn()
-        except Exception as exc:  # noqa: BLE001
-            return _fail(name, exc)
+            brief["payloadBytes"] = len(json.dumps(brief, ensure_ascii=False).encode("utf-8"))
+        except Exception:  # noqa: BLE001 — size hint only
+            pass
+        timings["totalMs"] = _ms_since(request_started)
+        brief["timingsMs"] = {key: round(float(value), 1) for key, value in timings.items()}
 
-    brief: dict[str, Any] = {
-        "ok": True,
-        "briefId": f"jb:{day}:{contract.get('strategy', {}).get('timelineStrategy')}:"
-        f"{contract.get('sleeve', {}).get('action')}:"
-        f"{contract.get('sleeve', {}).get('pickKey') or 'REPO'}:{BRIEF_VERSION}",
-        "briefVersion": BRIEF_VERSION,
-        "generatedAt": _now_utc_iso(),
-        "generatedAtShanghai": _now_shanghai_iso(),
-        "asOfDate": day,
-        "timezone": "Asia/Shanghai",
-        "mode": "compact" if compact else "full",
-        "contract": contract,
-        "freshness": _safe("freshness", _freshness_block),
-        "gate": _block("gate", lambda: _gate_block(summary or {})),
-        "sentiment": _block("sentiment", lambda: _sentiment_block(summary or {}, compact=compact)),
-        "fund": _block("fund", lambda: _fund_block(summary or {}, compact=compact)),
-        "macro": _block("macro", lambda: _macro_block(summary or {}, compact=compact)),
-        "book": _safe(
-            "book",
-            lambda: _book_block(health=health or {}, contract=contract, day=day, compact=compact),
-        ),
-        "execution": _safe("execution", lambda: _execution_block(day=day, compact=compact)),
-        "news": _block("news", lambda: _news_block(summary or {}, compact=compact)),
-        "backtest": _safe("backtest", lambda: _backtest_block(contract=contract, compact=compact)),
-        "omitted": list(OMITTED_PACKS),
-        "omittedNote": (
-            "research_reports / alpha_radar_* / alpha_auto_qa are human-browsing pages; "
-            "they are intentionally not inputs to this judgment brief"
-        ),
-    }
+        _BRIEF_CACHE.put(cache_key, brief)
+        logger.info(
+            "judgment brief built mode=%s day=%s cached=%s lock_wait=%.0fms contract=%.0fms "
+            "dashboard=%.0fms freshness=%.0fms execution=%.0fms backtest=%.0fms "
+            "quotes=%.0fms total=%.0fms bytes=%s",
+            brief_mode,
+            day,
+            brief["cache"],
+            timings.get("lockWaitMs", 0.0),
+            timings.get("contractMs", 0.0),
+            timings.get("dashboardSummaryMs", 0.0),
+            timings.get("freshnessMs", 0.0),
+            timings.get("executionMs", 0.0),
+            timings.get("backtestMs", 0.0),
+            timings.get("quotesMs", 0.0),
+            timings.get("totalMs", 0.0),
+            brief.get("payloadBytes"),
+        )
+        return copy.deepcopy(brief)
+
+
+def reset_judgment_brief_cache() -> None:
+    """Drop every in-process brief cache entry (tests / manual reset)."""
+    _BRIEF_CACHE.clear()
+    _DASHBOARD_CACHE.clear()
+    _BACKTEST_OVERVIEW_CACHE.clear()
+    _BACKTEST_CATALOG_CACHE.clear()
+
+
+def invalidate_judgment_brief_cache(reason: str = "") -> None:
+    """Invalidate after dashboard / close sync so the evening read is rebuilt."""
+    reset_judgment_brief_cache()
+    logger.info("judgment brief cache invalidated (%s)", reason or "manual")
+
+
+def warm_judgment_brief(
+    *,
+    trade_date: str | None = None,
+    mode: str = "full",
+    reason: str = "",
+) -> bool:
+    """Build (and therefore cache) the brief. Fail-open: never raises."""
     try:
-        brief["payloadBytes"] = len(json.dumps(brief, ensure_ascii=False).encode("utf-8"))
-    except Exception:  # noqa: BLE001 — size hint only
-        pass
-    return brief
+        brief = build_judgment_brief(trade_date=trade_date, mode=mode)
+    except Exception as exc:  # noqa: BLE001 — warmup must never block startup/sync
+        logger.warning(
+            "judgment brief warmup failed (%s): %s", reason or "warmup", exc, exc_info=True
+        )
+        return False
+    logger.info(
+        "judgment brief warmup ok (%s): mode=%s day=%s total=%sms cached=%s",
+        reason or "warmup",
+        mode,
+        brief.get("asOfDate"),
+        (brief.get("timingsMs") or {}).get("totalMs"),
+        brief.get("cached"),
+    )
+    return True
+
+
+def warm_judgment_brief_async(
+    *,
+    trade_date: str | None = None,
+    mode: str = "full",
+    reason: str = "",
+) -> None:
+    """Kick a background warmup thread (startup / post-sync hooks)."""
+    threading.Thread(
+        target=warm_judgment_brief,
+        kwargs={"trade_date": trade_date, "mode": mode, "reason": reason},
+        name="judgment-brief-warmup",
+        daemon=True,
+    ).start()
 
 
 # ---------------------------------------------------------------------------

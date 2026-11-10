@@ -67,9 +67,21 @@ async def lifespan(app: FastAPI):
         except Exception:  # noqa: BLE001
             pass
 
+    # 2026-11-10 speed pass: the first agent judgment-brief read after a
+    # restart used to pay ~53s. Build it once in the background so 乐乐 /
+    # Sync & Copy land on a warm cache. Fail-open (warmup never blocks start).
+    def _warm_agent_brief() -> None:
+        try:
+            from .service.agent_brief import warm_judgment_brief
+
+            warm_judgment_brief(reason="startup")
+        except Exception:  # noqa: BLE001
+            pass
+
     import threading
 
     threading.Thread(target=_warm, name="timeline-warmup", daemon=True).start()
+    threading.Thread(target=_warm_agent_brief, name="judgment-brief-warmup", daemon=True).start()
     yield
     scheduler.shutdown(wait=False)
 

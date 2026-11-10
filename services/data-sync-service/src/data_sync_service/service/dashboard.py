@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Generator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
@@ -62,6 +63,8 @@ from data_sync_service.service.trade_calendar_utils import (
 )
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
+
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -589,6 +592,26 @@ def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
     }
 
 
+def _refresh_agent_brief_after_sync(*, ok: bool) -> None:
+    """Invalidate (and re-warm) the agent judgment brief after a dashboard sync.
+
+    2026-11-10 speed pass: the brief caches its dashboard summary; a sync must
+    not leave a pre-sync snapshot behind. Fail-open — never changes the sync
+    response, and the warmup runs on its own daemon thread.
+    """
+    try:
+        from data_sync_service.service.agent_brief import (
+            invalidate_judgment_brief_cache,
+            warm_judgment_brief_async,
+        )
+
+        invalidate_judgment_brief_cache("dashboard_sync")
+        if ok:
+            warm_judgment_brief_async(reason="dashboard_sync")
+    except Exception:  # noqa: BLE001 — brief refresh is best-effort
+        logger.warning("agent brief refresh after dashboard sync failed", exc_info=True)
+
+
 def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     step_fns = {
@@ -613,6 +636,7 @@ def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
+    _refresh_agent_brief_after_sync(ok=ok)
     return {
         "ok": ok,
         "startedAt": started_at,
@@ -680,4 +704,5 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
     if summary_error:
         final["ok"] = False
         final["error"] = summary_error
+    _refresh_agent_brief_after_sync(ok=bool(final.get("ok")))
     yield json.dumps({"type": "done", "result": final, "summary": summary_data}) + "\n"
