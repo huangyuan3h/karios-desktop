@@ -9,7 +9,6 @@ import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { FundFlowPanoramaCard } from '@/components/dashboard/FundFlowPanoramaCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
-import { NationalTeamCard } from '@/components/dashboard/NationalTeamCard';
 import { FactorRevivalCard } from '@/components/dashboard/FactorRevivalCard';
 import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
 import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
@@ -132,13 +131,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
-  // 资金流全景 lives as a standalone full-width block below the two columns.
-  const scrollToFundFlowPanel = React.useCallback(() => {
-    document
-      .getElementById('dashboard-fund-flow')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
-
   // Loose JSON schema from API; cast for nested card rendering.
   const dash = summary as any;
 
@@ -260,7 +252,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const cardsById: Record<string, DashCard> = React.useMemo(
     () => ({
       industry: { id: 'industry', title: '行业资金流' },
-      nationalTeam: { id: 'nationalTeam', title: '国家队 / 资金确认' },
       factorRevival: { id: 'factorRevival', title: '因子 / S-gap 复活' },
       sentiment: { id: 'sentiment', title: '市场情绪' },
       brief: { id: 'brief', title: '新闻简报' },
@@ -281,7 +272,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const columnCards = React.useMemo(() => {
     const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
     return {
-      left: ['industry', 'nationalTeam', 'factorRevival', 'watchlistRisk', 'decisions']
+      left: ['industry', 'factorRevival', 'watchlistRisk', 'decisions']
         .filter(visible)
         .map((id) => cardsById[id]),
       right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
@@ -509,8 +500,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   copyStatus={industryCopyStatus}
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
                 />
-              ) : id === 'nationalTeam' ? (
-                <NationalTeamCard onOpenPanel={scrollToFundFlowPanel} />
               ) : id === 'factorRevival' ? (
                 <FactorRevivalCard
                   onOpenVault={() => onNavigate?.('backtest')}

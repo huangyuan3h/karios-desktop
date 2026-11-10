@@ -102,4 +102,12 @@ describe('Dashboard placement', () => {
     expect(watchlist).not.toContain('FundFlowPanel');
     expect(watchlist).not.toContain('FundFlowPanoramaCard');
   });
+
+  it('no longer mounts the compact national-team card on Dashboard', () => {
+    expect(source).not.toContain('NationalTeamCard');
+    expect(source).not.toContain('nationalTeam');
+    expect(source).not.toContain('国家队 / 资金确认');
+    // The panorama is the only 资金流 surface left on this page.
+    expect(source.match(/<FundFlowPanoramaCard/g)?.length).toBe(1);
+  });
 });
