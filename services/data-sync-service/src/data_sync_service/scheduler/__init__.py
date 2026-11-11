@@ -30,6 +30,7 @@ from data_sync_service.scheduler import (
     em_probe_job,
     etf_daily_job,
     etf_snapshot_job,
+    factor_live_job,
     factor_signals_job,
     factor_vault_job,
     fund_basic_job,
@@ -436,6 +437,14 @@ def create_scheduler() -> BackgroundScheduler:
         timeline_warmup_job.run,
         timeline_warmup_job.build_trigger(),
         id=timeline_warmup_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Factor live overlay (weekdays 19:00 — append new closed S-gap/Harbor
+    # trades + recompute the parking path; read-only replay, fail-open).
+    scheduler.add_job(
+        factor_live_job.run,
+        factor_live_job.build_trigger(),
+        id=factor_live_job.JOB_ID,
         replace_existing=True,
     )
     # Factor vault daily refresh (weekdays 19:10 — read-only file recompute,

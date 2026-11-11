@@ -1,4 +1,4 @@
-"""Factor system contract — vault state to advice-only policy (2026-11-11.4).
+"""Factor system contract — vault state to advice-only policy (2026-11-11.5).
 
 This turns the read-only factor vault (27 factors, H2k cold/watch/revived)
 into one stable, agent-readable policy. It is **advice only**: it never
@@ -22,24 +22,30 @@ the light. The three documented H2k gates are:
 If any is unmet, a revived factor can still show its light but
 ``suggestedLiveWeight`` stays 0 and ``liveBlocked`` explains why.
 
-Freshness is surfaced, not hidden: the vault and trade blotter are frozen
-(no live append path in this slice), so the lights do not move on their own.
+Freshness is surfaced, not hidden. Since 2026-11-11 the rolling last-40
+window follows the Karios-owned live blotter (``factor_live_trades.json``,
+appended daily after each complete A-share session) while the four audit
+windows stay frozen; ``freshness.stale`` is false only when every replay input
+is current, and the vault's frozen ``generated_at`` never makes a caught-up
+live blotter stale.
 
 Fail-open: missing/corrupt vault files return ``available: false`` with an
 ``error`` and a conservative wait-in-baseline policy; the judgment brief
-still returns. No DB, no network, no clock side effects (``now`` is injected;
-only the API wrapper defaults it to today).
+still returns. No writes, no network, no clock side effects (``now`` is
+injected; only the API wrapper defaults it to today). One optional read-only
+DB query resolves the latest complete session when a live blotter exists.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
 
 from data_sync_service.service import combo_tiers_config as cfg
+from data_sync_service.service import factor_live as fl
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +83,9 @@ HOLDOUT_WINDOW = "holdout"
 DEFAULT_UNIT = "%"
 
 # Documented current paper-20 count (H2k Sec 4 / STEP1 2026-10-03: ~4/20,
-# all losing). There is no live blotter append path in this slice, so this
-# stays a dated documented value and is surfaced as stale, not silently live.
+# all losing). The factor live overlay counts replay trades for the vault
+# lights; it does NOT count paper fills, so this stays a dated documented
+# value and is surfaced as stale, not silently live.
 PAPER_FILLS_AS_OF = 4
 PAPER_FILLS_AS_OF_DATE = "2026-10-03"
 
@@ -318,7 +325,10 @@ def _live_preconditions(
             "completed": paper_done,
             "pass": paper_pass,
             "asOfDate": PAPER_FILLS_AS_OF_DATE,
-            "source": "documented 2026-10-03 audit; no live blotter append in this slice",
+            "source": (
+                "documented 2026-10-03 audit; the factor live overlay counts "
+                "replay trades, not paper fills"
+            ),
             "stale": True,
         },
         "holdoutRecovery": {
@@ -410,8 +420,36 @@ def _window_slice(entry: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _recent_performance(row: dict[str, Any], unit: str) -> dict[str, Any]:
-    """Latest frozen window (holdout) for the brick table, honest when absent."""
+    """Rolling recent performance: live overlay when present, else holdout.
+
+    - ``window="live"``: the last-40 health check recomputed from the live
+      blotter (frozen prefix + appended closed trades), ``asOf`` = latest
+      complete replay session, ``lastTradeAsOf`` = last closed trade.
+    - ``window="holdout"``: legacy frozen holdout slice (no live override).
+    The four lower windows in ``bricks[i].windows`` stay frozen audit history.
+    """
     entry = _history_windows(row).get(HOLDOUT_WINDOW)
+    rolling_as_of = row.get("rolling_as_of")
+    basis = row.get("rolling_basis")
+    is_live = str(basis or "").startswith("live:")
+    if rolling_as_of:
+        return {
+            "window": str(row.get("rolling_window") or ("live" if is_live else HOLDOUT_WINDOW)),
+            "asOf": str(rolling_as_of)[:10],
+            "lastTradeAsOf": (
+                str(row.get("rolling_last_trade_as_of"))[:10]
+                if row.get("rolling_last_trade_as_of")
+                else None
+            ),
+            "net": _as_float(row.get("net")),
+            "percentile": _as_float(row.get("percentile")),
+            "winRate": _as_float(row.get("win_rate")),
+            "trades": _as_int(row.get("trades")),
+            "unit": unit,
+            "missing": False,
+            "source": "live" if is_live else "frozen",
+            "basis": basis,
+        }
     if not isinstance(entry, dict):
         return {
             "window": HOLDOUT_WINDOW,
@@ -422,17 +460,20 @@ def _recent_performance(row: dict[str, Any], unit: str) -> dict[str, Any]:
             "trades": None,
             "unit": unit,
             "missing": True,
+            "source": "frozen",
         }
     slice_ = _window_slice(entry)
     return {
         "window": HOLDOUT_WINDOW,
         "asOf": slice_["date"],
+        "lastTradeAsOf": slice_["date"],
         "net": slice_["net"],
         "percentile": slice_["percentile"],
         "winRate": slice_["winRate"],
         "trades": slice_["trades"],
         "unit": unit,
         "missing": False,
+        "source": "frozen",
     }
 
 
@@ -651,14 +692,21 @@ def _unavailable(
 def build_factor_system(
     *,
     reports_dir: Path | str | None = None,
-    now: str | date | None = None,
+    now: str | date | datetime | None = None,
     compact: bool = False,
     preconditions_override: dict[str, Any] | None = None,
     prev_factors: dict[str, Any] | None = None,
     prev_sgap_revival_pos: int | None = None,
+    latest_session: str | None = None,
 ) -> dict[str, Any]:
-    """Build the advice-only factor-system contract (fail-open, no DB/network)."""
-    today = _coerce_date(now)
+    """Build the advice-only factor-system contract (fail-open, no writes).
+
+    ``latest_session`` lets callers (tests) pin the latest complete session;
+    when omitted, a single read-only DB query resolves it only if a live
+    blotter exists (fail-open to the file's own ``expectedSession``).
+    """
+    now_dt = _coerce_now(now)
+    today = now_dt.date()
     generated_at = today.isoformat()
     base = Path(reports_dir) if reports_dir is not None else _reports_dir()
 
@@ -702,36 +750,20 @@ def build_factor_system(
         decay=decay,
     )
 
-    # Freshness: the vault and the frozen trade blotter are both dated.
+    # Freshness: prefer the live overlay (caught up to the latest complete
+    # session); fall back to the frozen vault/blotter age when it is absent.
     vault_at = meta.get("generated_at")
     summary_decay = decay.get("summary") or {}
-    blotter_end = summary_decay.get("date_end")
-    age = _age_days(vault_at, today)
-    blotter_age = _age_days(blotter_end, today)
-    stale = bool(
-        age is None
-        or age > STALE_AFTER_DAYS
-        or (blotter_age is not None and blotter_age > STALE_AFTER_DAYS)
+    live = fl.load_live_payload(base / fl.LIVE_FILENAME)
+    freshness = _freshness(
+        vault_at=vault_at,
+        today=today,
+        now_dt=now_dt,
+        history=history,
+        live=live,
+        decay_end=summary_decay.get("date_end"),
+        latest_session=latest_session,
     )
-    fresh_reason = []
-    if age is None:
-        fresh_reason.append("因子库缺少 generated_at")
-    elif age > STALE_AFTER_DAYS:
-        fresh_reason.append(f"因子库生成于 {vault_at}，距今 {age} 天")
-    if blotter_age is None:
-        fresh_reason.append("S-gap 流水日期缺失")
-    elif blotter_age > STALE_AFTER_DAYS:
-        fresh_reason.append(f"交易流水止于 {blotter_end}，距今 {blotter_age} 天")
-    if stale:
-        fresh_reason.append("交易流水中断，灯不会自行变化")
-    freshness = {
-        "sourceGeneratedAt": vault_at,
-        "historyLatest": (history[-1] or {}).get("date") if history else None,
-        "tradeBlotterLastEntry": blotter_end,
-        "ageDays": age,
-        "stale": stale,
-        "reason": "；".join(fresh_reason) if fresh_reason else "因子库与交易流水为近期快照。",
-    }
 
     pre = _live_preconditions(factors, preconditions_override)
     live_blocked_reason = _live_blocked_reason(pre)
@@ -840,15 +872,124 @@ def build_factor_system(
     return compact_factor_system(payload) if compact else payload
 
 
-def _coerce_date(now: str | date | None) -> date:
-    if isinstance(now, date):
+def _coerce_now(now: str | date | datetime | None) -> datetime:
+    if isinstance(now, datetime):
         return now
+    if isinstance(now, date):
+        # A bare date means "during that day" (before the 19:00 live job), so
+        # the same-day lag grace applies.
+        return datetime.combine(now, time(12, 0))
     if now:
         try:
-            return date.fromisoformat(str(now)[:10])
+            return datetime.fromisoformat(str(now))
         except ValueError:
             pass
-    return date.today()
+    return datetime.now()
+
+
+def _same_day_grace(expected: str, now: datetime, as_of: str | None) -> bool:
+    """Before tonight's 19:00 live job, a recent as-of is not stale.
+
+    The grace is bounded to a long-weekend lag (<= 3 calendar days) so a dead
+    overlay is still reported stale instead of being masked as "same-day".
+    """
+    if expected != now.date().isoformat() or now.hour >= fl.LIVE_JOB_HOUR_CN:
+        return False
+    lag = _age_days(as_of, now.date())
+    return lag is None or lag <= 3
+
+
+def _freshness(
+    *,
+    vault_at: Any,
+    today: date,
+    now_dt: datetime,
+    history: list[dict[str, Any]],
+    live: dict[str, Any] | None,
+    decay_end: Any,
+    latest_session: str | None,
+) -> dict[str, Any]:
+    """Honest freshness: live overlay first, frozen snapshot second.
+
+    Live path: stale is false only when every replay input is ok and the
+    blotter as-of covers the latest complete session (with a same-day grace
+    before the 19:00 job). A frozen ``generated_at`` never makes a caught-up
+    live blotter stale. Missing inputs (no 14:30 bars, ETF not synced) keep
+    ``stale=true`` with the job's own reason.
+    """
+    history_latest = (history[-1] or {}).get("date") if history else None
+    if live:
+        meta = live.get("meta") or {}
+        inputs = meta.get("inputs") or {}
+        as_of = meta.get("asOf")
+        expected = latest_session
+        if expected is None:
+            expected = fl.latest_complete_session()
+        reasons: list[str] = []
+        stale = False
+        if meta.get("status") != "ok":
+            stale = True
+            reasons.append(str(meta.get("reason") or "实盘重演输入缺失"))
+        for fam in ("sgap", "harbor"):
+            inp = inputs.get(fam) or {}
+            if inp.get("ok") is False:
+                stale = True
+                reasons.append(f"{fam} 实盘重演未跟新：{inp.get('reason')}")
+        if not as_of:
+            stale = True
+            reasons.append("实盘流水缺少 asOf")
+        elif expected and str(as_of) < str(expected):
+            if not _same_day_grace(str(expected), now_dt, str(as_of)):
+                stale = True
+                reasons.append(f"实盘流水止于 {as_of}，最新完整交易日 {expected}")
+        if not stale:
+            reasons.append(
+                f"实盘重演已跟上 {as_of}"
+                + (f"（{meta.get('updatedAt')} 更新）" if meta.get("updatedAt") else "")
+            )
+        return {
+            "sourceGeneratedAt": vault_at,
+            "historyLatest": history_latest,
+            "tradeBlotterLastEntry": as_of,
+            "liveAsOf": as_of,
+            "liveStatus": meta.get("status"),
+            "liveUpdatedAt": meta.get("updatedAt"),
+            "expectedSession": expected or meta.get("expectedSession"),
+            "ageDays": _age_days(as_of, today),
+            "stale": stale,
+            "reason": "；".join(r for r in reasons if r),
+        }
+
+    age = _age_days(vault_at, today)
+    blotter_age = _age_days(decay_end, today)
+    stale = bool(
+        age is None
+        or age > STALE_AFTER_DAYS
+        or (blotter_age is not None and blotter_age > STALE_AFTER_DAYS)
+    )
+    fresh_reason: list[str] = []
+    if age is None:
+        fresh_reason.append("因子库缺少 generated_at")
+    elif age > STALE_AFTER_DAYS:
+        fresh_reason.append(f"因子库生成于 {vault_at}，距今 {age} 天")
+    if blotter_age is None:
+        fresh_reason.append("S-gap 流水日期缺失")
+    elif blotter_age > STALE_AFTER_DAYS:
+        fresh_reason.append(f"交易流水止于 {decay_end}，距今 {blotter_age} 天")
+    if stale:
+        fresh_reason.append("交易流水中断，灯不会自行变化")
+    return {
+        "sourceGeneratedAt": vault_at,
+        "historyLatest": history_latest,
+        "tradeBlotterLastEntry": decay_end,
+        "liveAsOf": None,
+        "liveStatus": None,
+        "liveUpdatedAt": None,
+        "expectedSession": latest_session,
+        "ageDays": age,
+        "stale": stale,
+        "reason": "；".join(fresh_reason) if fresh_reason else "因子库与交易流水为近期快照。",
+    }
 
 
 def render_factor_system_markdown(payload: dict[str, Any]) -> str:

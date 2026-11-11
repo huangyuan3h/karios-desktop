@@ -193,6 +193,7 @@ class TestCreateScheduler:
             "watchlist_automation_retry",
             "factor_vault_refresh",
             "sgap_decay_refresh",
+            "factor_live_append",
         }
         assert ids == expected
 

@@ -383,6 +383,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     # P0-13 B18: EM limit-up pools daily snapshot (forward-only panel)
     "zt_pool_snapshot",
     # 2026-10-25 factor/S-gap monitor refresh (必达 MVP: transition emit + dark page)
+    "factor_live_append",
     "factor_vault_refresh",
     "sgap_decay_refresh",
 )

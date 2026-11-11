@@ -362,12 +362,14 @@ def test_brick_recent_performance_uses_frozen_holdout(tmp_path: Path) -> None:
     assert brick["recentPerformance"] == {
         "window": "holdout",
         "asOf": "2026-09-30",
+        "lastTradeAsOf": "2026-09-30",
         "net": -19.8,
         "percentile": 10.0,
         "winRate": None,
         "trades": 40,
         "unit": "点",
         "missing": False,
+        "source": "frozen",
     }
     assert set(brick["windows"]) == {"OOS2", "train", "valid", "holdout"}
     assert brick["windows"]["OOS2"]["date"] == "2025-08-07"
@@ -431,7 +433,7 @@ def test_compact_shape_keeps_status_only(tmp_path: Path) -> None:
 def test_agent_brief_block_and_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reports = _write_reports(tmp_path)
     monkeypatch.setattr(br, "REPORTS_DIR", reports)
-    assert agent_brief.BRIEF_VERSION == "2026-11-11.4"
+    assert agent_brief.BRIEF_VERSION == "2026-11-11.5"
     full = agent_brief._factor_system_block(day="2026-11-11", compact=False)
     compact = agent_brief._factor_system_block(day="2026-11-11", compact=True)
     assert full["available"] is True

@@ -6,7 +6,7 @@ import json
 
 from data_sync_service.api.webhook_routes import KNOWN_EVENT_TYPES
 from data_sync_service.db.system_events import HIGH_JOB_TYPES
-from data_sync_service.scheduler import factor_vault_job, sgap_decay_job
+from data_sync_service.scheduler import factor_live_job, factor_vault_job, sgap_decay_job
 from data_sync_service.service import factor_vault as fv
 from data_sync_service.service.notifications import TRADING_JOB_TYPES
 
@@ -41,8 +41,9 @@ def test_diff_factor_transitions_skips_fades_and_unknown() -> None:
 
 def test_event_types_and_job_severity_wiring() -> None:
     assert {"factor_status_up", "factor_revived", "sgap_revival"} <= KNOWN_EVENT_TYPES
-    assert {"factor_vault_refresh", "sgap_decay_refresh"} <= HIGH_JOB_TYPES
+    assert {"factor_live_append", "factor_vault_refresh", "sgap_decay_refresh"} <= HIGH_JOB_TYPES
     # Research monitor jobs page Bark but stay out of the Hub trade/system cron list.
+    assert "factor_live_append" not in TRADING_JOB_TYPES
     assert "factor_vault_refresh" not in TRADING_JOB_TYPES
     assert "sgap_decay_refresh" not in TRADING_JOB_TYPES
 
@@ -173,14 +174,59 @@ def test_sgap_decay_job_missing_input_records_failure(monkeypatch, tmp_path) -> 
     assert records and records[0][1] is False
 
 
+def test_factor_live_append_job_records_success_and_degraded(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(factor_live_job, "_reports_dir", lambda: tmp_path)
+    records: list[tuple] = []
+    monkeypatch.setattr(
+        "data_sync_service.scheduler._job_guard.insert_record",
+        lambda jt, success, **k: records.append((jt, success)),
+    )
+    from data_sync_service.service import factor_live
+
+    ok = {
+        "meta": {
+            "status": "ok",
+            "asOf": "2026-11-10",
+            "inputs": {"sgap": {"newTrades": 0}, "harbor": {"newTrades": 0, "parkingTrades": 8}},
+        }
+    }
+    monkeypatch.setattr(factor_live, "refresh_live_blotter", lambda *a, **k: ok)
+    factor_live_job.run()
+    assert records == [("factor_live_append", True)]
+
+    degraded = {"meta": {"status": "degraded", "reason": "ETF daily ends 2026-11-06"}}
+    monkeypatch.setattr(factor_live, "refresh_live_blotter", lambda *a, **k: degraded)
+    factor_live_job.run()  # must not raise; yesterday's live file untouched
+    assert records[-1] == ("factor_live_append", False)
+
+
+def test_factor_live_append_job_records_exception(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(factor_live_job, "_reports_dir", lambda: tmp_path)
+    records: list[tuple] = []
+    monkeypatch.setattr(
+        "data_sync_service.scheduler._job_guard.insert_record",
+        lambda jt, success, **k: records.append((jt, success)),
+    )
+    from data_sync_service.service import factor_live
+
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(factor_live, "refresh_live_blotter", boom)
+    factor_live_job.run()
+    assert records and records[0][1] is False
+
+
 def test_scheduler_registers_both_jobs() -> None:
     from data_sync_service.scheduler import create_scheduler
 
     sched = create_scheduler()
     ids = {j.id for j in sched.get_jobs()}
+    assert "factor_live_append" in ids
     assert "factor_vault_refresh" in ids
     assert "sgap_decay_refresh" in ids
     by_id = {j.id: j for j in sched.get_jobs()}
+    assert "19" in str(by_id["factor_live_append"].trigger)
     assert "19" in str(by_id["factor_vault_refresh"].trigger)
     assert "19" in str(by_id["sgap_decay_refresh"].trigger)
 
@@ -188,5 +234,6 @@ def test_scheduler_registers_both_jobs() -> None:
 def test_sync_job_types_cover_monitor_jobs() -> None:
     from data_sync_service.api.sync_routes import SYNC_JOB_TYPES
 
+    assert "factor_live_append" in SYNC_JOB_TYPES
     assert "factor_vault_refresh" in SYNC_JOB_TYPES
     assert "sgap_decay_refresh" in SYNC_JOB_TYPES

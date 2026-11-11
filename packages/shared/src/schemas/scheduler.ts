@@ -718,6 +718,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     { endpoint: '/factors/sync', method: 'POST', label: '立即扫描' },
   ),
   meta(
+    'factor_live_append',
+    'factors',
+    '因子库实盘重演',
+    '工作日 19:00 重演 S-gap 习惯配方与港湾股票腿 + 停车路径，把冻结审计之后的已平仓交易追加进实盘流水（写 factor_live_trades.json，只读回放，不碰实盘参数/订单）。输入缺失即记失败并推手机，保留昨日流水。',
+    '工作日 19:00',
+    '0 19 * * 1-5',
+    'cron',
+    true,
+    1,
+  ),
+  meta(
     'factor_vault_refresh',
     'factors',
     '因子冷库日更',

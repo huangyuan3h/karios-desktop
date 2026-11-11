@@ -53,6 +53,7 @@ HIGH_JOB_TYPES = {
     # failure would mean no daily push (the 513350 trail miss).
     "satellite_live_panel",
     # 2026-10-25 factor/S-gap monitor-dark pages Yuan (必达 MVP).
+    "factor_live_append",
     "factor_vault_refresh",
     "sgap_decay_refresh",
 }

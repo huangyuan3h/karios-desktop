@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11.4"
+BRIEF_VERSION = "2026-11-11.5"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Today + the last N open sessions of explicit decision-log rows folded into
@@ -1166,7 +1166,7 @@ def _strategy_catalog_cached(
 
 
 def _factor_system_block(*, day: str, compact: bool) -> dict[str, Any]:
-    """Advice-only factor-system contract (2026-11-11.4).
+    """Advice-only factor-system contract (2026-11-11.5).
 
     Fail-open by construction: ``build_factor_system`` returns
     ``available: false`` for missing/corrupt vaults, so the brief still renders.
