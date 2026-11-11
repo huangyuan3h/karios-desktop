@@ -71,6 +71,11 @@ STARSHIP_IDS: tuple[str, ...] = (
 # Reference lights are displayed but are never an order or a follow signal.
 REFERENCE_IDS: frozenset[str] = frozenset({"harbor", "m30", "bleg"})
 
+# Vault rows split into atomic bricks, combination sleeves, and references.
+BRICK_WINDOWS: tuple[str, ...] = ("OOS2", "train", "valid", "holdout")
+HOLDOUT_WINDOW = "holdout"
+DEFAULT_UNIT = "%"
+
 # Documented current paper-20 count (H2k Sec 4 / STEP1 2026-10-03: ~4/20,
 # all losing). There is no live blotter append path in this slice, so this
 # stays a dated documented value and is surfaced as stale, not silently live.
@@ -360,6 +365,143 @@ def _role(fid: str) -> str:
     return "research"
 
 
+def _brick_kind(fid: str) -> str:
+    """Atomic brick vs combination sleeve vs reference light."""
+    if fid in REFERENCE_IDS:
+        return "reference"
+    if fid in STARSHIP_IDS:
+        return "sleeve"
+    return "brick"
+
+
+def _history_windows(row: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for entry in row.get("history") or []:
+        if isinstance(entry, dict) and entry.get("window"):
+            out[str(entry["window"])] = entry
+    return out
+
+
+def _empty_window() -> dict[str, Any]:
+    return {
+        "date": None,
+        "net": None,
+        "percentile": None,
+        "winRate": None,
+        "trades": None,
+        "revived": None,
+    }
+
+
+def _window_slice(entry: dict[str, Any] | None) -> dict[str, Any]:
+    """One frozen window slice; missing fields stay null (never invented)."""
+    if not isinstance(entry, dict):
+        return _empty_window()
+    win_rate = entry.get("winRate", entry.get("win_rate"))
+    revived = entry.get("revived")
+    return {
+        "date": entry.get("date"),
+        "net": _as_float(entry.get("net")),
+        "percentile": _as_float(entry.get("percentile")),
+        "winRate": _as_float(win_rate),
+        "trades": _as_int(entry.get("trades")),
+        "revived": bool(revived) if revived is not None else None,
+    }
+
+
+def _recent_performance(row: dict[str, Any], unit: str) -> dict[str, Any]:
+    """Latest frozen window (holdout) for the brick table, honest when absent."""
+    entry = _history_windows(row).get(HOLDOUT_WINDOW)
+    if not isinstance(entry, dict):
+        return {
+            "window": HOLDOUT_WINDOW,
+            "asOf": None,
+            "net": None,
+            "percentile": None,
+            "winRate": None,
+            "trades": None,
+            "unit": unit,
+            "missing": True,
+        }
+    slice_ = _window_slice(entry)
+    return {
+        "window": HOLDOUT_WINDOW,
+        "asOf": slice_["date"],
+        "net": slice_["net"],
+        "percentile": slice_["percentile"],
+        "winRate": slice_["winRate"],
+        "trades": slice_["trades"],
+        "unit": unit,
+        "missing": False,
+    }
+
+
+def _brick_note(
+    *,
+    kind: str,
+    status: str,
+    recent: dict[str, Any],
+    windows: dict[str, dict[str, Any]],
+) -> str | None:
+    """Short display-only Chinese note; never a trade instruction."""
+    if kind == "reference":
+        return "参考灯：只做对照，不是下单指令。"
+    if status == "revived":
+        return "复活灯：需两次确认并过实盘三前置，否则仍 0%。"
+    if status == "cold":
+        return "冷库：不分配仓位。"
+    net = recent.get("net")
+    if net is not None and net > 0:
+        if recent.get("percentile") is None:
+            return "持有期净已转正但缺分位，仍为观察。"
+        return "持有期净为正，但分位未达复活线，仍为观察。"
+    if net is not None:
+        return "持有期净为负，维持观察，不跟随。"
+    if not any(win.get("percentile") is not None for win in windows.values()):
+        return "无真随机分位，永不显示复活。"
+    return None
+
+
+def _bricks(factors: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """All vault rows as display-only bricks with recent performance."""
+    out: list[dict[str, Any]] = []
+    for fid, row in factors.items():
+        kind = _brick_kind(fid)
+        unit = str(row.get("unit") or DEFAULT_UNIT)
+        history = _history_windows(row)
+        windows = {name: _window_slice(history.get(name)) for name in BRICK_WINDOWS}
+        recent = _recent_performance(row, unit)
+        revived_windows = [name for name in BRICK_WINDOWS if windows[name]["revived"] is True]
+        spark = row.get("spark")
+        out.append(
+            {
+                "id": fid,
+                "name": row.get("name") or fid,
+                "family": row.get("family"),
+                "source": row.get("source"),
+                "unit": unit,
+                "kind": kind,
+                "role": _role(fid),
+                "status": str(row.get("status") or ""),
+                "badge": row.get("badge"),
+                "position": _as_int(row.get("position")) or 0,
+                "confirmations": _as_int(row.get("confirmations")) or 0,
+                "recentPerformance": recent,
+                "windows": windows,
+                "spark": spark if isinstance(spark, list) else None,
+                "onceRevived": bool(revived_windows),
+                "onceRevivedWindows": revived_windows,
+                "note": _brick_note(
+                    kind=kind,
+                    status=str(row.get("status") or ""),
+                    recent=recent,
+                    windows=windows,
+                ),
+            }
+        )
+    return out
+
+
 def _factor_focus_item(row: dict[str, Any], note: str | None = None) -> dict[str, Any]:
     fid = str(row.get("id") or "")
     role = _role(fid)
@@ -500,6 +642,7 @@ def _unavailable(
             "preconditions": {},
         },
         "focus": [],
+        "bricks": [],
         "recentTransitions": [],
         "adviceOnly": True,
     }
@@ -690,6 +833,7 @@ def build_factor_system(
             "preconditions": pre,
         },
         "focus": focus,
+        "bricks": _bricks(factors),
         "recentTransitions": recent,
         "adviceOnly": ADVICE_ONLY,
     }

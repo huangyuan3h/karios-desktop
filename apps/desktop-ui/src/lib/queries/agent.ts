@@ -281,6 +281,60 @@ export type FactorSystemFocusItem = {
   note?: string | null;
 };
 
+/** Atomic brick / combination sleeve / reference light. */
+export type FactorBrickKind = 'brick' | 'sleeve' | 'reference' | string;
+
+/** One frozen window slice (no invented percentiles). */
+export type FactorBrickWindow = {
+  date?: string | null;
+  net?: number | null;
+  percentile?: number | null;
+  winRate?: number | null;
+  trades?: number | null;
+  revived?: boolean | null;
+};
+
+/** Most recent frozen window (holdout); `missing` means the vault has no entry. */
+export type FactorBrickRecentPerformance = {
+  window: 'holdout';
+  asOf?: string | null;
+  net?: number | null;
+  percentile?: number | null;
+  winRate?: number | null;
+  trades?: number | null;
+  unit?: string | null;
+  missing?: boolean;
+};
+
+export type FactorBrickWindows = {
+  OOS2?: FactorBrickWindow | null;
+  train?: FactorBrickWindow | null;
+  valid?: FactorBrickWindow | null;
+  holdout?: FactorBrickWindow | null;
+};
+
+export type FactorBrick = {
+  id: string;
+  name: string;
+  family?: string | null;
+  source?: string | null;
+  /** Display unit next to net (`点` / `%/笔` / `%`). */
+  unit?: string | null;
+  kind: FactorBrickKind;
+  role: FactorSystemRole;
+  status: FactorSystemStatus;
+  badge?: string | null;
+  position: number;
+  confirmations: number;
+  recentPerformance: FactorBrickRecentPerformance;
+  windows: FactorBrickWindows;
+  spark?: number[] | null;
+  /** True only when a frozen window history entry says `revived: true`. */
+  onceRevived: boolean;
+  onceRevivedWindows: string[];
+  note?: string | null;
+};
+
 export type FactorSystemTransition = {
   date?: string | null;
   kind?: string | null;
@@ -300,6 +354,8 @@ export type FactorSystemPayload = {
   summary: FactorSystemSummary;
   policy: FactorSystemPolicy;
   focus: FactorSystemFocusItem[];
+  /** Full vault brick list (omitted from the compact judgment-brief payload). */
+  bricks?: FactorBrick[];
   recentTransitions: FactorSystemTransition[];
 };
 

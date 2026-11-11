@@ -5,6 +5,7 @@ import { AlertTriangle, Info } from 'lucide-react';
 
 import {
   useFactorSystemQuery,
+  type FactorBrick,
   type FactorSystemFocusItem,
   type FactorSystemGate,
   type FactorSystemPolicy,
@@ -32,6 +33,34 @@ const ROLE_LABEL: Record<string, string> = {
   satellite: '卫星',
   research: '研究',
 };
+
+const KIND_LABEL: Record<string, string> = {
+  brick: '原子砖块',
+  sleeve: '组合',
+  reference: '参考',
+};
+
+const BRICK_FILTERS = [
+  { key: 'all', label: '全部' },
+  { key: 'brick', label: '原子砖块' },
+  { key: 'sleeve', label: '组合' },
+  { key: 'reference', label: '参考' },
+] as const;
+
+type BrickKindFilter = (typeof BRICK_FILTERS)[number]['key'];
+type BrickStatusFilter = 'all' | 'cold' | 'watch' | 'revived';
+type BrickSortKey =
+  | 'default'
+  | 'name'
+  | 'family'
+  | 'status'
+  | 'net'
+  | 'percentile'
+  | 'winRate'
+  | 'trades'
+  | 'onceRevived';
+
+const BRICK_WINDOW_ORDER = ['OOS2', 'train', 'valid', 'holdout'] as const;
 
 const ACTION_COPY: Record<string, { label: string; detail: string }> = {
   wait_in_baseline: {
@@ -69,6 +98,364 @@ function fmtPct(v: number | null | undefined, digits = 1): string {
 
 function fmtDay(v: string | null | undefined): string {
   return v ? String(v).slice(0, 10) : '—';
+}
+
+function fmtNum(v: number | null | undefined, digits = 2): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits).replace(/\.?0+$/, '');
+}
+
+function fmtWinRate(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  return `${(v * 100).toFixed(1)}%`;
+}
+
+function brickWindowNet(brick: FactorBrick, window: (typeof BRICK_WINDOW_ORDER)[number]) {
+  return brick.windows?.[window]?.net ?? null;
+}
+
+/** Watch with a positive holdout first, cold last, references never jump the queue. */
+function brickTier(brick: FactorBrick): number {
+  if (brick.kind === 'reference') return 3;
+  if (brick.status === 'cold') return 2;
+  const net = brick.recentPerformance?.net;
+  if (brick.status === 'watch' && net != null && net > 0) return 0;
+  return 1;
+}
+
+function defaultBrickCompare(a: FactorBrick, b: FactorBrick): number {
+  const tier = brickTier(a) - brickTier(b);
+  if (tier !== 0) return tier;
+  const an = a.recentPerformance?.net;
+  const bn = b.recentPerformance?.net;
+  if (an == null && bn == null) return a.name.localeCompare(b.name);
+  if (an == null) return 1;
+  if (bn == null) return -1;
+  if (bn !== an) return bn - an;
+  return a.name.localeCompare(b.name);
+}
+
+function brickSortValue(brick: FactorBrick, key: BrickSortKey): string | number | null {
+  switch (key) {
+    case 'name':
+      return brick.name;
+    case 'family':
+      return brick.family ?? '';
+    case 'status':
+      return brick.status;
+    case 'net':
+      return brick.recentPerformance?.net ?? null;
+    case 'percentile':
+      return brick.recentPerformance?.percentile ?? null;
+    case 'winRate':
+      return brick.recentPerformance?.winRate ?? null;
+    case 'trades':
+      return brick.recentPerformance?.trades ?? null;
+    case 'onceRevived':
+      return brick.onceRevived ? 1 : 0;
+    default:
+      return null;
+  }
+}
+
+function compareBricks(
+  a: FactorBrick,
+  b: FactorBrick,
+  sort: { key: BrickSortKey; dir: 'asc' | 'desc' },
+): number {
+  if (sort.key === 'default') return defaultBrickCompare(a, b);
+  const av = brickSortValue(a, sort.key);
+  const bv = brickSortValue(b, sort.key);
+  if (av == null && bv == null) return a.name.localeCompare(b.name);
+  if (av == null) return 1;
+  if (bv == null) return -1;
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    if (av === bv) return a.name.localeCompare(b.name);
+    return (av - bv) * dir;
+  }
+  return String(av).localeCompare(String(bv)) * dir;
+}
+
+function brickWindowLine(brick: FactorBrick): string {
+  const nets = BRICK_WINDOW_ORDER.map((window) => `${window} ${fmtNum(brickWindowNet(brick, window))}`);
+  const hasWindow = BRICK_WINDOW_ORDER.some((window) => brickWindowNet(brick, window) != null);
+  if (hasWindow) return nets.join(' · ');
+  if (brick.spark?.length) {
+    return `spark ${brick.spark.map((v) => fmtNum(v, 1)).join('/')}`;
+  }
+  return '四窗数据缺失';
+}
+
+function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
+  const [kindFilter, setKindFilter] = React.useState<BrickKindFilter>('brick');
+  const [statusFilter, setStatusFilter] = React.useState<BrickStatusFilter>('all');
+  const [onceRevivedOnly, setOnceRevivedOnly] = React.useState(false);
+  const [sort, setSort] = React.useState<{ key: BrickSortKey; dir: 'asc' | 'desc' }>({
+    key: 'default',
+    dir: 'desc',
+  });
+
+  const counts = React.useMemo(() => {
+    const out: Record<BrickKindFilter, number> = {
+      all: bricks.length,
+      brick: 0,
+      sleeve: 0,
+      reference: 0,
+    };
+    for (const brick of bricks) {
+      if (brick.kind === 'brick' || brick.kind === 'sleeve' || brick.kind === 'reference') {
+        out[brick.kind] += 1;
+      }
+    }
+    return out;
+  }, [bricks]);
+
+  const rows = React.useMemo(() => {
+    const filtered = bricks.filter((brick) => {
+      if (kindFilter !== 'all' && brick.kind !== kindFilter) return false;
+      if (statusFilter !== 'all' && brick.status !== statusFilter) return false;
+      if (onceRevivedOnly && !brick.onceRevived) return false;
+      return true;
+    });
+    return [...filtered].sort((a, b) => compareBricks(a, b, sort));
+  }, [bricks, kindFilter, statusFilter, onceRevivedOnly, sort]);
+
+  const holdoutAsOf = React.useMemo(() => {
+    const dates = bricks
+      .map((brick) => brick.recentPerformance?.asOf)
+      .filter((value): value is string => Boolean(value))
+      .sort();
+    return dates.length ? dates[dates.length - 1] : null;
+  }, [bricks]);
+
+  const onSort = (key: BrickSortKey) => {
+    setSort((prev) => {
+      if (prev.key === key) return { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' };
+      const textKey = key === 'name' || key === 'family' || key === 'status';
+      return { key, dir: textKey ? 'asc' : 'desc' };
+    });
+  };
+
+  const sortHeader = (label: string, key: BrickSortKey) => {
+    const active = sort.key === key;
+    return (
+      <th
+        scope="col"
+        className="cursor-pointer select-none px-3 py-1.5 hover:text-[var(--k-fg)]"
+        aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        tabIndex={0}
+        onClick={() => onSort(key)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSort(key);
+          }
+        }}
+      >
+        {label}
+        {active ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+      </th>
+    );
+  };
+
+  const chipCls = (active: boolean) =>
+    cn(
+      'cursor-pointer rounded border px-1.5 py-0.5',
+      active
+        ? 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+        : 'border-[var(--k-border)] bg-[var(--k-surface-2)]/40 text-[var(--k-muted)]',
+    );
+
+  return (
+    <div
+      className="overflow-hidden rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]"
+      data-testid="factor-bricks"
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] px-3 py-2">
+        <span className="text-[12px] font-semibold">砖块 bricks</span>
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          （{bricks.length} 块 · 原子小砖块含最近表现 · 只展示，不下单）
+        </span>
+        <span
+          className="ml-auto text-[10px] text-[var(--k-muted)]"
+          data-testid="factor-bricks-asof"
+        >
+          持有期截至 {holdoutAsOf ?? '—'}（holdout）· 灯不会自行变化。
+        </span>
+      </div>
+
+      <div
+        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--k-border)] px-3 py-2 text-[10px]"
+        data-testid="factor-bricks-filters"
+      >
+        <span className="text-[var(--k-muted)]">类型</span>
+        {BRICK_FILTERS.map((filter) => (
+          <label key={filter.key} className={chipCls(kindFilter === filter.key)}>
+            <input
+              type="radio"
+              name="factor-brick-kind"
+              value={filter.key}
+              checked={kindFilter === filter.key}
+              onChange={() => setKindFilter(filter.key)}
+              aria-label={`类型 ${filter.label}`}
+              className="sr-only"
+            />
+            {filter.label}
+            <span className="ml-1 tabular-nums text-[var(--k-muted)]">{counts[filter.key]}</span>
+          </label>
+        ))}
+
+        <span className="ml-2 text-[var(--k-muted)]">判定</span>
+        {(
+          [
+            ['all', '全部'],
+            ['cold', '冷库'],
+            ['watch', '观察'],
+            ['revived', '复活'],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className={chipCls(statusFilter === key)}>
+            <input
+              type="radio"
+              name="factor-brick-status"
+              value={key}
+              checked={statusFilter === key}
+              onChange={() => setStatusFilter(key)}
+              aria-label={`判定 ${label}`}
+              className="sr-only"
+            />
+            {label}
+          </label>
+        ))}
+
+        <label className={cn('ml-2', chipCls(onceRevivedOnly))}>
+          <input
+            type="checkbox"
+            checked={onceRevivedOnly}
+            onChange={(event) => setOnceRevivedOnly(event.target.checked)}
+            aria-label="曾经复活"
+            className="sr-only"
+          />
+          曾经复活
+        </label>
+      </div>
+
+      {bricks.length === 0 ? (
+        <div
+          className="px-3 py-4 text-[11px] text-[var(--k-muted)]"
+          data-testid="factor-bricks-empty"
+        >
+          暂无砖块数据（因子库缺失或为空）；按母港 M30 基线等待，不做任何跟随。
+        </div>
+      ) : rows.length === 0 ? (
+        <div
+          className="px-3 py-4 text-[11px] text-[var(--k-muted)]"
+          data-testid="factor-bricks-empty"
+        >
+          当前筛选没有砖块；切回「全部」或清除筛选。
+        </div>
+      ) : (
+        <div className="overflow-auto">
+          <table
+            className="w-full min-w-[760px] text-left text-xs tabular-nums"
+            data-testid="factor-bricks-table"
+          >
+            <thead>
+              <tr className="text-[10px] text-[var(--k-muted)]">
+                {sortHeader('砖块', 'name')}
+                {sortHeader('家族', 'family')}
+                {sortHeader('判定', 'status')}
+                {sortHeader('最近表现', 'net')}
+                {sortHeader('分位', 'percentile')}
+                {sortHeader('胜率', 'winRate')}
+                {sortHeader('笔数', 'trades')}
+                {sortHeader('曾经复活', 'onceRevived')}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((brick) => {
+                const recent = brick.recentPerformance;
+                return (
+                  <tr
+                    key={brick.id}
+                    className="border-t border-[var(--k-border)]/60"
+                    data-testid={`factor-brick-row-${brick.id}`}
+                  >
+                    <td className="px-3 py-1.5 align-top">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium">{brick.name}</span>
+                        <span className="text-[10px] text-[var(--k-muted)]">{brick.id}</span>
+                        <span className="rounded border border-[var(--k-border)] px-1 text-[10px] text-[var(--k-muted)]">
+                          {KIND_LABEL[brick.kind] ?? brick.kind}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                        {brickWindowLine(brick)}
+                      </div>
+                      {brick.note ? (
+                        <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">{brick.note}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-1.5 align-top text-[11px] text-[var(--k-muted)]">
+                      {brick.family ?? '—'}
+                    </td>
+                    <td className="px-3 py-1.5 align-top">
+                      <span
+                        className={cn(
+                          'rounded border px-1.5 py-0.5 text-[10px]',
+                          badgeCls(brick.status),
+                        )}
+                      >
+                        {brick.badge ?? STATUS_LABEL[brick.status] ?? brick.status}
+                      </span>
+                      <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                        仓位 {brick.position ?? 0}% · 确认 {brick.confirmations ?? 0}
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 align-top">
+                      <div className="font-mono">
+                        {recent?.net == null
+                          ? '—'
+                          : `${fmtNum(recent.net)}${brick.unit ?? ''}`}
+                      </div>
+                      <div className="text-[10px] text-[var(--k-muted)]">
+                        截至 {fmtDay(recent?.asOf)}
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 align-top font-mono">
+                      {fmtPct(recent?.percentile)}
+                    </td>
+                    <td className="px-3 py-1.5 align-top font-mono">
+                      {fmtWinRate(recent?.winRate)}
+                    </td>
+                    <td className="px-3 py-1.5 align-top font-mono">
+                      {recent?.trades ?? '—'}
+                    </td>
+                    <td className="px-3 py-1.5 align-top">
+                      {brick.onceRevived ? (
+                        <span
+                          className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"
+                          data-testid={`factor-brick-revived-${brick.id}`}
+                        >
+                          曾经复活
+                          {brick.onceRevivedWindows.length
+                            ? ` · ${brick.onceRevivedWindows.join('/')}`
+                            : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[var(--k-muted)]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AdviceBanner() {
@@ -340,6 +727,8 @@ export function FactorSystemPage() {
         </div>
       ) : null}
 
+      {data ? <FactorBricks bricks={data.bricks ?? []} /> : null}
+
       {data?.recentTransitions?.length ? (
         <div
           className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]"
@@ -387,7 +776,7 @@ export function FactorSystemPage() {
         <p className="flex items-center gap-1 text-[10px] text-[var(--k-muted)]">
           <Info className="h-3 w-3" />
           数据源 GET /v1/agent/factor-system · 生成于 {fmtDay(data?.generatedAt)} ·
-          只读页面，不复权、不改参、不下单
+          只读页面，不改设置、不改止损、不下单
         </p>
       ) : null}
     </div>

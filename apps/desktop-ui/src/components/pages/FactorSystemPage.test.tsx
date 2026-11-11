@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +9,165 @@ const { apiGetJson, apiPostJson } = vi.hoisted(() => ({
   apiPostJson: vi.fn(),
 }));
 vi.mock('@/lib/api/client', () => ({ apiGetJson, apiPostJson }));
+
+const WINDOW = {
+  date: '2026-09-30',
+  net: null,
+  percentile: null,
+  winRate: null,
+  trades: null,
+  revived: null,
+};
+
+function brick(overrides: Record<string, unknown> = {}) {
+  const id = String(overrides.id ?? 'brick');
+  return {
+    id,
+    name: id,
+    family: '测试族',
+    source: 'fixture',
+    unit: '%/笔',
+    kind: 'brick',
+    role: 'research',
+    status: 'watch',
+    badge: '观察',
+    position: 0,
+    confirmations: 0,
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: 1.0,
+      percentile: null,
+      winRate: 0.5,
+      trades: 100,
+      unit: '%/笔',
+      missing: false,
+    },
+    windows: {
+      OOS2: { ...WINDOW, date: '2025-08-07', net: 1.0, trades: 100, revived: false },
+      train: { ...WINDOW, date: '2026-02-27', net: 0.5, trades: 80, revived: false },
+      valid: { ...WINDOW, date: '2026-08-07', net: -0.2, trades: 60, revived: false },
+      holdout: { ...WINDOW, net: 1.0, trades: 100, revived: false },
+    },
+    spark: null,
+    onceRevived: false,
+    onceRevivedWindows: [],
+    note: null,
+    ...overrides,
+  };
+}
+
+const BRICKS = [
+  brick({
+    id: 'h01',
+    name: 'H01 5连阴hold5',
+    family: '超卖族',
+    onceRevived: true,
+    onceRevivedWindows: ['OOS2'],
+    spark: [96.4, null, 0, null],
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: 2.16,
+      percentile: null,
+      winRate: 0.609,
+      trades: 3016,
+      unit: '%/笔',
+      missing: false,
+    },
+    note: '持有期净已转正但缺分位，仍为观察。',
+  }),
+  brick({
+    id: 'h02',
+    name: 'H02 BIAS6 hold5',
+    family: '超卖族',
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: 1.82,
+      percentile: null,
+      winRate: 0.58,
+      trades: 3000,
+      unit: '%/笔',
+      missing: false,
+    },
+  }),
+  brick({
+    id: 'h05',
+    name: 'H05 锤头/晨星',
+    family: '形态',
+    status: 'cold',
+    badge: '冷库',
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: -1.35,
+      percentile: null,
+      winRate: 0.44,
+      trades: 1500,
+      unit: '%/笔',
+      missing: false,
+    },
+  }),
+  brick({
+    id: 'starship_b',
+    name: '星舰B默认',
+    family: '星舰B族',
+    kind: 'sleeve',
+    role: 'satellite',
+    status: 'cold',
+    badge: '冷库',
+    unit: '点',
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: -19.8,
+      percentile: 10.9,
+      winRate: null,
+      trades: 52,
+      unit: '点',
+      missing: false,
+    },
+  }),
+  brick({
+    id: 'harbor',
+    name: '港湾 (参考)',
+    family: 'E1选股 (存活参考)',
+    kind: 'reference',
+    role: 'reference',
+    status: 'revived',
+    badge: '复活',
+    unit: '点',
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: 0,
+      percentile: null,
+      winRate: null,
+      trades: 0,
+      unit: '点',
+      missing: false,
+    },
+  }),
+  brick({
+    id: 'm30',
+    name: '母港M30 (参考)',
+    family: 'E1×70%+E2×30% (存活参考)',
+    kind: 'reference',
+    role: 'reference',
+    unit: '%',
+    recentPerformance: {
+      window: 'holdout',
+      asOf: '2026-09-30',
+      net: -8.8,
+      percentile: null,
+      winRate: null,
+      trades: 2,
+      unit: '%',
+      missing: false,
+    },
+  }),
+];
 
 const PAYLOAD = {
   available: true,
@@ -88,6 +247,7 @@ const PAYLOAD = {
       note: 'S-gap 冷库：坐在母港 M30，不自动跟星舰。',
     },
   ],
+  bricks: BRICKS,
   recentTransitions: [
     {
       date: '2026-10-28',
@@ -211,6 +371,70 @@ describe('FactorSystemPage', () => {
     expect(table.textContent).toContain('watch → revived');
   });
 
+  it('defaults the brick table to atomic bricks, hides sleeves and references', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    const section = screen.getByTestId('factor-bricks');
+    expect(section.textContent).toContain('原子砖块');
+    expect(section.textContent).toContain('只展示，不下单');
+
+    expect(screen.getByTestId('factor-brick-row-h01')).toBeDefined();
+    expect(screen.getByTestId('factor-brick-row-h02')).toBeDefined();
+    expect(screen.getByTestId('factor-brick-row-h05')).toBeDefined();
+    expect(screen.queryByTestId('factor-brick-row-starship_b')).toBeNull();
+    expect(screen.queryByTestId('factor-brick-row-harbor')).toBeNull();
+
+    // Default order: watch with positive holdout first, cold last.
+    const rows = screen
+      .getByTestId('factor-bricks-table')
+      .querySelectorAll('tbody tr');
+    expect(rows[0]?.getAttribute('data-testid')).toBe('factor-brick-row-h01');
+    expect(rows[rows.length - 1]?.getAttribute('data-testid')).toBe('factor-brick-row-h05');
+
+    expect(screen.getByTestId('factor-bricks-asof').textContent).toContain('2026-09-30');
+  });
+
+  it('filters to all bricks and shows holdout net, unit and as-of date', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    fireEvent.click(screen.getByLabelText('类型 全部'));
+    const sleeve = await screen.findByTestId('factor-brick-row-starship_b');
+    expect(sleeve.textContent).toContain('-19.8点');
+    expect(sleeve.textContent).toContain('截至 2026-09-30');
+    expect(sleeve.textContent).toContain('10.9%');
+
+    const h01 = screen.getByTestId('factor-brick-row-h01');
+    expect(h01.textContent).toContain('2.16%/笔');
+    expect(h01.textContent).toContain('60.9%');
+
+    expect(screen.getByTestId('factor-brick-row-harbor')).toBeDefined();
+    expect(screen.getByTestId('factor-brick-row-m30')).toBeDefined();
+  });
+
+  it('marks once-revived windows and can filter to them', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    const revived = screen.getByTestId('factor-brick-revived-h01');
+    expect(revived.textContent).toContain('曾经复活');
+    expect(revived.textContent).toContain('OOS2');
+    expect(screen.queryByTestId('factor-brick-revived-h02')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('曾经复活'));
+    expect(screen.getByTestId('factor-brick-row-h01')).toBeDefined();
+    expect(screen.queryByTestId('factor-brick-row-h02')).toBeNull();
+  });
+
+  it('renders an empty brick state without crashing when bricks are missing', async () => {
+    apiGetJson.mockResolvedValue({ ...PAYLOAD, bricks: [] });
+    renderPage();
+
+    expect(await screen.findByTestId('factor-bricks-empty')).toBeDefined();
+    expect(screen.queryByTestId('factor-bricks-table')).toBeNull();
+  });
+
   it('fails open to wait-in-M30 when the contract reports available: false', async () => {
     apiGetJson.mockResolvedValue(UNAVAILABLE);
     renderPage();
@@ -221,6 +445,7 @@ describe('FactorSystemPage', () => {
     expect(card.textContent).toContain('factor_vault.json');
     expect(screen.getByTestId('factor-system-action').textContent).toContain('母港 M30 等待');
     expect(screen.queryByTestId('factor-system-focus')).toBeNull();
+    expect(screen.getByTestId('factor-bricks-empty')).toBeDefined();
   });
 
   it('fails open to wait-in-M30 when the request itself errors', async () => {
