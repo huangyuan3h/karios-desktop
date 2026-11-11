@@ -187,3 +187,128 @@ export async function writeAgentDecisionLog(
 ): Promise<{ ok: boolean; item: Record<string, unknown> }> {
   return apiPostJson('/v1/agent/decision-log', body);
 }
+
+/* ------------------------------------------------------------------------- */
+/* Factor system (advice only) — GET /v1/agent/factor-system                  */
+/* ------------------------------------------------------------------------- */
+
+export type FactorSystemStatus = 'cold' | 'watch' | 'revived' | string;
+export type FactorSystemRole = 'reference' | 'satellite' | 'research' | string;
+export type FactorSystemAction = 'wait_in_baseline' | 'advise_follow' | 'advise_exit' | string;
+
+export type FactorSystemFreshness = {
+  sourceGeneratedAt?: string | null;
+  historyLatest?: string | null;
+  tradeBlotterLastEntry?: string | null;
+  ageDays?: number | null;
+  stale?: boolean;
+  reason?: string | null;
+};
+
+export type FactorSystemSummary = {
+  nFactors: number;
+  nCold: number;
+  nWatch: number;
+  nRevived: number;
+};
+
+/** One documented live gate (paper-20 / holdout / filtered valid). */
+export type FactorSystemGate = {
+  required?: number;
+  completed?: number;
+  pass?: boolean;
+  asOfDate?: string | null;
+  source?: string | null;
+  stale?: boolean;
+  currentPct?: number | null;
+  recoverToPct?: number | null;
+  thresholdPct?: number | null;
+};
+
+export type FactorSystemPreconditions = {
+  paper20?: FactorSystemGate;
+  holdoutRecovery?: FactorSystemGate;
+  filteredValidPositive?: FactorSystemGate;
+  allPass?: boolean;
+};
+
+export type FactorSystemDecay = {
+  id: string;
+  name?: string | null;
+  from?: string | number | null;
+  to?: string | number | null;
+  fromPosition?: number | null;
+  toPosition?: number | null;
+  reason?: string | null;
+};
+
+export type FactorSystemRevived = {
+  id: string;
+  name?: string | null;
+  status?: FactorSystemStatus;
+  position?: number | null;
+  percentile?: number | null;
+};
+
+export type FactorSystemPolicy = {
+  action: FactorSystemAction;
+  baseline: string;
+  baselineLabel: string;
+  /** Rule weight (0/10/20), independent of the live gates. */
+  suggestedWeight: number;
+  /** Live weight; stays 0 while any live gate is unmet. */
+  suggestedLiveWeight: number;
+  maxLiveWeight: number;
+  liveBlocked: boolean;
+  liveBlockedReason?: string | null;
+  reason?: string | null;
+  decayedFactors: FactorSystemDecay[];
+  revivedFactors: FactorSystemRevived[];
+  preconditions: FactorSystemPreconditions;
+};
+
+export type FactorSystemFocusItem = {
+  id: string;
+  name: string;
+  family?: string | null;
+  status: FactorSystemStatus;
+  badge?: string | null;
+  role: FactorSystemRole;
+  position: number;
+  percentile?: number | null;
+  /** True only for a satellite factor that is revived; never an order. */
+  actionable: boolean;
+  note?: string | null;
+};
+
+export type FactorSystemTransition = {
+  date?: string | null;
+  kind?: string | null;
+  eventType?: string | null;
+  factorId?: string | null;
+  name?: string | null;
+  from?: string | null;
+  to?: string | null;
+};
+
+export type FactorSystemPayload = {
+  available: boolean;
+  error?: string | null;
+  generatedAt?: string | null;
+  adviceOnly?: boolean;
+  freshness: FactorSystemFreshness;
+  summary: FactorSystemSummary;
+  policy: FactorSystemPolicy;
+  focus: FactorSystemFocusItem[];
+  recentTransitions: FactorSystemTransition[];
+};
+
+/** Advice-only factor-system policy (read-only; never places orders). */
+export function useFactorSystemQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['agent', 'factor-system'],
+    queryFn: () => apiGetJson<FactorSystemPayload>('/v1/agent/factor-system'),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}

@@ -17,6 +17,7 @@ import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
 import { DecisionPage } from '@/components/pages/DecisionPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
+import { FactorSystemPage } from '@/components/pages/FactorSystemPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
@@ -64,6 +65,7 @@ const PAGE_TITLES: Record<string, string> = {
   alpha: 'Alpha',
   decision: '决策 Agent',
   backtest: '回测',
+  factorSystem: '因子库',
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
@@ -282,6 +284,8 @@ function AppShellInner() {
               <DecisionPage />
             ) : activePage === 'backtest' ? (
               <BacktestPage />
+            ) : activePage === 'factorSystem' ? (
+              <FactorSystemPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {
