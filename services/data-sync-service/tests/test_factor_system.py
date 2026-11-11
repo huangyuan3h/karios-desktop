@@ -41,12 +41,14 @@ def _factor(
         "name": name or fid,
         "family": "starship" if fid.startswith("starship") else "reference",
         "source": "fixture",
+        "doc": "FINAL Sec 2 (fixture)",
         "unit": unit,
         "status": status,
         "badge": badge,
         "position": position,
         "percentile": percentile,
         "confirmations": 1,
+        "days_since_change": 3,
         "history": history
         if history is not None
         else [
@@ -351,6 +353,11 @@ def test_full_payload_lists_all_vault_bricks_with_kinds(tmp_path: Path) -> None:
     assert by_id["starship_b"]["role"] == "satellite"
     assert by_id["h11"]["position"] == 0
     assert by_id["h11"]["confirmations"] == 1
+    # Expandable-row metadata (time axis, doc, 未变档天数) rides the brick payload.
+    assert by_id["h11"]["source"] == "fixture"
+    assert by_id["h11"]["doc"] == "FINAL Sec 2 (fixture)"
+    assert by_id["h11"]["daysSinceChange"] == 3
+    assert set(by_id["h11"]["windows"]) == {"OOS2", "train", "valid", "holdout"}
 
 
 def test_brick_recent_performance_uses_frozen_holdout(tmp_path: Path) -> None:

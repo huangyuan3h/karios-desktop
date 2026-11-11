@@ -329,6 +329,8 @@ export type FactorBrick = {
   name: string;
   family?: string | null;
   source?: string | null;
+  /** Frozen research doc/reference for the expanded row (e.g. `H2 Sec 4`). */
+  doc?: string | null;
   /** Display unit next to net (`点` / `%/笔` / `%`). */
   unit?: string | null;
   kind: FactorBrickKind;
@@ -337,6 +339,8 @@ export type FactorBrick = {
   badge?: string | null;
   position: number;
   confirmations: number;
+  /** Days since the vault last changed this factor's status (未变档天数). */
+  daysSinceChange?: number | null;
   recentPerformance: FactorBrickRecentPerformance;
   windows: FactorBrickWindows;
   spark?: number[] | null;

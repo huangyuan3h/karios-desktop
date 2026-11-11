@@ -26,6 +26,7 @@ function brick(overrides: Record<string, unknown> = {}) {
     name: id,
     family: '测试族',
     source: 'fixture',
+    doc: 'H2 Sec 4 (fixture)',
     unit: '%/笔',
     kind: 'brick',
     role: 'research',
@@ -33,6 +34,7 @@ function brick(overrides: Record<string, unknown> = {}) {
     badge: '观察',
     position: 0,
     confirmations: 0,
+    daysSinceChange: 4,
     recentPerformance: {
       window: 'holdout',
       asOf: '2026-09-30',
@@ -62,6 +64,11 @@ const BRICKS = [
     id: 'h01',
     name: 'H01 5连阴hold5',
     family: '超卖族',
+    source: '五连阴',
+    doc: 'H2 Sec 2 (fixture)',
+    position: 20,
+    confirmations: 2,
+    daysSinceChange: 5,
     onceRevived: true,
     onceRevivedWindows: ['OOS2'],
     spark: [96.4, null, 0, null],
@@ -291,6 +298,35 @@ const UNAVAILABLE = {
   adviceOnly: true,
 };
 
+const SGAP = {
+  ok: true,
+  decay: {
+    meta: { source: 'fixture', n_trades: 1130, windows: {} },
+    summary: {
+      n_trades: 1130,
+      date_start: '2021-08-09',
+      date_end: '2026-09-23',
+      cum_total: 491.09,
+      max_drawdown: -24.88,
+      latest_r40_mean: -0.37,
+      latest_r40_win_rate: 0.3,
+      latest_r40_percentile: 2.2,
+      revival_pos: 0,
+    },
+    rolling: [],
+    monthly: [],
+    equity: [],
+  },
+};
+
+function mockApi(payload: unknown = PAYLOAD) {
+  apiGetJson.mockImplementation(async (path: string) => {
+    if (String(path).includes('/v1/agent/factor-system')) return payload;
+    if (String(path).includes('/api/backtest/sgap-decay')) return SGAP;
+    return { ok: true };
+  });
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -303,16 +339,15 @@ function renderPage() {
 beforeEach(() => {
   apiGetJson.mockReset();
   apiPostJson.mockReset();
-  apiGetJson.mockResolvedValue(PAYLOAD);
+  mockApi();
 });
 
 describe('FactorSystemPage', () => {
-  it('calls the factor-system contract endpoint once and shows the advice-only banner', async () => {
+  it('calls the factor-system contract endpoint and shows the advice-only banner', async () => {
     renderPage();
     const banner = await screen.findByTestId('factor-system-advice-banner');
     expect(banner.textContent).toContain('仅建议');
     expect(banner.textContent).toContain('不下单');
-    expect(apiGetJson).toHaveBeenCalledTimes(1);
     expect(apiGetJson).toHaveBeenCalledWith('/v1/agent/factor-system');
   });
 
@@ -414,7 +449,7 @@ describe('FactorSystemPage', () => {
   });
 
   it('labels the rolling window as live replay and hides the stale banner when caught up', async () => {
-    apiGetJson.mockResolvedValue({
+    mockApi({
       ...PAYLOAD,
       freshness: {
         ...PAYLOAD.freshness,
@@ -471,8 +506,52 @@ describe('FactorSystemPage', () => {
     expect(screen.queryByTestId('factor-brick-row-h02')).toBeNull();
   });
 
+  it('shows 建议仓位 / 确认次数 / 未变档天数 and 独立来源 on the brick table', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    const row = screen.getByTestId('factor-brick-row-h01');
+    expect(row.textContent).toContain('仓位 20%');
+    expect(row.textContent).toContain('确认 2');
+    expect(row.textContent).toContain('5 天未变档');
+    expect(screen.getByTestId('factor-brick-source-h01').textContent).toBe('五连阴');
+  });
+
+  it('expands a brick with the four-window time-axis chart and read-only metadata', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    fireEvent.click(screen.getByTestId('factor-brick-row-h01'));
+
+    expect(await screen.findByTestId('factor-brick-chart-h01')).toBeDefined();
+    const detail = screen.getByTestId('factor-brick-detail-h01');
+    expect(detail.textContent).toContain('时间轴');
+    expect(detail.textContent).toContain('50 降档');
+    expect(detail.textContent).toContain('75 加仓线');
+    expect(detail.textContent).toContain('独立来源 五连阴');
+    expect(detail.textContent).toContain('超卖族 · 五连阴');
+    expect(detail.textContent).toContain('H2 Sec 2 (fixture)');
+    expect(screen.getByTestId('factor-brick-position-h01').textContent).toContain('2 次确认');
+    expect(screen.getByTestId('factor-brick-days-h01').textContent).toContain('5 天未变档');
+    expect(detail.textContent).toContain('H2k-K2');
+    expect(detail.textContent).toContain('不下单');
+
+    fireEvent.click(screen.getByTestId('factor-brick-row-h01'));
+    expect(screen.queryByTestId('factor-brick-chart-h01')).toBeNull();
+  });
+
+  it('mounts the S-gap decay trend section below the brick table', async () => {
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+
+    expect(screen.getByTestId('factor-system-sgap')).toBeDefined();
+    const summary = await screen.findByTestId('sgap-summary');
+    expect(summary.textContent).toContain('1130');
+    expect(await screen.findByTestId('sgap-chart-percentile')).toBeDefined();
+  });
+
   it('renders an empty brick state without crashing when bricks are missing', async () => {
-    apiGetJson.mockResolvedValue({ ...PAYLOAD, bricks: [] });
+    mockApi({ ...PAYLOAD, bricks: [] });
     renderPage();
 
     expect(await screen.findByTestId('factor-bricks-empty')).toBeDefined();
@@ -480,7 +559,7 @@ describe('FactorSystemPage', () => {
   });
 
   it('fails open to wait-in-M30 when the contract reports available: false', async () => {
-    apiGetJson.mockResolvedValue(UNAVAILABLE);
+    mockApi(UNAVAILABLE);
     renderPage();
 
     const card = await screen.findByTestId('factor-system-unavailable');

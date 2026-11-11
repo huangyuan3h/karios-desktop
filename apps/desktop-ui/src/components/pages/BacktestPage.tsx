@@ -8,8 +8,6 @@ import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'luc
 
 import { Button } from '@/components/ui/button';
 import { RecentDailyCompareCard } from '@/components/pages/RecentDailyCompareCard';
-import { SgapDecayPanel } from '@/components/pages/SgapDecayPanel';
-import { FactorVaultPanel } from '@/components/pages/FactorVaultPanel';
 import { FleetPanel } from '@/components/pages/FleetPanel';
 import { StrategyCatalogPanel } from '@/components/pages/StrategyCatalogPanel';
 import { ReplicaGapCard } from '@/components/pages/ReplicaGapCard';
@@ -1809,9 +1807,9 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
-  const [tab, setTab] = React.useState<
-    'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet'
-  >('catalog');
+  const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline' | 'fleet'>(
+    'catalog',
+  );
   const [catalogKey, setCatalogKey] = React.useState<StrategyCatalogKey>(() => getStrategyMode());
   const attrEnd = new Date().toISOString().slice(0, 10);
   const attrStartDefault = (() => {
@@ -1844,16 +1842,12 @@ export function BacktestPage() {
     <div className="flex flex-col gap-4 p-4">
       <Tabs
         value={tab}
-        onValueChange={(v) =>
-          setTab(v as 'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet')
-        }
+        onValueChange={(v) => setTab(v as 'catalog' | 'compare' | 'baseline' | 'fleet')}
       >
         <TabsList>
           <TabsTrigger value="catalog">策略总览</TabsTrigger>
           <TabsTrigger value="compare">对比</TabsTrigger>
           <TabsTrigger value="baseline">回测基线</TabsTrigger>
-          <TabsTrigger value="sgap">S-gap 失效趋势</TabsTrigger>
-          <TabsTrigger value="vault">因子冷库</TabsTrigger>
           <TabsTrigger value="fleet">舰队</TabsTrigger>
         </TabsList>
         <TabsContent value="catalog" className="mt-4 flex flex-col gap-4">
@@ -1873,12 +1867,6 @@ export function BacktestPage() {
           <RecentDailyCompareCard />
           <PaperVsBacktestCard q={c4Q} />
           <ReconStrip reconQ={reconQ} />
-        </TabsContent>
-        <TabsContent value="sgap" className="mt-4 flex flex-col gap-4">
-          <SgapDecayPanel />
-        </TabsContent>
-        <TabsContent value="vault" className="mt-4 flex flex-col gap-4">
-          <FactorVaultPanel />
         </TabsContent>
         <TabsContent value="fleet" className="mt-4 flex flex-col gap-4">
           <FleetPanel />

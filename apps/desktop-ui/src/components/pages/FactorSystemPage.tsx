@@ -11,6 +11,8 @@ import {
   type FactorSystemPolicy,
   type FactorSystemStatus,
 } from '@/lib/queries/agent';
+import { FactorHistoryChart, type FactorHistoryPoint } from '@/components/pages/FactorHistoryChart';
+import { SgapDecayPanel } from '@/components/pages/SgapDecayPanel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -187,10 +189,54 @@ function brickWindowLine(brick: FactorBrick): string {
   return '四窗数据缺失';
 }
 
+/** Expanded brick row: frozen four-window time axis + read-only metadata. */
+function BrickDetail({ brick }: { brick: FactorBrick }) {
+  const points: FactorHistoryPoint[] = BRICK_WINDOW_ORDER.map((window) => ({
+    window,
+    percentile: brick.windows?.[window]?.percentile ?? null,
+    net: brick.windows?.[window]?.net ?? null,
+  }));
+  return (
+    <div
+      className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/50 p-3"
+      data-testid={`factor-brick-detail-${brick.id}`}
+    >
+      <div className="mb-1 flex flex-wrap items-baseline gap-2 text-[12px]">
+        <span className="font-medium">{brick.name} · 时间轴</span>
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">
+          分位紫 / 净收益绿 · 50 降档 / 75 加仓线 · OOS2/train/valid/holdout 冻结审计
+        </span>
+        <span className="ml-auto text-[10px] text-[var(--k-muted)]">
+          独立来源 {brick.source ?? '—'}
+        </span>
+      </div>
+      <FactorHistoryChart points={points} testId={`factor-brick-chart-${brick.id}`} />
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[10px] text-[var(--k-muted)]">
+        <span data-testid={`factor-brick-position-${brick.id}`}>
+          建议仓位 <span className="font-mono text-[var(--k-fg)]">{brick.position ?? 0}%</span>（
+          {brick.confirmations ?? 0} 次确认）
+        </span>
+        <span data-testid={`factor-brick-days-${brick.id}`}>
+          {brick.daysSinceChange ?? '—'} 天未变档
+        </span>
+        <span>
+          {brick.family ?? '—'} · {brick.source ?? '—'}
+        </span>
+        <span data-testid={`factor-brick-doc-${brick.id}`}>文档 {brick.doc ?? '—'}</span>
+      </div>
+      <p className="mt-1 text-[10px] text-[var(--k-muted)]">
+        H2k-K2：滚动 40 笔分位 vs 同期随机 + 扣费后净；≥75 且净&gt;0 才复活，&lt;50 降档。仅建议，
+        不改设置、不下单。
+      </p>
+    </div>
+  );
+}
+
 function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
   const [kindFilter, setKindFilter] = React.useState<BrickKindFilter>('brick');
   const [statusFilter, setStatusFilter] = React.useState<BrickStatusFilter>('all');
   const [onceRevivedOnly, setOnceRevivedOnly] = React.useState(false);
+  const [openId, setOpenId] = React.useState<string | null>(null);
   const [sort, setSort] = React.useState<{ key: BrickSortKey; dir: 'asc' | 'desc' }>({
     key: 'default',
     dir: 'desc',
@@ -275,7 +321,7 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] px-3 py-2">
         <span className="text-[12px] font-semibold">砖块 bricks</span>
         <span className="text-[10px] font-normal text-[var(--k-muted)]">
-          （{bricks.length} 块 · 原子小砖块含最近表现 · 只展示，不下单）
+          （{bricks.length} 块 · 原子小砖块含最近表现 · 只展示，不下单 · 点击行展开时间轴）
         </span>
         <span
           className="ml-auto text-[10px] text-[var(--k-muted)]"
@@ -376,79 +422,105 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
             <tbody>
               {rows.map((brick) => {
                 const recent = brick.recentPerformance;
+                const open = openId === brick.id;
                 return (
-                  <tr
-                    key={brick.id}
-                    className="border-t border-[var(--k-border)]/60"
-                    data-testid={`factor-brick-row-${brick.id}`}
-                  >
-                    <td className="px-3 py-1.5 align-top">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-medium">{brick.name}</span>
-                        <span className="text-[10px] text-[var(--k-muted)]">{brick.id}</span>
-                        <span className="rounded border border-[var(--k-border)] px-1 text-[10px] text-[var(--k-muted)]">
-                          {KIND_LABEL[brick.kind] ?? brick.kind}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
-                        {brickWindowLine(brick)}
-                      </div>
-                      {brick.note ? (
-                        <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">{brick.note}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-1.5 align-top text-[11px] text-[var(--k-muted)]">
-                      {brick.family ?? '—'}
-                    </td>
-                    <td className="px-3 py-1.5 align-top">
-                      <span
-                        className={cn(
-                          'rounded border px-1.5 py-0.5 text-[10px]',
-                          badgeCls(brick.status),
-                        )}
-                      >
-                        {brick.badge ?? STATUS_LABEL[brick.status] ?? brick.status}
-                      </span>
-                      <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
-                        仓位 {brick.position ?? 0}% · 确认 {brick.confirmations ?? 0}
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5 align-top">
-                      <div className="font-mono">
-                        {recent?.net == null
-                          ? '—'
-                          : `${fmtNum(recent.net)}${brick.unit ?? ''}`}
-                      </div>
-                      <div className="text-[10px] text-[var(--k-muted)]">
-                        截至 {fmtDay(recent?.asOf)}
-                        {recent?.source === 'live' ? ' · 实盘重演' : ' · 冻结审计'}
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5 align-top font-mono">
-                      {fmtPct(recent?.percentile)}
-                    </td>
-                    <td className="px-3 py-1.5 align-top font-mono">
-                      {fmtWinRate(recent?.winRate)}
-                    </td>
-                    <td className="px-3 py-1.5 align-top font-mono">
-                      {recent?.trades ?? '—'}
-                    </td>
-                    <td className="px-3 py-1.5 align-top">
-                      {brick.onceRevived ? (
+                  <React.Fragment key={brick.id}>
+                    <tr
+                      className="cursor-pointer border-t border-[var(--k-border)]/60 hover:bg-[var(--k-surface-2)]/60"
+                      data-testid={`factor-brick-row-${brick.id}`}
+                      aria-expanded={open}
+                      tabIndex={0}
+                      onClick={() => setOpenId((prev) => (prev === brick.id ? null : brick.id))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setOpenId((prev) => (prev === brick.id ? null : brick.id));
+                        }
+                      }}
+                    >
+                      <td className="px-3 py-1.5 align-top">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium">{brick.name}</span>
+                          <span className="text-[10px] text-[var(--k-muted)]">{brick.id}</span>
+                          <span className="rounded border border-[var(--k-border)] px-1 text-[10px] text-[var(--k-muted)]">
+                            {KIND_LABEL[brick.kind] ?? brick.kind}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                          {brickWindowLine(brick)}
+                        </div>
+                        {brick.note ? (
+                          <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">{brick.note}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-1.5 align-top text-[11px] text-[var(--k-muted)]">
+                        <div>{brick.family ?? '—'}</div>
+                        {brick.source ? (
+                          <div className="text-[10px]" data-testid={`factor-brick-source-${brick.id}`}>
+                            {brick.source}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-1.5 align-top">
                         <span
-                          className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"
-                          data-testid={`factor-brick-revived-${brick.id}`}
+                          className={cn(
+                            'rounded border px-1.5 py-0.5 text-[10px]',
+                            badgeCls(brick.status),
+                          )}
                         >
-                          曾经复活
-                          {brick.onceRevivedWindows.length
-                            ? ` · ${brick.onceRevivedWindows.join('/')}`
-                            : ''}
+                          {brick.badge ?? STATUS_LABEL[brick.status] ?? brick.status}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-[var(--k-muted)]">—</span>
-                      )}
-                    </td>
-                  </tr>
+                        <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                          仓位 {brick.position ?? 0}% · 确认 {brick.confirmations ?? 0}
+                          {brick.daysSinceChange != null
+                            ? ` · ${brick.daysSinceChange} 天未变档`
+                            : ''}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 align-top">
+                        <div className="font-mono">
+                          {recent?.net == null
+                            ? '—'
+                            : `${fmtNum(recent.net)}${brick.unit ?? ''}`}
+                        </div>
+                        <div className="text-[10px] text-[var(--k-muted)]">
+                          截至 {fmtDay(recent?.asOf)}
+                          {recent?.source === 'live' ? ' · 实盘重演' : ' · 冻结审计'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 align-top font-mono">
+                        {fmtPct(recent?.percentile)}
+                      </td>
+                      <td className="px-3 py-1.5 align-top font-mono">
+                        {fmtWinRate(recent?.winRate)}
+                      </td>
+                      <td className="px-3 py-1.5 align-top font-mono">
+                        {recent?.trades ?? '—'}
+                      </td>
+                      <td className="px-3 py-1.5 align-top">
+                        {brick.onceRevived ? (
+                          <span
+                            className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"
+                            data-testid={`factor-brick-revived-${brick.id}`}
+                          >
+                            曾经复活
+                            {brick.onceRevivedWindows.length
+                              ? ` · ${brick.onceRevivedWindows.join('/')}`
+                              : ''}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-[var(--k-muted)]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr className="border-t border-[var(--k-border)]/60">
+                        <td colSpan={8} className="px-3 py-2">
+                          <BrickDetail brick={brick} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -729,6 +801,16 @@ export function FactorSystemPage() {
       ) : null}
 
       {data ? <FactorBricks bricks={data.bricks ?? []} /> : null}
+
+      <section className="flex flex-col gap-2" data-testid="factor-system-sgap">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-[12px] font-semibold">S-gap 失效趋势</span>
+          <span className="text-[10px] text-[var(--k-muted)]">
+            （滚动 40 笔衰减审计 · 只读，与上方砖块同源；不改设置、不下单）
+          </span>
+        </div>
+        <SgapDecayPanel />
+      </section>
 
       {data?.recentTransitions?.length ? (
         <div
