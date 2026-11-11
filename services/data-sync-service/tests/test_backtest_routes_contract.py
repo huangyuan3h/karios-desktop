@@ -229,6 +229,21 @@ def test_warm_default_timelines_includes_product_defaults(
     assert "starship_b" in seen
 
 
+def test_warm_default_timelines_force_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Close-sync refresh must force every plan (post-close data, not the file)."""
+    forced: list[Any] = []
+
+    def fake_build(start: str, end: str, **kwargs) -> tuple[dict[str, Any], None]:
+        forced.append(kwargs.get("force"))
+        return {"ok": True}, None
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(br, "_get_or_build_timeline", fake_build)
+    br.warm_default_timelines(force=True)
+    assert forced
+    assert all(value is True for value in forced)
+
+
 def test_timeline_route_refresh_forces_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
     payload = {"ok": True, "rows": [], "summary": {"fusedPct": 0.0}}

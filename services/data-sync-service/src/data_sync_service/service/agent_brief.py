@@ -39,8 +39,14 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11.2"
+BRIEF_VERSION = "2026-11-11.3"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+
+# Today + the last N open sessions of explicit decision-log rows folded into
+# the brief (read-only; never auto-written by a brief build).
+DECISION_LOG_LOOKBACK = 3
+DECISION_LOG_LIMIT_FULL = 20
+DECISION_LOG_LIMIT_COMPACT = 5
 
 # Research closes (qfq adjusted `daily` / panel) vs live raw 净价. A gap at or
 # above this is large enough to change a decision (e.g. 511260 close 141.614
@@ -1076,10 +1082,12 @@ def _compare_row(
 
 
 def _recent_timeline_note(*, strategy: str) -> dict[str, Any] | None:
-    """Compact recent-window stat from an ALREADY WARM timeline cache.
+    """Compact recent-window stat from a warm memory OR file timeline cache.
 
-    Never builds a timeline here (a cold build is minutes). The full curve is
-    intentionally not inlined — call ``GET /api/backtest/timeline`` instead.
+    Never builds a timeline here (a cold build is minutes). Memory is free;
+    on a cold process the per-strategy file cache written by
+    ``warm_default_timelines`` / close-sync fills the note instead. The full
+    curve is intentionally not inlined — call ``GET /api/backtest/timeline``.
     """
     from data_sync_service.api import backtest_routes as br
 
@@ -1087,8 +1095,18 @@ def _recent_timeline_note(*, strategy: str) -> dict[str, Any] | None:
         stats = br.warm_timeline_recent_stats(strategy=strategy)
     except Exception as exc:  # noqa: BLE001 — optional note
         logger.warning("agent judgment brief recent timeline stats failed: %s", exc)
+        stats = None
+    if stats:
+        return {**stats, "cacheSource": stats.get("cacheSource") or "memory"}
+
+    try:
+        file_stats, meta = br.read_timeline_recent_stats(strategy=strategy)
+    except Exception as exc:  # noqa: BLE001 — optional note
+        logger.warning("agent judgment brief recent timeline file read failed: %s", exc)
         return None
-    return stats
+    if file_stats:
+        return {**file_stats, "cacheSource": meta.get("source") or "file"}
+    return None
 
 
 def _backtest_overview_cached(
@@ -1188,16 +1206,40 @@ def _backtest_block(
     recent: dict[str, Any] | None = None
     if not compact:
         recent_map = {}
+        sources: set[str] = set()
         for key in keys:
             stats = _recent_timeline_note(strategy=key)
             if stats:
+                sources.add(str(stats.get("cacheSource") or "memory"))
                 recent_map[key] = stats
         if recent_map:
             recent = {
-                "source": "in_process_timeline_cache",
+                "available": True,
+                "source": (
+                    "memory_timeline_cache"
+                    if sources == {"memory"}
+                    else "file_timeline_cache"
+                    if sources == {"file"}
+                    else "memory+file_timeline_cache"
+                ),
                 "windowSessions": 20,
                 "perStrategy": recent_map,
-                "note": "trailing-year timeline cache was warm; a cold cache omits this block",
+                "note": (
+                    "trailing-year timeline cache (memory first, then the "
+                    "per-strategy file written by warm_default_timelines); "
+                    "a cold cache is reported as unavailable"
+                ),
+            }
+        else:
+            recent = {
+                "available": False,
+                "reason": (
+                    "timeline cache cold (memory + file miss); warmup "
+                    "warm_default_timelines() / close-sync force refresh will "
+                    "fill it — the brief never runs a minutes-long simulate"
+                ),
+                "windowSessions": 20,
+                "perStrategy": {},
             }
 
     rolling = overview.get("rollingOos") or {}
@@ -1245,6 +1287,26 @@ def _backtest_block(
                 "GET /api/backtest/timeline?strategy=<key> and start/end for a curve"
             ),
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# decision log (read-back of POST /v1/agent/decision-log)
+# ---------------------------------------------------------------------------
+
+
+def _decision_log_block(
+    day: str, *, lookback: int | None = None, limit: int | None = None
+) -> dict[str, Any]:
+    """Today's + the last few sessions' explicit decision rows (fail-open)."""
+    from data_sync_service.service.agent_decision_log import read_decision_log
+
+    return _trim(
+        read_decision_log(
+            trade_date=day,
+            lookback=DECISION_LOG_LOOKBACK if lookback is None else lookback,
+            limit=DECISION_LOG_LIMIT_FULL if limit is None else limit,
+        )
     )
 
 
@@ -1442,6 +1504,16 @@ def build_judgment_brief(
                 lambda: _safe(
                     "execution",
                     lambda: _execution_block(day=day, compact=compact, gate=gate_block),
+                ),
+            ),
+            "decisionLog": _timed(
+                "decisionLogMs",
+                lambda: _safe(
+                    "decisionLog",
+                    lambda: _decision_log_block(
+                        day,
+                        limit=(DECISION_LOG_LIMIT_COMPACT if compact else DECISION_LOG_LIMIT_FULL),
+                    ),
                 ),
             ),
             "news": _timed(
@@ -2247,6 +2319,47 @@ def _render_execution(brief: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _render_decision_log(brief: dict[str, Any], compact: bool) -> list[str]:
+    log = brief.get("decisionLog") or {}
+    lines = ["## 11. 决策日志 decision log", ""]
+    if not log.get("available"):
+        return lines + [
+            f"- 不可用: {log.get('error') or '—'}（写入只走 POST /v1/agent/decision-log）",
+            "",
+        ]
+    lines.append(
+        f"- 窗口: {log.get('fromDate')} ~ {log.get('tradeDate')}"
+        f"（最近 {log.get('lookbackSessions')} 个交易日）· {log.get('count')} 条"
+    )
+    items = [r for r in (log.get("items") or []) if isinstance(r, dict)]
+    for item in items[: 5 if compact else 15]:
+        adopted = item.get("adoptedOverlay")
+        overlay = (
+            "采纳overlay"
+            if adopted is True
+            else "未采纳overlay"
+            if adopted is False
+            else "overlay=—"
+        )
+        suffix = (
+            f" · contract={item.get('contractSnapshotId')}"
+            if item.get("contractSnapshotId")
+            else ""
+        )
+        lines.append(
+            f"- {item.get('tradeDate')} `{item.get('symbol')}` {item.get('action')} · "
+            f"{overlay} · source={item.get('source')}{suffix}"
+        )
+        if item.get("judgment"):
+            lines.append(f"  - 判断: {item.get('judgment')}")
+    if not items:
+        lines.append("- 本窗口暂无记录（写入只走显式 POST，不会自动写）")
+    if log.get("note"):
+        lines.append(f"- 说明: {log.get('note')}")
+    lines.append("")
+    return lines
+
+
 def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = False) -> str:
     """Render the same payload as compact Markdown (the Copy All clipboard body)."""
     contract = brief.get("contract") or {}
@@ -2276,7 +2389,8 @@ def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = Fal
     lines.extend(_render_news(brief))
     lines.extend(_render_freshness(brief))
     lines.extend(_render_execution(brief))
-    lines.append("## 11. 故意省略 omitted")
+    lines.extend(_render_decision_log(brief, compact))
+    lines.append("## 12. 故意省略 omitted")
     lines.append("")
     lines.append("- " + " · ".join(str(x) for x in brief.get("omitted") or []))
     if brief.get("omittedNote"):

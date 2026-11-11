@@ -386,6 +386,62 @@ def insert_action(
     return rec
 
 
+def list_actions_between(
+    *,
+    start_date: date | str,
+    end_date: date | str,
+    symbol: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Decision-log rows whose ``snapshot_date`` falls in [start, end].
+
+    This is the read side of ``POST /v1/agent/decision-log`` (``insert_action``
+    / TIP-015 actions): the agent must be able to re-read yesterday's decision
+    the next day. Newest first.
+    """
+    ensure_table()
+    clauses = ["snapshot_date >= %s", "snapshot_date <= %s"]
+    params: list[Any] = [start_date, end_date]
+    if symbol:
+        clauses.append("symbol = %s")
+        params.append(symbol)
+    params.append(limit)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, symbol, action, rationale, confidence, status,
+                       source, snapshot_date, outcome, created_at
+                FROM {ACTIONS_TABLE}
+                WHERE {" AND ".join(clauses)}
+                ORDER BY snapshot_date DESC, created_at DESC, id DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    cols = (
+        "id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshotDate",
+        "outcome",
+        "createdAt",
+    )
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        rec = _row_dict(cols, row)
+        for key in ("snapshotDate", "createdAt"):
+            if rec.get(key) is not None and hasattr(rec[key], "isoformat"):
+                rec[key] = rec[key].isoformat()
+        out.append(rec)
+    return out
+
+
 def list_actions(
     *,
     status: str | None = None,

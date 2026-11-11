@@ -21,9 +21,17 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def _reset_brief_cache() -> Any:
     """Every test starts from a cold in-process cache (the module caches by day)."""
+    from data_sync_service.api import backtest_routes as br
+
     agent_brief.reset_judgment_brief_cache()
+    br._timeline_cache.clear()
+    br._timeline_cache_at.clear()
+    br._timeline_engine_cache.clear()
     yield
     agent_brief.reset_judgment_brief_cache()
+    br._timeline_cache.clear()
+    br._timeline_cache_at.clear()
+    br._timeline_engine_cache.clear()
 
 
 @pytest.fixture()
@@ -316,7 +324,27 @@ def _fake_dashboard_summary(**_: Any) -> dict[str, Any]:
 
 
 @pytest.fixture()
-def patched(monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any]) -> None:
+def patched(
+    monkeypatch: pytest.MonkeyPatch, memory_settings: dict[str, Any], tmp_path: Any
+) -> None:
+    # Isolate the timeline file cache: recent-stats fallback tests write their
+    # own file and the default run must not touch the repo's real cache.
+    monkeypatch.setattr("data_sync_service.api.backtest_routes.TIMELINE_CACHE_DIR", tmp_path)
+    # The brief folds in the decision log; default to an empty, available log
+    # so these tests stay Postgres-free (dedicated DB tests cover the read path).
+    monkeypatch.setattr(
+        "data_sync_service.service.agent_decision_log.read_decision_log",
+        lambda **kwargs: {
+            "available": True,
+            "tradeDate": kwargs.get("trade_date"),
+            "fromDate": kwargs.get("trade_date"),
+            "sessions": [kwargs.get("trade_date")],
+            "lookbackSessions": 1,
+            "count": 0,
+            "items": [],
+            "note": "test",
+        },
+    )
     monkeypatch.setattr(
         "data_sync_service.api.settings_routes.selected_strategy_mode", lambda: "homeport"
     )
@@ -583,7 +611,8 @@ def test_routes_json_and_markdown(patched: None) -> None:
     assert "可成交时钟" in text
     assert "## 4. 回测 backtest" in text
     assert "homeport_m30" in text
-    assert "## 11. 故意省略 omitted" in text
+    assert "## 11. 决策日志 decision log" in text
+    assert "## 12. 故意省略 omitted" in text
     assert "Alpha Radar · Structured Trends" not in text
     assert "研报" not in text.split("## 9. 数据新鲜度")[0]
 
@@ -1038,3 +1067,162 @@ def test_route_supports_refresh(patched: None) -> None:
     md = client.get("/v1/agent/judgment-brief.md?tradeDate=2026-11-10&refresh=true")
     assert md.status_code == 200
     assert md.text.startswith("# 决策简报 judgment brief")
+
+
+# ---------------------------------------------------------------------------
+# Step 3 (2026-11-11.3): file-cache recent stats + readable decision log
+# ---------------------------------------------------------------------------
+
+
+def _write_m30_file(**overrides: Any) -> dict[str, Any]:
+    import data_sync_service.api.backtest_routes as br
+
+    payload: dict[str, Any] = {
+        "ok": True,
+        "start": "2026-10-01",
+        "end": "2026-10-31",
+        "mode": "homeport",
+        "strategy": "母港",
+        "summary": {"fusedPct": 12.5, "maxDdFusedPct": 4.2},
+        "rows": [
+            {"date": "2026-10-27", "navMulti": 1.0, "idlePct": 20, "positions": 3},
+            {"date": "2026-10-28", "navMulti": 1.05, "idlePct": 20, "positions": 3},
+            {
+                "date": "2026-10-31",
+                "navMulti": 1.10,
+                "idlePct": 25,
+                "positions": 2,
+                "pick": "BOND10",
+                "pickTs": "511260.SH",
+                "parkedSides": 0,
+                "parkedTrail": False,
+                "parkedRetPct": 0.1,
+            },
+        ],
+    }
+    payload.update(overrides)
+    br._save_timeline_file("2026-10-01", "2026-10-31", payload, "homeport_m30")
+    return payload
+
+
+def test_recent_backtest_falls_back_to_file_cache(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import data_sync_service.api.backtest_routes as br
+
+    _write_m30_file()
+    # In-process cache is cold after a restart.
+    monkeypatch.setattr(br, "warm_timeline_recent_stats", lambda strategy, sessions=20: None)
+    monkeypatch.setattr(
+        br,
+        "simulate",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("must not run simulate")),
+    )
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    recent = out["backtest"]["recent"]
+    assert recent["available"] is True
+    assert "file" in recent["source"]
+    stats = recent["perStrategy"]["homeport_m30"]
+    assert stats["returnPct"] == 10.0
+    assert stats["cacheSource"] == "file"
+    assert stats["lastDayReturnPct"] == 4.76
+
+
+def test_recent_backtest_unavailable_when_both_caches_miss(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import data_sync_service.api.backtest_routes as br
+
+    monkeypatch.setattr(br, "warm_timeline_recent_stats", lambda strategy, sessions=20: None)
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert out["ok"] is True
+    recent = out["backtest"]["recent"]
+    assert recent["available"] is False
+    assert "memory + file miss" in recent["reason"]
+    assert not (recent.get("perStrategy") or {})
+
+
+def test_brief_folds_readable_decision_log_into_json_and_markdown(
+    patched: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    row = {
+        "id": 7,
+        "tradeDate": "2026-11-10",
+        "symbol": "CN:600000",
+        "action": "hold_same_key_rebuy",
+        "judgment": "破线卖油后暂缓同键回买",
+        "status": "logged",
+        "source": "agent",
+        "adoptedOverlay": True,
+        "contractSnapshotId": "dc:2026-11-10:homeport_m30:SELL_TO_REPO:OIL",
+        "loggedAt": "2026-11-10T06:30:00+00:00",
+    }
+    monkeypatch.setattr(
+        "data_sync_service.service.agent_decision_log.read_decision_log",
+        lambda **kwargs: {
+            "available": True,
+            "tradeDate": kwargs.get("trade_date"),
+            "fromDate": "2026-11-06",
+            "sessions": ["2026-11-06", "2026-11-09", "2026-11-10"],
+            "lookbackSessions": 3,
+            "count": 1,
+            "items": [row],
+            "note": "test",
+        },
+    )
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    log = out["decisionLog"]
+    assert log["available"] is True
+    assert log["items"][0]["contractSnapshotId"].startswith("dc:2026-11-10")
+    assert log["items"][0]["adoptedOverlay"] is True
+
+    md = agent_brief.render_judgment_brief_markdown(out)
+    assert "## 11. 决策日志 decision log" in md
+    assert "破线卖油后暂缓同键回买" in md
+    assert "采纳overlay" in md
+
+
+def test_brief_decision_log_is_fail_open(patched: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(**_: Any) -> dict[str, Any]:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("data_sync_service.service.agent_decision_log.read_decision_log", _boom)
+
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert out["ok"] is True
+    assert out["decisionLog"]["available"] is False
+    assert "db down" in out["decisionLog"]["error"]
+    md = agent_brief.render_judgment_brief_markdown(out)
+    assert "## 11. 决策日志 decision log" in md
+    assert "不可用" in md
+
+
+def test_decision_log_read_is_fail_open_without_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_sync_service.service import agent_decision_log
+
+    def _boom(**_: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("data_sync_service.db.decision.list_actions_between", _boom)
+    out = agent_decision_log.read_decision_log(trade_date="2026-11-10")
+    assert out["available"] is False
+    assert "db down" in out["error"]
+    assert out["items"] == []
+
+
+def test_step1_step2_fields_still_serialize(patched: None) -> None:
+    out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
+    assert out["briefVersion"] == "2026-11-11.3"
+    assert out["integrity"]["status"] in {"ok", "warning", "unknown"}
+    assert out["judgment"]["fillClock"] is not None
+    assert "followable" in out["judgment"]["followability"]
+    assert "pathMismatch" in out["judgment"]
+    # Event tags are serialized only when the contract carries them; the key
+    # contract here is that Step 3 did not drop the Step 2 shape.
+    if out["contract"].get("eventTags"):
+        assert out["eventTags"] == out["contract"]["eventTags"]

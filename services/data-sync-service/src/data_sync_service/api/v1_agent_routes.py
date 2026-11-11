@@ -9,6 +9,8 @@
 | POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
 | GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
 | POST /v1/agent/event-tags               | Record one sourced, advice-only tag |
+| GET  /v1/agent/timeline-brief           | Compact, cache-first recent timeline note |
+| GET  /v1/agent/decision-log             | Read back today's / recent decision rows |
 | POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
 
 Overlays annotate; they never rewrite the engine's ``sleeve.action``, the
@@ -198,6 +200,44 @@ def get_judgment_brief_md(
     return Response(content=body, media_type="text/markdown; charset=utf-8")
 
 
+@router.get(
+    "/timeline-brief",
+    summary="Compact recent timeline note (cache-first; never runs a cold simulate).",
+)
+def get_timeline_brief(
+    strategy: str | None = Query(
+        default=None,
+        description=(
+            "Timeline key (harbor | homeport | homeport_m30 | starport | ...). "
+            "Default: the settings-mapped key — settings 'homeport' is timeline "
+            "'homeport_m30'; timeline 'homeport' is the frozen M50 base."
+        ),
+    ),
+    start: str | None = Query(
+        default=None,
+        description="Window start YYYY-MM-DD; default: trailing-year cache window.",
+    ),
+    end: str | None = Query(
+        default=None,
+        description="Window end YYYY-MM-DD; default: today.",
+    ),
+) -> dict[str, Any]:
+    """Last-day return / drawdown / parking leg from the timeline cache.
+
+    Cache-first: memory → per-strategy file → explicit miss. A miss returns
+    ``available: false`` with a reason; it never blocks on a minutes-long
+    cold build. The full curve stays at ``GET /api/backtest/timeline``.
+    """
+    from data_sync_service.api.backtest_routes import build_timeline_brief
+
+    try:
+        return build_timeline_brief(strategy=strategy, start=start, end=end)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"timeline brief failed: {exc}") from exc
+
+
 @router.get("/overlays", summary="List agent overlays with effective status.")
 def get_overlays(
     day: str | None = Query(default=None, description="ISO date; default today."),
@@ -337,6 +377,46 @@ def post_event_tag(body: EventTagBody) -> dict[str, Any]:
     }
 
 
+@router.get(
+    "/decision-log",
+    summary="Read back today's / recent decision rows (TIP-015 actions).",
+)
+def get_decision_log(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
+    ),
+    lookback: int = Query(
+        default=3,
+        ge=1,
+        le=20,
+        description="Include the last N open sessions ending at tradeDate.",
+    ),
+    symbol: str | None = Query(default=None, description="Filter by symbol."),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> dict[str, Any]:
+    """Read the store ``POST /v1/agent/decision-log`` writes (fail-open).
+
+    Returns tradeDate / judgment / adopted overlay / symbol / source /
+    contractSnapshotId per row. A missing DB degrades to ``ok: false`` with
+    ``available: false`` and an error — it never 500s.
+    """
+    from data_sync_service.service.agent_decision_log import read_decision_log
+
+    day = str(tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    out = read_decision_log(
+        trade_date=day,
+        lookback=lookback,
+        symbol=symbol.upper() if symbol else None,
+        limit=limit,
+    )
+    return {"ok": bool(out.get("available")), **out}
+
+
 @router.post("/decision-log", summary="Write one minimal decision-log row (TIP-015 actions).")
 def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
     from data_sync_service.db.decision import insert_action
@@ -365,4 +445,12 @@ def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"decision log failed: {exc}") from exc
+    # The brief folds the decision log in; drop the 75s cached copy so the next
+    # read sees the row that was just written. Fail-open (cache only).
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("decision_log")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
     return {"ok": True, "item": row}
