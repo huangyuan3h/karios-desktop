@@ -1,0 +1,463 @@
+{
+  "generatedAt": "2026-11-11",
+  "available": true,
+  "adviceOnly": true,
+  "preregistered": {
+    "rule": "H2k K2",
+    "N": 40,
+    "X": 75.0,
+    "offBelow": 50.0,
+    "steps": [
+      0,
+      10,
+      20
+    ],
+    "maxWeightPct": 20,
+    "stepGapTrades": 20,
+    "twoStepConfirm": true,
+    "immediateStepDown": true,
+    "retuned": false
+  },
+  "costs": {
+    "satelliteBpPerTrade": 32.28,
+    "transferBpPerSide": 5.0,
+    "note": "contrib is already net of 32.28bp; transfer cost is inside M30 NAV"
+  },
+  "input": {
+    "nTrades": 1130,
+    "firstTrade": "2021-08-09",
+    "lastTrade": "2026-09-23",
+    "source": "frozen h2f_trades / already-used blotter; no new download"
+  },
+  "arms": {
+    "gatedK2": {
+      "unit": "satellite points",
+      "total": 248.62,
+      "byWindow": {
+        "OOS2": 141.035,
+        "train": 24.465,
+        "valid": 5.31,
+        "holdout": 0.0,
+        "longPreHoldout": 77.81,
+        "other": 0.0
+      },
+      "exposurePct": 44.56,
+      "counts": {
+        "nOn10": 227,
+        "nOn20": 390,
+        "nOff": 513
+      },
+      "positionChanges": [
+        {
+          "i": 0,
+          "date": "2021-08-09",
+          "from": null,
+          "to": 0,
+          "percentile": null,
+          "t": null,
+          "breaker": null
+        },
+        {
+          "i": 41,
+          "date": "2021-09-06",
+          "from": 0,
+          "to": 10,
+          "percentile": 99.99917909870949,
+          "t": 3.0082304567938922,
+          "breaker": null
+        },
+        {
+          "i": 61,
+          "date": "2021-11-09",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.99707950816128,
+          "t": 3.5186486926339526,
+          "breaker": null
+        },
+        {
+          "i": 157,
+          "date": "2022-05-20",
+          "from": 20,
+          "to": 0,
+          "percentile": 88.30999290930991,
+          "t": 1.0888862474616756,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 188,
+          "date": "2022-06-15",
+          "from": 0,
+          "to": 10,
+          "percentile": 91.07147130712451,
+          "t": 1.0599991732532787,
+          "breaker": null
+        },
+        {
+          "i": 208,
+          "date": "2022-06-30",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.92373067279212,
+          "t": 3.2236434796105566,
+          "breaker": null
+        },
+        {
+          "i": 252,
+          "date": "2022-08-18",
+          "from": 20,
+          "to": 0,
+          "percentile": 99.96274240907657,
+          "t": 2.939789205577984,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 298,
+          "date": "2022-11-18",
+          "from": 0,
+          "to": 10,
+          "percentile": 88.73785451988455,
+          "t": 1.2702277840493894,
+          "breaker": null
+        },
+        {
+          "i": 301,
+          "date": "2022-11-22",
+          "from": 10,
+          "to": 0,
+          "percentile": 79.21805403153658,
+          "t": 0.8341852994672867,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 341,
+          "date": "2023-01-19",
+          "from": 0,
+          "to": 10,
+          "percentile": 82.47161698751403,
+          "t": 0.8406297351620327,
+          "breaker": null
+        },
+        {
+          "i": 355,
+          "date": "2023-02-08",
+          "from": 10,
+          "to": 0,
+          "percentile": 46.729299395507326,
+          "t": 0.010148312347178525,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 378,
+          "date": "2023-02-24",
+          "from": 0,
+          "to": 10,
+          "percentile": 76.19885467114253,
+          "t": 0.6758387053858956,
+          "breaker": null
+        },
+        {
+          "i": 383,
+          "date": "2023-03-02",
+          "from": 10,
+          "to": 0,
+          "percentile": 49.93782838191243,
+          "t": 0.07280463634686851,
+          "breaker": null
+        },
+        {
+          "i": 403,
+          "date": "2023-06-02",
+          "from": 0,
+          "to": 10,
+          "percentile": 98.56655787791179,
+          "t": 1.7678566579642525,
+          "breaker": null
+        },
+        {
+          "i": 423,
+          "date": "2023-07-10",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.99868623297053,
+          "t": 3.481051340871107,
+          "breaker": null
+        },
+        {
+          "i": 445,
+          "date": "2023-08-01",
+          "from": 20,
+          "to": 10,
+          "percentile": 44.92604463424244,
+          "t": -0.03760457372272409,
+          "breaker": null
+        },
+        {
+          "i": 446,
+          "date": "2023-08-01",
+          "from": 10,
+          "to": 0,
+          "percentile": 44.25872374298309,
+          "t": -0.0557932805889484,
+          "breaker": null
+        },
+        {
+          "i": 515,
+          "date": "2024-03-04",
+          "from": 0,
+          "to": 10,
+          "percentile": 76.07811998594536,
+          "t": 0.6246634904759983,
+          "breaker": null
+        },
+        {
+          "i": 535,
+          "date": "2024-03-18",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.28896926725345,
+          "t": 2.824252852342148,
+          "breaker": null
+        },
+        {
+          "i": 562,
+          "date": "2024-05-08",
+          "from": 20,
+          "to": 0,
+          "percentile": 89.13022088848399,
+          "t": 1.0803807211543497,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 582,
+          "date": "2024-05-22",
+          "from": 0,
+          "to": 10,
+          "percentile": 99.9872960192324,
+          "t": 2.8813401279306317,
+          "breaker": null
+        },
+        {
+          "i": 602,
+          "date": "2024-09-24",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.99999377126649,
+          "t": 4.4249176350843875,
+          "breaker": null
+        },
+        {
+          "i": 666,
+          "date": "2024-11-14",
+          "from": 20,
+          "to": 0,
+          "percentile": 99.99999999999993,
+          "t": 8.215574000392667,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 686,
+          "date": "2024-12-10",
+          "from": 0,
+          "to": 10,
+          "percentile": 99.99997147486897,
+          "t": 5.071123128446022,
+          "breaker": null
+        },
+        {
+          "i": 706,
+          "date": "2025-02-05",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.87754199822585,
+          "t": 2.8769114009446874,
+          "breaker": null
+        },
+        {
+          "i": 735,
+          "date": "2025-02-27",
+          "from": 20,
+          "to": 0,
+          "percentile": 74.93528883893403,
+          "t": 0.7714968081424673,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 765,
+          "date": "2025-04-23",
+          "from": 0,
+          "to": 10,
+          "percentile": 80.45994679706257,
+          "t": 0.9149205343917637,
+          "breaker": null
+        },
+        {
+          "i": 785,
+          "date": "2025-05-12",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.99998891530308,
+          "t": 4.921536132137405,
+          "breaker": null
+        },
+        {
+          "i": 814,
+          "date": "2025-06-04",
+          "from": 20,
+          "to": 0,
+          "percentile": 99.999886752752,
+          "t": 4.263395463643263,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 845,
+          "date": "2025-07-04",
+          "from": 0,
+          "to": 10,
+          "percentile": 88.88616085861125,
+          "t": 1.1201465833122124,
+          "breaker": null
+        },
+        {
+          "i": 865,
+          "date": "2025-07-18",
+          "from": 10,
+          "to": 0,
+          "percentile": 99.65567790869983,
+          "t": 2.2363167171517793,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 892,
+          "date": "2025-08-07",
+          "from": 0,
+          "to": 10,
+          "percentile": 95.57724567868408,
+          "t": 1.5983308955585007,
+          "breaker": null
+        },
+        {
+          "i": 912,
+          "date": "2025-08-21",
+          "from": 10,
+          "to": 0,
+          "percentile": 87.7920305299354,
+          "t": 1.1390896411638445,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 932,
+          "date": "2025-10-24",
+          "from": 0,
+          "to": 10,
+          "percentile": 81.27390640294296,
+          "t": 0.8050718334238186,
+          "breaker": null
+        },
+        {
+          "i": 936,
+          "date": "2025-10-28",
+          "from": 10,
+          "to": 0,
+          "percentile": 59.02963469756545,
+          "t": 0.2861017755158934,
+          "breaker": "single_trade_-8"
+        },
+        {
+          "i": 968,
+          "date": "2025-12-26",
+          "from": 0,
+          "to": 10,
+          "percentile": 99.7023303732677,
+          "t": 2.317961882315185,
+          "breaker": null
+        },
+        {
+          "i": 988,
+          "date": "2026-01-13",
+          "from": 10,
+          "to": 20,
+          "percentile": 99.99998828101383,
+          "t": 4.4261222305286605,
+          "breaker": null
+        },
+        {
+          "i": 1067,
+          "date": "2026-05-14",
+          "from": 20,
+          "to": 0,
+          "percentile": 73.08259830817744,
+          "t": 0.7218614482857559,
+          "breaker": "single_trade_-8"
+        }
+      ]
+    },
+    "alwaysOnStarship": {
+      "unit": "satellite points",
+      "total": 491.09,
+      "byWindow": {
+        "OOS2": 220.09,
+        "train": 62.49,
+        "valid": 3.11,
+        "holdout": -20.17,
+        "longPreHoldout": 225.57,
+        "other": 0.0
+      },
+      "exposurePct": 100.0
+    },
+    "waitInM30Baseline": {
+      "available": true,
+      "unit": "NAV %",
+      "source": "/Users/huangyuan/Projects/wealth-ideas/karios-audit-2026-10/scratch/h2d_nav.json",
+      "byWindow": {
+        "OOS2": 42.4007,
+        "train": 47.8076,
+        "valid": 35.0451,
+        "holdout": -8.83,
+        "long": 152.6173
+      },
+      "total": 130.3112,
+      "caveat": "M30 为 NAV %（70%港湾+30%B3，费用已含），不是卫星点；与卫星臂并列展示，不能直接相加。"
+    }
+  },
+  "diagnostics": {
+    "gatedK2NoBreaker": {
+      "unit": "satellite points",
+      "total": 395.38,
+      "byWindow": {
+        "OOS2": 193.19,
+        "train": 62.49,
+        "valid": 2.205,
+        "holdout": 0.0,
+        "longPreHoldout": 137.495,
+        "other": 0.0
+      },
+      "exposurePct": 73.72,
+      "note": "same K2 state machine with the single-trade -8% breaker disabled; diagnostic for H2k comparability, not a retuned arm"
+    }
+  },
+  "breakers": {
+    "applied": [
+      "single_trade_-8"
+    ],
+    "notAvailable": [
+      "forward_60d_-10 (needs daily NAV)",
+      "three_same_day_full_losses (needs intraday)",
+      "weekly_-5_halve (needs daily NAV)",
+      "data_link_alarm (needs live health feed)",
+      "holdout_-25_stop (needs daily holdout NAV)"
+    ]
+  },
+  "summary": {
+    "nTrades": 1130,
+    "nWithSatelliteOn": 617,
+    "gatedVsAlwaysPoints": -242.47,
+    "gatedExposurePct": 44.56
+  },
+  "caveats": [
+    "卫星两臂为交易空间点数（同一25%槽口径），基线为 M30 NAV %，不可直接相加。",
+    "K2 分位沿用 H2k 的 F long R1 正态近似（±10pt），阈值冻结未调。",
+    "未混入官方 COMPARE 版本 / catalog 窗口；只复用 h2f_trades 与已用 NAV。",
+    "这是系统的验证循环，不是新 alpha 搜索；未改任何 live 参数或下单。"
+  ]
+}
