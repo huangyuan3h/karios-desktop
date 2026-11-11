@@ -200,6 +200,12 @@ export type FactorSystemFreshness = {
   sourceGeneratedAt?: string | null;
   historyLatest?: string | null;
   tradeBlotterLastEntry?: string | null;
+  /** As-of watermark of the live overlay (latest complete replay session). */
+  liveAsOf?: string | null;
+  /** `ok` | `degraded` (missing 14:30 bars / ETF not synced). */
+  liveStatus?: string | null;
+  liveUpdatedAt?: string | null;
+  expectedSession?: string | null;
   ageDays?: number | null;
   stale?: boolean;
   reason?: string | null;
@@ -294,16 +300,21 @@ export type FactorBrickWindow = {
   revived?: boolean | null;
 };
 
-/** Most recent frozen window (holdout); `missing` means the vault has no entry. */
+/** Most recent rolling window: live overlay when present, else frozen holdout. */
 export type FactorBrickRecentPerformance = {
-  window: 'holdout';
+  window: 'holdout' | 'live' | 'long' | 'valid' | string;
   asOf?: string | null;
+  /** Last closed trade inside the window (the as-of may be the newer replay watermark). */
+  lastTradeAsOf?: string | null;
   net?: number | null;
   percentile?: number | null;
   winRate?: number | null;
   trades?: number | null;
   unit?: string | null;
   missing?: boolean;
+  /** `live` = frozen audit prefix + appended closed replay trades. */
+  source?: 'live' | 'frozen' | string;
+  basis?: string | null;
 };
 
 export type FactorBrickWindows = {

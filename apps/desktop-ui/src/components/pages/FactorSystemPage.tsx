@@ -281,7 +281,7 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
           className="ml-auto text-[10px] text-[var(--k-muted)]"
           data-testid="factor-bricks-asof"
         >
-          持有期截至 {holdoutAsOf ?? '—'}（holdout）· 灯不会自行变化。
+          最近表现截至 {holdoutAsOf ?? '—'}（滚动实盘窗口；下方四窗为冻结审计）
         </span>
       </div>
 
@@ -421,6 +421,7 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
                       </div>
                       <div className="text-[10px] text-[var(--k-muted)]">
                         截至 {fmtDay(recent?.asOf)}
+                        {recent?.source === 'live' ? ' · 实盘重演' : ' · 冻结审计'}
                       </div>
                     </td>
                     <td className="px-3 py-1.5 align-top font-mono">

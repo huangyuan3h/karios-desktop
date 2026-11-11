@@ -203,7 +203,7 @@ const PAYLOAD = {
         completed: 4,
         pass: false,
         asOfDate: '2026-10-03',
-        source: 'documented 2026-10-03 audit; no live blotter append in this slice',
+        source: 'documented 2026-10-03 audit; the factor live overlay counts replay trades, not paper fills',
         stale: true,
       },
       holdoutRecovery: {
@@ -411,6 +411,50 @@ describe('FactorSystemPage', () => {
 
     expect(screen.getByTestId('factor-brick-row-harbor')).toBeDefined();
     expect(screen.getByTestId('factor-brick-row-m30')).toBeDefined();
+  });
+
+  it('labels the rolling window as live replay and hides the stale banner when caught up', async () => {
+    apiGetJson.mockResolvedValue({
+      ...PAYLOAD,
+      freshness: {
+        ...PAYLOAD.freshness,
+        tradeBlotterLastEntry: '2026-11-11',
+        liveAsOf: '2026-11-11',
+        liveStatus: 'ok',
+        expectedSession: '2026-11-11',
+        ageDays: 0,
+        stale: false,
+        reason: '实盘重演已跟上 2026-11-11',
+      },
+      bricks: BRICKS.map((item) =>
+        item.id === 'harbor'
+          ? {
+              ...item,
+              recentPerformance: {
+                window: 'live',
+                asOf: '2026-11-11',
+                lastTradeAsOf: '2026-11-09',
+                net: 11.24,
+                percentile: 85.9,
+                winRate: 0.425,
+                trades: 40,
+                unit: '点',
+                missing: false,
+                source: 'live',
+                basis: 'live:harbor',
+              },
+            }
+          : item,
+      ),
+    });
+    renderPage();
+    await screen.findByTestId('factor-bricks-table');
+    fireEvent.click(screen.getByLabelText('类型 全部'));
+    const row = await screen.findByTestId('factor-brick-row-harbor');
+    expect(row.textContent).toContain('截至 2026-11-11');
+    expect(row.textContent).toContain('实盘重演');
+    expect(screen.getByTestId('factor-bricks-asof').textContent).toContain('2026-11-11');
+    expect(screen.queryByTestId('factor-system-stale')).toBeNull();
   });
 
   it('marks once-revived windows and can filter to them', async () => {
