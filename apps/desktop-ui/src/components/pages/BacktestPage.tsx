@@ -47,6 +47,8 @@ import {
   useReturnAttributionQuery,
   useSensitivityQuery,
   TIMELINE_STRATEGY_LABEL,
+  timelinePrefetchTargets,
+  timelineQueryOptions,
   useTimelineQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
@@ -384,7 +386,6 @@ function CoreAuditCard({ q }: { q: ReturnType<typeof useCoreAuditQuery> }) {
   );
 }
 
-
 function RollingOosCard({
   overview,
 }: {
@@ -700,6 +701,22 @@ function TimelineCard({
     onStrategyChange?.(next);
   };
   const q = useTimelineQuery(start, end, strategy, true);
+  /**
+   * P0 cheap cache: once this window's first strategy succeeds, warm the
+   * sibling tabs for the SAME window. Curated (harbor base + M30/星舰B), not
+   * the full matrix — each cold build is a heavy replay (full matrix is P2).
+   */
+  const queryClient = useQueryClient();
+  const prefetchedKey = React.useRef<string>('');
+  React.useEffect(() => {
+    if (!q.isSuccess) return;
+    const key = `${start}|${end}|${strategy}`;
+    if (prefetchedKey.current === key) return;
+    prefetchedKey.current = key;
+    for (const sibling of timelinePrefetchTargets(strategy)) {
+      void queryClient.prefetchQuery(timelineQueryOptions(start, end, sibling));
+    }
+  }, [q.isSuccess, start, end, strategy, queryClient]);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data]);
   const summary = q.data?.summary;
   const blotter = q.data?.blotter ?? [];
@@ -734,7 +751,8 @@ function TimelineCard({
     starport: '母港 + 卫星 0.2 曝露 · 全家最稳',
     starship: '激进对照：卫星 + 闲钱 100% 停 H2 ETF（收益高、回撤也大）',
     starship_robust: '现行 canonical：卫星 + 闲钱 25% 停 H2 ETF / 75% 停 B3 风险预算（K3 风险）',
-    starship_b: '观察：卫星 + 闲钱 100% 停 {国债+黄金+纳指} 逆波动率（复活需 rolling40转正 AND 大盘P&L转正）',
+    starship_b:
+      '观察：卫星 + 闲钱 100% 停 {国债+黄金+纳指} 逆波动率（复活需 rolling40转正 AND 大盘P&L转正）',
     twin_star: '港湾一半 + 卫星一半（行情好时冲得猛）· 正式并行档',
   };
   const strategyNote: Record<TimelineStrategy, string> = {
@@ -744,8 +762,7 @@ function TimelineCard({
       '母港 M50 = 港湾的钱一半 + 风险预算一篮子一半（每月调一次）。冻结口径（星港底座）；防守档看 M30 tab。',
     homeport_m30:
       '母港 M30 = 当前基线（港湾七成 + 风险预算三成，每月调一次）。回撤比港湾浅一截，长期年化 21%。候选策略需在long/valid/holdout三窗收益全超M30才算找到（2026-10-03 Yuan定）。',
-    starport:
-      '星港 = 母港 + 卫星 0.2 曝露。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
+    starport: '星港 = 母港 + 卫星 0.2 曝露。六个年份全部赚钱，是全家最稳的一档，用来收集数据。',
     starship:
       '激进星舰 = 卫星（每天 14:30 挑“跳空高开、波动小”的股票，持 3 天卖出，大盘太弱自动停手）+ 闲置现金 100% 停 H2 ETF。long +962.7%，但 MDD −30.5%；不进实盘。',
     starship_robust:
@@ -917,9 +934,7 @@ function TimelineCard({
           {start} ~ {end} · {rows.length} 交易日 · {selected.label}
           {last
             ? ` · ${strategyLabel} ${harborLast ?? '—'}%${
-                !satMode && last.navBaseReturnPct != null
-                  ? ` · 基线 ${last.navBaseReturnPct}%`
-                  : ''
+                !satMode && last.navBaseReturnPct != null ? ` · 基线 ${last.navBaseReturnPct}%` : ''
               }`
             : ''}
           {strategy === 'homeport' && summary?.harborPct != null
@@ -931,7 +946,9 @@ function TimelineCard({
           {strategy === 'starport' && summary?.homeportPct != null
             ? ` · 母港 ${summary.homeportPct}%`
             : ''}
-          {(strategy === 'starship' || strategy === 'starship_robust' || strategy === 'starship_b') &&
+          {(strategy === 'starship' ||
+            strategy === 'starship_robust' ||
+            strategy === 'starship_b') &&
           summary?.parkedAvgWeight != null
             ? ` · 停车均值 ${Math.round(summary.parkedAvgWeight * 100)}%`
             : ''}
@@ -957,7 +974,17 @@ function TimelineCard({
           </button>
         ))}
         <span className="mx-1 h-3 w-px bg-[var(--k-border)]" />
-        {(['starship_robust', 'starship_b', 'starship', 'starport', 'homeport_m30', 'harbor', 'twin_star'] as const).map((s) => (
+        {(
+          [
+            'starship_robust',
+            'starship_b',
+            'starship',
+            'starport',
+            'homeport_m30',
+            'harbor',
+            'twin_star',
+          ] as const
+        ).map((s) => (
           <button
             key={s}
             type="button"
@@ -1066,8 +1093,8 @@ function TimelineCard({
                       {hoverRow.navBaseReturnPct != null
                         ? `${hoverRow.navBaseReturnPct.toFixed(2)}%`
                         : '—'}{' '}
-                      · {strategyLabel}{' '}
-                      {hoverSingle != null ? `${hoverSingle.toFixed(2)}%` : '—'} · 超额{' '}
+                      · {strategyLabel} {hoverSingle != null ? `${hoverSingle.toFixed(2)}%` : '—'} ·
+                      超额{' '}
                       {hoverExcess != null
                         ? `${hoverExcess >= 0 ? '+' : ''}${hoverExcess.toFixed(2)}%`
                         : '—'}
@@ -1098,9 +1125,7 @@ function TimelineCard({
                 classFor={(seg) => satColor(seg)}
                 styleFor={(seg) => satStyle(seg)}
                 textClassFor={(seg) =>
-                  (seg.sat?.positions ?? 0) > 0
-                    ? 'text-white'
-                    : 'text-zinc-600 dark:text-zinc-200'
+                  (seg.sat?.positions ?? 0) > 0 ? 'text-white' : 'text-zinc-600 dark:text-zinc-200'
                 }
               />
             ) : null}
@@ -1143,7 +1168,10 @@ function TimelineCard({
                   return (
                     <span key={k} className="flex items-center gap-1">
                       <span
-                        className={cn('inline-block size-2 rounded-sm', pickColor[k] ?? 'bg-gray-300')}
+                        className={cn(
+                          'inline-block size-2 rounded-sm',
+                          pickColor[k] ?? 'bg-gray-300',
+                        )}
                       />
                       {pickLabel[k] ?? k} {v}天 (
                       {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
@@ -1162,7 +1190,9 @@ function TimelineCard({
                           p === 0 ? 'bg-zinc-300 dark:bg-zinc-700' : '',
                         )}
                         style={
-                          p === 0 ? undefined : { background: `rgba(139,92,246,${0.35 + 0.16 * p})` }
+                          p === 0
+                            ? undefined
+                            : { background: `rgba(139,92,246,${0.35 + 0.16 * p})` }
                         }
                       />
                       {p === 0 ? '卫星空仓' : `卫星 ${p}/${SAT_CAPACITY}仓`} {v}天 (
@@ -1185,8 +1215,7 @@ function TimelineCard({
                       <span
                         className={cn('inline-block size-2 rounded-sm', stripPickColor(u.ts))}
                       />
-                      B3·{u.name} {v}天 (
-                      {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
+                      B3·{u.name} {v}天 ({rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
                     </span>
                   );
                 })
@@ -1194,9 +1223,7 @@ function TimelineCard({
             {showParkStrip
               ? Object.entries(parkDist).map(([k, v]) => (
                   <span key={`park-${k}`} className="flex items-center gap-1">
-                    <span
-                      className={cn('inline-block size-2 rounded-sm', stripPickColor(k))}
-                    />
+                    <span className={cn('inline-block size-2 rounded-sm', stripPickColor(k))} />
                     停车·{PICK_LABELS[k] ?? k} {v}天 (
                     {rows.length ? ((v / rows.length) * 100).toFixed(0) : 0}%)
                   </span>
@@ -1261,8 +1288,7 @@ function TimelineCard({
                   // rows carry the same leg in pick/pickTs (+ idle weight + markers).
                   const parkKey = r.parkedPick ?? (baseRow ? (r.pick ?? null) : null);
                   const parkTs = r.parkedTs ?? (baseRow ? (r.pickTs ?? null) : null);
-                  const parkW =
-                    r.parkedWeight ?? (baseRow ? (r.idlePct ?? 0) / 100 : null);
+                  const parkW = r.parkedWeight ?? (baseRow ? (r.idlePct ?? 0) / 100 : null);
                   const parkLabel =
                     parkKey && parkKey !== 'REPO'
                       ? (PICK_LABELS[parkKey] ?? parkKey)
@@ -1284,7 +1310,9 @@ function TimelineCard({
                     parkKey ? `停车 ${parkLabel}` : '',
                     parkTs ? `代码 ${parkTs}` : '',
                     parkW != null ? `权重 ${Math.round(parkW * 100)}%` : '',
-                    r.parkedRetPct != null ? `当日 ${r.parkedRetPct >= 0 ? '+' : ''}${r.parkedRetPct}%` : '',
+                    r.parkedRetPct != null
+                      ? `当日 ${r.parkedRetPct >= 0 ? '+' : ''}${r.parkedRetPct}%`
+                      : '',
                     ...(parkedEventsByDay.get(r.date) ?? []),
                   ]
                     .filter(Boolean)
@@ -1338,8 +1366,7 @@ function TimelineCard({
                         ) : null}
                         {sat ? (
                           <div>
-                            卫星 {r.satPositions ?? 0}仓
-                            {r.idleSlots ? ` · 空${r.idleSlots}槽` : ''}
+                            卫星 {r.satPositions ?? 0}仓{r.idleSlots ? ` · 空${r.idleSlots}槽` : ''}
                             {r.gateOpen === false ? ' · 闸关' : ''}
                           </div>
                         ) : null}
@@ -1745,20 +1772,21 @@ function M30BaselineCard() {
         </span>
       </div>
       <p className="text-[11px] leading-5 text-[var(--k-muted)]">
-        120万 = 港湾 84万（70%）＋ B3 36万（30%），每月首个交易日再平衡（5bp/边，单腿偏离超5pt才动，留1%现金防费）。
+        120万 = 港湾 84万（70%）＋ B3
+        36万（30%），每月首个交易日再平衡（5bp/边，单腿偏离超5pt才动，留1%现金防费）。
       </p>
       <div className="mt-1.5 flex flex-col gap-1 text-[11px] tabular-nums">
         <div>
           <span className="font-medium">B3 36万</span>
           <span className="text-[var(--k-muted)]">（2026-09-01 60d逆波权重 · B3月频）</span>：
-          511260十年国债 31.14万（86.5%） · 510300沪深300 1.37万（3.8%） ·
-          518880黄金 1.33万（3.7%） · 513100纳指 1.19万（3.3%） · 510500中证500 0.94万（2.6%）
+          511260十年国债 31.14万（86.5%） · 510300沪深300 1.37万（3.8%） · 518880黄金 1.33万（3.7%）
+          · 513100纳指 1.19万（3.3%） · 510500中证500 0.94万（2.6%）
         </div>
         <div>
           <span className="font-medium">港湾 84万</span>
-          <span className="text-[var(--k-muted)]">（S-3股票＋闲置停车）</span>：
-          S-3股票 0（2026-08-10~09-30 holdout 0 closed、idle100%，见H2d §3.5） ＋
-          停车 OIL 513350 84万（08-19~09-30重仓OIL；trail8，09-24 REPO一次，回落即回OIL）
+          <span className="text-[var(--k-muted)]">（S-3股票＋闲置停车）</span>： S-3股票
+          0（2026-08-10~09-30 holdout 0 closed、idle100%，见H2d §3.5） ＋ 停车 OIL 513350
+          84万（08-19~09-30重仓OIL；trail8，09-24 REPO一次，回落即回OIL）
         </div>
         <div className="text-[var(--k-muted)]">
           上次再平衡：2026-09-01（9月首个交易日，B3权重锚） ·
@@ -1766,9 +1794,9 @@ function M30BaselineCard() {
         </div>
       </div>
       <div className="mt-1.5 rounded border border-[var(--k-border)]/60 px-2 py-1.5 text-[10px] leading-5 text-[var(--k-muted)]">
-        月5分钟清单：1看NAV＋两腿贡献＋超300（并列long/valid/holdout，不许只引long） ·
-        2看S-3 fills/胜率＋停车换仓＋B3漂移 · 3看成本（实现滑点 vs 5bp/边模型） ·
-        4看数据日期＋ETF快照健康 · 5看星舰复活灯（rolling40 sum转正 AND 月度大盘P&amp;L转正，
+        月5分钟清单：1看NAV＋两腿贡献＋超300（并列long/valid/holdout，不许只引long） · 2看S-3
+        fills/胜率＋停车换仓＋B3漂移 · 3看成本（实现滑点 vs 5bp/边模型） · 4看数据日期＋ETF快照健康
+        · 5看星舰复活灯（rolling40 sum转正 AND 月度大盘P&amp;L转正，
         再叠paper20＋holdout收复＋过滤版valid转正）再决定星舰是否0→10→20%，否则保持0%。
       </div>
     </div>
@@ -1781,7 +1809,9 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
-  const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet'>('catalog');
+  const [tab, setTab] = React.useState<
+    'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet'
+  >('catalog');
   const [catalogKey, setCatalogKey] = React.useState<StrategyCatalogKey>(() => getStrategyMode());
   const attrEnd = new Date().toISOString().slice(0, 10);
   const attrStartDefault = (() => {
@@ -1812,7 +1842,12 @@ export function BacktestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet')}>
+      <Tabs
+        value={tab}
+        onValueChange={(v) =>
+          setTab(v as 'catalog' | 'compare' | 'baseline' | 'sgap' | 'vault' | 'fleet')
+        }
+      >
         <TabsList>
           <TabsTrigger value="catalog">策略总览</TabsTrigger>
           <TabsTrigger value="compare">对比</TabsTrigger>
@@ -2619,8 +2654,7 @@ function RiskBudgetLegDetail({
           逆波动加权 · 每月调仓 · 占组合一半
         </span>
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          调仓 {blotter.length} 次
-          {riskPct != null ? ` · 篮子累计 ${riskPct}%` : ''}
+          调仓 {blotter.length} 次{riskPct != null ? ` · 篮子累计 ${riskPct}%` : ''}
           {riskMaxDdPct != null ? ` / DD ${riskMaxDdPct}%` : ''}
         </span>
       </div>
@@ -2741,8 +2775,7 @@ function SatelliteLegDetail({
                   <td className="py-0.5 pr-2">{p.entryPrice}</td>
                   <td className="py-0.5 pr-2">{p.close ?? '—'}</td>
                   <td className="py-0.5 pr-2">
-                    {p.heldDays ?? '—'}d
-                    {p.daysLeft != null ? `（余 ${p.daysLeft}）` : ''}
+                    {p.heldDays ?? '—'}d{p.daysLeft != null ? `（余 ${p.daysLeft}）` : ''}
                   </td>
                   <td className="py-0.5 pr-2">{p.exitDue ?? '—'}</td>
                   <td className={cn('py-0.5 pr-2 font-semibold', tone(p.pnlPct ?? null))}>
@@ -2779,7 +2812,10 @@ function SatelliteLegDetail({
                 cls: 'bg-[var(--k-border)] text-[var(--k-muted)]',
               };
               return (
-                <tr key={`${b.kind}-${b.date}-${b.ts}-${i}`} className="border-t border-violet-500/10">
+                <tr
+                  key={`${b.kind}-${b.date}-${b.ts}-${i}`}
+                  className="border-t border-violet-500/10"
+                >
                   <td className="py-0.5 pr-2 font-mono">{b.date}</td>
                   <td className="py-0.5 pr-2">
                     <span className={cn('rounded px-1 py-px text-[10px]', meta.cls)}>

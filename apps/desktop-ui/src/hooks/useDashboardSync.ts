@@ -14,24 +14,53 @@ export function isDashboardSyncResultOk(result: unknown): boolean {
 }
 
 function syncResultErrorMessage(result: unknown): string {
+  // 2026-11-06: cap banner length — a raw upstream transport stack (EM
+  // RemoteDisconnected × requests/curl/urllib) must never again render as an
+  // enormous red banner. Full diagnostics stay in the per-step meta.
+  const truncate = (s: string) => (s.length > 300 ? `${s.slice(0, 300)}…（详情见同步步骤）` : s);
   if (!result || typeof result !== 'object') return 'Sync returned an invalid result';
   const record = result as {
     error?: unknown;
     message?: unknown;
     steps?: unknown;
   };
-  if (typeof record.error === 'string' && record.error) return record.error;
-  if (typeof record.message === 'string' && record.message) return record.message;
+  if (typeof record.error === 'string' && record.error) return truncate(record.error);
+  if (typeof record.message === 'string' && record.message) return truncate(record.message);
   if (Array.isArray(record.steps)) {
     for (const step of record.steps) {
       if (!step || typeof step !== 'object') continue;
       const detail = step as { ok?: unknown; message?: unknown };
       if (detail.ok === false && typeof detail.message === 'string' && detail.message) {
-        return detail.message;
+        return truncate(detail.message);
       }
     }
   }
   return 'Sync failed';
+}
+
+/**
+ * Chinese degraded note for a completed-with-degradation Sync All result
+ * (2026-11-06: East Money upstream unavailable). Returns null when the
+ * result is not degraded. Pure helper — never affects the ok contract.
+ */
+export function dashboardSyncDegradedNote(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const record = result as { degraded?: unknown; degradedMessage?: unknown; warnings?: unknown };
+  if (record.degraded === true) {
+    if (typeof record.degradedMessage === 'string' && record.degradedMessage) {
+      return record.degradedMessage;
+    }
+    return '同步完成（部分降级）：部分上游数据源暂时不可用，已有有效数据予以保留、缺失仍记为缺失；源恢复后自动恢复。';
+  }
+  if (Array.isArray(record.warnings) && record.warnings.length > 0) {
+    const shown = record.warnings
+      .filter((w): w is string => typeof w === 'string' && w.length > 0)
+      .slice(0, 2);
+    if (!shown.length) return null;
+    const extra = record.warnings.length > 2 ? `（等 ${record.warnings.length} 项）` : '';
+    return `同步完成（部分降级）：${shown.join('；')}${extra}`;
+  }
+  return null;
 }
 
 export type SyncStep = {
@@ -39,7 +68,39 @@ export type SyncStep = {
   ok: boolean | null;
   durationMs: number | null;
   message?: string | null;
+  /** Soft-degraded sub-step notes (e.g. Put IV) — never flips overall ok. */
+  warnings?: string[] | null;
 };
+
+/**
+ * Collect soft warnings from a Sync All result without affecting ok.
+ * Reads the top-level `warnings` list plus per-step `meta.warnings`
+ * (e.g. `option_iv: no_iv_data` when Put IV falls back to the DB value).
+ */
+export function dashboardSyncWarnings(result: unknown): string[] {
+  const out: string[] = [];
+  if (!result || typeof result !== 'object') return out;
+  const record = result as { warnings?: unknown; steps?: unknown };
+  if (Array.isArray(record.warnings)) {
+    for (const w of record.warnings) {
+      if (typeof w === 'string' && w) out.push(w);
+    }
+  }
+  if (Array.isArray(record.steps)) {
+    for (const step of record.steps) {
+      if (!step || typeof step !== 'object') continue;
+      const meta = (step as { meta?: unknown }).meta;
+      if (!meta || typeof meta !== 'object') continue;
+      const warnings = (meta as { warnings?: unknown }).warnings;
+      if (Array.isArray(warnings)) {
+        for (const w of warnings) {
+          if (typeof w === 'string' && w) out.push(w);
+        }
+      }
+    }
+  }
+  return out;
+}
 
 export type DashboardSyncCallbacks = {
   applySummaryToCache: (s: DashboardSummary) => void;
@@ -147,9 +208,17 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
               ok: boolean;
               durationMs: number;
               message?: string;
+              meta?: { warnings?: unknown };
             };
+            const stepWarnings = Array.isArray(step.meta?.warnings)
+              ? (step.meta.warnings as unknown[]).filter(
+                  (w): w is string => typeof w === 'string' && w.length > 0,
+                )
+              : null;
             setSyncSteps((prev) => {
-              const updated = prev.map((s) => (s.name === step.name ? { ...step } : s));
+              const updated = prev.map((s) =>
+                s.name === step.name ? { ...step, warnings: stepWarnings } : s,
+              );
               const completed = updated.filter((s) => s.ok !== null).length;
               setSyncProgress(Math.round((completed / stepNames.length) * 100));
               return updated;

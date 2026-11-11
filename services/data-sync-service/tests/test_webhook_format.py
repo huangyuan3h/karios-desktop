@@ -147,3 +147,97 @@ def test_satellite_action_push_lines() -> None:
     assert r["title"] == "🛰 星舰 v2 · 2026.09.17 14:30"
     assert "卖出资金停入 H2 停车腿" in r["body"]
     assert "闸关" in r["body"]
+
+
+def test_factor_status_up_push() -> None:
+    """2026-10-25 必达 MVP: cold→watch upgrade pages the phone."""
+    r = format_bark(
+        "factor_status_up",
+        {
+            "factor_id": "starship_b",
+            "name": "星舰B默认",
+            "from": "cold",
+            "to": "watch",
+            "percentile": 55.2,
+            "net": -3.5,
+            "date": "2026-10-26",
+        },
+    )
+    assert r["title"] == "🧬 星舰B默认 冷库→观察"
+    assert "分位 55.2" in r["body"]
+    assert "净 -3.5" in r["body"]
+
+
+def test_factor_revived_push() -> None:
+    r = format_bark(
+        "factor_revived",
+        {
+            "factor_id": "harbor",
+            "name": "港湾 (参考)",
+            "from": "watch",
+            "to": "revived",
+            "percentile": 99.8,
+            "net": 37.5,
+            "date": "2026-10-26",
+        },
+    )
+    assert r["title"] == "🟢 因子复活 港湾 (参考)"
+    assert "分位 99.8" in r["body"]
+
+
+def test_sgap_revival_push() -> None:
+    r = format_bark("sgap_revival", {"old_pos": 10, "new_pos": 20, "date": "2026-10-26"})
+    assert r["title"] == "🟢 S-gap 复活位 10→20"
+    assert "星舰B" in r["body"]
+
+
+def test_daily_adjust_push_no_change_and_sell() -> None:
+    """2026-11-05: fixed 14:30 今日调整 for homeport/harbor."""
+    empty = format_bark(
+        "satellite_action",
+        {
+            "tradeDate": "2026-11-05",
+            "strategyLabel": "母港 M30",
+            "dailyAdjust": True,
+            "noChange": True,
+            "lines": ["今日无需调整"],
+        },
+    )
+    assert empty["title"] == "📋 母港 M30 · 今日调整 2026.11.05"
+    assert "今日无需调整" in empty["body"]
+
+    sell = format_bark(
+        "satellite_action",
+        {
+            "tradeDate": "2026-11-05",
+            "strategyLabel": "母港 M30",
+            "dailyAdjust": True,
+            "noChange": False,
+            "lines": [
+                "卖出：ETF:513350 → 逆回购（峰值回撤8.6%；待开盘卖出转逆回购）",
+            ],
+        },
+    )
+    assert sell["title"] == "📋 母港 M30 · 今日调整 2026.11.05"
+    assert "513350" in sell["body"]
+    assert "逆回购" in sell["body"]
+
+
+def test_harbor_trail_alert_push() -> None:
+    r = format_bark(
+        "satellite_action",
+        {
+            "tradeDate": "2026-11-03",
+            "strategyLabel": "港湾停车",
+            "trailAlert": True,
+            "mustAct": True,
+            "lines": [
+                "卖出：ETF:513350 → 逆回购",
+                "峰值回撤8.6% ≥8%",
+                "次日开盘卖出转逆回购",
+            ],
+        },
+    )
+    assert r["title"] == "🛑 港湾停车止损 · 2026.11.03"
+    assert "ETF:513350" in r["body"]
+    assert "次日开盘" in r["body"]

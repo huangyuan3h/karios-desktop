@@ -12,6 +12,7 @@ import {
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
+import { ExecutionTimingBadge } from '@/components/watchlist/ExecutionTimingBadge';
 import {
   MobileButton,
   MobileCard,
@@ -227,7 +228,10 @@ export function MobileWatchlistPage() {
 
       {/* Act: sell flags */}
       {exitHoldings.length ? (
-        <MobileSection title={`需要卖出（${exitHoldings.length}）`}>
+        <MobileSection
+          title={`需要卖出（${exitHoldings.length}）`}
+          action={<ExecutionTimingBadge kind="close-sell-confirmed" testId="mobile-exit-timing" />}
+        >
           <div className="space-y-2">
             {exitHoldings.map(({ h, m }) => (
               <HoldingRow key={h.symbol} h={h} market={m} />
@@ -239,6 +243,7 @@ export function MobileWatchlistPage() {
       {/* Act: 2pm buy list */}
       <MobileSection
         title={`下午 2 点买入清单${candidates.length ? `（${candidates.length}）` : ''}`}
+        action={<ExecutionTimingBadge kind="intraday-buy" testId="mobile-buy-timing" />}
       >
         {candidates.length ? (
           <div className="space-y-2">

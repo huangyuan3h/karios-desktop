@@ -13,17 +13,83 @@ import { ThinkingStreamStripper, stripJsonCodeFence } from '../model_thinking.js
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
 
-async function fetchJson<T>(path: string): Promise<T | null> {
+/** The judgment brief is the primary context. A cold brief used to take ~50s,
+ * so the decision route waits up to 60s instead of the old 15s health read. */
+const JUDGMENT_BRIEF_TIMEOUT_MS = 60_000;
+
+/**
+ * Modes whose economics actually use the S-3 stock core / B3 sleeve:
+ * harbor (S-3 core + parking), homeport M30 (S-3 + B3), starport and twin_star.
+ * The starship family runs satellite + H2/B3, so S-3 rules must not be its
+ * default world-model.
+ */
+export const S3_MODES = new Set(['harbor', 'homeport', 'starport', 'twin_star']);
+
+async function fetchJson<T>(path: string, timeoutMs = 15_000): Promise<T | null> {
   try {
     const resp = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
       headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return null;
     return (await resp.json()) as T;
   } catch {
     return null;
   }
+}
+
+async function fetchText(path: string, timeoutMs = 15_000): Promise<string | null> {
+  try {
+    const resp = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
+      headers: { accept: 'text/markdown, text/plain' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return null;
+    const body = await resp.text();
+    return body.trim() ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+type Json = Record<string, unknown>;
+
+/** Loose record coercion — the brief is a JSON payload, not a typed SDK. */
+function obj(value: unknown): Json {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {};
+}
+
+function txt(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+/** Compact judgment brief (the primary decision context). */
+export async function fetchJudgmentBrief(
+  timeoutMs = JUDGMENT_BRIEF_TIMEOUT_MS,
+): Promise<Json | null> {
+  return fetchJson<Json>('/v1/agent/judgment-brief?mode=compact', timeoutMs);
+}
+
+/** Markdown fallback — same payload, still usable as system context. */
+export async function fetchJudgmentBriefMarkdown(
+  timeoutMs = JUDGMENT_BRIEF_TIMEOUT_MS,
+): Promise<string | null> {
+  return fetchText('/v1/agent/judgment-brief.md?mode=compact', timeoutMs);
+}
+
+/**
+ * S-3 knowledge is relevant only when the current mode uses the S-3 / B3
+ * sleeve, or the question explicitly asks about it. It must not become the
+ * world-model for a starship / parking-only conversation.
+ */
+export function shouldIncludeS3Rules(mode: string | null, question: string): boolean {
+  if (
+    /(?:^|[^a-z0-9])s-?3(?:[^a-z0-9]|$)|b3|股票核心|持仓体检|金字塔|止损线|加仓/i.test(question)
+  ) {
+    return true;
+  }
+  return S3_MODES.has(String(mode ?? '').toLowerCase());
 }
 
 export async function searchArchive(symbol: string): Promise<string> {
@@ -164,6 +230,230 @@ export async function queryHoldingsHealth(): Promise<string> {
   return lines.join('\n');
 }
 
+/**
+ * Build the decision system prompt from the judgment brief (primary context).
+ *
+ * Leads with the *current settings mode* + followability, then path mismatch,
+ * fill clock, integrity, whip/oil and advice-only event tags. S-3 rules are
+ * appended only when ``includeS3`` is true (the caller decides; see
+ * ``shouldIncludeS3Rules``).
+ */
+export function buildDecisionSystemPrompt(opts: {
+  brief?: Json | null;
+  briefMarkdown?: string | null;
+  healthMd?: string | null;
+  question?: string;
+  includeS3?: boolean;
+}): string {
+  const brief = opts.brief ?? null;
+  const lines: string[] = ['【Karios 决策 AI · 以判断简报复述事实】', ''];
+
+  if (brief) {
+    const contract = obj(brief.contract);
+    const strategy = obj(contract.strategy);
+    const follow = obj(strategy.followability);
+    const path = obj(strategy.pathMismatch);
+    const fill = obj(contract.fillClock);
+    const sleeve = obj(contract.sleeve);
+    const judgment = obj(brief.judgment);
+    const integrity = obj(brief.integrity);
+    const whip = obj(contract.whip);
+    const whipContext = obj(whip.context);
+    const oil = obj(whipContext.oil);
+    const eventTags = obj(brief.eventTags);
+    const geo = obj(brief.geoRegime);
+    const gate = obj(brief.gate);
+    const cnGate = obj(gate.cn);
+    const backtest = obj(brief.backtest);
+    const currentMode = obj(backtest.currentMode);
+    const execution = obj(brief.execution);
+    const attention = obj(execution.attention);
+    const counts = obj(attention.counts);
+
+    lines.push('## 当前 settings 模式（唯一执行基线）');
+    lines.push(
+      `- settings mode: \`${txt(strategy.mode) || '—'}\`（${txt(strategy.label) || '—'}）` +
+        ` → timeline \`${txt(strategy.timelineStrategy) || '—'}\``,
+    );
+    if (strategy.mappingNote) lines.push(`- 映射: ${txt(strategy.mappingNote)}`);
+    lines.push(
+      `- followability: followable=${txt(follow.followable)} · status=${txt(follow.status)} · ${txt(follow.reason)}`,
+    );
+    if (follow.followable === false) {
+      lines.push(
+        `- 推荐（**仅建议，未改 settings**）: \`${txt(follow.recommendedMode)}\`（${txt(follow.recommendedModeLabel)} / timeline \`${txt(follow.recommendedTimeline)}\`）`,
+      );
+    }
+    if (path.active) {
+      lines.push(`- ⚠️ settings vs 停车腿: ${txt(path.message)}`);
+    }
+    lines.push(
+      `- sleeve: action=\`${txt(sleeve.action) || 'NONE'}\` · pick=${txt(sleeve.pickKey) || 'REPO'} · trailExit=${txt(sleeve.trailExit)} · pendingOpenSell=${txt(sleeve.pendingOpenSell)}`,
+    );
+
+    lines.push('', '## 可成交时钟（收盘价不是成交价）');
+    lines.push(
+      `- ${txt(fill.label) || '—'}：${txt(fill.detail) || '—'}（basis=${txt(fill.basis)}, tradableNow=${txt(fill.tradableNow)}）`,
+    );
+
+    lines.push('', '## 价格口径 integrity');
+    if (abilityWarn(integrity)) {
+      for (const w of integrity.warnings as Json[]) {
+        lines.push(`- ⚠️ ${txt(obj(w).message)}`);
+      }
+    } else {
+      lines.push(`- status=${txt(integrity.status) || 'unknown'}（无警告则按实时净价讨论）`);
+    }
+
+    if (oil.active || whipContext.sameKeyRebuy) {
+      lines.push('', '## 鞭打 / 同键回买（油）');
+      if (oil.active) lines.push(`- ${txt(oil.message)}`);
+      if (whipContext.sameKeyRebuy) {
+        lines.push(
+          `- pick=${txt(whipContext.pickKey)} 刚止损，先确认再买；覆盖走 \`${txt(whipContext.overlaysPath) || '/v1/agent/overlays'}\`。`,
+        );
+      }
+      lines.push('- 优先级: must-act 卖出 > 同键回买；回买建议不能改引擎动作。');
+    }
+
+    if (eventTags.count) {
+      lines.push('', '## 事件/地缘标签（仅建议，不否决卖出）');
+      for (const raw of (eventTags.tags as unknown[]) ?? []) {
+        const tag = obj(raw);
+        lines.push(
+          `- \`${txt(tag.tag)}\` · effect=\`${txt(tag.effect)}\` · 置信 ${txt(tag.confidence)}` +
+            ` · 资产 ${(Array.isArray(tag.relatedAssets) ? tag.relatedAssets : []).map(txt).join('/') || '—'}` +
+            ` · 有效期 ${txt(tag.validFrom) || '—'}~${txt(tag.validUntil) || '—'}`,
+        );
+      }
+      const advice = obj(eventTags.strategyAdvice);
+      if (advice.advice) {
+        lines.push(
+          `- 档位建议: \`${txt(advice.advice)}\` · 当前 \`${txt(advice.currentMode)}\`` +
+            (advice.recommendedMode ? ` → 建议 \`${txt(advice.recommendedMode)}\`` : '') +
+            '（仅建议；改档需 Yuan 在 /settings/strategy-mode 确认）',
+        );
+      }
+      if (geo.active) {
+        lines.push(
+          `- geoRegime: \`${txt(geo.label)}\`（事件/地缘视角，**不是** market_regime 的 Weak/Strong）`,
+        );
+      }
+      lines.push('- 事件标签不得改 sleeve.action / 可成交时钟 / trail / cooldown。');
+    }
+
+    lines.push('', '## 执行闸门与必须动作');
+    lines.push(
+      `- CN gate: mode=\`${txt(cnGate.mode) || '—'}\` · allowNewEntries=${txt(cnGate.allowNewEntries)} · regime=${txt(cnGate.marketRegime) || '—'}`,
+    );
+    if (attention.counts) {
+      lines.push(
+        `- must-act=${txt(counts.mustAct)}（EXIT ${txt(counts.exits)} / TRIM ${txt(counts.trims)}）` +
+          ` · fire=${txt(counts.fires)} · blocked=${txt(counts.blockedFires)}`,
+      );
+      for (const raw of (attention.mustAct as unknown[]) ?? []) {
+        const card = obj(raw);
+        lines.push(
+          `  - [must-act] ${txt(card.symbol)} ${txt(card.action)}${card.why ? ` · ${txt(card.why)}` : ''} · ${txt(obj(card.fill).label)}`,
+        );
+      }
+    } else {
+      lines.push('- 今日无 must-act 卡片（仍以契约 sleeve / fillClock 为准）。');
+    }
+
+    lines.push('', '## 回测对照（冻结引擎，非承诺）');
+    lines.push(
+      `- 当前档: \`${txt(currentMode.mode) || txt(strategy.mode)}\` → timeline \`${txt(currentMode.timelineStrategy) || txt(strategy.timelineStrategy)}\``,
+    );
+    const comparison = (backtest.comparison as unknown[]) ?? [];
+    for (const raw of comparison.slice(0, 4)) {
+      const row = obj(raw);
+      const long = obj(obj(row.windows).long);
+      const marker = row.isCurrentMode ? '★ ' : '';
+      lines.push(
+        `- ${marker}${txt(row.name) || txt(row.timelineStrategy)}: long ${txt(long.total) || '—'}% / DD ${txt(long.mdd) || '—'}% / SR ${txt(long.sharpe) || '—'}（${txt(row.statusLabel) || '—'}）`,
+      );
+    }
+    lines.push(`- judgment.priceIntegrity=${txt(judgment.priceIntegrity) || 'unknown'}`);
+  } else if (opts.briefMarkdown) {
+    lines.push('## 判断简报（Markdown 原文）');
+    lines.push(opts.briefMarkdown);
+    lines.push('');
+  } else {
+    lines.push(
+      '⚠️ 判断简报服务暂不可用（可能在冷启动预热）。请明确告诉用户：先重试一次判断；' +
+        '若仍失败，只按下面的 S-3 体检回答，并说明这不是完整判断包。',
+    );
+    lines.push('');
+  }
+
+  lines.push('');
+  lines.push('## 回答纪律（必须遵守）');
+  lines.push('- 先按**当前 settings 模式**回答；不要默认把 S-3 当成世界模型。');
+  lines.push(
+    '- 推荐档位只是建议；改档 / 改 settings 必须由 Yuan 在 /settings/strategy-mode 明确确认，你不能代写。',
+  );
+  lines.push(
+    '- 事件 / 地缘标签只能建议（是否回买、维持哪个档），**不能否决**任何已触发的止损 / 移动止损 / Must-act 卖出，也不能改可成交时钟。',
+  );
+  lines.push('- CN gate = DEFEND / Weak 时，绝不建议新开 S-3 书；只讨论持有 / 退出 / 停车。');
+  lines.push('- paper 收盘不是成交；执行按 fillClock（次日开盘 / 收盘待确认）。');
+  lines.push('- 权威顺序：frozen engine exits > 事件标签 > 聊天叙事。');
+
+  if (opts.includeS3) {
+    lines.push('', '【S-3 / B3 腿规则（当前模式使用股票核心时才适用）】');
+    lines.push(S3_RULES_KNOWLEDGE);
+    if (opts.healthMd) {
+      lines.push('', '【实时 S-3 体检（已预取）】', opts.healthMd);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function abilityWarn(integrity: Json): boolean {
+  return integrity.status === 'warning' && Array.isArray(integrity.warnings);
+}
+
+/**
+ * Prefetch the judgment brief (60s) and build the system prompt. Fail-open:
+ * markdown → S-3-only degraded context, never a hang beyond the timeout.
+ * S-3 holdings health is fetched only when the mode / question needs it.
+ */
+export async function buildDecisionContext(
+  opts: {
+    question?: string;
+    timeoutMs?: number;
+  } = {},
+): Promise<{
+  brief: Json | null;
+  briefMarkdown: string | null;
+  mode: string | null;
+  includeS3Rules: boolean;
+  healthMd: string | null;
+  system: string;
+}> {
+  const question = opts.question ?? '';
+  const timeoutMs = opts.timeoutMs ?? JUDGMENT_BRIEF_TIMEOUT_MS;
+  const brief = await fetchJudgmentBrief(timeoutMs);
+  let briefMarkdown: string | null = null;
+  if (!brief) {
+    briefMarkdown = await fetchJudgmentBriefMarkdown(timeoutMs);
+  }
+  const strategy = obj(obj(brief?.contract).strategy);
+  const mode = txt(strategy.mode) || null;
+  const includeS3Rules = brief ? shouldIncludeS3Rules(mode, question) : true;
+  const healthMd = includeS3Rules ? await queryHoldingsHealth() : null;
+  const system = buildDecisionSystemPrompt({
+    brief,
+    briefMarkdown,
+    healthMd,
+    question,
+    includeS3: includeS3Rules,
+  });
+  return { brief, briefMarkdown, mode, includeS3Rules, healthMd, system };
+}
+
 export const decisionRoutes = new Hono();
 
 /**
@@ -242,25 +532,20 @@ decisionRoutes.post('/', async (c) => {
   }
 
   const messages = toModelMessagesFromChatRequest(parsed.data);
+  const question =
+    [...parsed.data.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
 
-  // 2026-08-10: tool calling was replaced with a prefetched live-health
-  // context block. ai@5.0.116 ends its step loop right after the tool step
-  // (finishReason='tool-calls', empty textStream) for every provider — the
-  // UI surfaces that as "empty assistant response". Prefetching keeps the
-  // answer live while staying on a plain text generation path that works.
-  const healthMd = await queryHoldingsHealth();
-  const s3SystemMessage = {
-    role: 'system' as const,
-    content:
-      `${S3_RULES_KNOWLEDGE}\n\n【实时决策体检（已预取，回答持仓/买卖/加仓/买什么问题时以它为事实依据）】\n` +
-      `${healthMd}\n\n` +
-      '（历史归档查询暂不可用——如需查看上周/历史判断，请到「决策 · 历史快照」面板。）',
-  };
+  // 2026-08-10: tool calling was replaced with a prefetched context block.
+  // 2026-11-11: the primary context is now the judgment brief (mode-aware),
+  // not a static S-3 block + portfolio health. S-3 rules / health stay
+  // available when the current mode actually uses the S-3 / B3 sleeve.
+  const context = await buildDecisionContext({ question });
+  const systemMessage = { role: 'system' as const, content: context.system };
 
   async function collectText(bundle: ResolvedModelBundle): Promise<string> {
     const result = await streamText({
       model: bundle.model,
-      messages: [s3SystemMessage, ...messages],
+      messages: [systemMessage, ...messages],
       providerOptions:
         bundle.provider === 'google'
           ? { googleGenerativeAI: { thinkingConfig: { thinkingLevel: 'high' as const } } }

@@ -319,7 +319,9 @@ def margin_exchange_counts(start_date: str, end_date: str) -> dict[str, int]:
 def incomplete_margin_dates(start_date: str, end_date: str) -> list[str]:
     """Dates with fewer than the expected 3 exchanges (partial publication)."""
     return sorted(
-        d for d, n in margin_exchange_counts(start_date, end_date).items() if n < len(MARGIN_EXCHANGES)
+        d
+        for d, n in margin_exchange_counts(start_date, end_date).items()
+        if n < len(MARGIN_EXCHANGES)
     )
 
 

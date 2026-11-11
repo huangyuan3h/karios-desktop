@@ -252,10 +252,16 @@ def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
 
     try:
         from data_sync_service.service.em_probe import probe_status
-        from data_sync_service.service.em_push2_http import breaker_status
+        from data_sync_service.service.em_push2_http import (
+            breaker_scope_status,
+            breaker_status,
+        )
 
         status = probe_status()
         breaker = breaker_status()
+        # 2026-11-06: the production latch is path-scoped (clist/push2his down
+        # must not ban healthy stock/get or reportapi). Surface both views.
+        scoped = breaker_scope_status()
     except Exception:  # noqa: BLE001
         status = {"at": None, "checks": [], "failing": []}
         breaker = {
@@ -264,14 +270,13 @@ def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
             "fail_streak": 0,
             "proxy_degraded": False,
         }
+        scoped = {"ban_latched": False, "cooldown_remaining_s": 0, "latched_scopes": []}
     at = status.get("at")
     age_minutes = int((time.time() - at) / 60) if at else None
     failing = status.get("failing") or []
+    latched = bool(breaker.get("ban_latched")) or bool(scoped.get("ban_latched"))
     stale = (
-        age_minutes is None
-        or age_minutes > spec["thresholdMinutes"]
-        or bool(failing)
-        or bool(breaker.get("ban_latched"))
+        age_minutes is None or age_minutes > spec["thresholdMinutes"] or bool(failing) or latched
     )
     last = datetime.fromtimestamp(at, UTC).isoformat() if at else None
     return {
@@ -282,10 +287,18 @@ def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
         "ageMinutes": age_minutes,
         "thresholdMinutes": spec["thresholdMinutes"],
         "stale": stale,
-        "banLatched": breaker.get("ban_latched"),
-        "cooldownRemainingS": breaker.get("cooldown_remaining_s"),
-        "failStreak": breaker.get("fail_streak"),
+        "banLatched": latched,
+        "cooldownRemainingS": max(
+            int(breaker.get("cooldown_remaining_s") or 0),
+            int(scoped.get("cooldown_remaining_s") or 0),
+        ),
+        "failStreak": max(
+            int(breaker.get("fail_streak") or 0),
+            int(scoped.get("fail_streak") or 0),
+        ),
         "proxyDegraded": breaker.get("proxy_degraded"),
+        "latchedScopes": scoped.get("latched_scopes") or [],
+        "scopes": scoped.get("scopes") or {},
         "hosts": status.get("checks"),
         "failingHosts": failing,
     }

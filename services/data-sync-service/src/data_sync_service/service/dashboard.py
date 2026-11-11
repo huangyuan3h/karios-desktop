@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Generator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
@@ -20,6 +21,11 @@ from data_sync_service.db.market_sentiment import (
 )
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
+from data_sync_service.service.em_source_status import (
+    EM_DEGRADED_ZH_SHORT,
+    is_em_source_unavailable,
+    neutralize_em_substep,
+)
 from data_sync_service.service.etf_fund_flow import (
     build_etf_flow_signal,
     build_etf_fund_flow_bundle,
@@ -57,6 +63,8 @@ from data_sync_service.service.trade_calendar_utils import (
 )
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
+
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -372,15 +380,94 @@ def _sync_industry_step(*, force: bool = False) -> dict[str, Any]:
     return out if isinstance(out, dict) else {"ok": True}
 
 
+def _neutralize_top_inst_em_unavailable(
+    result: dict[str, Any] | Any,
+) -> dict[str, Any] | None:
+    """Degrade top-inst only when EVERY failure segment is EM-upstream.
+
+    The default provider chain tries tushare first — a tushare failure is a
+    real error and must stay red even when the eastmoney fallback also fails.
+    Only a purely-EM failure (e.g. eastmoney-only config during an EM
+    outage) degrades.
+    """
+    if not isinstance(result, dict) or result.get("ok") is not False:
+        return None
+    segments: list[str] = []
+    for key in ("error", "message"):
+        v = result.get(key)
+        if isinstance(v, str) and v.strip():
+            segments.append(v)
+    provider_errors = result.get("providerErrors")
+    if isinstance(provider_errors, list):
+        for e in provider_errors:
+            if isinstance(e, str) and e.strip():
+                segments.append(e)
+    if not segments or not all(is_em_source_unavailable(s) for s in segments):
+        return None
+    return neutralize_em_substep(result, leg="top_inst")
+
+
 def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     d = shanghai_today_iso()
     out = sync_cn_sentiment(date_str=d, force=bool(force))
     etf_out = sync_etf_fund_flow_watchlist(force=bool(force))
     top_inst_out = sync_top_inst_watchlist(force=bool(force))
-    option_iv_out = sync_option_iv_daily(force=bool(force))
+    try:
+        option_iv_out = sync_option_iv_daily(force=bool(force))
+    except Exception as exc:  # noqa: BLE001 - IV is optional; never fail the step on it
+        option_iv_out = {
+            "ok": False,
+            "error": str(exc) or "option_iv_failed",
+            "jobType": "option_iv_daily",
+        }
+    # IV is an optional sub-step: a live-fetch miss (e.g. no_iv_data when
+    # eastmoney blocks the egress IP) must not turn the whole marketSentiment
+    # step red — the sentiment rows are already persisted and the Put IV card
+    # falls back to the latest DB value (resolve_put_iv_for_snapshot).
+    # Neutralize its ok flag here (sync_option_iv_daily itself stays strict
+    # and keeps success=False in sync_job_record) and surface the miss as a
+    # warning instead.
+    warnings: list[str] = []
+    if isinstance(option_iv_out, dict) and option_iv_out.get("ok") is False:
+        err = str(option_iv_out.get("error") or option_iv_out.get("message") or "no_iv_data")
+        warnings.append(f"option_iv: {err}")
+        option_iv_out = {**option_iv_out, "ok": True, "degraded": True, "warning": err}
+    # 2026-11-06: same treatment for identifiably-EM-upstream sub-failures
+    # (etf realtime flow, eastmoney-only top-inst). Sentiment compute itself
+    # stays strict — tushare/AKShare/DB errors are real and must remain red.
+    degraded_count = 0
+    neutralized_etf = neutralize_em_substep(etf_out, leg="etf_fund_flow")
+    if neutralized_etf is not None:
+        etf_out = neutralized_etf
+        degraded_count += 1
+        warnings.append(str(neutralized_etf.get("warning") or "etf_fund_flow: degraded"))
+    neutralized_top = _neutralize_top_inst_em_unavailable(top_inst_out)
+    if neutralized_top is not None:
+        top_inst_out = neutralized_top
+        degraded_count += 1
+        warnings.append(str(neutralized_top.get("warning") or "top_inst: degraded"))
+    # Propagate warnings from already-degraded sub-results (e.g. the new
+    # etf_fund_flow_watchlist degraded shape) so they surface at step level
+    # and in the top-level warnings list. Dedup keeps neutralized entries
+    # (appended above) from repeating.
+    for sub in (etf_out, top_inst_out):
+        if isinstance(sub, dict) and sub.get("degraded"):
+            sub_ws = sub.get("warnings")
+            if isinstance(sub_ws, list):
+                for w in sub_ws:
+                    if w and str(w) not in warnings:
+                        warnings.append(str(w))
+            elif isinstance(sub.get("warning"), str) and sub["warning"] not in warnings:
+                warnings.append(sub["warning"])
+    # Count ok=True degraded sub-results (new shape) toward the step flag.
+    if degraded_count == 0 and any(
+        isinstance(sub, dict) and sub.get("ok") is True and sub.get("degraded")
+        for sub in (etf_out, top_inst_out)
+    ):
+        degraded_count = 1
     items = out.get("items") if isinstance(out, dict) else []
     last = items[-1] if isinstance(items, list) and items else {}
-    return {
+    result: dict[str, Any] = {
         "asOfDate": out.get("asOfDate") if isinstance(out, dict) else d,
         "riskMode": str((last or {}).get("riskMode") or ""),
         "premium": (last or {}).get("yesterdayLimitUpPremium"),
@@ -389,6 +476,24 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         "topInstWatchlist": top_inst_out,
         "optionIvDaily": option_iv_out,
     }
+    if warnings:
+        result["warnings"] = warnings
+    # Step ok is driven by the hard sub-steps only (sentiment + etf + top-inst).
+    # IV is deliberately excluded — see above. EM-upstream sub-failures were
+    # neutralized above and ride as degraded warnings instead.
+    hard_failure = _sync_failure_message(
+        {"sentiment": out, "etfFundFlow": etf_out, "topInstWatchlist": top_inst_out}
+    )
+    if hard_failure:
+        result["ok"] = False
+        result["error"] = hard_failure
+    else:
+        result["ok"] = True
+    if degraded_count:
+        result["degraded"] = True
+        result["unavailable"] = True
+        result["message"] = EM_DEGRADED_ZH_SHORT
+    return result
 
 
 def _progress_from_job(job: dict[str, Any], *, name: str) -> dict[str, Any]:
@@ -431,6 +536,43 @@ def _sync_news_step() -> dict[str, Any]:
     return out
 
 
+def _collect_step_warnings(steps: list[dict[str, Any]]) -> list[str]:
+    """Aggregate soft-degraded sub-step warnings (e.g. Put IV) for honest UI.
+
+    These never flip overall ``ok`` — they ride alongside ``ok=true`` so Sync
+    All can show OK-with-warnings instead of painting the run FAILED.
+    """
+    warnings: list[str] = []
+    for step in steps:
+        meta = step.get("meta")
+        if isinstance(meta, dict):
+            ws = meta.get("warnings")
+            if isinstance(ws, list):
+                warnings.extend(str(w) for w in ws if w)
+    return warnings
+
+
+def _final_degraded_extra(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Top-level degradation marker for Sync All results.
+
+    Set when any step returned ``ok=True`` degraded (e.g. East Money
+    upstream unavailable): the run completed with stale-but-valid cached
+    data, not FAILED. Additive only — old clients ignore the new keys.
+    """
+    degraded = any(
+        isinstance(s.get("meta"), dict) and bool(s["meta"].get("degraded")) for s in steps
+    )
+    if not degraded:
+        return {}
+    return {
+        "degraded": True,
+        "degradedMessage": (
+            "同步完成（部分降级）：东方财富源暂不可用，已自动切换非东财备用源并标注来源；"
+            "无可用备用源的缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
+        ),
+    }
+
+
 def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     steps: list[dict[str, Any]] = []
@@ -445,7 +587,29 @@ def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
+
+
+def _refresh_agent_brief_after_sync(*, ok: bool) -> None:
+    """Invalidate (and re-warm) the agent judgment brief after a dashboard sync.
+
+    2026-11-10 speed pass: the brief caches its dashboard summary; a sync must
+    not leave a pre-sync snapshot behind. Fail-open — never changes the sync
+    response, and the warmup runs on its own daemon thread.
+    """
+    try:
+        from data_sync_service.service.agent_brief import (
+            invalidate_judgment_brief_cache,
+            warm_judgment_brief_async,
+        )
+
+        invalidate_judgment_brief_cache("dashboard_sync")
+        if ok:
+            warm_judgment_brief_async(reason="dashboard_sync")
+    except Exception:  # noqa: BLE001 — brief refresh is best-effort
+        logger.warning("agent brief refresh after dashboard sync failed", exc_info=True)
 
 
 def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
@@ -472,11 +636,14 @@ def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
+    _refresh_agent_brief_after_sync(ok=ok)
     return {
         "ok": ok,
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
 
 
@@ -523,6 +690,8 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
+        "warnings": _collect_step_warnings(steps),
+        **_final_degraded_extra(steps),
     }
     summary_data: dict[str, Any] = {}
     summary_error: str | None = None
@@ -535,4 +704,5 @@ def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
     if summary_error:
         final["ok"] = False
         final["error"] = summary_error
+    _refresh_agent_brief_after_sync(ok=bool(final.get("ok")))
     yield json.dumps({"type": "done", "result": final, "summary": summary_data}) + "\n"

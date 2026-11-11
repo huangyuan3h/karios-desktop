@@ -274,7 +274,10 @@ export async function hydrateWatchlist(): Promise<HydrateWatchlistResult> {
       saveWatchlistLocal(merged);
       // If we kept local-only held rows / filled nulls / re-applied pending
       // changes, push back up.
-      if (pendingSync || watchlistPositionSignature(merged) !== watchlistPositionSignature(remote)) {
+      if (
+        pendingSync ||
+        watchlistPositionSignature(merged) !== watchlistPositionSignature(remote)
+      ) {
         const synced = await upliftLocalToBackend(merged);
         pendingSync = !synced;
         return { source: 'registry', items: merged, pendingSync };
@@ -354,9 +357,7 @@ export function normalizeWatchlistItem(
 
 /** Numeric-field merge: pick the preferred side, falling back to the other. */
 function pick<T>(preferLocal: boolean, localValue: T | null, remoteValue: T | null): T | null {
-  return preferLocal
-    ? (localValue ?? remoteValue ?? null)
-    : (remoteValue ?? localValue ?? null);
+  return preferLocal ? (localValue ?? remoteValue ?? null) : (remoteValue ?? localValue ?? null);
 }
 
 function hasHeldPosition(item: WatchlistItem): boolean {

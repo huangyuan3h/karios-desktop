@@ -30,6 +30,13 @@ const backtestMock = vi.hoisted(() => ({
       isFetching: false,
     }),
   ),
+  useB3StateQuery: vi.fn(
+    (): QueryStub => ({
+      data: undefined,
+      isError: false,
+      isFetching: false,
+    }),
+  ),
 }));
 vi.mock('@/lib/queries/backtest', async () => {
   const actual =
@@ -38,6 +45,7 @@ vi.mock('@/lib/queries/backtest', async () => {
     ...actual,
     useBacktestReconQuery: backtestMock.useBacktestReconQuery,
     useSleeveReconQuery: backtestMock.useSleeveReconQuery,
+    useB3StateQuery: backtestMock.useB3StateQuery,
   };
 });
 
@@ -78,6 +86,11 @@ describe('TodayTodoCard', () => {
       isFetching: false,
     });
     backtestMock.useSleeveReconQuery.mockReturnValue({
+      data: undefined,
+      isError: false,
+      isFetching: false,
+    });
+    backtestMock.useB3StateQuery.mockReturnValue({
       data: undefined,
       isError: false,
       isFetching: false,
@@ -161,5 +174,58 @@ describe('TodayTodoCard', () => {
     expect(await screen.findByText(/待办暂不可用/)).toBeDefined();
     fireEvent.click(await screen.findByText('重试'));
     expect(vi.mocked(fetchPortfolioHealth)).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds an M30 rebalance todo for homeport past the drift threshold', async () => {
+    vi.mocked(fetchPortfolioHealth).mockResolvedValue({
+      tradeDate: '2026-10-07',
+      regime: 'Strong',
+      scoreFresh: true,
+      circuitBlocked: false,
+      panicCooldown: null,
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: { holdings: [] },
+      multiAssetHoldings: [],
+      multiAssetSleeve: { pick: { key: 'OIL', symbol: 'ETF:513350', close: 1.42 } },
+    } as never);
+    backtestMock.useB3StateQuery.mockReturnValue({
+      data: {
+        ok: true,
+        universe: [
+          {
+            symbol: '510300.SH',
+            name: '沪深300',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 4.6,
+          },
+          { symbol: '510500.SH', name: '中证500', targetPct: 20, driftPct: 20, deltaPct: 0, px: 7 },
+          { symbol: '518880.SH', name: '黄金', targetPct: 20, driftPct: 20, deltaPct: 0, px: 6 },
+          {
+            symbol: '513100.SH',
+            name: '纳指100',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 1.6,
+          },
+          {
+            symbol: '511260.SH',
+            name: '10年国债',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 134,
+          },
+        ],
+      },
+      isError: false,
+      isFetching: false,
+    });
+    renderCard();
+    // Empty book vs 70/30 targets → 70pt drift, off-cycle rebalance fires.
+    expect(await screen.findByText(/母港M30需再平衡/)).toBeDefined();
   });
 });

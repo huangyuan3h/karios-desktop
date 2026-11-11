@@ -7,13 +7,16 @@ import { RefreshCw } from 'lucide-react';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
+import { FundFlowPanoramaCard } from '@/components/dashboard/FundFlowPanoramaCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
+import { FactorRevivalCard } from '@/components/dashboard/FactorRevivalCard';
 import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
 import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
-import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { dashboardSyncDegradedNote, useDashboardSync } from '@/hooks/useDashboardSync';
+import { useDashboardAutoSync } from '@/hooks/useDashboardAutoSync';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
@@ -103,6 +106,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       void captureDecisionSnapshot('sync_all');
     },
   });
+
+  const { lastAutoSyncAt } = useDashboardAutoSync({ onSync: onSyncAll, busy });
 
   const {
     rows: watchlistRiskRows,
@@ -247,6 +252,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const cardsById: Record<string, DashCard> = React.useMemo(
     () => ({
       industry: { id: 'industry', title: '行业资金流' },
+      factorRevival: { id: 'factorRevival', title: '因子 / S-gap 复活' },
       sentiment: { id: 'sentiment', title: '市场情绪' },
       brief: { id: 'brief', title: '新闻简报' },
       watchlistRisk: { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
@@ -266,7 +272,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const columnCards = React.useMemo(() => {
     const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
     return {
-      left: ['industry', 'watchlistRisk', 'decisions'].filter(visible).map((id) => cardsById[id]),
+      left: ['industry', 'factorRevival', 'watchlistRisk', 'decisions']
+        .filter(visible)
+        .map((id) => cardsById[id]),
       right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
     };
   }, [cardsById, watchlistRiskRows.length]);
@@ -341,6 +349,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         {!summaryLoading && summary && !isShanghaiSyncWindow() ? (
           <span>盘后模式：仅读缓存，同步跳过实时抓取</span>
         ) : null}
+        {lastAutoSyncAt ? <span>上次自动同步 {fmtDateTime(lastAutoSyncAt)}</span> : null}
       </div>
       {copyAllStatus ? (
         <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -351,6 +360,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           {error}
+        </div>
+      ) : null}
+
+      {!busy && syncResp && dashboardSyncDegradedNote(syncResp) ? (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          {dashboardSyncDegradedNote(syncResp)}
         </div>
       ) : null}
 
@@ -384,6 +399,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
                 ) : null}
                 {s.message ? <span className="text-red-600 truncate">{s.message}</span> : null}
+                {s.warnings && s.warnings.length ? (
+                  <span className="text-amber-600 truncate">
+                    {s.warnings.slice(0, 2).join('；')}
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
@@ -405,21 +425,25 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             >
               {syncResp.ok ? 'OK' : 'FAILED'}
             </span>
+            {syncResp.ok && (syncResp as any).degraded ? (
+              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-700">部分降级</span>
+            ) : null}
             {((syncResp.steps as any[]) ?? []).length ? (
               <span className="text-[var(--k-muted)]">
                 {(syncResp.steps as any[]).map((s: any) => {
                   const ok = Boolean(s.ok);
+                  const degraded = Boolean(s?.meta?.degraded);
                   const name = String(s.name ?? '');
                   const ms = Number(s.durationMs ?? 0);
                   return (
                     <span
                       key={name}
                       className={`ml-2 inline-flex items-center gap-1 font-mono ${
-                        ok ? 'text-emerald-700' : 'text-red-700'
+                        ok ? (degraded ? 'text-amber-700' : 'text-emerald-700') : 'text-red-700'
                       }`}
-                      title={String(s.message ?? '')}
+                      title={String(s.message ?? s?.meta?.message ?? '')}
                     >
-                      {ok ? '✓' : '✗'} {name} {ms}ms
+                      {ok ? (degraded ? '◐' : '✓') : '✗'} {name} {ms}ms
                     </span>
                   );
                 })}
@@ -473,6 +497,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   onAddReference={addReference}
                   copyStatus={industryCopyStatus}
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
+                />
+              ) : id === 'factorRevival' ? (
+                <FactorRevivalCard
+                  onOpenVault={() => onNavigate?.('backtest')}
+                  onOpenSgap={() => onNavigate?.('backtest')}
                 />
               ) : id === 'brief' ? (
                 <MorningBriefCard
@@ -613,6 +642,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           </>
         );
       })()}
+
+      {/* 资金流全景 — 整幅宽度，与回测页同一 flow-series 数据，三张大图（国家队份额/两融/北向）. */}
+      <FundFlowPanoramaCard className="mt-4" />
     </div>
   );
 }

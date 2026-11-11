@@ -89,6 +89,15 @@ ENTRY_DATE_MISSING = 持仓缺 EntryDate（Locked_T1=MISSING）：fail-closed，
 ENTRY_BELOW_STOP = Entry_Trigger ≤ HardStop：禁 BUY（落地即触发止损）。
 TRIGGER_HIT EXIT 的 Cond Order_Price = 当日跌停价（非 Exit_Stop），防止跳空低开废单。
 
+### 0.1 事件标签（advice only）· 权威顺序：frozen engine exits > event tags
+
+- 事件 / 地缘标签只能**建议**：是否暂缓同键回买（`advise_defer_same_key_rebuy`）、维持 / 观察哪个档（`advise_strategy`），或给引擎事实打标（`trail_exit` / `below_ma200`）。
+- **不能否决**任何已触发的止损 / 移动止损 / Must-act 卖出（`SELL_TO_REPO`），不能改可成交时钟、`TRAIL_PCT`、cooldown（k=0），也不能写 `/settings/strategy-mode`。Markdown 固定带一行「不影响已触发的卖出」。
+- `geoRegime` 是事件 / 地缘视角，**不是** `market_regime.py` 的 `regime=Weak/Strong`；后者仍是 S-3 开仓闸。
+- 记录一条有来源的标签：`POST /v1/agent/event-tags`，body `{tag, effect, confidence, sources:[{url|briefId}], relatedAssets, validFrom, validUntil, note}`。无来源 / 非白名单 effect → 422；`confidence < 0.5` 的标签不会进入判断包。
+  例：中东风 + 美国政治日历（2026-10 中 ~ 2026-11-10）的油品重定价，用真实报道链接或当日 news brief id 记录，`effect=advise_defer_same_key_rebuy`、`relatedAssets=["OIL","ETF:513350"]`；**禁止编造 URL / 引文**。
+- 无标签 / 低置信 = 判断包保持原样（fail-open，不多一块、不出策略建议卡）。
+
 ---
 
 ## 1. 仓位合同（摘要）

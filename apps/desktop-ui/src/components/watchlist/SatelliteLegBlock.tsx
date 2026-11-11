@@ -9,19 +9,13 @@ import { useAccountSettings } from '@/lib/account-settings';
 import { slotLotShares } from '@/lib/lot-sizing';
 import { getShanghaiMinutes, getShanghaiTodayIso, isWeekdayShanghai } from '@/lib/market-hours';
 import { PARKING_META, parkingKeyForSymbol } from '@/lib/parking-universe';
-import type {
-  TimelineOpenPosition,
-  TimelineParkedHeld,
-  TimelineRow,
-} from '@/lib/queries/backtest';
+import type { TimelineOpenPosition, TimelineParkedHeld, TimelineRow } from '@/lib/queries/backtest';
 import { useSatelliteExitDueQuery } from '@/lib/queries/backtest';
 import { invalidateUserTradesQueries, recordUserTrade } from '@/lib/queries/userTrades';
 import { cn } from '@/lib/utils';
-import {
-  loadWatchlist,
-  saveWatchlist,
-  upsertWatchlistOpenTrade,
-} from '@/lib/watchlist-storage';
+import { isWhipRebuy } from '@/lib/follow-timing';
+import { ExecutionTimingBadge, WhipBadge } from '@/components/watchlist/ExecutionTimingBadge';
+import { loadWatchlist, saveWatchlist, upsertWatchlistOpenTrade } from '@/lib/watchlist-storage';
 
 type PanelRankedEntry = NonNullable<SatelliteLivePanel['ranked']>[number];
 
@@ -114,6 +108,7 @@ export function SatelliteLegBlock({
   userBook = null,
   stockGateClosed = false,
   hideBuyRows = false,
+  trailExitSymbols,
   timelineUnavailable = null,
   timelineError = null,
   onRetryTimeline,
@@ -134,6 +129,8 @@ export function SatelliteLegBlock({
   stockGateClosed?: boolean;
   /** When the ONE order list above already carries the buys (a25 view). */
   hideBuyRows?: boolean;
+  /** Sticky trail-exit keys (+ short display memory) for the whip annotation. */
+  trailExitSymbols?: Set<string>;
   /** Timeline row state: the frozen reference is loading / failed. */
   timelineUnavailable?: 'loading' | 'error' | null;
   timelineError?: string | null;
@@ -198,77 +195,75 @@ export function SatelliteLegBlock({
     }
   }
 
-  const userBookNode = userBook && userBook.decisionAvailable !== false ? (
-          <div
-            data-testid="satellite-user-book"
-            className="mt-1.5 border-t border-sky-500/20 pt-1.5"
+  const userBookNode =
+    userBook && userBook.decisionAvailable !== false ? (
+      <div data-testid="satellite-user-book" className="mt-1.5 border-t border-sky-500/20 pt-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-sky-700 dark:text-sky-300">
+            实盘账本（我的成交 · 自 {userBook.inception}）
+          </span>
+          <span
+            className={cn(
+              'rounded px-1.5 py-0.5',
+              userBook.prereq.met
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+            )}
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-sky-700 dark:text-sky-300">
-                实盘账本（我的成交 · 自 {userBook.inception}）
-              </span>
-              <span
-                className={cn(
-                  'rounded px-1.5 py-0.5',
-                  userBook.prereq.met
-                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-                )}
-              >
-                前置 {userBook.prereq.closedCount}/{userBook.prereq.target}
-                {userBook.prereq.met ? ' · 已达标' : ''}
-              </span>
-              <span className="tabular-nums text-[var(--k-muted)]">
-                已平仓 {userBook.stats.closedCount} · 持仓 {userBook.stats.openCount}
-              </span>
-              {userBook.stats.winRate != null ? (
-                <span className="tabular-nums">
-                  胜率 {pct(userBook.stats.winRate)}（{userBook.stats.winCount}/
-                  {userBook.stats.closedCount}）
-                </span>
-              ) : null}
-              {userBook.stats.avgNetPnlPct != null ? (
-                <span className={cn('tabular-nums', pnlClass(userBook.stats.avgNetPnlPct))}>
-                  单笔均净 {signedPct(userBook.stats.avgNetPnlPct)}
-                </span>
-              ) : null}
-            </div>
-          {userBook.openLegs.length > 0 ? (
-            <div data-testid="satellite-user-legs" className="mt-1 space-y-0.5">
-              <div className="font-semibold">我的持仓（{userBook.openLegs.length}）：</div>
-              {userBook.openLegs.map((l) => {
-                const due = l.entryDate ? myDueQ.data?.exitDue?.[l.entryDate] : null;
-                const code = l.ts.split(':')[1]?.split('.')[0] ?? l.ts;
-                const worth =
-                  capital != null && l.positionPct != null
-                    ? ` ≈ ¥${Math.round((l.positionPct / 100) * capital).toLocaleString('zh-CN')}`
-                    : '';
-                return (
-                  <div key={l.ts} className="tabular-nums">
-                    <span className="font-mono font-semibold">{code}</span>
-                    <span>{myNames.get(l.ts) ? ` ${myNames.get(l.ts)}` : ''}</span>
-                    <span>{` · ${pct((l.positionPct ?? 0) / 100)}${worth}`}</span>
-                    <span className="text-[var(--k-muted)]">
-                      {` · 入 ${l.entryDate ?? '—'}${l.entryPrice != null ? ` @${l.entryPrice}` : ''}`}
-                    </span>
-                    {due ? (
-                      <span>
-                        {' → 到期 '}
-                        <span className="font-semibold text-sky-700 dark:text-sky-300">
-                          {due} 14:30
-                        </span>
-                        {' 卖出'}
-                      </span>
-                    ) : (
-                      <span className="text-[var(--k-muted)]"> · 到期 —</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            前置 {userBook.prereq.closedCount}/{userBook.prereq.target}
+            {userBook.prereq.met ? ' · 已达标' : ''}
+          </span>
+          <span className="tabular-nums text-[var(--k-muted)]">
+            已平仓 {userBook.stats.closedCount} · 持仓 {userBook.stats.openCount}
+          </span>
+          {userBook.stats.winRate != null ? (
+            <span className="tabular-nums">
+              胜率 {pct(userBook.stats.winRate)}（{userBook.stats.winCount}/
+              {userBook.stats.closedCount}）
+            </span>
           ) : null}
+          {userBook.stats.avgNetPnlPct != null ? (
+            <span className={cn('tabular-nums', pnlClass(userBook.stats.avgNetPnlPct))}>
+              单笔均净 {signedPct(userBook.stats.avgNetPnlPct)}
+            </span>
+          ) : null}
+        </div>
+        {userBook.openLegs.length > 0 ? (
+          <div data-testid="satellite-user-legs" className="mt-1 space-y-0.5">
+            <div className="font-semibold">我的持仓（{userBook.openLegs.length}）：</div>
+            {userBook.openLegs.map((l) => {
+              const due = l.entryDate ? myDueQ.data?.exitDue?.[l.entryDate] : null;
+              const code = l.ts.split(':')[1]?.split('.')[0] ?? l.ts;
+              const worth =
+                capital != null && l.positionPct != null
+                  ? ` ≈ ¥${Math.round((l.positionPct / 100) * capital).toLocaleString('zh-CN')}`
+                  : '';
+              return (
+                <div key={l.ts} className="tabular-nums">
+                  <span className="font-mono font-semibold">{code}</span>
+                  <span>{myNames.get(l.ts) ? ` ${myNames.get(l.ts)}` : ''}</span>
+                  <span>{` · ${pct((l.positionPct ?? 0) / 100)}${worth}`}</span>
+                  <span className="text-[var(--k-muted)]">
+                    {` · 入 ${l.entryDate ?? '—'}${l.entryPrice != null ? ` @${l.entryPrice}` : ''}`}
+                  </span>
+                  {due ? (
+                    <span>
+                      {' → 到期 '}
+                      <span className="font-semibold text-sky-700 dark:text-sky-300">
+                        {due} 14:30
+                      </span>
+                      {' 卖出'}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--k-muted)]"> · 到期 —</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ) : null;
+        ) : null}
+      </div>
+    ) : null;
 
   if (!row) {
     return (
@@ -362,8 +357,7 @@ export function SatelliteLegBlock({
   // The frozen timeline is authoritative when present: the panel's replay
   // calendar ends at the panel day, so an in-flight leg's exitDue collapsed to
   // that day and every held leg read as an exit (2026-09-23 incident).
-  const panelHasExitData =
-    live != null && Array.isArray(live.exits) && openPositions.length === 0;
+  const panelHasExitData = live != null && Array.isArray(live.exits) && openPositions.length === 0;
   const dueLegs: LegView[] = liveDay
     ? panelHasExitData
       ? (live?.exits ?? []).map((x) => ({ ts: x.ts, exitDue: x.exitDue ?? null }))
@@ -443,10 +437,7 @@ export function SatelliteLegBlock({
         ) : null}
         <span
           data-testid="satellite-gate-tag"
-          className={cn(
-            'rounded-full border px-1.5 py-0.5 text-[10px] font-semibold',
-            gateTag.cls,
-          )}
+          className={cn('rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', gateTag.cls)}
         >
           {gateTag.label}
         </span>
@@ -480,6 +471,10 @@ export function SatelliteLegBlock({
             >
               {liveGateOpen ? '闸 开 · 今日 14:30 可补仓' : '闸 关 · 今日只卖不买'}
             </span>
+            <ExecutionTimingBadge
+              kind={liveGateOpen ? 'intraday-buy' : 'close-sell-pending'}
+              testId="satellite-timing"
+            />
             <span className="tabular-nums">
               14:30 广度 {live.breadth1430 != null ? pct(live.breadth1430) : '—'}（阈值 50%）
             </span>
@@ -494,7 +489,9 @@ export function SatelliteLegBlock({
             <span
               className={cn(
                 'font-semibold',
-                liveGateOpen ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+                liveGateOpen
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-red-700 dark:text-red-300',
               )}
             >
               {liveGateOpen
@@ -521,14 +518,18 @@ export function SatelliteLegBlock({
                       ? slotLotShares({ symbol, price, capital, slotPct: perSlot * 100 })
                       : null;
                   const isBought = bought.has(symbol);
+                  const whip = isWhipRebuy('BUY', symbol, trailExitSymbols);
                   return (
                     <div
                       key={e.ts}
                       data-testid="satellite-buy-row"
+                      data-symbol={symbol}
+                      data-whip={whip ? 'true' : undefined}
                       className={cn(
                         'flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-xl px-3 py-2 text-xs',
                         'border border-[var(--k-border)]/60 bg-[var(--k-surface)]/45 backdrop-blur-sm',
                         'transition-colors hover:border-[var(--k-border)] hover:bg-[var(--k-surface)]/70',
+                        whip && 'border-amber-500/60 bg-amber-500/5',
                         isBought && 'opacity-60',
                       )}
                     >
@@ -556,16 +557,23 @@ export function SatelliteLegBlock({
                             ? '待设总资金'
                             : '资金不足 1 手'}
                       </span>
+                      <ExecutionTimingBadge kind="intraday-buy" testId="satellite-row-timing" />
+                      {whip ? <WhipBadge /> : null}
                       {liveGateOpen ? (
                         <Button
                           size="sm"
                           variant={isBought ? 'ghost' : 'outline'}
                           className={cn(
                             'ml-auto h-6 rounded-full px-3 text-[11px]',
-                            !isBought && 'border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300',
+                            !isBought &&
+                              'border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300',
                           )}
                           disabled={
-                            isBought || buying != null || capital == null || !sizing || sizing.shares <= 0
+                            isBought ||
+                            buying != null ||
+                            capital == null ||
+                            !sizing ||
+                            sizing.shares <= 0
                           }
                           onClick={() => void buyCandidate(e)}
                         >
@@ -644,7 +652,10 @@ export function SatelliteLegBlock({
               <li className="text-[var(--k-muted)]">
                 继续持有（未到期）：
                 {heldLegs
-                  .map((p) => `${p.ts}(${p.exitDue ? `到期 ${p.exitDue}` : `余${p.daysLeft ?? '—'}日`})`)
+                  .map(
+                    (p) =>
+                      `${p.ts}(${p.exitDue ? `到期 ${p.exitDue}` : `余${p.daysLeft ?? '—'}日`})`,
+                  )
                   .join('、')}
               </li>
             ) : null}
@@ -665,8 +676,8 @@ export function SatelliteLegBlock({
                   <>
                     <span className="font-semibold">待今日 14:30 现场面板</span>（工作日 14:30
                     自动抓取；开则按跳空 &gt;3% · 振幅升序 · 排除 T+1 涨停/接近涨停 的名单补满
-                    {freeSlots > 0 ? ` ${freeSlots} 个空槽` : '空槽'}，每槽 ≈{pct(perSlot)}；关则只卖不买，
-                    空槽留现金{isStarship ? '/停车' : ''}）
+                    {freeSlots > 0 ? ` ${freeSlots} 个空槽` : '空槽'}，每槽 ≈{pct(perSlot)}
+                    ；关则只卖不买， 空槽留现金{isStarship ? '/停车' : ''}）
                   </>
                 )}
               </li>
@@ -675,7 +686,7 @@ export function SatelliteLegBlock({
               <li>
                 {isB ? (
                   <>
-                     闲钱停车（星舰 B = 闲置现金 100% 停 国债+黄金+纳指 三腿逆波动率；月初再平衡）：
+                    闲钱停车（星舰 B = 闲置现金 100% 停 国债+黄金+纳指 三腿逆波动率；月初再平衡）：
                     {parkedHeld ? (
                       <>
                         <span className="font-semibold">停放腿 {parkedLabel}</span>
@@ -692,8 +703,8 @@ export function SatelliteLegBlock({
                   </>
                 ) : isA25 ? (
                   <>
-                     闲钱停车（现行 canonical H2-a25 = 闲置现金 25% 停 H2 ETF / 75% 停 B3 风险预算；K3 风险）：
-
+                    闲钱停车（现行 canonical H2-a25 = 闲置现金 25% 停 H2 ETF / 75% 停 B3
+                    风险预算；K3 风险）：
                     {parkedHeld ? (
                       <>
                         <span className="font-semibold">ETF 腿持有 {parkedLabel}</span>
@@ -740,8 +751,7 @@ export function SatelliteLegBlock({
             )}
           </ol>
           <div className="mt-1 text-[var(--k-muted)]">
-            跟法：{structure.follow}。研究档测试通过 ≠ Live（星舰前置 = paper 3/20 +
-            风险授权）。
+            跟法：{structure.follow}。研究档测试通过 ≠ Live（星舰前置 = paper 3/20 + 风险授权）。
             {live
               ? ' 14:30 现场面板为同一 satellite_signals_for_day 代码（mv 用昨收，误差极小）。'
               : gateState === 'missing'
@@ -753,8 +763,8 @@ export function SatelliteLegBlock({
         </details>
       ) : (
         <div className="mt-1 text-[var(--k-muted)]">
-          回测口径（研究 replay）。14:30 现场面板工作日 14:30 自动抓取；执行审计已过（90bps
-          +310%/SR 2.45、容量 ≤5M）。
+          回测口径（研究 replay）。14:30 现场面板工作日 14:30 自动抓取；执行审计已过（90bps +310%/SR
+          2.45、容量 ≤5M）。
         </div>
       )}
       {paper && paper.decisionAvailable !== false ? (

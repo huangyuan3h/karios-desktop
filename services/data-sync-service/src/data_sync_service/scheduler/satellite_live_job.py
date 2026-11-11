@@ -43,17 +43,21 @@ def run() -> dict:
     from data_sync_service.service import satellite_live as sl
     from data_sync_service.service.trade_calendar_utils import shanghai_today
 
+    today = None
+    trading_day = False
     try:
         today = shanghai_today()
         if is_trading_day("SSE", today) is not True:
             insert_record(JOB_ID, success=True, error_message="not a trading day — skip")
             return {"ok": True, "skipped": "not_trading_day"}
+        trading_day = True
         # Idempotent: a healthy 14:30 capture makes the 14:33/14:37 retries
-        # no-ops (never re-fetch, never re-push). A lost capture is retried
-        # inside the session; after the close nothing runs (no catch-up).
+        # no-ops for the panel, but the daily-adjust push still self-heals a
+        # lost emit (emit_event dedupes by day+mode).
         existing = sl.load_live_panel()
         if existing and str(existing.get("tradeDate") or "") == today.isoformat():
             insert_record(JOB_ID, success=True, error_message="already captured today — skip")
+            _emit_action(existing)
             return {"ok": True, "skipped": "already_captured"}
         panel = sl.build_live_panel(today.isoformat())
         quotes = panel.pop("_quotes", None) or {}
@@ -80,7 +84,6 @@ def run() -> dict:
             error_message=(note if saved else f"not persisted: {note}")[:500],
         )
         if saved:
-            _emit_action(panel)
             logger.info(
                 "satellite_live_panel %s: %s (breadth=%s gap=%s pool=%s)",
                 panel.get("tradeDate"),
@@ -91,45 +94,72 @@ def run() -> dict:
             )
         else:
             logger.warning("satellite_live_panel not persisted: %s", note)
+        # D) 14:30 今日调整 must fire on every trading day for the SELECTED
+        # mode, including harbor/homeport (the panel is satellite-only). This
+        # runs even when the satellite snapshot is incomplete; for satellite
+        # modes the composer says the panel is missing instead of going silent.
+        _emit_action(panel if saved else {"tradeDate": panel.get("tradeDate")})
         return {"ok": saved, "panel": panel, "note": note}
     except Exception as exc:  # noqa: BLE001
         logger.exception("satellite_live_panel failed: %s", exc)
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])
+        # The fixed daily adjust must not depend on the satellite snapshot.
+        if trading_day:
+            _emit_action({"tradeDate": today.isoformat() if today else ""})
         return {"ok": False, "error": str(exc)[:500]}
 
 
 def _emit_action(panel: dict) -> None:
-    """OPT-223: push today's action for the strategy the user selected.
+    """Push today's 14:30 「今日调整」 for the strategy the user selected (OPT-223).
 
-    Composed from the same payload the card renders; delivered through the
-    webhook (Bark) path and read by the in-app notification aggregator. A push
-    failure must never fail the snapshot job.
+    Originally only SATELLITE_MODES emitted; default/live is ``homeport``, so
+    Harbor parking trail exits never reached Bark. Now every selected mode
+    gets a daily adjust payload (empty day = 「今日无需调整」). Delivered
+    through the webhook (Bark) path and read by the in-app notification
+    aggregator. A push failure must never fail the snapshot job.
     """
     try:
         from data_sync_service.api.settings_routes import selected_strategy_mode
         from data_sync_service.db.webhook import emit_event
-        from data_sync_service.service.satellite_actions import (
-            SATELLITE_MODES,
-            compose_satellite_action,
+        from data_sync_service.service.daily_adjust import (
+            compose_daily_adjust,
+            load_live_sleeve,
         )
+        from data_sync_service.service.satellite_actions import SATELLITE_MODES
 
         mode = selected_strategy_mode()
-        if mode not in SATELLITE_MODES:
-            logger.info("satellite_live_panel: mode=%s has no satellite leg — no action push", mode)
-            return
-        parking = None
-        try:
-            from data_sync_service.service import multi_asset_sleeve as mas
+        trade_date = str(panel.get("tradeDate") or "")[:10]
+        if not trade_date:
+            from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 
-            parking = mas._pick(as_of=str(panel.get("tradeDate") or ""))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("satellite_live_panel: parking pick failed: %s", exc)
-        action = compose_satellite_action(panel, mode, parking=parking)
+            trade_date = shanghai_today_iso()
+        parking = None
+        if mode in SATELLITE_MODES:
+            try:
+                from data_sync_service.service import multi_asset_sleeve as mas
+
+                parking = mas._pick(as_of=trade_date)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("satellite_live_panel: parking pick failed: %s", exc)
+        # Every mode gets the live Harbor parking state appended (the default
+        # book can hold a parking leg while a satellite mode is selected).
+        sleeve = load_live_sleeve(trade_date)
+        action = compose_daily_adjust(
+            mode,
+            trade_date=trade_date,
+            sleeve=sleeve,
+            panel=panel,
+            parking=parking,
+        )
         emit_event(
             "satellite_action",
             action,
-            dedupe_key=f"satellite_action:{panel.get('tradeDate')}:{mode}",
+            dedupe_key=f"satellite_action:{trade_date}:{mode}",
         )
-        logger.info("satellite_live_panel: action pushed (%s)", action.get("summary"))
+        logger.info(
+            "satellite_live_panel: daily adjust pushed (%s): %s",
+            mode,
+            action.get("summary"),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("satellite_live_panel: action push failed: %s", exc)

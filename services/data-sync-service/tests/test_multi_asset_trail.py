@@ -56,6 +56,86 @@ def test_etf_trail_exit_skips_when_within_band():
     assert out is None
 
 
+def test_etf_trail_exit_pending_next_morning_without_today_bar():
+    """2026-11-05 hole: 11-03 close breached, no 11-05 bar yet.
+
+    The latest completed close at/before ``day`` owns the signal; a morning
+    rebuild must still say SELL_TO_REPO (pending open sell), never HOLD.
+    """
+    held = {
+        "symbol": "ETF:513350",
+        "ts_code": "513350.SH",
+        "entryDate": "2026-10-09",
+    }
+    bars = [
+        {"date": "2026-10-09", "trade_date": "2026-10-09", "close": 1.420},
+        {"date": "2026-10-30", "trade_date": "2026-10-30", "close": 1.480},
+        {"date": "2026-11-03", "trade_date": "2026-11-03", "close": 1.353},  # -8.6%
+    ]
+    with patch.object(mas, "_adjusted_series", _adj(bars)):
+        out = mas._etf_trail_exit(held, day="2026-11-05")
+    assert out is not None
+    assert out["action"] == "SELL_TO_REPO"
+    assert out["pendingOpenSell"] is True
+    assert out["signalDate"] == "2026-11-03"
+    assert "待开盘执行" in out["message"]
+    assert "待开盘" in out["executeHint"]
+
+
+def test_etf_trail_exit_stays_sticky_after_bounce():
+    """Once fired, the exit stays pending until the leg leaves holdings."""
+    held = {
+        "symbol": "ETF:513350",
+        "ts_code": "513350.SH",
+        "entryDate": "2026-10-09",
+    }
+    bars = [
+        {"date": "2026-10-09", "trade_date": "2026-10-09", "close": 1.420},
+        {"date": "2026-10-30", "trade_date": "2026-10-30", "close": 1.480},
+        {"date": "2026-11-03", "trade_date": "2026-11-03", "close": 1.353},
+        {"date": "2026-11-04", "trade_date": "2026-11-04", "close": 1.470},  # bounce inside band
+    ]
+    with patch.object(mas, "_adjusted_series", _adj(bars)):
+        out = mas._etf_trail_exit(held, day="2026-11-05")
+    assert out is not None and out["action"] == "SELL_TO_REPO"
+    assert out["pendingOpenSell"] is True
+    assert out["signalDate"] == "2026-11-03"
+
+
+def test_morning_sleeve_returns_pending_sell_not_hold():
+    """build_multi_asset_sleeve: pick still matches the held leg (HOLD path)
+    but a prior trail breach must win on the next morning."""
+    held = {
+        "symbol": "ETF:513350",
+        "ts_code": "513350.SH",
+        "entryDate": "2026-10-09",
+        "positionPct": 70,
+    }
+    pick = {
+        "key": "OIL",
+        "ts": "513350.SH",
+        "symbol": "ETF:513350",
+        "name": "富国油气QDII",
+        "mom60": 4.98,
+        "above_ma200": True,
+    }
+    bars = [
+        {"date": "2026-10-09", "trade_date": "2026-10-09", "close": 1.420},
+        {"date": "2026-10-30", "trade_date": "2026-10-30", "close": 1.480},
+        {"date": "2026-11-03", "trade_date": "2026-11-03", "close": 1.353},
+    ]
+    with (
+        patch.object(mas, "_pick", return_value=pick),
+        patch.object(mas, "_adjusted_series", _adj(bars)),
+    ):
+        out = mas.build_multi_asset_sleeve(day="2026-11-05", cn_block={}, holdings_override=[held])
+    assert out["action"] == "SELL_TO_REPO"
+    assert out["pendingOpenSell"] is True
+    assert out["signalDate"] == "2026-11-03"
+    assert out["symbol"] == "ETF:513350"
+    assert out["executeHint"].startswith("待开盘")
+
+
 def test_trail_beats_rotate_when_holding_etf():
     """Holding ETF in drawdown → SELL_TO_REPO even if another ETF would win."""
     held = {
@@ -184,3 +264,139 @@ def test_rotate_park_pct_includes_held_leg():
     assert out["action"] == "ROTATE"
     assert out["idlePct"] == pytest.approx(10.0)
     assert out["parkPct"] == pytest.approx(50.0)
+
+
+# ------------------------------------------------- 14:30 intraday trail watch --
+
+
+def _preserved(entry: str, day: str, *, peak: float = 100.0, last: float = 95.0):
+    """Closes that never breach at the close (peak → -5%): trail stays HOLD."""
+    return [
+        {"date": entry, "trade_date": entry, "close": peak},
+        {"date": day, "trade_date": day, "close": last},
+    ]
+
+
+def test_intraday_watch_flags_print_under_threshold_without_changing_close() -> None:
+    held = {"symbol": "ETF:513350", "ts_code": "513350.SH", "entryDate": "2026-10-01"}
+    bars = _preserved("2026-10-01", "2026-11-03", peak=100.0, last=95.0)
+    with patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)):
+        warn = mas.intraday_trail_watch(held, day="2026-11-04", px=91.5)
+        near = mas.intraday_trail_watch(held, day="2026-11-04", px=92.5)
+        calm = mas.intraday_trail_watch(held, day="2026-11-04", px=96.0)
+    assert warn is not None
+    assert warn["status"] == "breached"
+    assert warn["thresholdPx"] == pytest.approx(92.0, abs=1e-6)
+    assert warn["px"] == pytest.approx(91.5)
+    assert "现价已达卖出条件" in warn["message"]
+    assert "门槛价" in warn["message"]
+    assert "卖出阈值价" not in warn["message"]
+    # Near-miss band is a warning only, with the same next-open clock.
+    assert near is not None and near["status"] == "near"
+    assert "逼近" in near["message"]
+    assert "明日开盘" in near["executeHint"]
+    assert calm is None
+
+
+def test_build_sleeve_keeps_hold_but_carries_intraday_warn() -> None:
+    """A 14:30 print under the line must not flip `action`, only warn."""
+    held = {
+        "symbol": "ETF:513350",
+        "ts_code": "513350.SH",
+        "entryDate": "2026-10-01",
+        "positionPct": 63.5,
+    }
+    pick = {
+        "key": "OIL",
+        "symbol": "ETF:513350",
+        "name": "富国油气",
+        "mom60": 4.98,
+        "above_ma200": True,
+    }
+    cn = {
+        "regime": "Strong",
+        "panicCooldown": {"active": False},
+        "circuitBlocked": False,
+        "s3Candidates": [],
+        "holdings": [held],
+    }
+    bars = _preserved("2026-10-01", "2026-11-03", peak=100.0, last=95.0)
+    with (
+        patch.object(mas, "_pick", return_value=pick),
+        patch.object(mas, "_adjusted_series", _adj(bars)),
+        patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)),
+        patch.object(mas, "latest_1430_print", return_value=91.2),
+    ):
+        out = mas.build_multi_asset_sleeve(day="2026-11-04", cn_block=cn, holdings_override=[held])
+    assert out["action"] == "HOLD"  # close signal unchanged (no bar yet for 11-04)
+    warn = out.get("intradayWarn") or {}
+    assert warn.get("active") is True
+    assert warn.get("status") == "breached"
+    assert warn.get("thresholdPx") == pytest.approx(92.0, abs=1e-6)
+    assert warn.get("px") == pytest.approx(91.2)
+
+
+def test_zero_position_registry_row_is_not_a_held_leg() -> None:
+    """A 0% parking ETF in the registry must not shadow the real parked leg.
+
+    2026-11-05: the registry carried 513110 at 0% (watchlist row) plus 513350 at
+    63.5%. The sleeve picked 513110 → no entryDate → "轮动 513110→513350" and
+    the OIL trail8 never ran.
+    """
+    ghost = {"symbol": "ETF:513110", "ts_code": "513110.SH", "positionPct": 0.0}
+    oil = {
+        "symbol": "ETF:513350",
+        "ts_code": "513350.SH",
+        "entryDate": "2026-10-01",
+        "positionPct": 63.5,
+    }
+    pick = {
+        "key": "OIL",
+        "symbol": "ETF:513350",
+        "name": "富国油气",
+        "mom60": 9.94,
+        "above_ma200": True,
+    }
+    cn = {
+        "regime": "Strong",
+        "panicCooldown": {"active": False},
+        "circuitBlocked": False,
+        "s3Candidates": [],
+    }
+    bars = _bars_peak_then_drop(entry="2026-10-01", day="2026-11-03", peak=100.0, last=91.5)
+    with (
+        patch.object(mas, "_pick", return_value=pick),
+        patch.object(mas, "_adjusted_series", _adj(bars)),
+    ):
+        out = mas.build_multi_asset_sleeve(
+            day="2026-11-03", cn_block=cn, holdings_override=[ghost, oil]
+        )
+    assert out["action"] == "SELL_TO_REPO"
+    assert out["symbol"] == "ETF:513350"
+    assert out["trailExit"] is True
+    assert "峰值回撤" in out["message"]
+
+
+def test_intraday_watch_falls_back_to_latest_intraday_print() -> None:
+    """No live_1430 row for the symbol → latest stored print still warns."""
+    held = {"symbol": "ETF:513350", "ts_code": "513350.SH", "entryDate": "2026-10-01"}
+    bars = _preserved("2026-10-01", "2026-11-03", peak=100.0, last=95.0)
+    with (
+        patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)),
+        patch.object(mas, "latest_1430_print", return_value=None),
+        patch.object(mas, "latest_intraday_print", return_value=91.4),
+    ):
+        warn = mas.intraday_trail_watch_for_day(held, day="2026-11-04")
+    assert warn is not None
+    assert warn["status"] == "breached"
+    assert warn["px"] == pytest.approx(91.4)
+    assert warn["pxSource"] == "bar_5min_latest"
+
+    with (
+        patch.object(mas, "_raw_series", lambda ts, **kw: _adj(bars)(ts)),
+        patch.object(mas, "latest_1430_print", return_value=91.0),
+        patch.object(mas, "latest_intraday_print", return_value=91.4),
+    ):
+        warn2 = mas.intraday_trail_watch_for_day(held, day="2026-11-04")
+    assert warn2 is not None and warn2["pxSource"] == "live_1430"
+    assert warn2["px"] == pytest.approx(91.0)

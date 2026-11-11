@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { detectReplicaGaps, type GapSeverity, type HoldingSnap } from '@/lib/replica-gap';
 import { STRATEGY_MODE_LABELS, type StrategyMode } from '@/lib/strategy-settings';
+import { M30FollowBlock } from '@/components/watchlist/M30FollowBlock';
 import { cn } from '@/lib/utils';
 
 const SEV_CLS: Record<GapSeverity, string> = {
@@ -27,8 +28,15 @@ const VERDICT_CLS = {
 /**
  * Always-visible daily align (complement to BehaviorAuditBanner / S-3).
  * Harbor keeps the S-3 core instruction (100% switch, idle cash parks in ETF).
+ * The homeport (M30) view renders the M30 follow panel instead — the harbor
+ * 100%-ETF gap check would misflag B3 ETFs as "非今日停车 ETF".
  */
 export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode } = {}) {
+  if (mode === 'homeport') return <M30FollowBlock />;
+  return <HarborAlignBanner mode={mode} />;
+}
+
+function HarborAlignBanner({ mode }: { mode: StrategyMode }) {
   const strategyName = STRATEGY_MODE_LABELS[mode];
   const healthQ = useQuery({
     queryKey: ['portfolio-health'],
@@ -99,8 +107,8 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
           {verdictLabel}
         </span>
         <span className="ml-auto font-mono text-[10px] font-normal text-[var(--k-muted)]">
-          目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
-          {report.etfWeightPct}% · 闲置 {report.idlePct}%
+          目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF {report.etfWeightPct}
+          % · 闲置 {report.idlePct}%
         </span>
       </div>
       {mode !== 'harbor' ? (
@@ -113,11 +121,9 @@ export function PickStrongAlignBanner({ mode = 'harbor' }: { mode?: StrategyMode
               : mode === 'starship'
                 ? '卫星 standalone + 闲钱停车'
                 : mode === 'starship_robust'
-                   ? '卫星 standalone + 闲钱 25% H2 ETF / 75% B3'
-
+                  ? '卫星 standalone + 闲钱 25% H2 ETF / 75% B3'
                   : mode === 'starship_b'
                     ? '卫星 standalone + 闲钱 100% {国债+黄金+纳指} 逆波动率'
-
                     : 'B3 月频 + 卫星 0.2 overlay'}
           未接入日对齐（OPT-186）。
         </p>

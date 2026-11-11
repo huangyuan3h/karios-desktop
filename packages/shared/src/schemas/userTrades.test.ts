@@ -125,14 +125,16 @@ describe('UserTradeSchema', () => {
       leg: 'satellite',
     });
     expect(satellite.leg).toBe('satellite');
-    expect(UserTradeRequestSchema.parse({
-      symbol: 'CN:002128',
-      side: 'BUY',
-      price: 27.7,
-      positionPct: 25,
-      leg: 'b3',
-      strategyMode: 'starship_robust',
-    }).strategyMode).toBe('starship_robust');
+    expect(
+      UserTradeRequestSchema.parse({
+        symbol: 'CN:002128',
+        side: 'BUY',
+        price: 27.7,
+        positionPct: 25,
+        leg: 'b3',
+        strategyMode: 'starship_robust',
+      }).strategyMode,
+    ).toBe('starship_robust');
     expect(() =>
       UserTradeRequestSchema.parse({
         symbol: 'ETF:518880',

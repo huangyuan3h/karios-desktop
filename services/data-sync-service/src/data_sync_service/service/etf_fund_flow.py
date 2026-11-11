@@ -21,6 +21,12 @@ from data_sync_service.db.etf_fund_flow import (
 )
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
+from data_sync_service.service.em_source_status import (
+    EM_DEGRADED_ZH_SHORT,
+    EM_UNAVAILABLE_REASON,
+    em_degraded_warning,
+    is_em_source_unavailable,
+)
 from data_sync_service.service.etf_fund_flow_em import (
     EM_ETF_FLOW_SOURCE,
     fetch_em_etf_realtime_flow_for_symbols,
@@ -371,6 +377,10 @@ def _merge_tushare_frames(
                 "avg_price": daily.get("avg_price"),
                 "net_inflow": None,
                 "updated_at": updated_at,
+                # History rows are a share-change derived series, not an
+                # East Money realtime main-flow snapshot. Tag honestly so the
+                # read path/UI never present them as EM 主力净流入.
+                "source": "tushare.fund_share",
             }
         )
     return out
@@ -434,6 +444,48 @@ def _em_flow_to_daily_row(
     }
 
 
+def _missing_share_start_date(
+    rows: list[dict[str, Any]],
+    *,
+    end_date: str,
+    lookback_days: int = 120,
+) -> date | None:
+    """Earliest recent row that has no ``fd_share`` yet (repair window start).
+
+    A previous sync can write a close-only row (fund_daily published before
+    fund_share) which then advances ``get_last_trade_date`` past that day — the
+    incremental ``last_date + 1`` window would never revisit it, leaving
+    ``fd_share``/``net_inflow`` NULL forever. That is exactly what happened to
+    the 2026-11-03..06 rows during the East Money outage. Rows already carrying
+    an East Money realtime main-flow value are left alone (no clobbering).
+    """
+    try:
+        end = date.fromisoformat(_yyyymmdd_to_iso(end_date))
+    except ValueError:
+        return None
+    floor = end - timedelta(days=max(1, int(lookback_days)))
+    missing: list[date] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        td = str(row.get("trade_date") or "")
+        try:
+            d = date.fromisoformat(td)
+        except ValueError:
+            continue
+        if d < floor or d > end:
+            continue
+        if row.get("fd_share") is not None:
+            continue
+        if (
+            str(row.get("source") or "") == EM_ETF_FLOW_SOURCE
+            and row.get("main_net_inflow") is not None
+        ):
+            continue
+        missing.append(d)
+    return min(missing) if missing else None
+
+
 def _sync_tushare_history_if_available(
     *,
     ts_code: str,
@@ -443,15 +495,19 @@ def _sync_tushare_history_if_available(
     settings = get_settings()
     if not settings.tushare_tokens:
         return 0
-    pro = get_pool().pro()
     last_date = get_last_trade_date(ts_code)
-    row_count = len(fetch_rows_for_codes([ts_code]))
-    if last_date is None or row_count < 5:
+    rows = fetch_rows_for_codes([ts_code])
+    row_count = len(rows)
+    repair_start = _missing_share_start_date(rows, end_date=end_date)
+    if repair_start is not None:
+        start_date = _date_to_yyyymmdd(repair_start)
+    elif last_date is None or row_count < 5:
         start_date = FULL_START_DATE
     else:
         start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
     if start_date > end_date:
         return 0
+    pro = get_pool().pro()
     share_df = _with_retry(
         lambda: pro.fund_share(ts_code=ts_code, start_date=start_date, end_date=end_date)
     )
@@ -469,6 +525,18 @@ def _sync_tushare_history_if_available(
         daily_df=daily_df,
         updated_at=updated_at,
     )
+    # Never overwrite a day that already carries East Money realtime main-flow
+    # data with the share-change estimate: the two are different metrics and
+    # the EM row is the more precise, vendor-native one.
+    protected = {
+        str(row.get("trade_date") or "")
+        for row in rows
+        if isinstance(row, dict)
+        and str(row.get("source") or "") == EM_ETF_FLOW_SOURCE
+        and row.get("main_net_inflow") is not None
+    }
+    if protected:
+        merged = [r for r in merged if str(r.get("trade_date") or "") not in protected]
     updated = upsert_daily_rows(merged) if merged else 0
     return updated + _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
 
@@ -528,6 +596,48 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
     error_message = (
         None if success else (fetch_error or "no realtime ETF flow rows from East Money")
     )
+    # 2026-11-06 review: classify over BOTH failure fields (AND semantics) —
+    # an EM transport error must not mask a simultaneous real history failure.
+    if not success and is_em_source_unavailable(
+        {"error": error_message, "historyError": history_error}
+    ):
+        # 2026-11-06: East Money realtime egress down (RemoteDisconnected /
+        # empty reply / ban latch). Report explicit degradation: keep the
+        # failure audit row (success=False so last-success never advances),
+        # write NO rows (no fake zeros), and return ok=True degraded so the
+        # dashboard Sync no longer cascades to FAILED on this leg alone.
+        insert_record(
+            job_type=JOB_TYPE,
+            success=False,
+            last_ts_code=None,
+            error_message=f"{EM_UNAVAILABLE_REASON}: {str(error_message)[:300]}",
+        )
+        history_source = "tushare.fund_share" if history_rows > 0 else None
+        history_note = (
+            f"；历史份额/价格已用 Tushare 更新 {history_rows} 行（份额变动估算，非主力净流入）"
+            if history_rows > 0
+            else ""
+        )
+        return {
+            "ok": True,
+            "degraded": True,
+            "unavailable": True,
+            "reason": EM_UNAVAILABLE_REASON,
+            "message": EM_DEGRADED_ZH_SHORT,
+            "warning": em_degraded_warning(leg="etf_fund_flow") + history_note,
+            "warnings": [em_degraded_warning(leg="etf_fund_flow") + history_note],
+            "source": EM_ETF_FLOW_SOURCE,
+            "realtimeSource": EM_ETF_FLOW_SOURCE,
+            "realtimeAvailable": False,
+            "historySource": history_source,
+            "historyAvailable": history_rows > 0,
+            "fetchError": fetch_error,
+            "rawError": str(error_message)[:500],
+            "missingSymbols": missing_symbols,
+            "staleSymbols": stale_symbols,
+            "historyUpdated": history_rows,
+            "historyError": history_error,
+        }
     insert_record(
         job_type=JOB_TYPE,
         success=success,
@@ -547,6 +657,10 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
         "ok": True,
         "updated": total_rows,
         "source": EM_ETF_FLOW_SOURCE,
+        "realtimeSource": EM_ETF_FLOW_SOURCE,
+        "realtimeAvailable": True,
+        "historySource": "tushare.fund_share" if history_rows > 0 else None,
+        "historyAvailable": history_rows > 0,
         "missingSymbols": missing_symbols,
         "staleSymbols": stale_symbols,
         "fetchError": fetch_error,
@@ -671,6 +785,27 @@ def _estimate_net_1d_from_em(
         fd_share_prev=prev_row.get("fd_share"),
         avg_price=avg_price,
     )
+
+
+def _row_net_inflow_metric(row: dict[str, Any] | None) -> str | None:
+    """Metric behind one stored row's ``net_inflow`` (None = no usable value).
+
+    ``main_net_inflow`` = East Money realtime 主力净流入; ``share_change_implied``
+    = fund_share delta × VWAP (Tushare history). Keeping this explicit stops the
+    UI from labelling a share-change estimate as an EM main-flow number.
+    """
+    if not row:
+        return None
+    if row.get("net_inflow") is None:
+        return None
+    if row.get("main_net_inflow") is not None:
+        return "main_net_inflow"
+    src = str(row.get("source") or "")
+    if src in (EM_ETF_FLOW_SOURCE, "eastmoney"):
+        return "main_net_inflow"
+    if row.get("fd_share") is not None:
+        return "share_change_implied"
+    return None
 
 
 def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
@@ -829,6 +964,26 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 net_flow_3d=net_3d,
             )
         source = data_source
+        if has_live_main_flow:
+            net_flow_metric: str | None = "main_net_inflow"
+        elif net_1d is not None and data_source == "tushare":
+            # Share-count delta × VWAP — NOT East Money's 主力净流入.
+            net_flow_metric = "share_change_implied"
+        elif net_1d is not None and data_source in (EM_ETF_FLOW_SOURCE, "eastmoney"):
+            net_flow_metric = "main_net_inflow"
+        else:
+            net_flow_metric = None
+        net_3d_metrics = {_row_net_inflow_metric(rows_by_date.get(d)) for d in (last_3 or [])}
+        if net_3d is None:
+            net_flow_3d_metric: str | None = None
+        elif data_source == "tushare":
+            net_flow_3d_metric = "share_change_implied"
+        elif net_3d_metrics == {"main_net_inflow"}:
+            net_flow_3d_metric = "main_net_inflow"
+        elif net_3d_metrics:
+            net_flow_3d_metric = "mixed"
+        else:
+            net_flow_3d_metric = None
         items.append(
             {
                 "name": spec["name"],
@@ -840,6 +995,8 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "netFlow3d": net_3d,
                 "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
                 "source": source,
+                "netFlowMetric": net_flow_metric,
+                "netFlow3dMetric": net_flow_3d_metric,
                 "live": has_live_main_flow,
                 "flowStatus": flow_status,
                 "flowProvider": flow_provider,
@@ -870,6 +1027,11 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
         "asOfDate": as_of,
         "shareLag": share_lag,
         "intradaySafe": intraday_safe,
+        # Explicit honesty flags (2026-11-06): realtimeAvailable=False means no
+        # East Money realtime main-flow row was usable; any netFlow1d then is
+        # the Tushare share-change estimate (netFlowMetric).
+        "realtimeAvailable": any(bool(it.get("live")) for it in items),
+        "sources": sorted({str(it.get("source")) for it in items if it.get("source")}),
         "items": items,
     }
 

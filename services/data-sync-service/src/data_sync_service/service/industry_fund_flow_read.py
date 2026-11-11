@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from data_sync_service.service.industry_taxonomy import row_is_sw_l1
+from data_sync_service.service.industry_taxonomy import (
+    DEFAULT_INDUSTRY_FLOW_SOURCE,
+    row_is_sw_l1,
+)
 
 
 def filter_sw_l1_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -311,12 +314,36 @@ def build_dashboard_industry_bundle(
     topk2 = max(1, min(int(top_k), 20))
     dates_sorted = list(dates)
     top_by_date = top_by_date_from_rows(rows, dates_sorted, top_k=topk2)
+    # Honest provenance (2026-11-06): per-date source tags so the UI can say
+    # "Tushare 大单汇总" on EM-fallback days instead of implying EM data.
+    sources_by_date: dict[str, set[str]] = {}
+    for row in rows:
+        d = str(row.get("date") or "")
+        if not d:
+            continue
+        sources_by_date.setdefault(d, set()).add(
+            str(row.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE)
+        )
+    source_by_date: dict[str, str] = {}
+    fallback_dates: list[str] = []
+    for d in dates_sorted:
+        srcs = sorted(sources_by_date.get(d) or [])
+        if not srcs:
+            continue
+        source_by_date[d] = srcs[0] if len(srcs) == 1 else "mixed"
+        if any(s != DEFAULT_INDUSTRY_FLOW_SOURCE for s in srcs):
+            fallback_dates.append(d)
     base = {
         "asOfDate": as_of_date,
         "days": days2,
         "topK": topk2,
         "dates": dates_sorted,
         "topByDate": top_by_date,
+        "sources": {
+            "byDate": source_by_date,
+            "fallbackDates": fallback_dates,
+            "primary": DEFAULT_INDUSTRY_FLOW_SOURCE,
+        },
     }
     items = flow_items_from_rows(rows, dates_sorted)
     daily_rankings = daily_rankings_from_flow_items(items, dates_sorted) if dates_sorted else []

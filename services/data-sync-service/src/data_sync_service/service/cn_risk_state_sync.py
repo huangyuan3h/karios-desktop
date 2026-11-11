@@ -144,7 +144,9 @@ def sync_margin_total(
                         per_day_exchanges.setdefault(str(day), set()).add(ex)
             sleep(0.25)
         incomplete = sorted(
-            d for d, exs in per_day_exchanges.items() if len(exs) < len(cn_risk_state.MARGIN_EXCHANGES)
+            d
+            for d, exs in per_day_exchanges.items()
+            if len(exs) < len(cn_risk_state.MARGIN_EXCHANGES)
         )
         if incomplete:
             logger.warning(

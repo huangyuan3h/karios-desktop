@@ -17,6 +17,8 @@ export function notificationLane(n: LaneItem): NotificationLane {
   if (n.lane === 'trade' || n.lane === 'system' || n.lane === 'research') return n.lane;
   if (n.type === 'cron_failed') return 'system';
   if (n.type === 'recon_missing' || n.type === 'oos_warning') return 'research';
+  if (n.type === 'factor_status_up' || n.type === 'factor_revived' || n.type === 'sgap_revival')
+    return 'research';
   return 'trade';
 }
 

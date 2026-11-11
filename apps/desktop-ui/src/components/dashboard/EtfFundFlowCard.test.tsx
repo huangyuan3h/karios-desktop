@@ -93,3 +93,31 @@ describe('EtfFundFlowCard', () => {
     expect(screen.getByText(/暂无ETF资金流数据/)).toBeInTheDocument();
   });
 });
+
+describe('EtfFundFlowCard fallback honesty', () => {
+  it('marks Tushare share-implied flow with * and a metric note', () => {
+    render(
+      <EtfFundFlowCard
+        etfFundFlow={{
+          realtimeAvailable: false,
+          shareLag: true,
+          intradaySafe: false,
+          items: [
+            {
+              ...LIVE_ITEM,
+              live: false,
+              flowStatus: 'MarketClosed',
+              netFlowMetric: 'share_change_implied',
+              mainNetInflow: null,
+              source: 'tushare',
+              netFlow1d: 567_000_000,
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/东方财富实时主力净流入暂不可用/)).toBeInTheDocument();
+    expect(screen.getByText('+5.67亿*')).toBeInTheDocument();
+    expect(screen.getByText(/非东财「主力净流入」/)).toBeInTheDocument();
+  });
+});

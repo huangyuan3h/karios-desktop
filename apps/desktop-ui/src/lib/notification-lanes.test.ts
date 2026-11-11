@@ -6,6 +6,9 @@ describe('notification lanes', () => {
   it("maps recon and OOS to research so they do not mix with today's orders", () => {
     expect(notificationLane({ type: 'recon_missing' })).toBe('research');
     expect(notificationLane({ type: 'oos_warning' })).toBe('research');
+    expect(notificationLane({ type: 'factor_status_up' })).toBe('research');
+    expect(notificationLane({ type: 'factor_revived' })).toBe('research');
+    expect(notificationLane({ type: 'sgap_revival' })).toBe('research');
     expect(notificationLane({ type: 'pyramid_trigger' })).toBe('trade');
     expect(notificationLane({ type: 'cron_failed' })).toBe('system');
     expect(notificationLane({ type: 'exit_alert', lane: 'trade' })).toBe('trade');

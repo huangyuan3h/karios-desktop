@@ -69,7 +69,19 @@ UNIVERSE: dict[str, tuple[str, str]] = {
     "159869.SZ": ("动漫游戏", "sector"),
 }
 
-FIELDS = ["ts_code", "trade_date", "open", "high", "low", "close", "pre_close", "vol", "amount", "adj_factor", "close_adj"]
+FIELDS = [
+    "ts_code",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "vol",
+    "amount",
+    "adj_factor",
+    "close_adj",
+]
 
 
 def _default_pro_factory():
@@ -113,7 +125,11 @@ def refresh_window(
             sleep(1.0)
             continue
         try:
-            adj_map = {str(r.trade_date): float(r.adj_factor) for r in adj.itertuples()} if adj is not None and not adj.empty else {}
+            adj_map = (
+                {str(r.trade_date): float(r.adj_factor) for r in adj.itertuples()}
+                if adj is not None and not adj.empty
+                else {}
+            )
         except Exception:  # noqa: BLE001
             adj_map = {}
         if px is None or px.empty:

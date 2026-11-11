@@ -1,0 +1,326 @@
+{
+  "tag": "parking-cooldown-rerun-2026-11-05",
+  "prereg": "docs/designs/parking-cooldown-prereg-2026-09-13.md",
+  "prior_report": "data/backtest_reports/parking_cooldown_2026-09-13.json",
+  "grid": [
+    0,
+    3,
+    5
+  ],
+  "etf_panel": {
+    "path": "data/etf/etf_daily.csv",
+    "series": 5,
+    "sessions": 1411,
+    "through": "2026-11-02"
+  },
+  "whip_horizons": [
+    1,
+    3,
+    5
+  ],
+  "results": {
+    "OOS2": {
+      "0": {
+        "total": 50.6,
+        "delta": 0.0,
+        "trades": 30,
+        "cooldown_days_active": 0,
+        "trail_exits": 3,
+        "whip_rebuy_within_1": 2,
+        "whip_rebuy_within_3": 2,
+        "whip_rebuy_within_5": 2,
+        "days_by_key": {
+          "GOLD": 134,
+          "NASDAQ": 82,
+          "OIL": 17,
+          "BOND10": 6,
+          "REPO": 3
+        },
+        "time_in_oil": 0.07,
+        "time_in_repo": 0.012,
+        "cagr": 53.19,
+        "mdd": -14.3,
+        "sharpe": 1.62
+      },
+      "3": {
+        "total": 52.3,
+        "delta": 1.7,
+        "trades": 31,
+        "cooldown_days_active": 9,
+        "trail_exits": 3,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 2,
+        "days_by_key": {
+          "GOLD": 131,
+          "NASDAQ": 85,
+          "OIL": 14,
+          "BOND10": 9,
+          "REPO": 3
+        },
+        "time_in_oil": 0.058,
+        "time_in_repo": 0.012,
+        "cagr": 54.94,
+        "mdd": -14.3,
+        "sharpe": 1.66
+      },
+      "5": {
+        "total": 52.0,
+        "delta": 1.4,
+        "trades": 29,
+        "cooldown_days_active": 15,
+        "trail_exits": 3,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 0,
+        "days_by_key": {
+          "GOLD": 130,
+          "NASDAQ": 85,
+          "OIL": 13,
+          "BOND10": 11,
+          "REPO": 3
+        },
+        "time_in_oil": 0.054,
+        "time_in_repo": 0.012,
+        "cagr": 54.66,
+        "mdd": -14.3,
+        "sharpe": 1.65
+      }
+    },
+    "train": {
+      "0": {
+        "total": 51.7,
+        "delta": 0.0,
+        "trades": 23,
+        "cooldown_days_active": 0,
+        "trail_exits": 1,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 1,
+        "whip_rebuy_within_5": 1,
+        "days_by_key": {
+          "GOLD": 77,
+          "NASDAQ": 43,
+          "OIL": 1,
+          "REPO": 1
+        },
+        "time_in_oil": 0.008,
+        "time_in_repo": 0.008,
+        "cagr": 136.47,
+        "mdd": -8.4,
+        "sharpe": 2.98
+      },
+      "3": {
+        "total": 51.2,
+        "delta": -0.5,
+        "trades": 23,
+        "cooldown_days_active": 3,
+        "trail_exits": 1,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 1,
+        "days_by_key": {
+          "GOLD": 76,
+          "NASDAQ": 44,
+          "OIL": 1,
+          "REPO": 1
+        },
+        "time_in_oil": 0.008,
+        "time_in_repo": 0.008,
+        "cagr": 134.95,
+        "mdd": -8.7,
+        "sharpe": 2.96
+      },
+      "5": {
+        "total": 49.9,
+        "delta": -1.8,
+        "trades": 21,
+        "cooldown_days_active": 5,
+        "trail_exits": 1,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 0,
+        "days_by_key": {
+          "GOLD": 75,
+          "NASDAQ": 45,
+          "OIL": 1,
+          "REPO": 1
+        },
+        "time_in_oil": 0.008,
+        "time_in_repo": 0.008,
+        "cagr": 130.73,
+        "mdd": -9.5,
+        "sharpe": 2.9
+      }
+    },
+    "valid": {
+      "0": {
+        "total": 50.2,
+        "delta": 0.0,
+        "trades": 21,
+        "cooldown_days_active": 0,
+        "trail_exits": 6,
+        "whip_rebuy_within_1": 5,
+        "whip_rebuy_within_3": 5,
+        "whip_rebuy_within_5": 5,
+        "days_by_key": {
+          "NASDAQ": 52,
+          "OIL": 51,
+          "REPO": 6
+        },
+        "time_in_oil": 0.468,
+        "time_in_repo": 0.055,
+        "cagr": 156.13,
+        "mdd": -21.8,
+        "sharpe": 2.13
+      },
+      "3": {
+        "total": 36.8,
+        "delta": -13.4,
+        "trades": 27,
+        "cooldown_days_active": 18,
+        "trail_exits": 6,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 5,
+        "days_by_key": {
+          "NASDAQ": 51,
+          "OIL": 39,
+          "GOLD": 9,
+          "REPO": 6,
+          "BOND10": 4
+        },
+        "time_in_oil": 0.358,
+        "time_in_repo": 0.055,
+        "cagr": 106.52,
+        "mdd": -20.6,
+        "sharpe": 1.73
+      },
+      "5": {
+        "total": 40.7,
+        "delta": -9.5,
+        "trades": 25,
+        "cooldown_days_active": 25,
+        "trail_exits": 5,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 0,
+        "days_by_key": {
+          "NASDAQ": 51,
+          "OIL": 37,
+          "GOLD": 10,
+          "BOND10": 6,
+          "REPO": 5
+        },
+        "time_in_oil": 0.339,
+        "time_in_repo": 0.046,
+        "cagr": 120.21,
+        "mdd": -24.6,
+        "sharpe": 1.93
+      }
+    },
+    "long": {
+      "0": {
+        "total": 192.9,
+        "delta": 0.0,
+        "trades": 127,
+        "cooldown_days_active": 0,
+        "trail_exits": 12,
+        "whip_rebuy_within_1": 9,
+        "whip_rebuy_within_3": 10,
+        "whip_rebuy_within_5": 10,
+        "days_by_key": {
+          "GOLD": 493,
+          "NASDAQ": 468,
+          "BOND10": 114,
+          "REPO": 71,
+          "OIL": 69
+        },
+        "time_in_oil": 0.057,
+        "time_in_repo": 0.058,
+        "cagr": 24.96,
+        "mdd": -22.9,
+        "sharpe": 0.97
+      },
+      "3": {
+        "total": 188.5,
+        "delta": -4.4,
+        "trades": 137,
+        "cooldown_days_active": 36,
+        "trail_exits": 12,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 10,
+        "days_by_key": {
+          "GOLD": 496,
+          "NASDAQ": 468,
+          "BOND10": 123,
+          "REPO": 71,
+          "OIL": 57
+        },
+        "time_in_oil": 0.047,
+        "time_in_repo": 0.058,
+        "cagr": 24.58,
+        "mdd": -23.4,
+        "sharpe": 0.96
+      },
+      "5": {
+        "total": 202.5,
+        "delta": 9.7,
+        "trades": 130,
+        "cooldown_days_active": 50,
+        "trail_exits": 10,
+        "whip_rebuy_within_1": 0,
+        "whip_rebuy_within_3": 0,
+        "whip_rebuy_within_5": 0,
+        "days_by_key": {
+          "GOLD": 495,
+          "NASDAQ": 467,
+          "BOND10": 128,
+          "REPO": 69,
+          "OIL": 56
+        },
+        "time_in_oil": 0.046,
+        "time_in_repo": 0.057,
+        "cagr": 25.81,
+        "mdd": -23.7,
+        "sharpe": 1.02
+      }
+    }
+  },
+  "verdicts": {
+    "3": {
+      "deltas": {
+        "OOS2": 1.7,
+        "train": -0.5,
+        "valid": -13.4,
+        "long": -4.4
+      },
+      "k1": false,
+      "k2": false,
+      "k3": false,
+      "k4": false,
+      "valid_mdd_delta": 1.2,
+      "valid_sharpe_delta": -0.4,
+      "k5": false,
+      "pass": false
+    },
+    "5": {
+      "deltas": {
+        "OOS2": 1.4,
+        "train": -1.8,
+        "valid": -9.5,
+        "long": 9.7
+      },
+      "k1": false,
+      "k2": false,
+      "k3": true,
+      "k4": false,
+      "valid_mdd_delta": -2.8,
+      "valid_sharpe_delta": -0.2,
+      "k5": false,
+      "pass": false
+    }
+  },
+  "adopted": null,
+  "as_of": "2026-11-05T01:55:44+00:00"
+}

@@ -12,13 +12,22 @@ type Props = {
 export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
   const etfFlow: any = etfFundFlow ?? {};
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
+  const realtimeUnavailable = etfFlow?.realtimeAvailable === false;
+  const hasShareImplied = etfItems.some((it) => it?.netFlowMetric === 'share_change_implied');
+  const shareImpliedNote =
+    'Tushare 份额变动估算净流入（非东财「主力净流入」，口径不同）；带 * 的行请在盘中决策中视为不可用。';
 
   return (
     <div className="flex flex-col gap-2">
       {showTitle ? (
         <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">ETF资金流 (持仓关注)</div>
       ) : null}
-      {etfFlow?.shareLag ? (
+      {realtimeUnavailable ? (
+        <div className="mb-1 text-[10px] text-amber-600 dark:text-amber-400">
+          东方财富实时主力净流入暂不可用；带 * 的行为 Tushare 份额变动估算，非主力净流入
+          {etfFlow?.intradaySafe === false ? ' — 盘中决策不可用' : ''}。
+        </div>
+      ) : etfFlow?.shareLag ? (
         <div className="mb-1 text-[10px] text-amber-600 dark:text-amber-400">
           东方财富实时资金流不完整，缺失行已从盘中信号中排除
           {etfFlow?.intradaySafe === false ? ' — 盘中决策不可用' : ''}。
@@ -67,7 +76,13 @@ export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
                 !isMarketClosed &&
                 it?.netFlow1d == null &&
                 (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
-              const flow1dDisplay = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
+              const shareImplied = it?.netFlowMetric === 'share_change_implied';
+              const shareImplied3d =
+                it?.netFlow3dMetric === 'share_change_implied' || it?.netFlow3dMetric === 'mixed';
+              const flow1dDisplay = flow1dStale
+                ? '— (stale)'
+                : `${fmtSignedAmountCn(it?.netFlow1d)}${shareImplied && it?.netFlow1d != null ? '*' : ''}`;
+              const flow3dDisplay = `${fmtSignedAmountCn(it?.netFlow3d)}${shareImplied3d && it?.netFlow3d != null ? '*' : ''}`;
               const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
               const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
               const signalText = String(it?.signalDisplay ?? it?.signal ?? '—');
@@ -83,9 +98,7 @@ export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
                   <td className="px-2 py-2 text-right font-mono">
                     {superLargeFlow}/{largeFlow}
                   </td>
-                  <td className="px-2 py-2 text-right font-mono">
-                    {fmtSignedAmountCn(it?.netFlow3d)}
-                  </td>
+                  <td className="px-2 py-2 text-right font-mono">{flow3dDisplay}</td>
                   <td className="px-2 py-2 font-mono">{realtimeAsOf}</td>
                   <td className="px-2 py-2 font-mono">{String(it?.source ?? '—')}</td>
                   <td
@@ -117,6 +130,9 @@ export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
           </tbody>
         </table>
       </div>
+      {hasShareImplied ? (
+        <div className="text-[10px] text-[var(--k-muted)]">* {shareImpliedNote}</div>
+      ) : null}
     </div>
   );
 }

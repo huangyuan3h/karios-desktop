@@ -119,6 +119,7 @@
 
 - 腿构成：`w_harbor × Harbor + (1−w_harbor) × B3`；**B3** = 5 资产逆波动率月频（`510300.SH / 510500.SH / 518880.SH / 513100.SH / 511260.SH`，60 日 `pstdev(日收益)`，`w∝1/σ`，当月首个交易日调仓；月内随价漂移不再平衡）。
 - **现行权重裁决（2026-09-16 起）**：展示档 = **M30（w_harbor=0.7）**，`timelineStrategy=homeport_m30`，tag `h-mix-m30-20260916`；**M50（0.5）保留为冻结审计快照**（显式 `?strategy=homeport` 仍可取 M50；缺省已切 `homeport_m30`，2026-10-04）。
+- **跟仓频率（2026-10-07 起，仅 UI）**：回测保持**每月**首个交易日复位；Watchlist 跟仓默认**每周**（可切每月/每日，`karios.m30FollowCadence.v1`），只决定何时提示动手，不改引擎口径。
 - 成本：B3 换手 `5bp×Σ|Δw|/2`；月复位 `5bp×|w_harbor漂移|`。
 - 状态：**display only**（无 paper / 无 Live 接线）。代码 `service/homeport.py`；证据 `backtests/stable/homeport-weight-tune-2026-09-16.md`。
 

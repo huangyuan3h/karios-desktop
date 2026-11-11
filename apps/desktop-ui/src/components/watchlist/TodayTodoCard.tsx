@@ -5,15 +5,24 @@ import { useQuery } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { useBacktestReconQuery, useSleeveReconQuery } from '@/lib/queries/backtest';
+import { useAccountSettings } from '@/lib/account-settings';
+import { getShanghaiTodayIso } from '@/lib/market-hours';
 import {
-  fetchPortfolioHealth,
-  type PortfolioHealthResponse,
-} from '@/lib/queries/portfolioHealth';
+  buildM30Targets,
+  cadenceStatus,
+  pendingParkSellFromSleeve,
+  rebalanceGate,
+  useFollowCadence,
+  type M30Holding,
+} from '@/lib/m30-follow';
+import { useStrategyMode, type StrategyMode } from '@/lib/strategy-settings';
 import {
-  BUY_REMINDERS_UPDATED_EVENT,
-  loadBuyReminders,
-} from '@/lib/buy-reminders';
+  useBacktestReconQuery,
+  useB3StateQuery,
+  useSleeveReconQuery,
+} from '@/lib/queries/backtest';
+import { fetchPortfolioHealth, type PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
+import { BUY_REMINDERS_UPDATED_EVENT, loadBuyReminders } from '@/lib/buy-reminders';
 
 /** Shanghai clock (Asia/Shanghai — never UTC for trading-day copy). */
 function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
@@ -24,13 +33,20 @@ function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
     weekday: 'short',
     hour12: false,
   });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(d).map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value])) as Record<
+    string,
+    string
+  >;
   const [h, m] = String(parts.hour ?? '0').split(':');
   // "周一".."周日" → 1..7
   const wdMap: Record<string, number> = {
-    '周一': 1, '周二': 2, '周三': 3, '周四': 4, '周五': 5, '周六': 6, '周日': 7,
+    周一: 1,
+    周二: 2,
+    周三: 3,
+    周四: 4,
+    周五: 5,
+    周六: 6,
+    周日: 7,
   };
   return {
     mins: Number(h) * 60 + Number(m ?? 0),
@@ -41,7 +57,8 @@ function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
 function phaseCopy(mins: number, weekend: boolean): string {
   if (weekend) return '周末复盘：核对持仓与提醒，不下单';
   if (mins < 9 * 60 + 15) return '盘前准备：先看待执行，再看今日候选';
-  if (mins < 14 * 60 + 30) return `盘中盯盘：14:30 前做买入决定（还剩约 ${14 * 60 + 30 - mins} 分钟）`;
+  if (mins < 14 * 60 + 30)
+    return `盘中盯盘：14:30 前做买入决定（还剩约 ${14 * 60 + 30 - mins} 分钟）`;
   if (mins < 15 * 60) return '尾盘执行窗：按清单买入/卖出';
   return '盘后核对：确认成交，对明天的待执行';
 }
@@ -61,7 +78,9 @@ type TodoItem = {
  * 数据全部复用已有缓存（portfolio-health / sleeve-recon / recon），不新增请求；
  * 只读展示，所有动作跳到对应区块，不碰下单链。
  */
-export function TodayTodoCard() {
+export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) {
+  const modeFromStore = useStrategyMode();
+  const mode = modeProp ?? modeFromStore;
   // Shared cache with PortfolioHealthCard (passive observer, no extra fetch).
   const healthQ = useQuery({
     queryKey: ['portfolio-health'],
@@ -70,6 +89,10 @@ export function TodayTodoCard() {
   });
   const sleeveQ = useSleeveReconQuery(true);
   const reconQ = useBacktestReconQuery(2);
+  // M30 follow (homeport only): shares the b3-state cache with B3LegBlock.
+  const b3Q = useB3StateQuery(mode === 'homeport');
+  const { capital } = useAccountSettings();
+  const cadence = useFollowCadence();
   const [remindersTick, setRemindersTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -83,9 +106,66 @@ export function TodayTodoCard() {
   );
 
   const data: PortfolioHealthResponse | undefined = healthQ.data;
-  const recon = (sleeveQ.data as { recon?: import('@/lib/queries/backtest').SleeveRecon } | undefined)?.recon;
+  const recon = (
+    sleeveQ.data as { recon?: import('@/lib/queries/backtest').SleeveRecon } | undefined
+  )?.recon;
   const { mins, weekday } = shanghaiParts();
   const weekend = weekday >= 6;
+
+  // M30 follow state (homeport only): rebalance todos fire on the rebalance
+  // day or past the 5pt drift thresholds; S-3 hard exits bypass this gate
+  // (they already surface as 持仓卖出 above).
+  const m30 = React.useMemo(() => {
+    if (mode !== 'homeport' || !data) return null;
+    const universe = b3Q.data?.ok ? (b3Q.data.universe ?? []) : null;
+    if (!universe) return null;
+    const holdings: M30Holding[] = [
+      ...(data.holdings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      })),
+      ...(data.hkHealth?.holdings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name,
+        action: h.action,
+        lastClose: h.lastClose,
+      })),
+      ...(data.multiAssetHoldings ?? []).map((h) => ({
+        symbol: h.symbol,
+        positionPct: h.positionPct,
+        name: h.name ?? null,
+        lastClose:
+          h.marketData && typeof h.marketData.close === 'number' ? h.marketData.close : null,
+      })),
+    ];
+    const sleeve = data.multiAssetSleeve;
+    const report = buildM30Targets({
+      capital,
+      pickKey: sleeve?.pick?.key ?? 'REPO',
+      pickSymbol: sleeve?.pick?.symbol ?? null,
+      pickPrice: typeof sleeve?.pick?.close === 'number' ? sleeve.pick.close : null,
+      b3: universe.map((u) => ({
+        symbol: u.symbol,
+        name: u.name,
+        targetPct: Number(u.targetPct) || 0,
+        px: u.px ?? null,
+      })),
+      holdings,
+      pendingParkSell: pendingParkSellFromSleeve(sleeve),
+    });
+    const today = getShanghaiTodayIso();
+    const status = cadenceStatus(cadence, today);
+    const gate = rebalanceGate({
+      isRebalanceDay: status.isRebalanceDay,
+      legDriftPt: report.legDriftPt,
+      maxLineDriftPt: report.maxLineDriftPt,
+    });
+    return { report, status, gate };
+  }, [mode, data, b3Q.data, capital, cadence]);
 
   const items: TodoItem[] = React.useMemo(() => {
     if (!data) return [];
@@ -129,17 +209,35 @@ export function TodayTodoCard() {
       });
     }
     // 5) 回测对账缺/多（锚点精确到市场：单市场缺口直达该块）。
-    const reconItems = (reconQ.data as { items?: Array<{ missing?: number; extra?: number; market?: string }> } | undefined)?.items ?? [];
+    const reconItems =
+      (
+        reconQ.data as
+          | { items?: Array<{ missing?: number; extra?: number; market?: string }> }
+          | undefined
+      )?.items ?? [];
     const gapMarkets = reconItems.filter((r) => (r.missing ?? 0) > 0 || (r.extra ?? 0) > 0);
     if (gapMarkets.length > 0) {
       const anchor =
-        gapMarkets.length === 1 && String(gapMarkets[0].market ?? '').toUpperCase().includes('HK')
+        gapMarkets.length === 1 &&
+        String(gapMarkets[0].market ?? '')
+          .toUpperCase()
+          .includes('HK')
           ? 'recon-hk'
           : 'recon';
       out.push({
         level: 'todo',
         text: `回测对账有缺口：${gapMarkets.map((r) => `${r.market} 缺${r.missing ?? 0}/多${r.extra ?? 0}`).join('；')}`,
         anchor,
+      });
+    }
+    // 5b) 港湾停车止损（Must-act）：sleeve 已判 SELL_TO_REPO，腿仍持有。
+    //     与模式无关（harbor/homeport 都显示），先卖后再说其它。
+    const pendingParkSell = pendingParkSellFromSleeve(data.multiAssetSleeve);
+    if (pendingParkSell) {
+      out.push({
+        level: 'todo',
+        text: `停车腿止损待执行：卖出 ${pendingParkSell.symbol} → 逆回购（${pendingParkSell.reason ?? '峰值回撤触线'}；${pendingParkSell.executeHint ?? '次日开盘卖出转逆回购'}）`,
+        anchor: 'm30-follow',
       });
     }
     // 6) 股票篮候选。
@@ -153,16 +251,38 @@ export function TodayTodoCard() {
         anchor: 'buy-list',
       });
     }
+    // 6b) 母港M30需再平衡（仅 homeport；S-3 硬退出走上面的持仓卖出，不重复）。
+    if (m30 && m30.gate.needsRebalance) {
+      const rebal = m30.report.actions.filter((a) => a.reason !== 'S-3 硬退出');
+      if (rebal.length > 0) {
+        const sells = rebal.filter((a) => a.side === 'SELL').length;
+        const buys = rebal.filter((a) => a.side === 'BUY').length;
+        const why =
+          m30.gate.reason === 'rebalance-day'
+            ? '再平衡日'
+            : m30.gate.reason === 'leg-drift'
+              ? `腿偏离 ${m30.report.legDriftPt}pt`
+              : `单线偏离 ${m30.report.maxLineDriftPt}pt`;
+        out.push({
+          level: 'todo',
+          text: `母港M30需再平衡（${why}）：卖 ${sells} / 买 ${buys}`,
+          anchor: 'm30-follow',
+        });
+      }
+    }
     // 7) 买入提醒。
     if (reminders.length > 0) {
       out.push({
         level: 'info',
-        text: `买入提醒 ${reminders.length} 条：${reminders.slice(0, 3).map((r) => r.symbol).join('、')}${reminders.length > 3 ? '…' : ''}`,
+        text: `买入提醒 ${reminders.length} 条：${reminders
+          .slice(0, 3)
+          .map((r) => r.symbol)
+          .join('、')}${reminders.length > 3 ? '…' : ''}`,
         anchor: 'buy-reminders',
       });
     }
     return out;
-  }, [data, recon, reconQ.data, reminders, weekend]);
+  }, [data, recon, reconQ.data, reminders, weekend, m30]);
 
   if (healthQ.isPending) {
     return (
@@ -226,7 +346,8 @@ export function TodayTodoCard() {
                   item.level === 'todo' && 'bg-red-500/15 text-red-700 dark:text-red-300',
                   item.level === 'warn' && 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
                   item.level === 'info' && 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-                  item.level === 'done' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                  item.level === 'done' &&
+                    'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
                 )}
               >
                 {i + 1}

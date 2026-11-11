@@ -424,3 +424,106 @@ class TestSatelliteActionAlert:
         assert nf._satellite_action_alert("starship") == []
         self._patch(monkeypatch, {"tradeDate": "2026-09-17", "decisionAvailable": False})
         assert nf._satellite_action_alert("starship") == []
+
+
+class TestFactorMonitorAlerts:
+    """2026-10-25 必达 MVP: transitions file -> research-lane Hub stickies."""
+
+    def _write(self, tmp_path, transitions) -> None:
+        import json
+
+        (tmp_path / "factor_vault_transitions.json").write_text(
+            json.dumps({"transitions": transitions}), encoding="utf-8"
+        )
+
+    def test_research_stickies_for_recent_transitions(self, monkeypatch, tmp_path) -> None:
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).date().isoformat()
+        self._write(
+            tmp_path,
+            [
+                {
+                    "date": today,
+                    "kind": "factor",
+                    "event_type": "factor_status_up",
+                    "factor_id": "starship_b",
+                    "name": "星舰B默认",
+                    "from": "cold",
+                    "to": "watch",
+                    "dedupe_key": f"factor_status_up:starship_b:watch:{today}",
+                },
+                {
+                    "date": today,
+                    "kind": "sgap",
+                    "event_type": "sgap_revival",
+                    "from": 10,
+                    "to": 20,
+                    "dedupe_key": f"sgap_revival:20:{today}",
+                },
+            ],
+        )
+        monkeypatch.setattr(nf, "REPORTS_DIR", tmp_path)
+        out = nf._factor_monitor_alerts()
+        assert len(out) == 2
+        assert all(x["lane"] == "research" and x["book"] == "research" for x in out)
+        assert all(x["anchor"] == "backtest" for x in out)
+        by_type = {x["type"]: x for x in out}
+        assert by_type["factor_status_up"]["severity"] == "medium"
+        assert by_type["sgap_revival"]["severity"] == "high"
+        assert by_type["factor_status_up"]["id"] == f"factor_status_up:starship_b:watch:{today}"
+        assert "星舰B默认" in by_type["factor_status_up"]["title"]
+        assert "10→20" in by_type["sgap_revival"]["title"]
+
+    def test_old_and_missing_files_yield_nothing(self, monkeypatch, tmp_path) -> None:
+        self._write(
+            tmp_path,
+            [
+                {
+                    "date": "2020-01-01",
+                    "kind": "factor",
+                    "event_type": "factor_revived",
+                    "factor_id": "x",
+                    "name": "X",
+                    "from": "watch",
+                    "to": "revived",
+                    "dedupe_key": "factor_revived:x:2020-01-01",
+                }
+            ],
+        )
+        monkeypatch.setattr(nf, "REPORTS_DIR", tmp_path)
+        assert nf._factor_monitor_alerts() == []
+        monkeypatch.setattr(nf, "REPORTS_DIR", tmp_path / "nonexistent")
+        assert nf._factor_monitor_alerts() == []
+
+    def test_build_notifications_includes_factor_monitor(self, monkeypatch, tmp_path) -> None:
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).date().isoformat()
+        self._write(
+            tmp_path,
+            [
+                {
+                    "date": today,
+                    "kind": "factor",
+                    "event_type": "factor_revived",
+                    "factor_id": "harbor",
+                    "name": "港湾",
+                    "from": "watch",
+                    "to": "revived",
+                    "dedupe_key": f"factor_revived:harbor:{today}",
+                }
+            ],
+        )
+        monkeypatch.setattr(nf, "REPORTS_DIR", tmp_path)
+        monkeypatch.setattr(nf, "_stop_trail_alerts", lambda ctx=None: [])
+        monkeypatch.setattr(nf, "_pyramid_trigger_alerts", lambda ctx=None: [])
+        monkeypatch.setattr(nf, "_cron_failures", lambda: [])
+        monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
+        monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
+        monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
+        monkeypatch.setattr(
+            nf, "_load_health_ctx", lambda: {"blocks": {}, "pick": None, "tradeDate": None}
+        )
+        out = nf.build_notifications()
+        assert [x["type"] for x in out] == ["factor_revived"]

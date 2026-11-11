@@ -45,7 +45,9 @@ export const HK_BOARD_LOTS: Record<string, number> = {
 };
 
 export function lotRuleFor(symbol: string): LotRule {
-  const s = String(symbol || '').trim().toUpperCase();
+  const s = String(symbol || '')
+    .trim()
+    .toUpperCase();
   if (s.startsWith('ETF:')) {
     return { min: 100, step: 100, unit: '份', source: 'rule', note: '场内 ETF：100 份整数倍' };
   }

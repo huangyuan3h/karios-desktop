@@ -47,6 +47,22 @@ def run() -> None:
             post.get("macroDaily"),
         )
         record_success(JOB_ID)
+        # 2026-11-10 speed pass + Step 3 (2026-11-11): the evening agent read
+        # follows the close data. Drop the pre-close brief cache, refresh the
+        # trailing-year timeline caches (memory + file) with force=True, then
+        # re-warm the brief so backtest.recent comes from the post-close files.
+        try:
+            from data_sync_service.api.backtest_routes import (
+                warm_default_timelines_async,
+            )
+            from data_sync_service.service.agent_brief import (
+                invalidate_judgment_brief_cache,
+            )
+
+            invalidate_judgment_brief_cache("close_sync")
+            warm_default_timelines_async(force=True, reason="close_sync")
+        except Exception:  # noqa: BLE001 — warmup must never fail the close job
+            logger.warning("agent brief warmup after close_sync failed", exc_info=True)
     else:
         logger.warning("close_sync failed: %s", result.get("error", "unknown"))
         record_failure(JOB_ID, result.get("error", "unknown"))

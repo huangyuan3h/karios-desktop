@@ -96,9 +96,20 @@ export function IndustryFundFlowCard({
   const map = buildTopByDateMap(summary);
   const { dedupedDates, collapsed } = dedupeShownDates(rawShownDates, map);
   const asOfDate = String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '');
+  const fallbackDates: string[] = Array.isArray(
+    (summary?.industryFundFlow as any)?.sources?.fallbackDates,
+  )
+    ? (summary?.industryFundFlow as any).sources.fallbackDates
+    : [];
 
   return (
     <div>
+      {fallbackDates.length ? (
+        <div className="mb-2 text-[10px] text-amber-600 dark:text-amber-400">
+          {fallbackDates.join('、')} 的行业资金流来自 Tushare
+          个股大单按申万一级汇总（东财暂不可用，非东财原值）。
+        </div>
+      ) : null}
       <div className="mb-4">
         <HotIndustryWorkflowCard
           picks={hotIndustryPicks}

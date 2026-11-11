@@ -289,13 +289,17 @@ class TestValidateEntry:
 # ---------------------------------------------------------------------------
 
 
-def test_default_model_is_cheap():
-    """Default model should be deepseek-v4-flash, not gpt-4o-mini."""
+def test_default_model_is_local_opencode_deepseek():
+    """Default generation model is local OpenCode DeepSeek v4.1 flash.
+
+    ai-service routes this id through the bounded OpenCode CLI driver; the
+    old cloud/profile path is only used when the id is overridden.
+    """
     # Re-import to get current module-level default (env var override may apply)
     import importlib
 
     importlib.reload(news_enrich)
-    assert news_enrich.ENRICHMENT_MODEL == "deepseek-v4-flash"
+    assert news_enrich.ENRICHMENT_MODEL == "opencode-go/deepseek-v4.1-flash"
 
 
 def test_max_retries_is_one():

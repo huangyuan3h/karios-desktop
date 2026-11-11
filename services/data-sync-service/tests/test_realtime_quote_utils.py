@@ -438,7 +438,8 @@ def test_fetch_realtime_quotes_routes_hk_indices_to_sina_index(monkeypatch):
     assert resp["ok"] is True
     # 00700.HK falls through to the real EM fallback (Sina stock cache empty) —
     # the assertion that matters is the routing + tushare isolation.
-    assert resp["items"][0]["ts_code"] == "HSI"
+    codes = [it["ts_code"] for it in resp["items"]]
+    assert "HSI" in codes
     assert tushare_calls == [["000300.SH"]]  # bare codes never reach tushare
     assert all("HSI" not in c for c in tushare_calls)
 
@@ -459,6 +460,8 @@ def test_tushare_quotes_skips_bare_codes(monkeypatch):
     )
     from data_sync_service.service import realtime_quote as rq
 
+    # Never write a stub key into the real tushare token file from a test.
+    monkeypatch.setattr(rq, "_ensure_tushare_token_file", lambda k: None)
     out = rq._tushare_quotes(["HSI", "000300.SH", "600000.SZ"], api_key="k")
     assert out == []
     assert calls == ["000300.SH,600000.SZ"]

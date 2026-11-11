@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+import time
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,34 +36,94 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 logger = logging.getLogger(__name__)
 
 
-def warm_default_timelines() -> None:
-    """Prebuild the heavy default timelines in the background (lifespan warmup).
+def default_timeline_window() -> tuple[str, str]:
+    """The documented trailing-year cache window: ``(start, end)`` ISO dates.
 
-    After a restart the first UI hit used to rebuild the CN+HK S-3 sims inline
-    (>2 min, blowing client timeouts on the timeline / return-attribution
-    cards). Warm the trailing-year keys for the Live recipe + pick_strong so
-    the first page hit lands on a warm in-process cache instead.
+    Startup warmup, ``GET /v1/agent/timeline-brief`` and the judgment brief's
+    file-cache fallback all use this one window so a warm file is found without
+    rebuilding. Feb 29 falls back to Feb 28 of the previous year.
     """
-    if "PYTEST_CURRENT_TEST" in __import__("os").environ:
-        return
     d0 = date.today()
     end = d0.isoformat()
     try:
         start = d0.replace(year=d0.year - 1).isoformat()
     except ValueError:  # Feb 29 -> Feb 28 of previous year
         start = date(d0.year - 1, 2, 28).isoformat()
+    return start, end
+
+
+def warm_default_timelines(*, force: bool = False) -> None:
+    """Prebuild the heavy default timelines in the background (lifespan warmup).
+
+    After a restart the first UI hit used to rebuild the CN+HK S-3 sims inline
+    (>2 min, blowing client timeouts on the timeline / return-attribution
+    cards). Warm the trailing-year keys for the Live recipe + pick_strong so
+    the first page hit lands on a warm in-process cache instead.
+
+    Every warmed strategy is also written to its per-strategy file cache, so
+    ``GET /v1/agent/timeline-brief`` and the judgment brief can read a compact
+    recent window after a restart without paying for a cold simulate.
+
+    ``force=True`` is the post-close refresh: it ignores stale memory/file
+    entries, rebuilds the base engine once, then derives the other tabs from
+    that fresh memory (``_base_refresh_force``).
+    """
+    if "PYTEST_CURRENT_TEST" in __import__("os").environ:
+        return
+    start, end = default_timeline_window()
     plans: list[dict[str, Any]] = [
+        # Expensive base first: harbor writes the file cache that homeport /
+        # homeport_m30 / starport derive from without a second engine run.
         {"strategy": "harbor", "need_engine": True},
+        # Product default (settings mode 'homeport' -> timeline 'homeport_m30').
+        {"strategy": "homeport_m30", "need_engine": True},
+        # Yuan's observation tab; standalone satellite + 3-leg parking.
+        {"strategy": "starship_b", "need_engine": True},
         {"strategy": "homeport", "need_engine": True},
         {"strategy": "starport", "need_engine": True},
         {"strategy": "pick_strong", "need_engine": True},
     ]
     for kwargs in plans:
         try:
-            _get_or_build_timeline(start, end, **kwargs)
+            _get_or_build_timeline(start, end, force=force, **kwargs)
             logger.info("timeline warmup ok: %s %s %s", start, end, kwargs.get("strategy"))
         except Exception:  # noqa: BLE001
             logger.warning("timeline warmup failed: %s", kwargs, exc_info=True)
+
+
+def warm_default_timelines_async(*, force: bool = False, reason: str = "warmup") -> None:
+    """Run ``warm_default_timelines`` in the background, then re-warm the brief.
+
+    Used by close sync (``force=True``): the post-close files are written
+    first, then the judgment brief is invalidated/rebuilt so
+    ``backtest.recent`` comes from the fresh cache instead of reporting a
+    post-close miss. Fail-open: a warmup error only logs.
+    """
+    import os
+    import threading
+
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
+
+    def _run() -> None:
+        try:
+            warm_default_timelines(force=force)
+        except Exception:  # noqa: BLE001
+            logger.warning("timeline async warmup failed (%s)", reason, exc_info=True)
+        try:
+            from data_sync_service.service.agent_brief import (
+                invalidate_judgment_brief_cache,
+                warm_judgment_brief,
+            )
+
+            invalidate_judgment_brief_cache(reason)
+            warm_judgment_brief(reason=reason)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "judgment brief rewarm after timelines failed (%s)", reason, exc_info=True
+            )
+
+    threading.Thread(target=_run, name="timeline-warmup", daemon=True).start()
 
 
 _timeline_cache: dict[tuple, dict[str, Any]] = {}
@@ -79,16 +140,54 @@ TIMELINE_CACHE_TTL_HOURS = 24
 TIMELINE_MEM_TTL_SECONDS = 15 * 60
 # Bump when pick / trail logic changes so stale file caches are ignored.
 _TIMELINE_MODE = "mom_compare_t8"
+# File-cached strategies. The expensive engine builds plus every product /
+# observation key the agent timeline brief needs after a restart. Derived
+# blends (homeport / homeport_m30 / starport / twin_star) are persisted under
+# their OWN key too: they are cheap to derive from a warm harbor, but on a
+# cold process the brief must not rebuild the S-3 sim to answer.
+_FILE_CACHE_STRATEGIES = frozenset(
+    {
+        "pick_strong",
+        "harbor",
+        "state_bucket",
+        "starship",
+        "starship_robust",
+        "starship_b",
+        "homeport",
+        "homeport_m30",
+        "starport",
+        "twin_star",
+    }
+)
+
+# Strategies accepted by GET /api/backtest/timeline and the agent timeline
+# brief. Order is part of the public error message.
+TIMELINE_STRATEGIES: tuple[str, ...] = (
+    "harbor",
+    "homeport",
+    "homeport_m30",
+    "starport",
+    "starship",
+    "starship_robust",
+    "starship_b",
+    "twin_star",
+    "pick_strong",
+    "state_bucket",
+)
 
 
 def _timeline_mem_get(cache_key: tuple) -> dict[str, Any] | None:
-    """In-memory timeline hit honoring the TTL (engine ctx expires with it)."""
-    import time
+    """In-memory timeline hit honoring TTL + the close boundary.
 
+    The same "built before the latest weekday 15:00 close is stale" rule as
+    ``_load_timeline_file``: a startup warmup that ran pre-close must not keep
+    serving pre-close rows after the close sync, even inside the 15-minute TTL.
+    """
     cached = _timeline_cache.get(cache_key)
     if cached is None:
         return None
-    if time.time() - _timeline_cache_at.get(cache_key, 0.0) > TIMELINE_MEM_TTL_SECONDS:
+    written_at = _timeline_cache_at.get(cache_key, 0.0)
+    if time.time() - written_at > TIMELINE_MEM_TTL_SECONDS or written_at < _last_session_close_ts():
         _timeline_cache.pop(cache_key, None)
         _timeline_engine_cache.pop(cache_key, None)
         _timeline_cache_at.pop(cache_key, None)
@@ -113,33 +212,257 @@ def _timeline_mem_drop(cache_key: tuple) -> None:
     _timeline_cache_at.pop(cache_key, None)
 
 
-def _timeline_file(start: str, end: str) -> Path:
-    safe = f"{start}_{end}_{_TIMELINE_MODE}.json"
+def _row_nav(row: dict[str, Any]) -> float | None:
+    for field in ("navMulti", "nav", "satNav", "navSingle"):
+        value = row.get(field)
+        if isinstance(value, (int, float)) and value:
+            return float(value)
+    return None
+
+
+def timeline_recent_stats(result: dict[str, Any], *, sessions: int = 20) -> dict[str, Any] | None:
+    """Compact trailing-``sessions`` stat from one timeline payload (pure)."""
+    rows = [r for r in (result.get("rows") or []) if isinstance(r, dict)]
+    if len(rows) < 2:
+        return None
+    tail = rows[-max(2, int(sessions) + 1) :]
+
+    start_nav = _row_nav(tail[0])
+    end_nav = _row_nav(tail[-1])
+    if not start_nav or not end_nav:
+        return None
+    prev_nav = _row_nav(tail[-2])
+    summary = result.get("summary") or {}
+    stats: dict[str, Any] = {
+        "start": str(tail[0].get("date") or ""),
+        "end": str(tail[-1].get("date") or ""),
+        "sessions": len(tail) - 1,
+        "returnPct": round((end_nav / start_nav - 1.0) * 100.0, 2),
+        "windowTotalPct": summary.get("fusedPct"),
+        "windowMaxDdPct": summary.get("maxDdFusedPct"),
+        "lastDayReturnPct": (round((end_nav / prev_nav - 1.0) * 100.0, 2) if prev_nav else None),
+    }
+    return {k: v for k, v in stats.items() if v is not None}
+
+
+def warm_timeline_recent_stats(*, strategy: str, sessions: int = 20) -> dict[str, Any] | None:
+    """Compact trailing-``sessions`` stat from an ALREADY WARM memory cache.
+
+    Never builds anything (cold builds take minutes). The file-cache fallback
+    lives in ``read_timeline_recent_stats`` and is used by the judgment brief
+    when this returns ``None``.
+    """
+    now = time.time()
+    best: tuple[str, dict[str, Any]] | None = None
+    for key, result in list(_timeline_cache.items()):
+        if not isinstance(key, tuple) or len(key) < 3 or key[2] != strategy:
+            continue
+        if now - _timeline_cache_at.get(key, 0.0) > TIMELINE_MEM_TTL_SECONDS:
+            continue
+        end = str(key[1])
+        if best is None or end > best[0]:
+            best = (end, result)
+    if best is None:
+        return None
+    stats = timeline_recent_stats(best[1], sessions=sessions)
+    if stats is None:
+        return None
+    return {**stats, "cacheEnd": best[0], "cacheSource": "memory"}
+
+
+def _safe_filename_token(value: str) -> str:
+    return "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in str(value or "unknown"))
+
+
+def _file_cache_meta(
+    *,
+    source: str,
+    cache_key: tuple,
+    path: Path | None = None,
+    fallback: str | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "source": source,
+        "cacheKey": list(cache_key),
+        "logicMode": _TIMELINE_MODE,
+    }
+    if source == "memory":
+        written_at = _timeline_cache_at.get(cache_key)
+        if written_at:
+            meta["ageSeconds"] = round(max(0.0, time.time() - written_at), 1)
+    elif source == "file" and path is not None:
+        try:
+            meta["file"] = path.name
+            meta["ageSeconds"] = round(max(0.0, time.time() - path.stat().st_mtime), 1)
+        except OSError:
+            pass
+    if fallback:
+        meta["fallback"] = fallback
+    return meta
+
+
+def _latest_timeline_file(
+    strategy: str,
+) -> tuple[str, str, dict[str, Any], Path] | None:
+    """Newest still-valid file for ``strategy`` (any start/end window).
+
+    Used when the documented trailing-year window has moved on (a process that
+    was not restarted after midnight): the previous file is still fresh under
+    the close-expiry rule, so serve it instead of reporting a miss.
+    """
+    try:
+        if not TIMELINE_CACHE_DIR.exists():
+            return None
+        suffix = f"_{_safe_filename_token(strategy)}_{_TIMELINE_MODE}.json"
+        candidates = sorted(
+            TIMELINE_CACHE_DIR.glob(f"*{suffix}"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return None
+    for path in candidates:
+        parts = path.stem.split("_")
+        if len(parts) < 2:
+            continue
+        data = _load_timeline_file(parts[0], parts[1], strategy)
+        if data is not None:
+            return parts[0], parts[1], data, path
+    return None
+
+
+def read_timeline_cache(
+    *,
+    strategy: str,
+    start: str | None = None,
+    end: str | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Read-only cache probe (memory → file → miss). Never builds a timeline.
+
+    ``(payload, meta)`` where ``meta.source`` is ``memory`` / ``file`` / ``miss``.
+    With no explicit window it first checks the documented trailing-year
+    window, then falls back to the newest valid file for that strategy.
+    """
+    strategy = str(strategy or "homeport_m30")
+    if start and end:
+        cache_key = (start, end, strategy, _TIMELINE_MODE)
+        cached = _timeline_mem_get(cache_key)
+        if cached is not None:
+            return cached, _file_cache_meta(source="memory", cache_key=cache_key)
+        data = _load_timeline_file(start, end, strategy)
+        if data is not None:
+            _timeline_mem_put(cache_key, data)
+            return data, _file_cache_meta(
+                source="file", cache_key=cache_key, path=_timeline_file(start, end, strategy)
+            )
+        return None, _file_cache_meta(source="miss", cache_key=cache_key)
+
+    default_start, default_end = default_timeline_window()
+    cache_key = (default_start, default_end, strategy, _TIMELINE_MODE)
+    cached = _timeline_mem_get(cache_key)
+    if cached is not None:
+        return cached, _file_cache_meta(source="memory", cache_key=cache_key)
+    data = _load_timeline_file(default_start, default_end, strategy)
+    if data is not None:
+        _timeline_mem_put(cache_key, data)
+        return data, _file_cache_meta(
+            source="file",
+            cache_key=cache_key,
+            path=_timeline_file(default_start, default_end, strategy),
+        )
+
+    found = _latest_timeline_file(strategy)
+    if found is not None:
+        found_start, found_end, found_data, found_path = found
+        found_key = (found_start, found_end, strategy, _TIMELINE_MODE)
+        _timeline_mem_put(found_key, found_data)
+        return found_data, _file_cache_meta(
+            source="file",
+            cache_key=found_key,
+            path=found_path,
+            fallback="latest_file",
+        )
+    return None, _file_cache_meta(source="miss", cache_key=cache_key)
+
+
+def read_timeline_recent_stats(
+    *, strategy: str, start: str | None = None, end: str | None = None, sessions: int = 20
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """File-cache fallback for the judgment brief's ``backtest.recent``."""
+    payload, meta = read_timeline_cache(strategy=strategy, start=start, end=end)
+    if payload is None:
+        return None, meta
+    stats = timeline_recent_stats(payload, sessions=sessions)
+    if stats is None:
+        return None, {**meta, "reason": "cached timeline has fewer than 2 NAV rows"}
+    return stats, meta
+
+
+def _timeline_file(start: str, end: str, strategy: str = "pick_strong") -> Path:
+    """Per-strategy cache file (strategy + logic mode are both in the name)."""
+    safe_strategy = _safe_filename_token(strategy)
+    safe = f"{start}_{end}_{safe_strategy}_{_TIMELINE_MODE}.json"
     return TIMELINE_CACHE_DIR / safe
 
 
-def _load_timeline_file(start: str, end: str) -> dict[str, Any] | None:
-    p = _timeline_file(start, end)
+def _last_session_close_ts() -> float:
+    """Timestamp of the most recent weekday 15:00 Asia/Shanghai close.
+
+    A file written before this boundary predates the latest close and must not
+    be served afterwards — otherwise the startup warmup (which may run before
+    the close sync) would leave pre-close rows on screen all evening.
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(tz)
+    close = now.replace(hour=15, minute=0, second=0, microsecond=0)
+    if now < close:
+        close -= timedelta(days=1)
+    while close.weekday() >= 5:
+        close -= timedelta(days=1)
+    return close.timestamp()
+
+
+def _load_timeline_file(
+    start: str, end: str, strategy: str = "pick_strong"
+) -> dict[str, Any] | None:
+    p = _timeline_file(start, end, strategy)
     if not p.exists():
         return None
     try:
         import time
 
-        if time.time() - p.stat().st_mtime > TIMELINE_CACHE_TTL_HOURS * 3600:
+        mtime = p.stat().st_mtime
+        if time.time() - mtime > TIMELINE_CACHE_TTL_HOURS * 3600:
+            return None
+        if mtime < _last_session_close_ts():
             return None
         data = json.loads(p.read_text(encoding="utf-8"))
-        if data.get("mode") != _TIMELINE_MODE:
+        # ``mode`` is the payload's display mode ("harbor" / "homeport" /
+        # "starship_b"), not the pick/trail logic version. Files written by
+        # the current code carry ``cacheMode`` for the version check; the
+        # legacy fallback keeps old pick_strong files (mode == logic mode).
+        if data.get("cacheMode") != _TIMELINE_MODE and data.get("mode") != _TIMELINE_MODE:
             return None
         return data
     except Exception:
         return None
 
 
-def _save_timeline_file(start: str, end: str, data: dict[str, Any]) -> None:
+def _save_timeline_file(
+    start: str, end: str, data: dict[str, Any], strategy: str = "pick_strong"
+) -> None:
     try:
         TIMELINE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _timeline_file(start, end).write_text(
-            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        payload = dict(data)
+        if payload.get("mode") != _TIMELINE_MODE:
+            # Distinguish the logic version from the display mode so a harbor
+            # / homeport / starship payload is still loadable.
+            payload["cacheMode"] = _TIMELINE_MODE
+        _timeline_file(start, end, strategy).write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
         )
     except Exception:
         pass
@@ -696,6 +1019,13 @@ def backtest_timeline(
             "| starship_b | twin_star | pick_strong | state_bucket"
         ),
     ),
+    refresh: bool = Query(
+        False,
+        description=(
+            "Bypass the memory + file caches and rebuild (post-close refresh). "
+            "A pre-close warmup is also invalidated automatically after 15:00."
+        ),
+    ),
 ) -> dict[str, Any]:
     """Past-year / walk-forward timeline.
 
@@ -726,25 +1056,188 @@ def backtest_timeline(
         start = (date_type.today() - timedelta(days=365)).isoformat()
     end = end or today
     _validate_window(start, end)
-    allowed = (
-        "harbor",
-        "homeport",
-        "homeport_m30",
-        "starport",
-        "starship",
-        "starship_robust",
-        "starship_b",
-        "twin_star",
-        "pick_strong",
-        "state_bucket",
-    )
+    allowed = TIMELINE_STRATEGIES
     if strategy not in allowed:
         raise HTTPException(
             status_code=400,
             detail=f"unknown strategy={strategy!r}; use {'|'.join(allowed)}",
         )
-    result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
+    if refresh is True:
+        result, _engine = _get_or_build_timeline(start, end, strategy=strategy, force=True)
+    else:
+        result, _engine = _get_or_build_timeline(start, end, strategy=strategy)
     return result
+
+
+def _timeline_brief_parking(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Last parking leg held / traded, from an already-cached timeline payload."""
+    if not payload:
+        return None
+    rows = [r for r in (payload.get("rows") or []) if isinstance(r, dict)]
+    row = rows[-1] if rows else {}
+    out: dict[str, Any] = {
+        "key": row.get("pick"),
+        "symbol": row.get("pickTs"),
+        "sides": row.get("parkedSides"),
+        "trail": row.get("parkedTrail"),
+        "returnPct": row.get("parkedRetPct"),
+        "idlePct": row.get("idlePct"),
+    }
+    held = payload.get("parkedHeld")
+    if isinstance(held, dict):
+        out["held"] = {
+            k: held.get(k)
+            for k in ("key", "name", "ts", "since", "weight")
+            if held.get(k) is not None
+        }
+    blotter = payload.get("parkedBlotter")
+    if isinstance(blotter, list) and blotter:
+        out["blotterTail"] = [b for b in blotter[-5:] if isinstance(b, dict)]
+    trimmed = {k: v for k, v in out.items() if v not in (None, {}, [])}
+    return trimmed or None
+
+
+def build_timeline_brief(
+    *,
+    strategy: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> dict[str, Any]:
+    """Compact, cache-first timeline note for the decision agent (read-only).
+
+    Resolves the strategy from settings when omitted (settings ``homeport`` →
+    timeline ``homeport_m30``; the timeline key ``homeport`` is the frozen M50
+    base). Reads only the in-process / file timeline caches — NEVER runs a
+    cold simulate, so the caller never blocks for minutes. On a miss it says
+    so and points at the warmup / full timeline endpoint.
+    """
+    from data_sync_service.service.agent_contract import (
+        MAPPING_NOTE,
+        MODE_LABELS,
+        TIMELINE_LABELS,
+        timeline_strategy_for_mode,
+    )
+
+    settings_mode = ""
+    try:
+        from data_sync_service.api.settings_routes import selected_strategy_mode
+
+        settings_mode = str(selected_strategy_mode() or "")
+    except Exception:  # noqa: BLE001 — the brief must stay readable
+        settings_mode = ""
+
+    timeline = str(strategy or "").strip() or timeline_strategy_for_mode(settings_mode)
+    if timeline not in TIMELINE_STRATEGIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown strategy={timeline!r}; use {'|'.join(TIMELINE_STRATEGIES)}",
+        )
+    if start or end:
+        if not start or not end:
+            raise HTTPException(
+                status_code=422,
+                detail="start and end must be provided together (YYYY-MM-DD)",
+            )
+        _validate_window(start, end)
+        requested = True
+        window_start, window_end = start, end
+    else:
+        requested = False
+        window_start, window_end = default_timeline_window()
+
+    payload, cache_meta = read_timeline_cache(strategy=timeline, start=start, end=end)
+    served_start = str(
+        (payload or {}).get("start") or cache_meta.get("cacheKey", [window_start])[0]
+    )
+    served_end = str(
+        (payload or {}).get("end") or cache_meta.get("cacheKey", [None, window_end])[1]
+    )
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "available": payload is not None,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "settingsMode": settings_mode or None,
+        "settingsLabel": MODE_LABELS.get(settings_mode) if settings_mode else None,
+        "timelineStrategy": timeline,
+        "timelineLabel": TIMELINE_LABELS.get(timeline),
+        "window": {
+            "start": served_start if payload is not None else window_start,
+            "end": served_end if payload is not None else window_end,
+            "requested": requested,
+            "source": "requested"
+            if requested
+            else (cache_meta.get("fallback") or "default_trailing_year"),
+        },
+        "cache": cache_meta,
+        "mappingNote": MAPPING_NOTE,
+        "curve": {
+            "endpoint": "/api/backtest/timeline",
+            "query": {
+                "strategy": timeline,
+                "start": served_start if payload is not None else window_start,
+                "end": served_end if payload is not None else window_end,
+            },
+        },
+        "note": (
+            "Compact view of the LIVE timeline cache window. The frozen "
+            "COMPARE/vintage table in the judgment brief (backtest.comparison) "
+            "is a different source — do not mix the two without labeling."
+        ),
+    }
+    if payload is None:
+        out["reason"] = (
+            "timeline cache cold for this window (memory + file miss); "
+            "warm_default_timelines() / close-sync force refresh fills it — "
+            "the brief never runs a cold simulate"
+        )
+        out["warmup"] = "warm_default_timelines"
+        return out
+
+    rows = [r for r in (payload.get("rows") or []) if isinstance(r, dict)]
+    last = rows[-1] if rows else {}
+    prev = rows[-2] if len(rows) >= 2 else {}
+    last_nav = _row_nav(last) if last else None
+    prev_nav = _row_nav(prev) if prev else None
+    peak = max((_row_nav(r) or 0.0) for r in rows) if rows else 0.0
+    summary = payload.get("summary") or {}
+    out["summary"] = {
+        k: summary.get(k)
+        for k in (
+            "fusedPct",
+            "basePct",
+            "maxDdFusedPct",
+            "harborPct",
+            "harborWeight",
+            "riskPct",
+            "riskMaxDdPct",
+            "parkingTrades",
+            "trailExits",
+            "parkedTrades",
+            "parkedTrailExits",
+        )
+        if summary.get(k) is not None
+    }
+    out["lastDay"] = {
+        k: v
+        for k, v in {
+            "date": last.get("date"),
+            "nav": round(last_nav, 6) if last_nav else None,
+            "returnPct": (
+                round((last_nav / prev_nav - 1.0) * 100.0, 2) if last_nav and prev_nav else None
+            ),
+            "drawdownFromPeakPct": (
+                round((peak - last_nav) / peak * 100.0, 2) if peak and last_nav else None
+            ),
+            "idlePct": last.get("idlePct"),
+            "deployedPct": last.get("deployedPct"),
+            "positions": last.get("positions"),
+        }.items()
+        if v is not None
+    }
+    out["parking"] = _timeline_brief_parking(payload)
+    out["timelineMode"] = payload.get("mode") or _TIMELINE_MODE
+    return {k: v for k, v in out.items() if v is not None}
 
 
 @router.get("/strategy-catalog")
@@ -1080,6 +1573,31 @@ def backtest_flow_series(
     return {"ok": True, "start": start, "end": end, "rows": rows, **meta}
 
 
+def _base_refresh_force(start: str, end: str, strategy: str, force: bool) -> bool:
+    """Force a derived strategy's base only when it is not already fresh.
+
+    A forced warmup (close sync) must not rebuild the S-3 engine once per
+    derived tab: the first plan rebuilds ``harbor``, later plans reuse that
+    fresh memory entry.
+    """
+    if not force:
+        return False
+    return _timeline_mem_get((start, end, strategy, _TIMELINE_MODE)) is None
+
+
+def _remember_timeline(
+    cache_key: tuple, result: dict[str, Any], engine: dict[str, Any] | None = None
+) -> None:
+    """Cache a freshly built timeline in memory AND (per strategy) on disk.
+
+    File persistence is what makes ``backtest.recent`` / the agent timeline
+    brief survivable across a process restart without re-running the engine.
+    """
+    _timeline_mem_put(cache_key, result, engine)
+    if len(cache_key) >= 3 and cache_key[2] in _FILE_CACHE_STRATEGIES:
+        _save_timeline_file(cache_key[0], cache_key[1], result, cache_key[2])
+
+
 def _get_or_build_timeline(
     start: str,
     end: str,
@@ -1092,15 +1610,15 @@ def _get_or_build_timeline(
 
     ``force=True`` bypasses every cache layer for an explicit post-close refresh.
     """
-    cache_key = (start, end, strategy)
+    cache_key = (start, end, strategy, _TIMELINE_MODE)
     if force:
         _timeline_mem_drop(cache_key)
     cached = None if force else _timeline_mem_get(cache_key)
     engine = _timeline_engine_cache.get(cache_key)
     if cached is not None and (not need_engine or engine is not None):
         return cached, engine
-    if cached is None and strategy == "pick_strong":
-        file_cached = None if force else _load_timeline_file(start, end)
+    if cached is None and strategy in _FILE_CACHE_STRATEGIES:
+        file_cached = None if force else _load_timeline_file(start, end, strategy)
         if file_cached is not None and not need_engine:
             _timeline_mem_put(cache_key, file_cached)
             return file_cached, None
@@ -1159,7 +1677,7 @@ def _get_or_build_timeline(
                 "baseKey": "satellite",
                 "parkingMode": "starship_b",
             }
-        _timeline_mem_put(cache_key, result)
+        _remember_timeline(cache_key, result, None)
         return result, None
 
     # Homeport derives from the cached Harbor timeline (no second engine run).
@@ -1167,13 +1685,17 @@ def _get_or_build_timeline(
         from data_sync_service.service.homeport import blend_homeport_timeline
 
         harbor_result, engine_ctx = _get_or_build_timeline(
-            start, end, strategy="harbor", need_engine=need_engine
+            start,
+            end,
+            strategy="harbor",
+            need_engine=need_engine,
+            force=_base_refresh_force(start, end, "harbor", force),
         )
         try:
             result = blend_homeport_timeline(harbor_result)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=f"timeline homeport failed: {exc}") from exc
-        _timeline_mem_put(cache_key, result)
+        _remember_timeline(cache_key, result, engine_ctx)
         return result, engine_ctx
 
     # Homeport M30 defensive tier (H-MIX-TUNE 2026-09-16): same legs as
@@ -1183,7 +1705,11 @@ def _get_or_build_timeline(
         from data_sync_service.service.homeport import blend_homeport_timeline
 
         harbor_result, engine_ctx = _get_or_build_timeline(
-            start, end, strategy="harbor", need_engine=need_engine
+            start,
+            end,
+            strategy="harbor",
+            need_engine=need_engine,
+            force=_base_refresh_force(start, end, "harbor", force),
         )
         try:
             result = blend_homeport_timeline(harbor_result, w_harbor=0.7)
@@ -1191,7 +1717,7 @@ def _get_or_build_timeline(
             raise HTTPException(
                 status_code=500, detail=f"timeline homeport_m30 failed: {exc}"
             ) from exc
-        _timeline_mem_put(cache_key, result)
+        _remember_timeline(cache_key, result, engine_ctx)
         return result, engine_ctx
 
     # Starport derives from the cached Homeport timeline + standalone satellite rows.
@@ -1200,14 +1726,18 @@ def _get_or_build_timeline(
         from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
 
         homeport_result, engine_ctx = _get_or_build_timeline(
-            start, end, strategy="homeport", need_engine=need_engine
+            start,
+            end,
+            strategy="homeport",
+            need_engine=need_engine,
+            force=_base_refresh_force(start, end, "homeport", force),
         )
         try:
             sat_result = build_state_bucket_timeline(start=start, end=end, recipe="habit")
             result = blend_starport_timeline(homeport_result, sat_result)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=f"timeline starport failed: {exc}") from exc
-        _timeline_mem_put(cache_key, result)
+        _remember_timeline(cache_key, result, engine_ctx)
         return result, engine_ctx
 
     # Twin Star (parallel comparison entry) derives from Harbor + satellite w=1/2.
@@ -1216,7 +1746,11 @@ def _get_or_build_timeline(
         from data_sync_service.service.state_bucket_track import build_state_bucket_timeline
 
         harbor_result, engine_ctx = _get_or_build_timeline(
-            start, end, strategy="harbor", need_engine=need_engine
+            start,
+            end,
+            strategy="harbor",
+            need_engine=need_engine,
+            force=_base_refresh_force(start, end, "harbor", force),
         )
         try:
             sat_result = build_state_bucket_timeline(start=start, end=end, recipe="habit")
@@ -1225,7 +1759,7 @@ def _get_or_build_timeline(
             raise HTTPException(
                 status_code=500, detail=f"timeline twin_star failed: {exc}"
             ) from exc
-        _timeline_mem_put(cache_key, result)
+        _remember_timeline(cache_key, result, engine_ctx)
         return result, engine_ctx
 
     import sys
@@ -1297,9 +1831,7 @@ def _get_or_build_timeline(
             "positions_by_day": run.positions_by_day,
             "close_by_ts_day": data.close_by_ts_day,
         }
-        _timeline_mem_put(cache_key, result, engine_ctx)
-        if strategy == "pick_strong":
-            _save_timeline_file(start, end, result)
+        _remember_timeline(cache_key, result, engine_ctx)
         return result, engine_ctx
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"timeline multi failed: {exc}") from exc

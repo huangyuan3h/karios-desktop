@@ -1,0 +1,456 @@
+"""Agent contract / overlay endpoints (P0, 2026-11-10).
+
+| Endpoint                                | Purpose |
+|-----------------------------------------|---------|
+| GET  /v1/agent/decision-contract        | One stable JSON for the decision agent |
+| GET  /v1/agent/judgment-brief           | Full judgment pack (contract + market + backtest) |
+| GET  /v1/agent/judgment-brief.md        | Same payload as compact Markdown (Sync & Copy) |
+| GET  /v1/agent/overlays                 | Read proposed/accepted/expired overlays |
+| POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
+| GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
+| POST /v1/agent/event-tags               | Record one sourced, advice-only tag |
+| GET  /v1/agent/timeline-brief           | Compact, cache-first recent timeline note |
+| GET  /v1/agent/decision-log             | Read back today's / recent decision rows |
+| POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
+
+Overlays annotate; they never rewrite the engine's ``sleeve.action``, the
+``TRAIL_PCT`` exit, the parking cooldown (k=0) or any strategy weight. Event
+tags are further downstream: they can only advise whether to rebuy / which
+mode to maintain, and can never veto a triggered sell.
+Auth mirrors the other ``/v1/*`` business routes (opt-in via KARIOS_API_KEYS).
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+
+from data_sync_service.api.auth import require_api_key
+from data_sync_service.service.agent_brief import (
+    build_judgment_brief,
+    render_judgment_brief_markdown,
+)
+from data_sync_service.service.agent_contract import build_decision_contract
+from data_sync_service.service.agent_event_tags import (
+    EFFECT_WHITELIST,
+    MIN_CONFIDENCE,
+    list_event_tags,
+    record_event_tag,
+)
+from data_sync_service.service.agent_overlays import (
+    group_overlays,
+    list_overlays,
+    upsert_overlay,
+)
+from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
+
+router = APIRouter(
+    prefix="/v1/agent",
+    tags=["v1:agent"],
+    dependencies=[Depends(require_api_key)],
+)
+
+
+class OverlayBody(BaseModel):
+    type: str = Field(
+        default="hold_same_key_rebuy",
+        description="Overlay type. P0 supports 'hold_same_key_rebuy'.",
+    )
+    pickKey: str = Field(
+        ...,
+        min_length=1,
+        description="Canonical parking key (GOLD / OIL / NASDAQ / BOND10).",
+    )
+    symbol: str | None = Field(default=None, description="Optional ETF symbol for display.")
+    status: str = Field(
+        default="proposed",
+        description="proposed | accepted | rejected | cleared. Agent proposes; Yuan accepts.",
+    )
+    validUntil: str | None = Field(
+        default=None,
+        description="ISO date the overlay expires. Defaults to 5 open sessions.",
+    )
+    validDays: int | None = Field(
+        default=None,
+        ge=1,
+        le=60,
+        description="Alternative to validUntil: number of open sessions.",
+    )
+    note: str | None = Field(default=None, max_length=500)
+    source: str = Field(default="agent", max_length=50)
+
+
+class DecisionLogBody(BaseModel):
+    tradeDate: str | None = Field(default=None, description="ISO date; default today.")
+    judgment: str = Field(..., min_length=1, max_length=2000)
+    contractSnapshotId: str | None = Field(
+        default=None,
+        description="The contractId returned by GET /v1/agent/decision-contract.",
+    )
+    adoptedOverlay: bool | None = Field(
+        default=None,
+        description="Whether the accepted overlay was followed.",
+    )
+    overlayId: str | None = None
+    symbol: str | None = Field(default=None, description="Log symbol; defaults to the pick key.")
+    source: str = Field(default="agent", max_length=50)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    meta: dict[str, Any] | None = None
+
+
+@router.get(
+    "/decision-contract",
+    summary="One-shot decision contract (mode + sleeve + health + next leg + whip).",
+)
+def get_decision_contract(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
+    ),
+) -> dict[str, Any]:
+    try:
+        return build_decision_contract(trade_date=tradeDate)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"decision contract failed: {exc}") from exc
+
+
+@router.get(
+    "/judgment-brief",
+    summary="Agent judgment pack: contract + gate + book + market facts + backtest.",
+)
+def get_judgment_brief(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
+    ),
+    mode: str = Query(
+        default="full",
+        description="full | compact. Compact caps list sizes; it is a subset of full.",
+    ),
+    format: str = Query(
+        default="json",
+        description="json | md. 'md' returns the same payload as compact Markdown.",
+    ),
+    refresh: bool = Query(
+        default=False,
+        description="Bypass the in-process brief/dashboard/backtest caches and rebuild.",
+    ),
+) -> Any:
+    """One-shot judgment brief for the decision agent (乐乐).
+
+    Deliberately excludes 研报 / Alpha Radar trends / catalyst stocks / Auto-QA
+    penalties (``omitted`` lists them). Research reports survive only as
+    freshness flags. Backtest comparison (harbor / homeport_m30 / starship_b +
+    the current settings mode) is included without full equity curves.
+
+    The payload is cached in-process for ~75s (``timingsMs`` / ``cache`` report
+    where the time went); ``refresh=true`` forces a rebuild.
+    """
+    mode_norm = str(mode or "full").strip().lower()
+    if mode_norm not in ("full", "compact"):
+        raise HTTPException(status_code=422, detail="mode must be 'full' or 'compact'")
+    fmt = str(format or "json").strip().lower()
+    if fmt not in ("json", "md", "markdown"):
+        raise HTTPException(status_code=422, detail="format must be 'json' or 'md'")
+    try:
+        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm, refresh=bool(refresh))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"judgment brief failed: {exc}") from exc
+    if fmt in ("md", "markdown"):
+        body = render_judgment_brief_markdown(brief, compact=mode_norm == "compact")
+        return Response(content=body, media_type="text/markdown; charset=utf-8")
+    return brief
+
+
+@router.get(
+    "/judgment-brief.md",
+    summary="Agent judgment pack as compact Markdown (Sync & Copy clipboard body).",
+    response_class=Response,
+)
+def get_judgment_brief_md(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
+    ),
+    mode: str = Query(default="full", description="full | compact."),
+    refresh: bool = Query(
+        default=False,
+        description="Bypass the in-process brief/dashboard/backtest caches and rebuild.",
+    ),
+) -> Response:
+    """Same payload as ``/v1/agent/judgment-brief``, rendered as Markdown."""
+    mode_norm = str(mode or "full").strip().lower()
+    if mode_norm not in ("full", "compact"):
+        raise HTTPException(status_code=422, detail="mode must be 'full' or 'compact'")
+    try:
+        brief = build_judgment_brief(trade_date=tradeDate, mode=mode_norm, refresh=bool(refresh))
+        body = render_judgment_brief_markdown(brief, compact=mode_norm == "compact")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"judgment brief failed: {exc}") from exc
+    return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+@router.get(
+    "/timeline-brief",
+    summary="Compact recent timeline note (cache-first; never runs a cold simulate).",
+)
+def get_timeline_brief(
+    strategy: str | None = Query(
+        default=None,
+        description=(
+            "Timeline key (harbor | homeport | homeport_m30 | starport | ...). "
+            "Default: the settings-mapped key — settings 'homeport' is timeline "
+            "'homeport_m30'; timeline 'homeport' is the frozen M50 base."
+        ),
+    ),
+    start: str | None = Query(
+        default=None,
+        description="Window start YYYY-MM-DD; default: trailing-year cache window.",
+    ),
+    end: str | None = Query(
+        default=None,
+        description="Window end YYYY-MM-DD; default: today.",
+    ),
+) -> dict[str, Any]:
+    """Last-day return / drawdown / parking leg from the timeline cache.
+
+    Cache-first: memory → per-strategy file → explicit miss. A miss returns
+    ``available: false`` with a reason; it never blocks on a minutes-long
+    cold build. The full curve stays at ``GET /api/backtest/timeline``.
+    """
+    from data_sync_service.api.backtest_routes import build_timeline_brief
+
+    try:
+        return build_timeline_brief(strategy=strategy, start=start, end=end)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"timeline brief failed: {exc}") from exc
+
+
+@router.get("/overlays", summary="List agent overlays with effective status.")
+def get_overlays(
+    day: str | None = Query(default=None, description="ISO date; default today."),
+    status: str | None = Query(
+        default=None,
+        description="Filter by effective status: proposed | accepted | expired | cleared | rejected.",
+    ),
+    pickKey: str | None = Query(default=None, description="Canonical parking key."),
+    includeExpired: bool = Query(default=True),
+) -> dict[str, Any]:
+    as_of = str(day or shanghai_today_iso())[:10]
+    items = list_overlays(
+        day=as_of,
+        status=status,
+        pick_key=pickKey,
+        include_expired=includeExpired,
+    )
+    return {
+        "ok": True,
+        "asOfDate": as_of,
+        "overlays": group_overlays(items),
+        "items": items,
+    }
+
+
+@router.post("/overlays", summary="Propose / confirm / clear an agent overlay.")
+def post_overlay(body: OverlayBody) -> dict[str, Any]:
+    try:
+        overlay = upsert_overlay(
+            overlay_type=body.type,
+            pick_key=body.pickKey,
+            symbol=body.symbol,
+            status=body.status,
+            valid_until=body.validUntil,
+            valid_days=body.validDays,
+            note=body.note,
+            source=body.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    as_of = shanghai_today_iso()
+    return {
+        "ok": True,
+        "overlay": overlay,
+        "overlays": group_overlays(list_overlays(day=as_of)),
+    }
+
+
+class EventTagSource(BaseModel):
+    url: str | None = Field(default=None, description="Real article / document URL.")
+    briefId: str | None = Field(default=None, description="News brief id (source list only).")
+    title: str | None = Field(default=None, max_length=300)
+
+
+class EventTagBody(BaseModel):
+    tag: str = Field(..., min_length=1, max_length=80)
+    effect: str = Field(
+        ...,
+        description=(
+            "Whitelist only: advise_defer_same_key_rebuy | advise_strategy | "
+            "trail_exit | below_ma200. Anything that blocks/delays a sell is 422."
+        ),
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    sources: list[EventTagSource] = Field(
+        default_factory=list,
+        description="At least one of url / briefId is required (no fabricated sources).",
+    )
+    relatedAssets: list[str] = Field(default_factory=list)
+    validFrom: str | None = Field(default=None, description="ISO date; defaults to today.")
+    validUntil: str | None = Field(default=None, description="ISO date the tag expires.")
+    validDays: int | None = Field(default=None, ge=1, le=90)
+    note: str | None = Field(default=None, max_length=500)
+    source: str = Field(default="agent", max_length=50)
+    status: str = Field(default="active", description="active | cleared | rejected")
+    newsBriefId: str | None = Field(
+        default=None,
+        description="Optional: when sources is empty, ingest this news brief's items as sources.",
+    )
+
+
+@router.get("/event-tags", summary="List advice-only event / geo tags.")
+def get_event_tags(
+    day: str | None = Query(default=None, description="ISO date; default today."),
+    effect: str | None = Query(default=None, description="Filter by whitelist effect."),
+    includeExpired: bool = Query(default=True),
+) -> dict[str, Any]:
+    as_of = str(day or shanghai_today_iso())[:10]
+    items = list_event_tags(day=as_of, effect=effect, include_expired=includeExpired)
+    active = [t for t in items if t.get("effectiveStatus") == "active"]
+    return {
+        "ok": True,
+        "asOfDate": as_of,
+        "threshold": MIN_CONFIDENCE,
+        "effects": sorted(EFFECT_WHITELIST),
+        "adviceOnly": True,
+        "neverVetoesExits": True,
+        "eventTags": {
+            "active": active,
+            "expired": [t for t in items if t.get("effectiveStatus") == "expired"],
+            "all": items,
+        },
+    }
+
+
+@router.post("/event-tags", summary="Record one sourced, advice-only event tag.")
+def post_event_tag(body: EventTagBody) -> dict[str, Any]:
+    from data_sync_service.service.agent_event_tags import news_brief_sources
+
+    sources = [s.model_dump(exclude_none=True) for s in body.sources]
+    if not sources and body.newsBriefId:
+        # News brief is a source list only — never a raw trade signal.
+        sources = [
+            s for s in news_brief_sources() if str(s.get("briefId") or "") == str(body.newsBriefId)
+        ]
+    try:
+        tag = record_event_tag(
+            tag=body.tag,
+            effect=body.effect,
+            confidence=body.confidence,
+            sources=sources,
+            related_assets=body.relatedAssets,
+            valid_from=body.validFrom,
+            valid_until=body.validUntil,
+            valid_days=body.validDays,
+            note=body.note,
+            source=body.source,
+            status=body.status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    as_of = shanghai_today_iso()
+    return {
+        "ok": True,
+        "eventTag": tag,
+        "eventTags": list_event_tags(day=as_of),
+    }
+
+
+@router.get(
+    "/decision-log",
+    summary="Read back today's / recent decision rows (TIP-015 actions).",
+)
+def get_decision_log(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default today (Asia/Shanghai).",
+    ),
+    lookback: int = Query(
+        default=3,
+        ge=1,
+        le=20,
+        description="Include the last N open sessions ending at tradeDate.",
+    ),
+    symbol: str | None = Query(default=None, description="Filter by symbol."),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> dict[str, Any]:
+    """Read the store ``POST /v1/agent/decision-log`` writes (fail-open).
+
+    Returns tradeDate / judgment / adopted overlay / symbol / source /
+    contractSnapshotId per row. A missing DB degrades to ``ok: false`` with
+    ``available: false`` and an error — it never 500s.
+    """
+    from data_sync_service.service.agent_decision_log import read_decision_log
+
+    day = str(tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    out = read_decision_log(
+        trade_date=day,
+        lookback=lookback,
+        symbol=symbol.upper() if symbol else None,
+        limit=limit,
+    )
+    return {"ok": bool(out.get("available")), **out}
+
+
+@router.post("/decision-log", summary="Write one minimal decision-log row (TIP-015 actions).")
+def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
+    from data_sync_service.db.decision import insert_action
+
+    day = body.tradeDate or shanghai_today_iso()
+    try:
+        snapshot_date = date.fromisoformat(str(day)[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    action = "hold_same_key_rebuy" if body.adoptedOverlay else "decision_log"
+    try:
+        row = insert_action(
+            symbol=str(body.symbol or "CONTRACT").upper(),
+            action=action,
+            rationale=body.judgment,
+            confidence=body.confidence,
+            status="logged",
+            source=body.source,
+            snapshot_date=snapshot_date,
+            outcome={
+                "contractSnapshotId": body.contractSnapshotId,
+                "adoptedOverlay": body.adoptedOverlay,
+                "overlayId": body.overlayId,
+                "meta": body.meta,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"decision log failed: {exc}") from exc
+    # The brief folds the decision log in; drop the 75s cached copy so the next
+    # read sees the row that was just written. Fail-open (cache only).
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("decision_log")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
+    return {"ok": True, "item": row}

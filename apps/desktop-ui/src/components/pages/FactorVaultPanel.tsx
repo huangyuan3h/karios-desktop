@@ -72,12 +72,31 @@ function Spark({ values }: { values: Array<number | null> }) {
   const w = 96;
   const h = 26;
   const d = pts
-    .map((p, k) => `${k === 0 ? 'M' : 'L'}${((p.i / Math.max(1, pts.length - 1)) * (w - 4) + 2).toFixed(1)},${(h - 3 - (Math.min(100, Math.max(0, p.v)) / 100) * (h - 6)).toFixed(1)}`)
+    .map(
+      (p, k) =>
+        `${k === 0 ? 'M' : 'L'}${((p.i / Math.max(1, pts.length - 1)) * (w - 4) + 2).toFixed(1)},${(h - 3 - (Math.min(100, Math.max(0, p.v)) / 100) * (h - 6)).toFixed(1)}`,
+    )
     .join(' ');
   return (
     <svg width={w} height={h} data-testid="vault-spark" aria-label="分位 sparkline">
-      <line x1={2} y1={h - 3 - 0.5 * (h - 6)} x2={w - 2} y2={h - 3 - 0.5 * (h - 6)} stroke={C.axis} strokeOpacity={0.4} strokeDasharray="2 2" />
-      <line x1={2} y1={h - 3 - 0.75 * (h - 6)} x2={w - 2} y2={h - 3 - 0.75 * (h - 6)} stroke={C.pct} strokeOpacity={0.5} strokeDasharray="3 2" />
+      <line
+        x1={2}
+        y1={h - 3 - 0.5 * (h - 6)}
+        x2={w - 2}
+        y2={h - 3 - 0.5 * (h - 6)}
+        stroke={C.axis}
+        strokeOpacity={0.4}
+        strokeDasharray="2 2"
+      />
+      <line
+        x1={2}
+        y1={h - 3 - 0.75 * (h - 6)}
+        x2={w - 2}
+        y2={h - 3 - 0.75 * (h - 6)}
+        stroke={C.pct}
+        strokeOpacity={0.5}
+        strokeDasharray="3 2"
+      />
       <path d={d} fill="none" stroke={C.pct} strokeWidth={1.5} />
     </svg>
   );
@@ -94,7 +113,10 @@ function RowDetail({ row }: { row: FactorVaultRow }) {
     [row],
   );
   return (
-    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/50 p-3" data-testid={`vault-detail-${row.id}`}>
+    <div
+      className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/50 p-3"
+      data-testid={`vault-detail-${row.id}`}
+    >
       <div className="mb-1 text-[12px] font-medium">
         {row.name} · 时间轴（分位紫 / 净收益绿 · 50 降档 / 75 加仓线）
         <span className="ml-2 text-[10px] font-normal text-[var(--k-muted)]">
@@ -106,20 +128,73 @@ function RowDetail({ row }: { row: FactorVaultRow }) {
           <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid stroke={C.grid} strokeOpacity={0.25} vertical={false} />
             <XAxis dataKey="window" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} />
-            <YAxis yAxisId="pct" domain={[0, 100]} tick={{ fontSize: 9, fill: C.axis }} width={36} tickLine={false} axisLine={false} />
-            <YAxis yAxisId="net" orientation="right" tick={{ fontSize: 9, fill: C.axis }} width={52} tickLine={false} axisLine={false} />
+            <YAxis
+              yAxisId="pct"
+              domain={[0, 100]}
+              tick={{ fontSize: 9, fill: C.axis }}
+              width={36}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              yAxisId="net"
+              orientation="right"
+              tick={{ fontSize: 9, fill: C.axis }}
+              width={52}
+              tickLine={false}
+              axisLine={false}
+            />
             <RechartsTooltip content={<MiniTip />} />
-            <ReferenceLine yAxisId="pct" y={50} stroke={C.axis} strokeOpacity={0.6} strokeDasharray="2 3" />
-            <ReferenceLine yAxisId="pct" y={75} stroke={C.pct} strokeOpacity={0.7} strokeDasharray="4 3" />
-            <ReferenceLine yAxisId="net" y={0} stroke={C.axis} strokeOpacity={0.5} strokeDasharray="2 3" />
-            <Line yAxisId="pct" type="linear" dataKey="pct" name="分位%" stroke={C.pct} strokeWidth={1.75} dot isAnimationActive={false} connectNulls />
-            <Line yAxisId="net" type="linear" dataKey="net" name="净" stroke={C.net} strokeWidth={1.5} dot isAnimationActive={false} connectNulls />
+            <ReferenceLine
+              yAxisId="pct"
+              y={50}
+              stroke={C.axis}
+              strokeOpacity={0.6}
+              strokeDasharray="2 3"
+            />
+            <ReferenceLine
+              yAxisId="pct"
+              y={75}
+              stroke={C.pct}
+              strokeOpacity={0.7}
+              strokeDasharray="4 3"
+            />
+            <ReferenceLine
+              yAxisId="net"
+              y={0}
+              stroke={C.axis}
+              strokeOpacity={0.5}
+              strokeDasharray="2 3"
+            />
+            <Line
+              yAxisId="pct"
+              type="linear"
+              dataKey="pct"
+              name="分位%"
+              stroke={C.pct}
+              strokeWidth={1.75}
+              dot
+              isAnimationActive={false}
+              connectNulls
+            />
+            <Line
+              yAxisId="net"
+              type="linear"
+              dataKey="net"
+              name="净"
+              stroke={C.net}
+              strokeWidth={1.5}
+              dot
+              isAnimationActive={false}
+              connectNulls
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
         独立来源：{row.source} · 窗内 {row.trades} 笔（{row.rolling_window ?? '—'}窗）· 胜率{' '}
-        {row.win_rate != null ? `${(row.win_rate * 100).toFixed(1)}%` : '—'} · {row.days_since_change} 天未变档
+        {row.win_rate != null ? `${(row.win_rate * 100).toFixed(1)}%` : '—'} ·{' '}
+        {row.days_since_change} 天未变档
       </p>
     </div>
   );
@@ -151,7 +226,9 @@ export function FactorVaultPanel() {
   if (!vault) {
     return (
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-        <p className="text-xs text-[var(--k-muted)]">因子冷库加载中…（27 个因子统一体检，一次约 1s）</p>
+        <p className="text-xs text-[var(--k-muted)]">
+          因子冷库加载中…（27 个因子统一体检，一次约 1s）
+        </p>
       </div>
     );
   }
@@ -164,12 +241,18 @@ export function FactorVaultPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-[12px]" data-testid="vault-summary">
+      <div
+        className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-[12px]"
+        data-testid="vault-summary"
+      >
         {summaryLine}
         <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
-          规则：滚动最近 40 笔（月频为 40 期）· 分位为同期随机对照（无真随机分位的试点永不显示复活）·
-          冷库（分位&lt;50 或净≤0） 观察（50–75 或不足 20 笔） 复活（≥75 且净&gt;0，需两次确认，步进间隔≥20 笔，上限 20%；
-          &lt;50 或熔断即降档到 0）· paper-20 与月频执行实盘仍 pin 在 0% · 母港M30为当前基线，星舰B为观察（复活需 rolling-40 sum转正 AND 月度大盘P&L转正），本表只做观察不改参
+          规则：滚动最近 40 笔（月频为 40 期）·
+          分位为同期随机对照（无真随机分位的试点永不显示复活）· 冷库（分位&lt;50 或净≤0）
+          观察（50–75 或不足 20 笔） 复活（≥75 且净&gt;0，需两次确认，步进间隔≥20 笔，上限 20%；
+          &lt;50 或熔断即降档到 0）· paper-20 与月频执行实盘仍 pin 在 0% ·
+          母港M30为当前基线，星舰B为观察（复活需 rolling-40 sum转正 AND
+          月度大盘P&L转正），本表只做观察不改参
         </div>
       </div>
 
@@ -194,7 +277,10 @@ export function FactorVaultPanel() {
         </span>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]" data-testid="vault-table">
+      <div
+        className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]"
+        data-testid="vault-table"
+      >
         <table className="w-full min-w-[1080px] text-left text-xs tabular-nums">
           <thead className="sticky top-0 bg-[var(--k-surface)]">
             <tr className="text-[10px] text-[var(--k-muted)]">
@@ -220,21 +306,42 @@ export function FactorVaultPanel() {
                   data-testid={`vault-row-${r.id}`}
                 >
                   <td className="px-2 py-1.5 font-medium">{r.name}</td>
-                  <td className="px-2 py-1.5 text-[var(--k-muted)]">{r.family} · {r.source}</td>
+                  <td className="px-2 py-1.5 text-[var(--k-muted)]">
+                    {r.family} · {r.source}
+                  </td>
                   <td className="px-2 py-1.5">
-                    <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeCls(r.status))}>
+                    <span
+                      className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeCls(r.status))}
+                    >
                       {r.badge}
                     </span>
                   </td>
                   <td className="px-2 py-1.5 font-mono">{fmtPct(r.percentile)}</td>
-                  <td className={cn('px-2 py-1.5 font-mono', r.net >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-400')}>
-                    {fmtSigned(r.net)}{r.unit ? ` ${r.unit}` : ''}
+                  <td
+                    className={cn(
+                      'px-2 py-1.5 font-mono',
+                      r.net >= 0
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-red-700 dark:text-red-400',
+                    )}
+                  >
+                    {fmtSigned(r.net)}
+                    {r.unit ? ` ${r.unit}` : ''}
                   </td>
-                  <td className="px-2 py-1.5 font-mono">{r.win_rate != null ? `${(r.win_rate * 100).toFixed(1)}%` : '—'}</td>
-                  <td className="px-2 py-1.5 font-mono">{r.trades}{r.trades_raw > r.trades ? ` / ${r.trades_raw}` : ''}</td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {r.win_rate != null ? `${(r.win_rate * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {r.trades}
+                    {r.trades_raw > r.trades ? ` / ${r.trades_raw}` : ''}
+                  </td>
                   <td className="px-2 py-1.5 font-mono">{r.days_since_change} 天</td>
-                  <td className="px-2 py-1.5"><Spark values={r.spark} /></td>
-                  <td className="px-2 py-1.5 font-mono">{r.position}%{r.confirmations ? ` (${r.confirmations}确认)` : ''}</td>
+                  <td className="px-2 py-1.5">
+                    <Spark values={r.spark} />
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {r.position}%{r.confirmations ? ` (${r.confirmations}确认)` : ''}
+                  </td>
                   <td className="px-2 py-1.5 text-[var(--k-muted)]">{r.updated ?? '—'}</td>
                 </tr>
                 {openId === r.id ? (
@@ -251,9 +358,10 @@ export function FactorVaultPanel() {
       </div>
 
       <p className="text-[10px] text-[var(--k-muted)]">
-        方法：滚动为笔数窗（40 笔/40 期，不足按实际笔数并标观察），分位为审计真随机对照（星舰B用 F long R1 15000 次正态近似 μ0.0178/σ1.2175；
-        港湾用 H2d 500 次/窗 μ0.097/σ1.08；无真分位的试点显示 — 且永不复活），复活灯为 K2 两步回放（双确认 + 20 笔间隔），
-        点击行展开 OOS2/train/valid/holdout 时间轴（复用 S-gap 趋势图组件）。
+        方法：滚动为笔数窗（40 笔/40 期，不足按实际笔数并标观察），分位为审计真随机对照（星舰B用 F
+        long R1 15000 次正态近似 μ0.0178/σ1.2175； 港湾用 H2d 500 次/窗
+        μ0.097/σ1.08；无真分位的试点显示 — 且永不复活），复活灯为 K2 两步回放（双确认 + 20
+        笔间隔）， 点击行展开 OOS2/train/valid/holdout 时间轴（复用 S-gap 趋势图组件）。
       </p>
     </div>
   );

@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe('StrategyModeBar', () => {
-  it('renders 母港 as default (M30 baseline) next to 星舰 B / 稳健星舰 H2-a25 / 星舰', () => {
+  it('renders 母港 first (M30 baseline) next to 星舰 B / 稳健星舰 H2-a25 / 星舰', () => {
     render(<StrategyModeBar />);
     for (const name of ['星舰 B', '稳健星舰 H2-a25', '星舰', '星港', '母港', '港湾', '双子星']) {
       // anchor at the B label: `^星舰` would also match `星舰 B`.
@@ -17,9 +17,7 @@ describe('StrategyModeBar', () => {
       expect(screen.getByRole('button', { name: re })).toBeDefined();
     }
     // 母港 (M30 baseline, Yuan 2026-10-04) is the current default; 星舰 B stays visible as 观察.
-    expect(screen.getByRole('button', { name: /^母港/ }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
+    expect(screen.getByRole('button', { name: /^母港/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: /进攻/ })).toBeDefined();
     expect(screen.getByRole('button', { name: /基线/ })).toBeDefined();
     expect(screen.getByRole('button', { name: /均衡/ })).toBeDefined();
@@ -27,9 +25,11 @@ describe('StrategyModeBar', () => {
       .getAllByRole('button')
       .map((b) => b.textContent ?? '')
       .map((t) =>
-        ['星舰 B', '稳健星舰 H2-a25', '星舰', '星港', '母港', '港湾', '双子星'].find((n) => t.startsWith(n)),
+        ['母港', '星舰 B', '稳健星舰 H2-a25', '星舰', '星港', '港湾', '双子星'].find((n) =>
+          t.startsWith(n),
+        ),
       );
-    expect(order).toEqual(['星舰 B', '稳健星舰 H2-a25', '星舰', '星港', '母港', '港湾', '双子星']);
+    expect(order).toEqual(['母港', '星舰 B', '稳健星舰 H2-a25', '星舰', '星港', '港湾', '双子星']);
   });
 
   it('switches the view and persists the selection', () => {

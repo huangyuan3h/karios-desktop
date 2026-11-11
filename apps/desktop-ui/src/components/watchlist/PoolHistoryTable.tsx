@@ -35,7 +35,9 @@ export function toPoolRow(run: AutomationRun): PoolRow | null {
 function Delta({ value, flip = false }: { value: number; flip?: boolean }) {
   if (value <= 0) return <span className="text-[var(--k-muted)]">—</span>;
   return (
-    <span className={flip ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-300'}>
+    <span
+      className={flip ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-300'}
+    >
       {flip ? '−' : '+'}
       {value}
     </span>
@@ -83,15 +85,16 @@ export function PoolHistoryTable({ limit = 10 }: { limit?: number }) {
                 S-3 <Delta value={r.addedS3} /> · 星舰 <Delta value={r.addedSatellite} />
               </td>
               <td className={CELL}>
-                S-3 <Delta value={r.removedS3} flip /> · 星舰 <Delta value={r.removedSatellite} flip />
+                S-3 <Delta value={r.removedS3} flip /> · 星舰{' '}
+                <Delta value={r.removedSatellite} flip />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="mt-1 text-[10px] text-[var(--k-muted)]">
-        池 = 两条回测腿：S-3（score≥65 &amp; RS，含弱市观察口径）+ 星舰（14:30 名单，持 3 个交易日）。
-        失效规则：S-3 连续 2 日不达标、星舰到期出场即移除（有持仓的票不删）。
+        池 = 两条回测腿：S-3（score≥65 &amp; RS，含弱市观察口径）+ 星舰（14:30 名单，持 3
+        个交易日）。 失效规则：S-3 连续 2 日不达标、星舰到期出场即移除（有持仓的票不删）。
       </p>
     </div>
   );

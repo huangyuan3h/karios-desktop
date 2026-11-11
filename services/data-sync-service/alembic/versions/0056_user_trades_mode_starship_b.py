@@ -25,8 +25,7 @@ _MODES = (
     "'starship_b', 'twin_star', 'legacy_unknown'"
 )
 _OLD = (
-    "'harbor', 'homeport', 'starport', 'starship', 'starship_robust', "
-    "'twin_star', 'legacy_unknown'"
+    "'harbor', 'homeport', 'starport', 'starship', 'starship_robust', 'twin_star', 'legacy_unknown'"
 )
 
 

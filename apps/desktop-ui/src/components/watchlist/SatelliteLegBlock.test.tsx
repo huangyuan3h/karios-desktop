@@ -16,8 +16,7 @@ const marketHours = vi.hoisted(() => ({
   today: '2026-09-17',
 }));
 vi.mock('@/lib/market-hours', async () => {
-  const actual =
-    await vi.importActual<typeof import('@/lib/market-hours')>('@/lib/market-hours');
+  const actual = await vi.importActual<typeof import('@/lib/market-hours')>('@/lib/market-hours');
   return {
     ...actual,
     getShanghaiMinutes: () => marketHours.minutes,
@@ -45,7 +44,6 @@ function row(over: Partial<TimelineRow> = {}): TimelineRow {
     ...over,
   } as unknown as TimelineRow;
 }
-
 
 function userBook(open: number) {
   return {
@@ -335,7 +333,9 @@ describe('SatelliteLegBlock', () => {
       expect(screen.queryByLabelText('总资金')).toBeNull();
       expect(screen.getByText(/未设总资金 → 在上方「账户」里填/)).toBeDefined();
       expect(screen.getByText(/待设总资金/)).toBeDefined();
-      expect((screen.getByRole('button', { name: '买入' }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole('button', { name: '买入' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
     });
 
     it('falls back to the replay state when the snapshot is stale', () => {
@@ -372,10 +372,7 @@ describe('SatelliteLegBlock', () => {
     it('switches to a missing-snapshot state after the 14:30 slot', () => {
       marketHours.minutes = 14 * 60 + 50; // 14:50, past the 14:40 grace
       renderBlock(
-        <SatelliteLegBlock
-          row={row({ date: '2026-09-16', gateOpen: true })}
-          strategy="starship"
-        />,
+        <SatelliteLegBlock row={row({ date: '2026-09-16', gateOpen: true })} strategy="starship" />,
       );
       expect(screen.getByTestId('satellite-gate-tag').textContent).toBe('闸 快照缺失');
       expect(screen.getAllByText(/今日 14:30 快照缺失/).length).toBeGreaterThan(0);

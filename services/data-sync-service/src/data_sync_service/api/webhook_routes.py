@@ -33,6 +33,9 @@ KNOWN_EVENT_TYPES = {
     "execution_card",
     "audit_issues",
     "satellite_action",
+    "factor_status_up",
+    "factor_revived",
+    "sgap_revival",
     "test",
 }
 

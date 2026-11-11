@@ -416,6 +416,68 @@ def _satellite_action_alert(mode: str) -> list[dict[str, Any]]:
         return []
 
 
+def _factor_monitor_alerts() -> list[dict[str, Any]]:
+    """Factor/S-gap revival research stickies (2026-10-25 必达 MVP).
+
+    Reads the shared transitions file written by factor_vault_job /
+    sgap_decay_job (last 7 days) and emits research-lane notes. Stable
+    ``nid`` values match the webhook dedupe keys so Hub seen-ack lines up
+    with the phone push. Fail-open: missing/unreadable file → no items.
+    """
+    path = REPORTS_DIR / "factor_vault_transitions.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = raw.get("transitions", []) if isinstance(raw, dict) else []
+    if not isinstance(entries, list):
+        return []
+    try:
+        cutoff = datetime.now(UTC).date().toordinal() - 7
+    except Exception:  # noqa: BLE001
+        cutoff = 0
+    out: list[dict[str, Any]] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        day = str(e.get("date") or "")
+        try:
+            if datetime.fromisoformat(day).date().toordinal() < cutoff:
+                continue
+        except ValueError:
+            continue
+        event_type = str(e.get("event_type") or "")
+        if event_type not in ("factor_status_up", "factor_revived", "sgap_revival"):
+            continue
+        kind = str(e.get("kind") or "factor")
+        if kind == "sgap":
+            title = f"S-gap 复活位 {e.get('from')}→{e.get('to')}（星舰B / K2）"
+            detail = f"K2 revival_pos {e.get('from')} → {e.get('to')}（{day}）——手机 Bark 已推"
+            severity = "high"
+        elif event_type == "factor_revived":
+            title = f"因子复活 · {e.get('name') or e.get('factor_id')}"
+            detail = f"{e.get('from')} → {e.get('to')}（{day}）——手机 Bark 已推"
+            severity = "high"
+        else:
+            title = f"因子走出冷库 · {e.get('name') or e.get('factor_id')}"
+            detail = f"{e.get('from')} → {e.get('to')}（{day}）——手机 Bark 已推"
+            severity = "medium"
+        out.append(
+            _note(
+                nid=str(e.get("dedupe_key") or f"{event_type}:{day}:{e.get('factor_id')}"),
+                type=event_type,
+                severity=severity,
+                title=title,
+                detail=detail,
+                anchor="backtest",
+                lane="research",
+                book="research",
+                created_at=f"{day}T11:15:00+00:00",
+            )
+        )
+    return out
+
+
 def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
     """All actionable notifications, most severe first.
 
@@ -431,6 +493,7 @@ def build_notifications(mode: str = "single_track") -> list[dict[str, Any]]:
         + _recon_alerts()
         + _rolling_oos_warning()
         + _third_asset_notification()
+        + _factor_monitor_alerts()
         + _satellite_action_alert(mode)
     )
     order = {"high": 0, "medium": 1, "low": 2}

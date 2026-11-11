@@ -21,7 +21,13 @@ import tushare as ts
 
 from data_sync_service.config import get_settings
 from data_sync_service.service.em_push2_http import em_get_json
-from data_sync_service.service.sina_http import build_hq_url, parse_hq_lines, sina_get_text
+from data_sync_service.service.sina_http import (
+    build_cn_hq_url,
+    build_hq_url,
+    parse_cn_hq_lines,
+    parse_hq_lines,
+    sina_get_text,
+)
 
 _TUSHARE_TOKEN_LOCK = threading.Lock()
 
@@ -31,6 +37,19 @@ _SINA_HK_QUOTE_TTL_S = 30.0
 _SINA_HK_QUOTE_BATCH_SIZE = 50
 _SINA_HK_QUOTE_CACHE_LOCK = threading.Lock()
 _SINA_HK_QUOTE_CACHE: dict[str, Any] = {
+    "fetched_at": 0.0,
+    "quotes": {},
+}
+
+# CN realtime fallback (2026-11-06). Tushare's `realtime_quote` proxies Sina,
+# but needs a local token file and a live permission grant; when it returns
+# nothing (token-file drift, quota, transient error) the same Sina feed can be
+# read directly. Used only for codes Tushare did not return, so the normal
+# path is unchanged.
+_SINA_CN_QUOTE_TTL_S = 20.0
+_SINA_CN_QUOTE_BATCH_SIZE = 60
+_SINA_CN_QUOTE_CACHE_LOCK = threading.Lock()
+_SINA_CN_QUOTE_CACHE: dict[str, Any] = {
     "fetched_at": 0.0,
     "quotes": {},
 }
@@ -131,6 +150,7 @@ def _fetch_em_hk_quote(ts_code: str) -> dict[str, Any] | None:
         "volume": _as_str(volume),
         "amount": _as_str(amount),
         "trade_time": None,
+        "source": "eastmoney.push2.stock_get",
     }
 
 
@@ -230,6 +250,7 @@ def _parse_sina_hk_payload(ticker: str, payload: str) -> dict[str, Any] | None:
         "volume": _as_str(volume),
         "amount": _as_str(amount),
         "trade_time": trade_time,
+        "source": "sina.hq.hk",
     }
 
 
@@ -348,6 +369,7 @@ def _parse_sina_hk_index_payload(code: str, payload: str) -> dict[str, Any] | No
         "volume": _as_str(_num(11)),
         "amount": _as_str(_num(12)),
         "trade_time": trade_time,
+        "source": "sina.hq.hk_index",
     }
 
 
@@ -404,8 +426,27 @@ def clear_sina_hk_quote_cache() -> None:
         _HK_INDEX_CACHE["quotes"] = {}
 
 
+def _tushare_token_file_path() -> str:
+    """Path tushare's legacy ``get_token()`` actually reads.
+
+    tushare 1.4.x resolves the token file as ``$HOME/<TOKEN_F_P>`` where
+    ``TOKEN_F_P == "tk.csv"`` — i.e. ``~/tk.csv``. The old code hard-coded
+    ``~/.tushare/tk.csv``, so on this install every ``ts.realtime_quote``
+    call raised ``TOKEN_ERR_MSG`` ("请设置tushare pro的token凭证码") even
+    though the pro-API pool was healthy. Read the constant from the library
+    so a future tushare path change cannot silently re-break realtime quotes.
+    """
+    try:
+        from tushare.stock import cons as ts_cons
+
+        name = str(ts_cons.TOKEN_F_P or "tk.csv")
+    except Exception:  # noqa: BLE001
+        name = "tk.csv"
+    return os.path.join(os.path.expanduser("~"), name)
+
+
 def _ensure_tushare_token_file(api_key: str) -> None:
-    """Write ~/.tushare/tk.csv exactly once, atomically.
+    """Write the tushare legacy token file exactly once, atomically.
 
     tushare's realtime_quote is wrapped by require_permission -> get_token(),
     which reads that file on EVERY call. Rewriting it in-place per call (old
@@ -413,7 +454,7 @@ def _ensure_tushare_token_file(api_key: str) -> None:
     file and explode with pandas EmptyDataError. Write via tmp + rename so a
     reader always sees a complete file; skip entirely once it matches.
     """
-    fp = os.path.join(os.path.expanduser("~"), ".tushare", "tk.csv")
+    fp = _tushare_token_file_path()
     with _TUSHARE_TOKEN_LOCK:
         if os.path.exists(fp):
             try:
@@ -422,7 +463,7 @@ def _ensure_tushare_token_file(api_key: str) -> None:
                         return
             except OSError:
                 pass
-        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        os.makedirs(os.path.dirname(fp) or ".", exist_ok=True)
         tmp = f"{fp}.{os.getpid()}.tmp"
         pd.DataFrame([api_key], columns=["token"]).to_csv(tmp, index=False)
         os.replace(tmp, fp)
@@ -491,10 +532,129 @@ def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
                 "volume": _as_str(_get(r2, "vol", "volume")),
                 "amount": _as_str(_get(r2, "amount", "turnover")),
                 "trade_time": trade_time,
+                "source": "tushare.realtime_quote",
             }
         )
 
     return [x for x in out if x.get("ts_code")]
+
+
+def _parse_sina_cn_payload(marker: str, payload: str) -> dict[str, Any] | None:
+    """Parse one CN ``sh600000`` payload into the normalized quote dict.
+
+    Field layout (verified 2026-11-06 against Tushare for 600000.SH):
+      0 name   1 open   2 pre_close   3 price   4 high   5 low
+      6 bid    7 ask    8 volume (shares)   9 amount (CNY)
+      30 trade date (YYYY-MM-DD)   31 trade time
+    """
+    fields = payload.split(",")
+    if len(fields) < 32:
+        return None
+
+    def _num(idx: int) -> float | None:
+        try:
+            return float(fields[idx])
+        except (ValueError, IndexError):
+            return None
+
+    price = _num(3)
+    if price is None or price <= 0:
+        return None
+    pre_close = _num(2)
+    change = None
+    pct_chg = None
+    if pre_close is not None and pre_close > 0:
+        change = price - pre_close
+        pct_chg = change / pre_close * 100.0
+
+    date_raw = fields[30].strip()
+    time_raw = fields[31].strip()
+    trade_time = f"{date_raw} {time_raw}" if date_raw and time_raw else None
+
+    ticker = marker[2:] if len(marker) > 2 else ""
+    suffix = "SH" if marker.startswith("sh") else ("BJ" if marker.startswith("bj") else "SZ")
+    return {
+        "ts_code": f"{ticker}.{suffix}" if ticker else "",
+        "price": _as_str(price),
+        "open": _as_str(_num(1)),
+        "high": _as_str(_num(4)),
+        "low": _as_str(_num(5)),
+        "pre_close": _as_str(pre_close),
+        "change": _as_str(change),
+        "pct_chg": _as_str(pct_chg),
+        "volume": _as_str(_num(8)),
+        "amount": _as_str(_num(9)),
+        "trade_time": trade_time,
+        "source": "sina.realtime_quote",
+    }
+
+
+def _is_sina_cn_index(ts_code: str) -> bool:
+    """True for CN index codes (Sina's index payload differs from stock quotes)."""
+    ticker, _, suffix = str(ts_code or "").upper().partition(".")
+    if suffix == "SH" and ticker.startswith("0"):
+        return True
+    if suffix == "SZ" and ticker.startswith("39"):
+        return True
+    return False
+
+
+def _sina_cn_quotes_fresh(ts_codes: list[str], *, force: bool = False) -> dict[str, dict[str, Any]]:
+    """Fetch CN quotes from Sina for codes Tushare did not return (cached 20s)."""
+    requested = sorted(
+        {
+            str(c).strip().upper()
+            for c in ts_codes
+            if c and "." in str(c) and not _is_sina_cn_index(str(c))
+        }
+    )
+    if not requested:
+        return {}
+
+    with _SINA_CN_QUOTE_CACHE_LOCK:
+        cached = _SINA_CN_QUOTE_CACHE
+        now = time.monotonic()
+        fresh = now - float(cached["fetched_at"]) < _SINA_CN_QUOTE_TTL_S
+        out: dict[str, dict[str, Any]] = {}
+        missing: list[str] = []
+        for c in requested:
+            hit = cached["quotes"].get(c)
+            if fresh and hit is not None and not force:
+                out[c] = hit
+            else:
+                missing.append(c)
+    if not missing:
+        return out
+
+    fetched: dict[str, dict[str, Any]] = {}
+    last_error: str | None = None
+    for i in range(0, len(missing), _SINA_CN_QUOTE_BATCH_SIZE):
+        part = missing[i : i + _SINA_CN_QUOTE_BATCH_SIZE]
+        try:
+            text = sina_get_text(build_cn_hq_url(part), timeout=10.0)
+            for marker, payload in parse_cn_hq_lines(text):
+                quote = _parse_sina_cn_payload(marker, payload)
+                if quote is not None and quote.get("ts_code"):
+                    fetched[str(quote["ts_code"])] = quote
+        except Exception as e:  # noqa: BLE001
+            last_error = str(e)
+    with _SINA_CN_QUOTE_CACHE_LOCK:
+        if fetched:
+            _SINA_CN_QUOTE_CACHE["quotes"].update(fetched)
+            _SINA_CN_QUOTE_CACHE["fetched_at"] = time.monotonic()
+            _SINA_CN_QUOTE_CACHE["last_error"] = None
+        elif last_error:
+            _SINA_CN_QUOTE_CACHE["last_error"] = last_error
+    out.update(fetched)
+    return out
+
+
+def clear_sina_cn_quote_cache() -> None:
+    """Reset the Sina CN fallback cache (tests only)."""
+    with _SINA_CN_QUOTE_CACHE_LOCK:
+        _SINA_CN_QUOTE_CACHE["fetched_at"] = 0.0
+        _SINA_CN_QUOTE_CACHE["quotes"] = {}
+        _SINA_CN_QUOTE_CACHE["last_error"] = None
 
 
 def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
@@ -524,6 +684,13 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     if other_codes:
         items.extend(_tushare_quotes(other_codes, api_key=settings.tu_share_api_key))
+        # 2026-11-06: Tushare realtime can silently return nothing (token-file
+        # drift, quota, transient). The same Sina feed it proxies is readable
+        # directly — use it only for codes Tushare missed, tagged honestly.
+        got = {str(it.get("ts_code") or "") for it in items}
+        missing_cn = [c for c in other_codes if c not in got]
+        if missing_cn:
+            items.extend(_sina_cn_quotes_fresh(missing_cn).values())
     if hk_codes:
         # HK indices (HSI / HSTECH) use a different Sina feed/format — handle
         # them first so the stock path below never sees a bare index code.

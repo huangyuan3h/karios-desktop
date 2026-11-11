@@ -116,10 +116,21 @@ def test_crowding_and_large_edge() -> None:
 
 def test_monthly_counts() -> None:
     trades = [_trade("2024-01-05", 1.0)] * 3 + [_trade("2024-02-05", -1.0)] * 2
+    # No as_of => pure trade months only (no clock).
     out = sd.compute_sgap_decay(trades)
     assert out["monthly"] == [
         {"month": "2024-01", "count": 3, "sum": pytest.approx(3.0)},
         {"month": "2024-02", "count": 2, "sum": pytest.approx(-2.0)},
+    ]
+
+
+def test_monthly_trailing_drought_pad() -> None:
+    trades = [_trade("2026-09-05", 1.0)] * 2
+    out = sd.compute_sgap_decay(trades, as_of="2026-11-04")
+    assert out["monthly"] == [
+        {"month": "2026-09", "count": 2, "sum": pytest.approx(2.0)},
+        {"month": "2026-10", "count": 0, "sum": 0.0},
+        {"month": "2026-11", "count": 0, "sum": 0.0},
     ]
 
 

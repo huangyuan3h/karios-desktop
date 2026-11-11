@@ -29,6 +29,10 @@ export type IndustryFundFlowResp = {
   topN: number;
   dates: string[];
   top: IndustryFundFlowRow[];
+  /** Distinct row sources (e.g. eastmoney_bkzj / tushare_moneyflow_sw_l1). */
+  sources?: string[];
+  /** True when any displayed row came from a non-East-Money fallback. */
+  fallbackUsed?: boolean;
 };
 
 export type MainlineFlowFlags = {

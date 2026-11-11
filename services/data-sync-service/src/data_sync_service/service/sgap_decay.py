@@ -40,7 +40,10 @@ Method (frozen, matches H2k_sgap_revival.md where stated):
   one side is empty. Same-day ex post attribution only (not tradable).
 - Equity: cumulative sum of contrib in entry order (trade-space, not
   calendar-compounded); drawdown = cum - running peak (<= 0).
-- Monthly: group by entry YYYY-MM: count + contrib sum.
+- Monthly: group by entry YYYY-MM: count + contrib sum. When as_of is
+  provided, trailing calendar months after the last trade month through
+  as_of (inclusive) are padded with count=0 / sum=0 so drought shows on
+  the chart axis (pure: no clock unless caller passes as_of).
 - Window shading (frozen H2k cut): OOS2 2024-08-01~2025-08-07 /
   train 2025-08-08~2026-02-27 / valid 2026-03-02~2026-08-07 /
   holdout 2026-08-10~2026-09-30.
@@ -49,6 +52,7 @@ Method (frozen, matches H2k_sgap_revival.md where stated):
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import Any
 
 # Frozen H2k cut for background shading (date strings, inclusive).
@@ -149,7 +153,38 @@ def _norm_trade(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def compute_sgap_decay(trades: list[dict[str, Any]]) -> dict[str, Any]:
+def _month_add(ym: str, delta: int) -> str:
+    """Shift YYYY-MM by delta months (delta may be negative)."""
+    y, m = int(ym[:4]), int(ym[5:7])
+    idx = y * 12 + (m - 1) + delta
+    return f"{idx // 12:04d}-{idx % 12 + 1:02d}"
+
+
+def _pad_monthly_through(monthly: list[dict[str, Any]], as_of: date | str) -> list[dict[str, Any]]:
+    """Append count=0 months after the last trade month through as_of YYYY-MM."""
+    if isinstance(as_of, str):
+        as_of_m = as_of[:7]
+    else:
+        as_of_m = f"{as_of.year:04d}-{as_of.month:02d}"
+    if not monthly:
+        return [{"month": as_of_m, "count": 0, "sum": 0.0}]
+    last = monthly[-1]["month"]
+    out = list(monthly)
+    cur = _month_add(last, 1)
+    # Guard: do not invent months before last trade month.
+    while cur <= as_of_m:
+        out.append({"month": cur, "count": 0, "sum": 0.0})
+        cur = _month_add(cur, 1)
+        if len(out) > len(monthly) + 36:
+            break  # safety
+    return out
+
+
+def compute_sgap_decay(
+    trades: list[dict[str, Any]],
+    *,
+    as_of: date | str | None = None,
+) -> dict[str, Any]:
     """Build the full sgap-decay payload from raw per-trade rows."""
     normed = [_norm_trade(t) for t in trades]
     rows = sorted(
@@ -292,6 +327,8 @@ def compute_sgap_decay(trades: list[dict[str, Any]]) -> dict[str, Any]:
         d["count"] += 1
         d["sum"] += r["contrib"]
     monthly = [monthly_map[k] for k in sorted(monthly_map)]
+    if as_of is not None:
+        monthly = _pad_monthly_through(monthly, as_of)
 
     # Summary (computed, frontend renders verbatim).
     last40 = next((rolling[i]["r40"] for i in range(n - 1, -1, -1) if rolling[i]["r40"]), None)

@@ -13,7 +13,13 @@ describe('FleetSchema', () => {
           base: { long: { total: 136.2 } },
         },
         defense: { days: 1252, L1_days: 0, L2_days: 69, L3_days: 20, L4_days: 0 },
-        equity: { dates: ['2021-08-02'], fleet: [1.0], base: [1.0], starship_b: [1.0], hs300: [1.0] },
+        equity: {
+          dates: ['2021-08-02'],
+          fleet: [1.0],
+          base: [1.0],
+          starship_b: [1.0],
+          hs300: [1.0],
+        },
       },
     });
     expect(parsed.ok).toBe(true);

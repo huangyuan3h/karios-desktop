@@ -352,6 +352,8 @@ class TestSync:
         monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: it["industry_name"] != "非SW")
         monkeypatch.setattr(iff, "_now_iso", lambda: "now")
         monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: None)
+        monkeypatch.setattr(iff, "trade_dates_upto", lambda *a, **k: [])
+        monkeypatch.setattr(iff, "get_rows_for_dates", lambda dates: [])
         monkeypatch.setattr(
             iff,
             "_hist_rows_for_top_row",
@@ -378,9 +380,35 @@ class TestSync:
         monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_eod", lambda as_of: [])
         monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: True)
         monkeypatch.setattr(iff, "_now_iso", lambda: "now")
-        monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: None)
+        monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: len(rows))
+        # EM empty → the non-EM fallback must keep the leg useful, not fake it.
+        from data_sync_service.service import industry_fund_flow_tushare as tsf
+
+        monkeypatch.setattr(
+            tsf,
+            "aggregate_for_dates",
+            lambda days: (
+                [
+                    {
+                        "date": "2026-08-07",
+                        "industry_code": "801010.SI",
+                        "industry_name": "农林牧渔",
+                        "net_inflow": 1.0,
+                        "taxonomy": "SW",
+                        "industry_level": 1,
+                        "source": tsf.SOURCE,
+                        "raw": {"provider": "tushare"},
+                    }
+                ],
+                [],
+            ),
+        )
+        monkeypatch.setattr(iff, "trade_dates_upto", lambda *a, **k: ["2026-08-07"])
+        monkeypatch.setattr(iff, "get_rows_for_dates", lambda dates: [])
         out = iff.sync_cn_industry_fund_flow(force=True)
         assert out["ok"] is True and out["catchup"] is True
+        assert out["fallbackUsed"] is True and out["degraded"] is True
+        assert out["source"] == tsf.SOURCE
 
     def test_sync_hist_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(iff, "shanghai_today", lambda: date(2026, 8, 7))
@@ -403,6 +431,8 @@ class TestSync:
         monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: True)
         monkeypatch.setattr(iff, "_now_iso", lambda: "now")
         monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: None)
+        monkeypatch.setattr(iff, "trade_dates_upto", lambda *a, **k: [])
+        monkeypatch.setattr(iff, "get_rows_for_dates", lambda dates: [])
         monkeypatch.setattr(
             iff,
             "_hist_rows_for_top_row",

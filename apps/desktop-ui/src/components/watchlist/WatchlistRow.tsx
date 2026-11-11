@@ -4,6 +4,7 @@ import * as React from 'react';
 import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ExecutionTimingBadge } from '@/components/watchlist/ExecutionTimingBadge';
 import { resolveStableActionPrice } from '@/lib/intraday-lock';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import {
@@ -641,6 +642,14 @@ function WatchlistRowInner({
             actionCard.why === 'MARKET_CLOSING_LOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
+  // Achievable clock for this row's NextAction: close-basis exits execute at
+  // the next open; intraday candidates are only tradable inside the session.
+  const rowTimingKind =
+    actionCard.action === 'EXIT' || actionCard.action === 'PURGE' || actionCard.action === 'TRIM'
+      ? ('close-sell-confirmed' as const)
+      : actionCard.action === 'BUY' || actionCard.action === 'ADD'
+        ? ('intraday-buy' as const)
+        : ('hold' as const);
   const heldForTrigger = isHeldPosition(it);
   const triggerPrice = heldForTrigger
     ? (actionCard.exitStop ?? actionCard.trigger ?? null)
@@ -918,6 +927,13 @@ function WatchlistRowInner({
           .join(' · ')}
       >
         <span className={execTone}>{actionCard.action}</span>
+        {rowTimingKind !== 'hold' ? (
+          <ExecutionTimingBadge
+            kind={rowTimingKind}
+            testId="row-exec-timing"
+            className="ml-1 align-middle"
+          />
+        ) : null}
         {typeof actionCard.suggestAddPct === 'number' ? (
           <span className="ml-1 font-normal text-emerald-700/90">
             +{actionCard.suggestAddPct.toFixed(0)}%

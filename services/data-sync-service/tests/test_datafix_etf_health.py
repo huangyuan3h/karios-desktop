@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 def test_etf_snapshot_universe_matches_script() -> None:
-    from data_sync_service.service import etf_snapshot
-
     import ast
+
+    from data_sync_service.service import etf_snapshot
 
     script = Path(__file__).resolve().parent.parent / "scripts" / "sync_etf_daily.py"
     tree = ast.parse(script.read_text(encoding="utf-8"))

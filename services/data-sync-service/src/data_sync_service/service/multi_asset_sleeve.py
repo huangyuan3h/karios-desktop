@@ -149,6 +149,15 @@ def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
     fill day). Include the session before ``entryDate`` so Live reproduces the
     engine's trail decisions (2026-09-17 audit: a 12.0% engine drawdown read
     as 7.8% live on the fill-day reference and the leg was not exited).
+
+    Causal clock: the signal is evaluated on **completed closes only**. A
+    breach on the latest completed session (`day` bar present) signals the
+    next open. Once fired, the exit is **sticky** until the leg leaves the
+    holdings: on a later morning/session where `day` has no bar yet (or the
+    close bounced back inside the band) the same SELL_TO_REPO is still
+    returned as a pending open sell. Before 2026-11-05 the function only
+    looked at ``d == day``; without today's bar ``cur_close`` stayed 0 and a
+    previously-triggered trail read as HOLD (the 513350 miss).
     """
     held_sym = str(held.get("symbol") or "").upper()
     held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
@@ -164,23 +173,40 @@ def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
         prior = [d for d in dates if d < entry[:10]]
         start = prior[-1] if prior else entry[:10]
         peak = 0.0
-        cur_close = 0.0
+        signal_date = ""
+        signal_dd = 0.0
         for d in dates:
             if d < start:
                 continue
             c = float(mp[d])
             if c > peak:
                 peak = c
-            if d == day:
-                cur_close = c
-        if peak > 0 and cur_close > 0 and cur_close < peak * (1 - TRAILING_PCT / 100):
-            dd = (peak - cur_close) / peak * 100
-            return {
-                "active": True,
-                "action": "SELL_TO_REPO",
-                "message": (f"{held_sym}峰值回撤{dd:.1f}% ≥{TRAILING_PCT:.0f}% → 转逆回购"),
-                "label": "卖出转repo(止损)",
-            }
+            # Sticky: the FIRST breached completed close owns the signal.
+            if not signal_date and peak > 0 and c < peak * (1 - TRAILING_PCT / 100):
+                signal_date = d
+                signal_dd = (peak - c) / peak * 100
+        if not signal_date or signal_dd <= 0:
+            return None
+        # `day` itself has a completed bar → fresh close signal, execute next
+        # open. Otherwise the signal predates `day` and is still unexecuted.
+        pending = signal_date < str(day)[:10]
+        execute_hint = (
+            "待开盘卖出转逆回购（信号已触发，未执行）" if pending else "次日开盘卖出转逆回购"
+        )
+        message = f"{held_sym}峰值回撤{signal_dd:.1f}% ≥{TRAILING_PCT:.0f}% → " + (
+            f"次日开盘卖转逆回购（信号日 {signal_date}，待开盘执行）" if pending else "转逆回购"
+        )
+        return {
+            "active": True,
+            "action": "SELL_TO_REPO",
+            "message": message,
+            "label": "卖出转repo(止损)",
+            "symbol": held_sym,
+            "trailExit": True,
+            "pendingOpenSell": pending,
+            "signalDate": signal_date,
+            "executeHint": execute_hint,
+        }
     except Exception as exc:
         logger.warning("multi-sleeve trailing check failed: %s", exc)
     return None
@@ -199,6 +225,147 @@ def _parking_ts_for(held: dict[str, Any]) -> str | None:
             if c["key"] == key:
                 return c["ts"]
     return None
+
+
+# 14:30 intraday warning (2026-11-05): "near" = within this % above the trail
+# threshold. Warning only — the trading clock stays close-signal → next-open.
+TRAIL_WARN_NEAR_PCT = 1.0
+
+
+def parking_trail_levels(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
+    """Peak / threshold price for a held parking leg, on the RAW print basis.
+
+    ``bar_5min`` 14:30 prints are raw, and ETF ``daily`` closes are raw too
+    (``adj_factor`` NULL) — using the raw series keeps the threshold directly
+    comparable to the intraday print. The trail RATIO is basis-invariant
+    (peak × (1 − 8%)), so this is the same rule the close-based
+    ``_etf_trail_exit`` applies. Fail-open: no bars → None (no warning).
+    """
+    held_sym = str(held.get("symbol") or "").upper()
+    held_ts = str(held.get("ts_code") or held_sym.replace("ETF:", "") + ".SH")
+    entry = str(held.get("entryDate") or held.get("entry_date") or "")
+    try:
+        mp = _raw_series(held_ts, as_of=day, days=505)
+        if not mp:
+            return None
+        prior = [d for d in sorted(mp) if d < (entry[:10] if entry else "")]
+        start = prior[-1] if prior else (entry[:10] if entry else sorted(mp)[0])
+        window = [d for d in sorted(mp) if d >= start]
+        if not window:
+            return None
+        peak = max(float(mp[d]) for d in window)
+        if peak <= 0:
+            return None
+        return {
+            "symbol": held_sym,
+            "ts_code": held_ts,
+            "entryDate": entry,
+            "windowStart": start,
+            "bars": len(window),
+            "peak": round(peak, 4),
+            "thresholdPx": round(peak * (1 - TRAILING_PCT / 100), 4),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("multi-sleeve trail levels failed: %s", exc)
+        return None
+
+
+def intraday_trail_watch(
+    held: dict[str, Any], *, day: str, px: float | None
+) -> dict[str, Any] | None:
+    """Conditional Must-watch when a 14:30 print is at/under the trail line.
+
+    Does NOT change the trading clock: only a completed close finalizes the
+    signal (``_etf_trail_exit``). This is the early warning so the user is not
+    surprised after the close.
+    """
+    if not px or float(px) <= 0:
+        return None
+    levels = parking_trail_levels(held, day=day)
+    if not levels:
+        return None
+    peak = float(levels["peak"])
+    threshold = float(levels["thresholdPx"])
+    px = float(px)
+    if px > threshold * (1 + TRAIL_WARN_NEAR_PCT / 100.0):
+        return None
+    dd = (peak - px) / peak * 100.0
+    gap = (px / threshold - 1.0) * 100.0
+    status = "breached" if px <= threshold else "near"
+    sym = levels["symbol"]
+    if status == "breached":
+        message = (
+            f"{sym}现价{px:.3f} ≤ 门槛价{threshold:.3f}"
+            f"（峰值{peak:.3f} 回撤{dd:.1f}%）→ 现价已达卖出条件"
+        )
+    else:
+        message = (
+            f"{sym}现价{px:.3f} 逼近门槛价{threshold:.3f}"
+            f"（高{gap:.1f}% 回撤{dd:.1f}%）→ 将触线，收盘确认"
+        )
+    return {
+        "active": True,
+        "status": status,
+        "symbol": sym,
+        "px": round(px, 4),
+        "thresholdPx": levels["thresholdPx"],
+        "peak": levels["peak"],
+        "drawdownPct": round(dd, 1),
+        "gapPct": round(gap, 1),
+        "message": message,
+        "executeHint": "若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）",
+        "tradeDate": str(day)[:10],
+    }
+
+
+def latest_1430_print(ts_code: str, *, day: str) -> float | None:
+    """Today's 14:30 print for one ts_code (raw), None when not captured yet."""
+    if not ts_code:
+        return None
+    try:
+        from data_sync_service.db.bar_5min import fetch_1430_closes
+
+        rows = fetch_1430_closes([ts_code], str(day)[:10], str(day)[:10])
+        return (rows.get(ts_code) or {}).get(str(day)[:10])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("multi-sleeve 14:30 print read failed: %s", exc)
+        return None
+
+
+def intraday_trail_watch_for_day(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
+    """Read today's 14:30 print (or the latest intraday print) then evaluate.
+
+    Source order (2026-11-05 steer: 当时价**或最新价**):
+      1. ``live_1430`` snapshot row for ``day`` (the 14:30 print);
+      2. newest stored intraday print of ``day`` (``bar_5min``, any slot) when
+         the snapshot row is missing for this symbol.
+    No print → no warning (never guess, never network).
+    """
+    held_ts = str(
+        held.get("ts_code") or str(held.get("symbol") or "").upper().replace("ETF:", "") + ".SH"
+    )
+    px = latest_1430_print(held_ts, day=day)
+    source = "live_1430"
+    if not px:
+        px = latest_intraday_print(held_ts, day=day)
+        source = "bar_5min_latest"
+    warn = intraday_trail_watch(held, day=day, px=px)
+    if warn:
+        warn["pxSource"] = source
+    return warn
+
+
+def latest_intraday_print(ts_code: str, *, day: str) -> float | None:
+    """Newest stored intraday print for one ts_code today (raw, no network)."""
+    if not ts_code:
+        return None
+    try:
+        from data_sync_service.db.bar_5min import fetch_latest_intraday_close
+
+        return fetch_latest_intraday_close(ts_code, str(day)[:10])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("multi-sleeve latest intraday print read failed: %s", exc)
+        return None
 
 
 _MERGED_CACHE: dict[str, Any] = {"at": 0.0, "data": {}}
@@ -485,6 +652,15 @@ def build_multi_asset_sleeve(
     held = None
     held_c = None
     for h in holdings:
+        # Registry rows are watchlist entries too: a parking ETF with 0% is NOT
+        # a held leg. Picking it made the sleeve "rotate" a ghost leg (513110
+        # at 0% in the 2026-11-05 screenshot) and skip the real 63.5% OIL trail.
+        try:
+            pos = float(h.get("positionPct", h.get("sleeve_pct") or 0) or 0)
+        except (TypeError, ValueError):
+            pos = 0.0
+        if pos <= 0:
+            continue
         sym = str(h.get("symbol") or "").upper()
         ts = str(h.get("ts_code") or "").upper()
         for c in CANDIDATES:
@@ -515,6 +691,12 @@ def build_multi_asset_sleeve(
         if trail is not None:
             out.update(trail)
             return out
+        # 14:30 early warning (2026-11-05): a print at/under the trail line is a
+        # conditional Must-watch. It never changes `action` — only a completed
+        # close finalizes the exit (close signal → next open).
+        warn = intraday_trail_watch_for_day(held, day=day)
+        if warn:
+            out["intradayWarn"] = warn
     held_sym = str((held or {}).get("symbol") or "").upper()
     pick_sym = str((etf_pick or {}).get("symbol") or "").upper()
 
@@ -526,6 +708,10 @@ def build_multi_asset_sleeve(
                     "action": "SELL_TO_REPO",
                     "message": f"全候选跌破200日线 → 卖出 {held_sym} 转逆回购",
                     "label": "卖出转repo",
+                    "symbol": held_sym,
+                    "signalDate": day,
+                    "pendingOpenSell": False,
+                    "executeHint": "次日开盘卖出转逆回购",
                 }
             )
             return out
@@ -578,6 +764,10 @@ def build_multi_asset_sleeve(
                     f"({etf_pick['name']} mom60 {etf_pick['mom60']}%)"
                 ),
                 "label": f"轮动至 {etf_pick['key']}",
+                "symbol": held_sym,
+                "signalDate": day,
+                "pendingOpenSell": False,
+                "executeHint": "次日开盘执行轮动",
             }
         )
         return out
@@ -600,6 +790,10 @@ def build_multi_asset_sleeve(
                 f" · 闲置 {idle:.0f}% → 买入"
             ),
             "label": f"买入 {etf_pick['key']}",
+            "symbol": etf_pick.get("symbol"),
+            "signalDate": day,
+            "pendingOpenSell": False,
+            "executeHint": "次日开盘买入",
         }
     )
     return out

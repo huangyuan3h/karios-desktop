@@ -54,6 +54,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           version: "latest"
+          # Pin 3.13: uv "latest" otherwise picks 3.15, and psycopg-binary has no cp315 wheel.
+          python-version: "3.13"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -44,6 +44,10 @@ const SPANS: Array<{ id: Span; label: string }> = [
   { id: '3y', label: '3Y' },
 ];
 
+/** Chart slots in render order — callers can render a subset (e.g. Dashboard 3-chart panel). */
+export type FlowSectionId = 'total' | 'etf' | 'margin' | 'north' | 'sm';
+const ALL_SECTIONS: FlowSectionId[] = ['total', 'etf', 'margin', 'north', 'sm'];
+
 type FieldSpec = {
   key: string;
   label: string;
@@ -113,16 +117,21 @@ function MiniChart({
   children,
   testId,
   syncId,
+  height = 120,
+  hidden = false,
 }: {
   rows: Array<FundFlowRow & { totalD20Yi?: number | null }>;
   tickDates: string[];
   children: React.ReactNode;
   testId: string;
   syncId: string;
+  height?: number;
+  /** Section not selected by the caller's `sections` prop. */
+  hidden?: boolean;
 }) {
-  if (!rows.length) return null;
+  if (hidden || !rows.length) return null;
   return (
-    <div className="h-[120px] w-full" data-testid={testId}>
+    <div className="w-full" style={{ height }} data-testid={testId}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={rows as unknown as MiniDatum[]}
@@ -149,10 +158,13 @@ function MiniChart({
 function SectionHeader({
   title,
   chips,
+  hidden = false,
 }: {
   title: string;
   chips: Array<{ text: string; color?: string; danger?: boolean }>;
+  hidden?: boolean;
 }) {
+  if (hidden) return null;
   return (
     <div className="mb-0.5 flex flex-wrap items-center gap-2 text-[9px] text-[var(--k-muted)]">
       <span className="font-medium text-[var(--k-fg)]">{title}</span>
@@ -178,23 +190,38 @@ function SectionHeader({
  *
  * 默认窗口与港湾 Timeline 同步（props start/end），十字线跨组件联动
  * （recharts 按 index 同步 → 同窗口才对齐）；切换 6M/1Y/3Y 后用自身窗口.
+ *
+ * Dashboard「资金流全景」复用同一组件：`sections` 只留 3 张图、`chartHeight`
+ * 放大、`embedded` 去掉外框（外层 section 提供卡片边框）。
  */
 export function FundFlowPanel({
   className,
   start: syncStart,
   end: syncEnd,
+  sections = ALL_SECTIONS,
+  chartHeight = 120,
+  span = '1y',
+  embedded = false,
 }: {
   className?: string;
   /** Timeline 窗口（BacktestPage 传入）— 同步模式下十字线与 NAV 图联动. */
   start?: string;
   end?: string;
+  /** 要渲染的图（按面板固定顺序输出），默认全部. */
+  sections?: FlowSectionId[];
+  /** 单图高度 px，默认 120. */
+  chartHeight?: number;
+  /** 无 Timeline 窗口时的默认跨度，默认 1Y. */
+  span?: FlowSpan;
+  /** 去掉外层边框/底色，供 Dashboard 卡片内嵌. */
+  embedded?: boolean;
 }) {
   type Mode = 'sync' | FlowSpan;
-  const [mode, setMode] = React.useState<Mode>(syncStart ? 'sync' : '1y');
+  const [mode, setMode] = React.useState<Mode>(syncStart ? 'sync' : span);
   const win = React.useMemo(() => {
     if (mode === 'sync' && syncStart && syncEnd) return { start: syncStart, end: syncEnd };
-    return flowSpanWindow(mode === 'sync' ? '1y' : mode);
-  }, [mode, syncStart, syncEnd]);
+    return flowSpanWindow(mode === 'sync' ? span : mode);
+  }, [mode, syncStart, syncEnd, span]);
   const q = useFundFlowSeriesQuery(win.start, win.end);
   const rawRows = q.data?.rows ?? [];
   const rows = React.useMemo(
@@ -206,12 +233,18 @@ export function FundFlowPanel({
   const last = flowLatest(rows);
   // recharts sync works by data index — same window → link with the NAV chart.
   const syncId = mode === 'sync' ? 'harbor-nav' : 'fund-flow';
+  const shown = React.useMemo(() => ALL_SECTIONS.filter((s) => sections.includes(s)), [sections]);
+  const show = (id: FlowSectionId) => shown.includes(id);
+  const frameCls = embedded
+    ? ''
+    : 'rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5';
 
   if (q.isLoading) {
     return (
       <div
         className={cn(
           'rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]',
+          embedded && 'border-0 bg-transparent px-0 py-0',
           className,
         )}
       >
@@ -224,6 +257,7 @@ export function FundFlowPanel({
       <div
         className={cn(
           'rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5 text-[10px] text-[var(--k-muted)]',
+          embedded && 'border-0 bg-transparent px-0 py-0',
           className,
         )}
       >
@@ -233,10 +267,7 @@ export function FundFlowPanel({
   }
 
   return (
-    <div
-      className={cn('rounded border border-purple-500/25 bg-purple-500/5 px-2 py-1.5', className)}
-      data-testid="fund-flow-panel"
-    >
+    <div className={cn(frameCls, className)} data-testid="fund-flow-panel">
       <div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[var(--k-muted)]">
         <span className="font-medium text-[var(--k-fg)]">资金流全景</span>
         <span>
@@ -288,6 +319,7 @@ export function FundFlowPanel({
       </div>
 
       <SectionHeader
+        hidden={!show('total')}
         title="三路资金叠加（20 日累计 · 亿元 1:1:1，北向 2024-08-19 后为成交额）"
         chips={[
           { text: '国家队 20日', color: FF_COLORS.etf },
@@ -296,7 +328,14 @@ export function FundFlowPanel({
           { text: '三路合计(虚线)', color: FF_COLORS.total },
         ]}
       />
-      <MiniChart rows={rows} tickDates={tickDates} testId="ff-total" syncId={syncId}>
+      <MiniChart
+        hidden={!show('total')}
+        rows={rows}
+        tickDates={tickDates}
+        testId="ff-total"
+        syncId={syncId}
+        height={chartHeight}
+      >
         <YAxis
           domain={['auto', 'auto']}
           tick={{ fontSize: 9, fill: FF_COLORS.axis }}
@@ -378,13 +417,21 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
+        hidden={!show('etf')}
         title="国家队 · 宽基 ETF 份额（亿份，4 码）"
         chips={[
           { text: `20日Δ ${fmtSigned(last?.etfShareD20Pct, 1, '%')}`, color: FF_COLORS.etf },
           { text: '红带 = 撤退态（指数<MA200 且份额净缩）', color: '#ef4444' },
         ]}
       />
-      <MiniChart rows={rows} tickDates={tickDates} testId="ff-etf" syncId={syncId}>
+      <MiniChart
+        hidden={!show('etf')}
+        rows={rows}
+        tickDates={tickDates}
+        testId="ff-etf"
+        syncId={syncId}
+        height={chartHeight}
+      >
         <YAxis
           domain={['auto', 'auto']}
           tick={{ fontSize: 9, fill: FF_COLORS.axis }}
@@ -445,12 +492,20 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
+        hidden={!show('margin')}
         title="两融余额（万亿元，全市场 · 仅完整日）"
         chips={[
           { text: `20日Δ ${fmtSigned(last?.marginD20Pct, 1, '%')}`, color: FF_COLORS.margin },
         ]}
       />
-      <MiniChart rows={rows} tickDates={tickDates} testId="ff-margin" syncId={syncId}>
+      <MiniChart
+        hidden={!show('margin')}
+        rows={rows}
+        tickDates={tickDates}
+        testId="ff-margin"
+        syncId={syncId}
+        height={chartHeight}
+      >
         <YAxis
           domain={['auto', 'auto']}
           tick={{ fontSize: 9, fill: FF_COLORS.axis }}
@@ -493,13 +548,21 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
+        hidden={!show('north')}
         title="北向资金（亿元 · 2024-08-19 后为成交额口径，非净买）"
         chips={[
           { text: '日线成交额', color: FF_COLORS.north },
           { text: `20日累计 ${fmtSigned(last?.northD20Yi, 0, '亿')}`, color: FF_COLORS.northCum },
         ]}
       />
-      <MiniChart rows={rows} tickDates={tickDates} testId="ff-north" syncId={syncId}>
+      <MiniChart
+        hidden={!show('north')}
+        rows={rows}
+        tickDates={tickDates}
+        testId="ff-north"
+        syncId={syncId}
+        height={chartHeight}
+      >
         <YAxis
           yAxisId="daily"
           domain={['auto', 'auto']}
@@ -566,10 +629,18 @@ export function FundFlowPanel({
       </MiniChart>
 
       <SectionHeader
+        hidden={!show('sm')}
         title="散户 · 小单净买占比（%，2023+）"
         chips={[{ text: `最新 ${fmtSigned(last?.smNetPct, 2, '%')}`, color: FF_COLORS.sm }]}
       />
-      <MiniChart rows={rows} tickDates={tickDates} testId="ff-sm" syncId={syncId}>
+      <MiniChart
+        hidden={!show('sm')}
+        rows={rows}
+        tickDates={tickDates}
+        testId="ff-sm"
+        syncId={syncId}
+        height={chartHeight}
+      >
         <YAxis
           domain={['auto', 'auto']}
           tick={{ fontSize: 9, fill: FF_COLORS.axis }}
@@ -606,13 +677,15 @@ export function FundFlowPanel({
 
       <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
         显示层 · 不影响交易 · 同步模式下十字线与上方 NAV 图联动（按 index 同步 → 同窗口才对齐）·
-        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye（仅 3 交易所完整日）、北向 =
-        2024-08-19 前日净买 / 后成交额（跨口径 20 日累计已断开，不混算）· 份额 2021-22 起完整 ·
-        两融 2021+ · 北向净买仅 2021–2024-08-18 有效 · 小单 2023+（2025-09~2026-07 缺口已回填）
+        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye（仅 3
+        交易所完整日）、北向 = 2024-08-19 前日净买 / 后成交额（跨口径 20 日累计已断开，不混算）·
+        份额 2021-22 起完整 · 两融 2021+ · 北向净买仅 2021–2024-08-18 有效 · 小单
+        2023+（2025-09~2026-07 缺口已回填）
         {q.data?.marginIncompleteDates?.length ? (
           <span className="text-red-600 dark:text-red-400">
             {' '}
-            · 两融部分发布日已剔除（{q.data.marginIncompleteDates.slice(-3).join('、')}）：当日余额仅供参考，不计入累计。
+            · 两融部分发布日已剔除（{q.data.marginIncompleteDates.slice(-3).join('、')}
+            ）：当日余额仅供参考，不计入累计。
           </span>
         ) : null}
       </div>

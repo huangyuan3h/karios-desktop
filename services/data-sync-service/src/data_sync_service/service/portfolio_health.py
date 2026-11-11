@@ -881,6 +881,9 @@ def build_portfolio_health(
                     holding["trailExit"] = True
                     holding["action"] = trail["action"]
                     holding["message"] = trail["message"]
+                    holding["pendingOpenSell"] = bool(trail.get("pendingOpenSell"))
+                    holding["signalDate"] = trail.get("signalDate")
+                    holding["executeHint"] = trail.get("executeHint")
             except Exception:
                 pass
             multi_holdings.append(holding)
@@ -891,7 +894,32 @@ def build_portfolio_health(
         "multiAssetSleeve": multi_asset_sleeve,
         "multiAssetHoldings": multi_holdings,
         "pulseHints": pulse_hints,
+        **_agent_advice(multi_asset_sleeve, multi_holdings, day),
     }
+
+
+def _agent_advice(
+    sleeve: dict[str, Any],
+    holdings: list[dict[str, Any]],
+    day: str,
+) -> dict[str, Any]:
+    """Server-side whip flag + effective overlays (fail-open, display only).
+
+    The Watchlist and the agent contract read the same values, so a rebuy
+    warning survives a browser restart. Neither field rewrites ``sleeve.action``
+    (k=0, TRAIL_PCT and every weight stay untouched).
+    """
+    try:
+        from data_sync_service.service.agent_overlays import group_overlays, list_overlays
+        from data_sync_service.service.agent_whip import evaluate_whip
+
+        whip = evaluate_whip(sleeve, holdings, day=day, observe=True)
+        overlays = group_overlays(list_overlays(day=day))
+    except Exception as exc:  # noqa: BLE001 — advice layer never breaks the health read
+        logger.warning("portfolio health agent advice failed: %s", exc)
+        whip = {"sameKeyRebuy": False, "pickKey": None, "keys": [], "overlay": None}
+        overlays = {"active": [], "proposed": [], "expired": [], "all": []}
+    return {"whip": whip, "overlays": overlays}
 
 
 def _market_holdings_symbols(market: str) -> list[str]:

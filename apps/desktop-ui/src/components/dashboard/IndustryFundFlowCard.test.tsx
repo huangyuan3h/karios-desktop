@@ -140,3 +140,29 @@ describe('IndustryFundFlowCard', () => {
     expect(screen.getByText('NO')).toHaveClass('text-red-600');
   });
 });
+
+describe('IndustryFundFlowCard source honesty', () => {
+  it('labels fallback dates as Tushare aggregate, not East Money data', () => {
+    render(
+      <IndustryFundFlowCard
+        summary={{
+          ...SUMMARY,
+          industryFundFlow: {
+            ...SUMMARY.industryFundFlow,
+            sources: {
+              primary: 'eastmoney_bkzj',
+              fallbackDates: ['2026-08-07'],
+              byDate: { '2026-08-07': 'tushare_moneyflow_sw_l1' },
+            },
+          },
+        }}
+        hotIndustryPicks={[]}
+        onAddReference={onAddReference}
+        copyStatus={null}
+        onCopyIndustryMarkdown={() => undefined}
+      />,
+    );
+    expect(screen.getByText(/Tushare 个股大单按申万一级汇总/)).toBeInTheDocument();
+    expect(screen.getByText(/非东财原值/)).toBeInTheDocument();
+  });
+});

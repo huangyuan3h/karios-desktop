@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import random
 import subprocess
@@ -46,6 +47,9 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
+logger = logging.getLogger(__name__)
+
+
 # Proxy degradation latch shared with _eastmoney_board_fund_flow_daykline:
 # once the EASTMONEY_PROXY exit is confirmed down, skip it process-wide to
 # stop retrying a dead proxy on every industry board (2026-08-17: 16/31
@@ -59,6 +63,14 @@ _EM_PROXY_DEGRADED = False
 # the next successful fetch (a new process after the ban cools).
 _EM_HIST_FAIL_STREAK = 0
 _EM_HIST_SKIP = False
+
+# Last EOD (dataapi/bkzj) error text; cleared on success. Used by the sync to
+# report an honest error (and EM attribution) instead of a silent 0-row success.
+_LAST_EOD_ERROR: str | None = None
+
+
+def get_last_eod_error() -> str | None:
+    return _LAST_EOD_ERROR
 
 
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
@@ -242,10 +254,13 @@ def _try_akshare_hist(industry_name: str, *, days: int) -> list[dict[str, Any]]:
 
 
 def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
+    global _LAST_EOD_ERROR
     rows: list[dict[str, Any]] = []
     try:
         rows = _with_retry(lambda: _dataapi_getbkzj("f62", "m:90 t:2"), tries=3)
-    except Exception:
+        _LAST_EOD_ERROR = None
+    except Exception as exc:  # noqa: BLE001
+        _LAST_EOD_ERROR = f"eastmoney_bkzj: {exc}"[:500]
         rows = []
     out: list[dict[str, Any]] = []
     d = as_of.strftime("%Y-%m-%d")
@@ -412,6 +427,31 @@ def sync_cn_industry_fund_flow(
 
     fetched_items = fetch_cn_industry_fund_flow_eod(as_of)
     items = [it for it in fetched_items if row_is_sw_l1(it)]
+    eod_error = get_last_eod_error()
+    fallback_used = False
+    fallback_errors: list[str] = []
+    if not items:
+        # East Money EOD unavailable or filtered to nothing → Tushare aggregate
+        # (个股 moneyflow 按申万一级汇总，口径=大单+超大单净额). Same economic
+        # metric, different vendor; never labelled as East Money data.
+        from data_sync_service.service import industry_fund_flow_tushare as ts_flow
+
+        fallback_rows, fallback_errors = ts_flow.aggregate_for_dates([as_of.isoformat()])
+        if fallback_rows:
+            items = fallback_rows
+            fallback_used = True
+    if not items:
+        detail = "; ".join(
+            x for x in [eod_error or "eastmoney_bkzj: no rows", *fallback_errors] if x
+        )[:800]
+        return {
+            "ok": False,
+            "asOfDate": as_of.isoformat(),
+            "rows": 0,
+            "error": detail,
+            "providerErrors": [x for x in [eod_error, *fallback_errors] if x],
+        }
+
     updated_at = _now_iso()
     daily_rows = [
         {
@@ -432,7 +472,9 @@ def sync_cn_industry_fund_flow(
     hist_source_rows = [r for r in items if r.get("industry_name")]
     hist_rows: list[dict[str, Any]] = []
     hist_failures = 0
-    if hist_source_rows:
+    # When the EOD leg already fell back, every EM history call would just add
+    # 31 doomed network attempts — go straight to the Tushare history fill.
+    if hist_source_rows and not fallback_used:
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {
                 pool.submit(_hist_rows_for_top_row, r, days=days, updated_at=updated_at): r
@@ -446,14 +488,58 @@ def sync_cn_industry_fund_flow(
 
     if hist_rows:
         upsert_daily_rows(hist_rows)
+
+    # Fill history gaps that East Money could not deliver (push2his down) with
+    # the same Tushare aggregate. Only dates with NO rows are written, so an
+    # EM day is never overwritten and no same-day vendor mixing can happen.
+    missing_dates: list[str] = []
+    try:
+        needed_dates = trade_dates_upto(as_of.isoformat(), days, fallback_dates_fn=get_dates_upto)
+        present_dates = {str(r.get("date") or "") for r in get_rows_for_dates(needed_dates)}
+        missing_dates = [d for d in needed_dates if d and d not in present_dates]
+    except Exception as exc:  # noqa: BLE001 - calendar/read hiccup must not fail today
+        logger.warning("industry history gap check failed: %s", exc)
+    history_fallback_rows = 0
+    if missing_dates:
+        from data_sync_service.service import industry_fund_flow_tushare as ts_flow
+
+        fb_hist, fb_hist_errors = ts_flow.aggregate_for_dates(missing_dates)
+        fallback_errors.extend(fb_hist_errors)
+        if fb_hist:
+            history_fallback_rows = upsert_daily_rows(fb_hist)
+            hist_rows.extend(fb_hist)
+
     out: dict[str, Any] = {
         "ok": True,
         "asOfDate": as_of.strftime("%Y-%m-%d"),
         "rows": len(daily_rows),
-        "filteredRows": max(0, len(fetched_items) - len(items)),
+        "filteredRows": max(0, len(fetched_items) - len(items)) if not fallback_used else 0,
         "histRows": len(hist_rows),
+        "histFallbackRows": history_fallback_rows,
         "histFailures": hist_failures,
+        "source": items[0].get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,
     }
+    if fallback_used:
+        out.update(
+            {
+                "degraded": True,
+                "unavailable": True,
+                "reason": "eastmoney_unavailable",
+                "fallbackUsed": True,
+                "fallbackSource": items[0].get("source") or "tushare_moneyflow_sw_l1",
+                "message": (
+                    "东方财富行业资金流暂不可用；已改用 Tushare 个股资金流按申万一级汇总"
+                    "（大单+超大单净额，非东财原值），口径与主力净流入一致。"
+                ),
+                "warning": "industry_fund_flow：东财不可用，已切换 Tushare 大单汇总",
+                "warnings": [
+                    "industry_fund_flow：东财不可用，已切换 Tushare 大单汇总（非东财原值）"
+                ],
+                "rawError": eod_error,
+            }
+        )
+    if fallback_errors:
+        out["providerErrors"] = fallback_errors
     if as_of != today:
         out["catchup"] = True
         out["message"] = "non-trading day catchup: synced through latest open day"
@@ -490,4 +576,13 @@ def get_cn_industry_fund_flow(
                 "source": r.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,
             }
         )
-    return {"asOfDate": d, "days": days, "topN": top_n, "dates": dates, "top": top}
+    sources = sorted({str(r.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE) for r in top})
+    return {
+        "asOfDate": d,
+        "days": days,
+        "topN": top_n,
+        "dates": dates,
+        "top": top,
+        "sources": sources,
+        "fallbackUsed": any(s != DEFAULT_INDUSTRY_FLOW_SOURCE for s in sources),
+    }
