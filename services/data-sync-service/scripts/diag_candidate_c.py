@@ -86,12 +86,12 @@ def build_signals() -> pd.DataFrame:
     ms = pd.Series(mz).reindex(cal)
     df["marginD20"] = (ms - ms.shift(20)) / 1e8  # 亿元
 
-    # northbound 20d sum (万元 -> 亿元)
+    # northbound 20d sum (百万元 -> 亿元)
     nz = {str(d): float(v) for d, v in _rows(
         "SELECT trade_date, SUM(north_money) FROM cn_moneyflow_hsgt WHERE trade_date BETWEEN %s AND %s "
         "GROUP BY trade_date ORDER BY trade_date", (LOAD_START, LOAD_END))}
     ns = pd.Series(nz).reindex(cal)
-    df["northD20"] = ns.rolling(20, min_periods=20).sum() / 1e4
+    df["northD20"] = ns.rolling(20, min_periods=20).sum() / 1e2
 
     # retail small-order net-buy share (20d mean of sm_net/turnover)
     fz = {str(d): (float(a), float(b)) for d, a, b in _rows(
