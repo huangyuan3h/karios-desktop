@@ -163,4 +163,3 @@ def _emit_action(panel: dict) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("satellite_live_panel: action push failed: %s", exc)
-

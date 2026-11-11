@@ -182,7 +182,11 @@ def test_enrich_batch_success(monkeypatch) -> None:
 def test_enrich_batch_ignores_model_supplied_relevance(monkeypatch) -> None:
     """Relevance stays Python-owned even if the local model invents a score."""
     monkeypatch.setattr(ne, "_get_watchlist_symbols", lambda: [])
-    monkeypatch.setattr(ne, "_call_llm", lambda p: '[{"tickers": [], "importance": 2, "relevanceScore": 99, "relevance_score": 99}]')
+    monkeypatch.setattr(
+        ne,
+        "_call_llm",
+        lambda p: '[{"tickers": [], "importance": 2, "relevanceScore": 99, "relevance_score": 99}]',
+    )
     writes: list[dict] = []
     monkeypatch.setattr(ne, "update_item_enrichment", lambda **kw: writes.append(kw) or True)
     out = ne.enrich_batch(_items(1))

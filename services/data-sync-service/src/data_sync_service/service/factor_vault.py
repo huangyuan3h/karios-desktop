@@ -604,19 +604,12 @@ def rolling_proxy(factor: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def classify_factor(
-    percentile: float | None, net: float, trades: int
-) -> tuple[str, str]:
+def classify_factor(percentile: float | None, net: float, trades: int) -> tuple[str, str]:
     """Uniform H2k health state. Returns (status, badge).
 
     status: cold | watch | revived; badge: 冷库 | 观察 | 复活.
     """
-    if (
-        percentile is not None
-        and percentile >= REVIVAL_X
-        and net > 0
-        and trades >= MIN_TRADES
-    ):
+    if percentile is not None and percentile >= REVIVAL_X and net > 0 and trades >= MIN_TRADES:
         return "revived", "复活"
     if trades < MIN_TRADES:
         return "watch", "观察"
@@ -630,9 +623,7 @@ def classify_factor(
     return "watch", "观察"
 
 
-def position_for_factor(
-    spark_revived: list[bool], trades: int
-) -> tuple[int, int]:
+def position_for_factor(spark_revived: list[bool], trades: int) -> tuple[int, int]:
     """Suggested 0/10/20 position + confirmation count.
 
     Counts trailing consecutive revived windows; step-up needs >= 2
@@ -679,12 +670,7 @@ def _spark_and_history(
             n_f = int(w.get("n") or 0)
         except (TypeError, ValueError):
             n_f = 0
-        is_rev = (
-            pct_f is not None
-            and pct_f >= REVIVAL_X
-            and net_f > 0
-            and n_f >= MIN_TRADES
-        )
+        is_rev = pct_f is not None and pct_f >= REVIVAL_X and net_f > 0 and n_f >= MIN_TRADES
         revived_flags.append(is_rev)
         history.append(
             {
@@ -718,11 +704,7 @@ def build_factors(
                 if key in ov and ov[key] is not None:
                     proxy[key] = ov[key]
         try:
-            pct = (
-                float(proxy["percentile"])
-                if proxy["percentile"] is not None
-                else None
-            )
+            pct = float(proxy["percentile"]) if proxy["percentile"] is not None else None
         except (TypeError, ValueError):
             pct = None
         try:
@@ -734,11 +716,7 @@ def build_factors(
         except (TypeError, ValueError):
             trades = 0
         try:
-            win = (
-                float(proxy["win_rate"])
-                if proxy.get("win_rate") is not None
-                else None
-            )
+            win = float(proxy["win_rate"]) if proxy.get("win_rate") is not None else None
         except (TypeError, ValueError):
             win = None
         status, badge = classify_factor(pct, net, trades)

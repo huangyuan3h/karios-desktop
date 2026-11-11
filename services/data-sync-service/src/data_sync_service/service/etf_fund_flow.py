@@ -973,9 +973,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             net_flow_metric = "main_net_inflow"
         else:
             net_flow_metric = None
-        net_3d_metrics = {
-            _row_net_inflow_metric(rows_by_date.get(d)) for d in (last_3 or [])
-        }
+        net_3d_metrics = {_row_net_inflow_metric(rows_by_date.get(d)) for d in (last_3 or [])}
         if net_3d is None:
             net_flow_3d_metric: str | None = None
         elif data_source == "tushare":

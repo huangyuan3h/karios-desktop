@@ -112,7 +112,10 @@ def test_apply_history_counts_days() -> None:
     out = fvv.apply_history(rows, prev)
     assert all(r["days_since_change"] == 2 for r in out)
     flipped = [
-        {"date": "2026-10-02", "states": {r["id"]: ("watch" if r["status"] == "cold" else r["status"]) for r in rows}}
+        {
+            "date": "2026-10-02",
+            "states": {r["id"]: ("watch" if r["status"] == "cold" else r["status"]) for r in rows},
+        }
     ]
     out2 = fvv.apply_history(fvv.build_factors(), flipped)
     cold = [r for r in out2 if r["id"] == "starship_b"][0]

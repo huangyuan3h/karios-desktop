@@ -41,9 +41,7 @@ def load_live_sleeve(day: str) -> dict[str, Any]:
         raw_holdings = [
             {
                 "symbol": str(r.get("symbol") or "").upper(),
-                "positionPct": (r.get("payload") or {}).get(
-                    "positionPct", r.get("positionPct")
-                ),
+                "positionPct": (r.get("payload") or {}).get("positionPct", r.get("positionPct")),
                 "costPrice": (r.get("payload") or {}).get("costPrice", r.get("costPrice")),
                 "entryDate": (r.get("payload") or {}).get("entryDate", r.get("entryDate")),
                 "name": (r.get("payload") or {}).get("name", r.get("name")),
@@ -112,7 +110,9 @@ def _sleeve_lines(sleeve: dict[str, Any]) -> tuple[list[str], list[dict[str, Any
         _adj("SELL", sym, message or "停车场让位股票核心", to="股票篮", hint_text=hint)
     elif action == "BUY":
         sym = symbol or str((sleeve.get("pick") or {}).get("symbol") or "")
-        lines.append(f"买入：{sym}（{message or '闲置现金停入停车 ETF'}；{hint or '次日开盘买入'}）")
+        lines.append(
+            f"买入：{sym}（{message or '闲置现金停入停车 ETF'}；{hint or '次日开盘买入'}）"
+        )
         _adj("BUY", sym, message or "闲置现金停车", hint_text=hint)
     elif action == "HOLD":
         pick = (sleeve.get("pick") or {}).get("symbol") or (sleeve.get("pick") or {}).get("key")

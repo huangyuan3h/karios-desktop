@@ -599,9 +599,7 @@ def _is_sina_cn_index(ts_code: str) -> bool:
     return False
 
 
-def _sina_cn_quotes_fresh(
-    ts_codes: list[str], *, force: bool = False
-) -> dict[str, dict[str, Any]]:
+def _sina_cn_quotes_fresh(ts_codes: list[str], *, force: bool = False) -> dict[str, dict[str, Any]]:
     """Fetch CN quotes from Sina for codes Tushare did not return (cached 20s)."""
     requested = sorted(
         {

@@ -191,17 +191,10 @@ def _etf_trail_exit(held: dict[str, Any], *, day: str) -> dict[str, Any] | None:
         # open. Otherwise the signal predates `day` and is still unexecuted.
         pending = signal_date < str(day)[:10]
         execute_hint = (
-            "待开盘卖出转逆回购（信号已触发，未执行）"
-            if pending
-            else "次日开盘卖出转逆回购"
+            "待开盘卖出转逆回购（信号已触发，未执行）" if pending else "次日开盘卖出转逆回购"
         )
-        message = (
-            f"{held_sym}峰值回撤{signal_dd:.1f}% ≥{TRAILING_PCT:.0f}% → "
-            + (
-                f"次日开盘卖转逆回购（信号日 {signal_date}，待开盘执行）"
-                if pending
-                else "转逆回购"
-            )
+        message = f"{held_sym}峰值回撤{signal_dd:.1f}% ≥{TRAILING_PCT:.0f}% → " + (
+            f"次日开盘卖转逆回购（信号日 {signal_date}，待开盘执行）" if pending else "转逆回购"
         )
         return {
             "active": True,
@@ -348,7 +341,9 @@ def intraday_trail_watch_for_day(held: dict[str, Any], *, day: str) -> dict[str,
          the snapshot row is missing for this symbol.
     No print → no warning (never guess, never network).
     """
-    held_ts = str(held.get("ts_code") or str(held.get("symbol") or "").upper().replace("ETF:", "") + ".SH")
+    held_ts = str(
+        held.get("ts_code") or str(held.get("symbol") or "").upper().replace("ETF:", "") + ".SH"
+    )
     px = latest_1430_print(held_ts, day=day)
     source = "live_1430"
     if not px:
@@ -371,7 +366,6 @@ def latest_intraday_print(ts_code: str, *, day: str) -> float | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("multi-sleeve latest intraday print read failed: %s", exc)
         return None
-
 
 
 _MERGED_CACHE: dict[str, Any] = {"at": 0.0, "data": {}}

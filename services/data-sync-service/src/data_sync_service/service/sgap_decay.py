@@ -153,7 +153,6 @@ def _norm_trade(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-
 def _month_add(ym: str, delta: int) -> str:
     """Shift YYYY-MM by delta months (delta may be negative)."""
     y, m = int(ym[:4]), int(ym[5:7])
@@ -161,9 +160,7 @@ def _month_add(ym: str, delta: int) -> str:
     return f"{idx // 12:04d}-{idx % 12 + 1:02d}"
 
 
-def _pad_monthly_through(
-    monthly: list[dict[str, Any]], as_of: date | str
-) -> list[dict[str, Any]]:
+def _pad_monthly_through(monthly: list[dict[str, Any]], as_of: date | str) -> list[dict[str, Any]]:
     """Append count=0 months after the last trade month through as_of YYYY-MM."""
     if isinstance(as_of, str):
         as_of_m = as_of[:7]

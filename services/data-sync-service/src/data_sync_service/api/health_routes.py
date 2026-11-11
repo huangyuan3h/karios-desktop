@@ -276,10 +276,7 @@ def _em_probe_source(spec: dict[str, Any]) -> dict[str, Any]:
     failing = status.get("failing") or []
     latched = bool(breaker.get("ban_latched")) or bool(scoped.get("ban_latched"))
     stale = (
-        age_minutes is None
-        or age_minutes > spec["thresholdMinutes"]
-        or bool(failing)
-        or latched
+        age_minutes is None or age_minutes > spec["thresholdMinutes"] or bool(failing) or latched
     )
     last = datetime.fromtimestamp(at, UTC).isoformat() if at else None
     return {

@@ -32,9 +32,7 @@ def _trail_sleeve(**over) -> dict:
 
 
 def test_homeport_pending_trail_lists_sell_to_repo() -> None:
-    out = compose_daily_adjust(
-        "homeport", trade_date="2026-11-05", sleeve=_trail_sleeve()
-    )
+    out = compose_daily_adjust("homeport", trade_date="2026-11-05", sleeve=_trail_sleeve())
     assert out["dailyAdjust"] is True
     assert out["noChange"] is False
     assert out["mustAct"] is True

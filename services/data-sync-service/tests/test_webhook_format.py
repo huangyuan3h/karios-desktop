@@ -241,4 +241,3 @@ def test_harbor_trail_alert_push() -> None:
     assert r["title"] == "🛑 港湾停车止损 · 2026.11.03"
     assert "ETF:513350" in r["body"]
     assert "次日开盘" in r["body"]
-

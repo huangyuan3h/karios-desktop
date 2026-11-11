@@ -32,9 +32,7 @@ def test_membership_cached_per_day(monkeypatch) -> None:
 
 
 def test_aggregate_converts_wan_to_cny_and_tags_source(monkeypatch) -> None:
-    monkeypatch.setattr(
-        tsf, "sw_l1_membership", lambda: {"600000.SH": ("801780.SI", "银行")}
-    )
+    monkeypatch.setattr(tsf, "sw_l1_membership", lambda: {"600000.SH": ("801780.SI", "银行")})
     monkeypatch.setattr(
         tsf,
         "_ensure_moneyflow_ingested",
@@ -112,7 +110,9 @@ def test_sync_uses_tushare_when_em_empty_and_labels_degraded(monkeypatch) -> Non
     monkeypatch.setattr(iff, "get_last_eod_error", lambda: "eastmoney_bkzj: RemoteDisconnected")
     monkeypatch.setattr(iff, "row_is_sw_l1", lambda it: True)
     monkeypatch.setattr(iff, "_now_iso", lambda: "now")
-    monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: written.append(list(rows)) or len(rows))
+    monkeypatch.setattr(
+        iff, "upsert_daily_rows", lambda rows: written.append(list(rows)) or len(rows)
+    )
     monkeypatch.setattr(iff, "trade_dates_upto", lambda *a, **k: ["2026-11-06"])
     monkeypatch.setattr(iff, "get_rows_for_dates", lambda dates: written[-1] if written else [])
 
@@ -149,7 +149,9 @@ def test_sync_fails_when_em_and_tushare_both_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(iff, "_resolve_sync_as_of", lambda **kw: (date(2026, 11, 6), None))
     monkeypatch.setattr(iff, "fetch_cn_industry_fund_flow_eod", lambda as_of: [])
     monkeypatch.setattr(iff, "get_last_eod_error", lambda: "eastmoney_bkzj: RemoteDisconnected")
-    monkeypatch.setattr(iff, "upsert_daily_rows", lambda rows: written.append(list(rows)) or len(rows))
+    monkeypatch.setattr(
+        iff, "upsert_daily_rows", lambda rows: written.append(list(rows)) or len(rows)
+    )
     monkeypatch.setattr(
         tsf,
         "aggregate_for_dates",

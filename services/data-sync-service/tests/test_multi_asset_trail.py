@@ -128,15 +128,12 @@ def test_morning_sleeve_returns_pending_sell_not_hold():
         patch.object(mas, "_pick", return_value=pick),
         patch.object(mas, "_adjusted_series", _adj(bars)),
     ):
-        out = mas.build_multi_asset_sleeve(
-            day="2026-11-05", cn_block={}, holdings_override=[held]
-        )
+        out = mas.build_multi_asset_sleeve(day="2026-11-05", cn_block={}, holdings_override=[held])
     assert out["action"] == "SELL_TO_REPO"
     assert out["pendingOpenSell"] is True
     assert out["signalDate"] == "2026-11-03"
     assert out["symbol"] == "ETF:513350"
     assert out["executeHint"].startswith("待开盘")
-
 
 
 def test_trail_beats_rotate_when_holding_etf():

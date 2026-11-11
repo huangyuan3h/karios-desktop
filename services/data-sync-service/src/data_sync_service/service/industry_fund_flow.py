@@ -494,9 +494,7 @@ def sync_cn_industry_fund_flow(
     # EM day is never overwritten and no same-day vendor mixing can happen.
     missing_dates: list[str] = []
     try:
-        needed_dates = trade_dates_upto(
-            as_of.isoformat(), days, fallback_dates_fn=get_dates_upto
-        )
+        needed_dates = trade_dates_upto(as_of.isoformat(), days, fallback_dates_fn=get_dates_upto)
         present_dates = {str(r.get("date") or "") for r in get_rows_for_dates(needed_dates)}
         missing_dates = [d for d in needed_dates if d and d not in present_dates]
     except Exception as exc:  # noqa: BLE001 - calendar/read hiccup must not fail today

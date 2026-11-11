@@ -50,9 +50,7 @@ def test_merge_tushare_frames_tags_history_source() -> None:
                 ]
             )
 
-    out = eff._merge_tushare_frames(
-        "510300.SH", share_df=_DF(), daily_df=None, updated_at="now"
-    )
+    out = eff._merge_tushare_frames("510300.SH", share_df=_DF(), daily_df=None, updated_at="now")
     assert out[0]["source"] == "tushare.fund_share"
 
 

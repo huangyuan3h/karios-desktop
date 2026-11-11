@@ -60,18 +60,10 @@ class TestClassifier:
     def test_bare_host_mention_without_transport_stays_failed(self) -> None:
         # 2026-11-06 review: mere host mention (payload/schema failure naming
         # the URL) is NOT upstream-unavailable.
+        assert is_em_source_unavailable("eastmoney.com response missing_symbols: 510300") is False
+        assert is_em_source_unavailable("eastmoney_etf_no_rows: schema mismatch on diff") is False
         assert (
-            is_em_source_unavailable("eastmoney.com response missing_symbols: 510300")
-            is False
-        )
-        assert (
-            is_em_source_unavailable("eastmoney_etf_no_rows: schema mismatch on diff")
-            is False
-        )
-        assert (
-            is_em_source_unavailable(
-                "push2his.eastmoney.com returned empty diff: schema error"
-            )
+            is_em_source_unavailable("push2his.eastmoney.com returned empty diff: schema error")
             is False
         )
         assert (
@@ -132,13 +124,10 @@ class TestNeutralize:
 
     def test_real_failure_is_not_neutralized(self) -> None:
         assert (
-            neutralize_em_substep({"ok": False, "error": "no_iv_data"}, leg="etf_fund_flow")
-            is None
+            neutralize_em_substep({"ok": False, "error": "no_iv_data"}, leg="etf_fund_flow") is None
         )
         assert (
-            neutralize_em_substep(
-                {"ok": False, "error": "tushare: ReadTimeout"}, leg="top_inst"
-            )
+            neutralize_em_substep({"ok": False, "error": "tushare: ReadTimeout"}, leg="top_inst")
             is None
         )
 
@@ -150,9 +139,7 @@ def _patch_etf_common(monkeypatch, *, fetch_error: str | None):
     """Mock every DB/network touchpoint of sync_etf_fund_flow_watchlist."""
     monkeypatch.setattr(eff, "_should_skip_etf_sync_today", lambda force=False: False)
     monkeypatch.setattr(eff, "ensure_table", lambda: None)
-    monkeypatch.setattr(
-        eff, "fetch_em_etf_realtime_flow_for_symbols", lambda symbols: {}
-    )
+    monkeypatch.setattr(eff, "fetch_em_etf_realtime_flow_for_symbols", lambda symbols: {})
     monkeypatch.setattr(eff, "get_last_em_etf_fetch_error", lambda: fetch_error)
     monkeypatch.setattr(eff, "_sync_tushare_history_if_available", lambda **kw: 0)
     upserted: list = []
@@ -244,9 +231,7 @@ class TestSentimentStep:
         monkeypatch.setattr(
             dash, "sync_top_inst_watchlist", lambda force=False: top or {"ok": True}
         )
-        monkeypatch.setattr(
-            dash, "sync_option_iv_daily", lambda force=False: iv or {"ok": True}
-        )
+        monkeypatch.setattr(dash, "sync_option_iv_daily", lambda force=False: iv or {"ok": True})
 
     def test_em_etf_outage_step_stays_ok_degraded(self, monkeypatch) -> None:
         self._patch(
@@ -313,9 +298,7 @@ class TestSentimentStep:
             top={
                 "ok": False,
                 "error": "eastmoney: RemoteDisconnected from push2.eastmoney.com",
-                "providerErrors": [
-                    "eastmoney: RemoteDisconnected from push2.eastmoney.com"
-                ],
+                "providerErrors": ["eastmoney: RemoteDisconnected from push2.eastmoney.com"],
             },
         )
         out = dash._sync_sentiment_step(force=True)
@@ -346,9 +329,7 @@ class TestOverallSync:
         monkeypatch.setattr(
             dash, "_sync_industry_step", lambda force=False: {"ok": True, "updated": 3}
         )
-        monkeypatch.setattr(
-            dash, "_sync_sentiment_step", lambda force: degraded_sentiment
-        )
+        monkeypatch.setattr(dash, "_sync_sentiment_step", lambda force: degraded_sentiment)
         monkeypatch.setattr(dash, "_sync_macro_step", lambda: {"ok": True})
         monkeypatch.setattr(dash, "_sync_news_step", lambda: {"ok": True, "total": 9})
         out = dash.dashboard_sync_parallel(force=True)

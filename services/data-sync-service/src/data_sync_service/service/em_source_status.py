@@ -72,9 +72,7 @@ _EM_CHAIN_MARKERS = ("direct:", "curl:", "urllib:")
 #: Short user-facing note (Chinese). Shown in the UI instead of the raw stack.
 #: Deliberately makes no claim that cached data exists: existing valid data
 #: is preserved, missing data stays missing (2026-11-06 review).
-EM_DEGRADED_ZH_SHORT = (
-    "东方财富实时行情源暂时不可用（直连失败），已有有效数据予以保留、缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
-)
+EM_DEGRADED_ZH_SHORT = "东方财富实时行情源暂时不可用（直连失败），已有有效数据予以保留、缺失仍记为缺失，未写入空值；源恢复后自动恢复。"
 
 #: Machine reason code for degraded EM legs.
 EM_UNAVAILABLE_REASON = "em_source_unavailable"
