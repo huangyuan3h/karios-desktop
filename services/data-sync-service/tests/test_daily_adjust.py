@@ -8,10 +8,21 @@ Covers the two miss modes from the 513350 incident:
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from data_sync_service.service.daily_adjust import (
     NO_CHANGE_TEXT,
     compose_daily_adjust,
 )
+
+
+@pytest.fixture(autouse=True)
+def _empty_settings(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Deterministic whip memory: unit tests must not read a real dev DB row."""
+    monkeypatch.setattr("data_sync_service.db.app_settings.get_setting", lambda k, d=None: d)
+    monkeypatch.setattr("data_sync_service.db.app_settings.set_setting", lambda k, v: None)
 
 
 def _trail_sleeve(**over) -> dict:
