@@ -28,6 +28,7 @@ import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
 import { buildHash, currentHash, parseHash } from '@/lib/hash-router';
 import { createQueryClient } from '@/lib/query-client';
+import { pullStrategyModeFromServer } from '@/lib/strategy-settings';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
 import { MobileShell } from '@/components/mobile/MobileShell';
@@ -380,6 +381,13 @@ function AppShellInner() {
 
 export function AppShell() {
   const [queryClient] = React.useState(() => createQueryClient());
+
+  // Backend is the live source of truth for the strategy mode: pull once per
+  // client session (desktop + mobile) so a stale localStorage value cannot
+  // shadow a mode confirmed in the backend. Pull never PUTs.
+  React.useEffect(() => {
+    void pullStrategyModeFromServer();
+  }, []);
 
   // Mobile-first shell for phones/tablets (Family Hub Phase 0 · 2026-08-14):
   // the desktop workspace (sidebar + agent panel + dense tables) is unusable

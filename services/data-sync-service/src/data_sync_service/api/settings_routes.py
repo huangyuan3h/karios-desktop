@@ -1,9 +1,12 @@
 """Cross-layer settings API (OPT-223, 2026-09-17).
 
-The UI is the source of truth for the selected strategy mode (localStorage);
-it mirrors the value here so background pushes (Bark/notifications) can be
-composed for the strategy the user is watching. State-changing PUTs are
-covered by ``LocalOriginGuardMiddleware`` like every other local endpoint.
+The backend ``app_settings`` value is the **live source of truth** for the
+selected strategy mode (jobs, Bark, the judgment brief and the agent all read
+``selected_strategy_mode()``). The UI hydrates from ``GET`` on load and only
+``PUT``s when the user explicitly changes the mode in the settings panel
+(2026-11-12: a mount-time PUT from a stale localStorage value used to overwrite
+a backend-confirmed mode). State-changing PUTs are covered by
+``LocalOriginGuardMiddleware`` like every other local endpoint.
 """
 
 from __future__ import annotations
