@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from data_sync_service.api.webhook_routes import KNOWN_EVENT_TYPES
 from data_sync_service.db.system_events import HIGH_JOB_TYPES
 from data_sync_service.scheduler import factor_vault_job, sgap_decay_job
@@ -62,9 +60,7 @@ def test_factor_vault_job_emits_on_upgrade(monkeypatch, tmp_path) -> None:
         encoding="utf-8",
     )
     fresh = {
-        "factors": [
-            {"id": "a", "name": "A", "status": "watch", "percentile": 60.0, "net": 1.0}
-        ]
+        "factors": [{"id": "a", "name": "A", "status": "watch", "percentile": 60.0, "net": 1.0}]
     }
 
     def _fake_run(*args, **kwargs):
@@ -167,9 +163,7 @@ def test_sgap_decay_job_no_emit_without_step(monkeypatch, tmp_path) -> None:
 
 def test_sgap_decay_job_missing_input_records_failure(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(sgap_decay_job, "_reports_dir", lambda: tmp_path)
-    monkeypatch.setattr(
-        "subprocess.run", lambda *a, **k: _Proc(1, stderr="missing input")
-    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _Proc(1, stderr="missing input"))
     records: list[tuple] = []
     monkeypatch.setattr(
         "data_sync_service.scheduler._job_guard.insert_record",

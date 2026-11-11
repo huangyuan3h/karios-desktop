@@ -159,9 +159,9 @@ def build_weekly_review(*, end_date: str) -> dict[str, Any]:
         _scripts = _Path(__file__).resolve().parents[3] / "scripts"
         if str(_scripts) not in _sys.path:
             _sys.path.insert(0, str(_scripts))
-        import data_health_check as _dhc
-
         from datetime import date as _date
+
+        import data_health_check as _dhc
 
         data_health = _dhc.check_tables(_date.today())
     except Exception as exc:  # noqa: BLE001
