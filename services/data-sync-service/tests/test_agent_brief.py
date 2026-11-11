@@ -1230,7 +1230,7 @@ def test_decision_log_read_is_fail_open_without_db(
 
 def test_step1_step2_fields_still_serialize(patched: None) -> None:
     out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
-    assert out["briefVersion"] == "2026-11-11.6"
+    assert out["briefVersion"] == "2026-11-12.1"
     assert out["integrity"]["status"] in {"ok", "warning", "unknown"}
     assert out["judgment"]["fillClock"] is not None
     assert "followable" in out["judgment"]["followability"]

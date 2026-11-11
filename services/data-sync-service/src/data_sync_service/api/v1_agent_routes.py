@@ -13,6 +13,8 @@
 | GET  /v1/agent/timeline-brief           | Compact, cache-first recent timeline note |
 | GET  /v1/agent/decision-log             | Read back today's / recent decision rows |
 | POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
+| POST /v1/agent/daily-confirm            | Persist 14:30 advice + Yuan's decision |
+| POST /v1/agent/daily-confirm/reconcile  | Fill next-session fills / deviations |
 | GET  /v1/agent/watchlist                | Current watchlist registry (+ positions) |
 | POST /v1/agent/watchlist                | Incremental symbol-scoped registry ops |
 
@@ -107,6 +109,31 @@ class DecisionLogBody(BaseModel):
     source: str = Field(default="agent", max_length=50)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     meta: dict[str, Any] | None = None
+
+
+class DailyConfirmBody(BaseModel):
+    tradeDate: str | None = Field(default=None, description="ISO date; default Shanghai today.")
+    mode: str | None = Field(
+        default=None,
+        description="Strategy mode; defaults to GET /settings/strategy-mode (never forced).",
+    )
+    decision: str = Field(
+        ...,
+        description="confirmed | amended | deferred | rejected",
+    )
+    note: str | None = Field(default=None, max_length=2000)
+    decisionLines: list[Any] | None = Field(
+        default=None,
+        description="His amended lines (required in spirit when decision=amended).",
+    )
+    contractSnapshotId: str | None = None
+    source: str = Field(default="daily_confirm", max_length=50)
+
+
+class DailyConfirmReconcileBody(BaseModel):
+    tradeDate: str | None = Field(default=None, description="ISO date; default today.")
+    mode: str | None = Field(default=None, description="Only this mode; default all modes.")
+    source: str = Field(default="daily_confirm", max_length=50)
 
 
 @router.get(
@@ -450,8 +477,10 @@ def get_decision_log(
     """Read the store ``POST /v1/agent/decision-log`` writes (fail-open).
 
     Returns tradeDate / judgment / adopted overlay / symbol / source /
-    contractSnapshotId per row. A missing DB degrades to ``ok: false`` with
-    ``available: false`` and an error — it never 500s.
+    contractSnapshotId per row, plus ``kind`` / ``mode`` / ``advice`` /
+    ``decision`` / ``reconcile`` for 14:30 confirmation rows. A missing DB
+    degrades to ``ok: false`` with ``available: false`` and an error — it never
+    500s.
     """
     from data_sync_service.service.agent_decision_log import read_decision_log
 
@@ -506,6 +535,81 @@ def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
         pass
     return {"ok": True, "item": row}
+
+
+@router.post(
+    "/daily-confirm",
+    summary="Persist the 14:30 advice + Yuan's confirmation (one row per day+mode).",
+)
+def post_daily_confirm(body: DailyConfirmBody) -> dict[str, Any]:
+    """Record 建议 + 他的决定; the server loads today's ``compose_daily_adjust``.
+
+    Idempotent on ``(tradeDate, mode)``: a second confirmation updates the
+    existing row's decision / advice instead of appending a duplicate. Advice
+    composer failure is fail-open — his confirmation is still stored.
+    """
+    from data_sync_service.service.agent_daily_confirm import record_daily_confirm
+
+    day = str(body.tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    try:
+        out = record_daily_confirm(
+            trade_date=day,
+            mode=body.mode,
+            decision=body.decision,
+            note=body.note,
+            decision_lines=body.decisionLines,
+            contract_snapshot_id=body.contractSnapshotId,
+            source=body.source or "daily_confirm",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"daily confirm failed: {exc}") from exc
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("daily_confirm")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
+    return out
+
+
+@router.post(
+    "/daily-confirm/reconcile",
+    summary="Fill next-session fills / deviations for pending 14:30 confirmations.",
+)
+def post_daily_confirm_reconcile(body: DailyConfirmReconcileBody) -> dict[str, Any]:
+    """One-shot reconcile (the weekday 18:55 cron calls the same service).
+
+    Read-only against the watchlist / user_trades. A missing input leaves the
+    row ``pending`` / ``degraded``; the confirmation row is never deleted.
+    """
+    from data_sync_service.service.agent_daily_confirm import reconcile_pending
+
+    day = str(body.tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    try:
+        out = reconcile_pending(
+            trade_date=day,
+            mode=body.mode,
+            source=body.source or "daily_confirm",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"daily confirm reconcile failed: {exc}") from exc
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("daily_confirm_reconcile")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -386,6 +386,8 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "factor_live_append",
     "factor_vault_refresh",
     "sgap_decay_refresh",
+    # 2026-11-12: 14:30 confirmation → next-session fill deviation write-back
+    "daily_confirm_reconcile",
 )
 
 

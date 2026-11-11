@@ -695,6 +695,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     24,
   ),
   meta(
+    'daily_confirm_reconcile',
+    'coreClose',
+    '14:30 确认次日对账',
+    '工作日 18:55 把前一日 14:30 调仓确认与次日真实成交/持仓变化对账，偏差写回 decision_actions 同一行（只读注册表与 user_trades，不下单、不改设置/持仓）。',
+    '工作日 18:55',
+    '55 18 * * 1-5',
+    'cron',
+    true,
+    25,
+    { endpoint: '/v1/agent/daily-confirm/reconcile', method: 'POST', label: '立即对账' },
+  ),
+  meta(
     'bar_5min_close',
     'cnBasic',
     'A 股尾盘 5 分钟线',

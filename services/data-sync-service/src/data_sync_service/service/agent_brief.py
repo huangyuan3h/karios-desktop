@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11.6"
+BRIEF_VERSION = "2026-11-12.1"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Today + the last N open sessions of explicit decision-log rows folded into
@@ -2576,6 +2576,34 @@ def _render_decision_log(brief: dict[str, Any], compact: bool) -> list[str]:
         )
         if item.get("judgment"):
             lines.append(f"  - 判断: {item.get('judgment')}")
+        if item.get("kind") == "daily_confirm":
+            advice = item.get("advice") or {}
+            decision = item.get("decision") or {}
+            reconcile = item.get("reconcile") or {}
+            mode = item.get("mode") or advice.get("mode") or "—"
+            lines.append(f"  - 14:30 建议（{mode}）:")
+            if advice.get("available") is False:
+                lines.append(f"    - 建议不可用: {advice.get('error') or '—'}")
+            else:
+                for ln in (advice.get("lines") or [])[: 4 if compact else 8]:
+                    lines.append(f"    - {ln}")
+            status = decision.get("status") or "—"
+            dec_copy = f"  - 决定: {status}"
+            if decision.get("note"):
+                dec_copy += f" · {decision.get('note')}"
+            lines.append(dec_copy)
+            if status == "amended":
+                for ln in (decision.get("decisionLines") or [])[: 4 if compact else 8]:
+                    lines.append(f"    - 他的修订: {ln}")
+            rec_status = reconcile.get("status") or "pending"
+            as_of = reconcile.get("asOf") or "—"
+            lines.append(f"  - 次日对账: {rec_status}（asOf {as_of}）")
+            for dev in (reconcile.get("deviations") or [])[: 3 if compact else 6]:
+                copy_value = dev.get("copy") if isinstance(dev, dict) else dev
+                if copy_value:
+                    lines.append(f"    - 偏差: {copy_value}")
+            for miss in (reconcile.get("missing") or [])[:2]:
+                lines.append(f"    - 缺证据: {miss}")
     if not items:
         lines.append("- 本窗口暂无记录（写入只走显式 POST，不会自动写）")
     if log.get("note"):

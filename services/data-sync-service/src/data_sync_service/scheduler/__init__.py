@@ -22,6 +22,7 @@ from data_sync_service.scheduler import (
     close_sync_job,
     cn_industry_post_close_job,
     daily_basic_job,
+    daily_confirm_reconcile_job,
     daily_sync_job,
     decision_action_job,
     decision_outcome_job,
@@ -430,6 +431,14 @@ def create_scheduler() -> BackgroundScheduler:
         decision_action_job.run,
         decision_action_job.build_trigger(),
         id=decision_action_job.JOB_ID,
+        replace_existing=True,
+    )
+    # 14:30 confirmation loop: fill next-session fills / deviations onto the
+    # same daily_confirm row (weekdays 18:55, before factor_live_append 19:00).
+    scheduler.add_job(
+        daily_confirm_reconcile_job.run,
+        daily_confirm_reconcile_job.build_trigger(),
+        id=daily_confirm_reconcile_job.JOB_ID,
         replace_existing=True,
     )
     # Timeline warmup: past-year single-track (08:20 weekdays) -> file cache for <100ms loads
