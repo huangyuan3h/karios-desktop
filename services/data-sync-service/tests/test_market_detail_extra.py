@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import sys
+from datetime import date, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -271,12 +272,27 @@ def _fake_akshare(monkeypatch, funcs):
 
 def test_get_market_chips_cached(monkeypatch) -> None:
     _patch_parse(monkeypatch)
-    cached = [("2026-08-07", {"date": "2026-08-07", "avgCost": "10"})]
+    # Cache path requires a non-stale last date vs _today_cn_date_str (2026-08-08)
+    # and at least 30 rows; otherwise the service refreshes from the network.
+    last = date(2026, 8, 8)
+    cached = [
+        (
+            (last - timedelta(days=i)).isoformat(),
+            {"date": (last - timedelta(days=i)).isoformat(), "avgCost": "10"},
+        )
+        for i in range(30)
+    ]
     monkeypatch.setattr(md, "list_chips_cached", lambda sym, limit: cached)
     monkeypatch.setattr(md, "upsert_chips", lambda *a, **k: None)
+    monkeypatch.setattr(
+        md,
+        "fetch_cn_a_chip_summary",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should use cache")),
+    )
     out = md.get_market_chips(symbol="CN:600000", days=60)
     assert out["name"] == "浦发" and out["currency"] == "CNY"
-    assert out["items"] == [{"date": "2026-08-07", "avgCost": "10"}]
+    assert out["items"][-1] == {"date": "2026-08-08", "avgCost": "10"}
+    assert len(out["items"]) == 30
 
 
 def test_get_market_chips_fetches_and_upserts(monkeypatch) -> None:
@@ -338,10 +354,23 @@ def test_get_market_chips_non_cn(monkeypatch) -> None:
 
 def test_get_market_fund_flow_cached(monkeypatch) -> None:
     _patch_parse(monkeypatch)
-    cached = [("2026-08-08", {"date": "2026-08-08", "close": "10"})]
+    last = date(2026, 8, 8)
+    cached = [
+        (
+            (last - timedelta(days=i)).isoformat(),
+            {"date": (last - timedelta(days=i)).isoformat(), "close": "10"},
+        )
+        for i in range(30)
+    ]
     monkeypatch.setattr(md, "list_fund_flow_cached", lambda sym, limit: cached)
+    monkeypatch.setattr(
+        md,
+        "fetch_cn_a_fund_flow",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should use cache")),
+    )
     out = md.get_market_fund_flow(symbol="CN:600000", days=60)
-    assert out["items"][0]["close"] == "10"
+    assert out["items"][-1]["close"] == "10"
+    assert len(out["items"]) == 30
 
 
 def test_get_market_fund_flow_fetches(monkeypatch) -> None:

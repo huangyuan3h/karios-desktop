@@ -495,7 +495,6 @@ def _sync_tushare_history_if_available(
     settings = get_settings()
     if not settings.tushare_tokens:
         return 0
-    pro = get_pool().pro()
     last_date = get_last_trade_date(ts_code)
     rows = fetch_rows_for_codes([ts_code])
     row_count = len(rows)
@@ -508,6 +507,7 @@ def _sync_tushare_history_if_available(
         start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
     if start_date > end_date:
         return 0
+    pro = get_pool().pro()
     share_df = _with_retry(
         lambda: pro.fund_share(ts_code=ts_code, start_date=start_date, end_date=end_date)
     )
