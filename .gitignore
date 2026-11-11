@@ -29,6 +29,7 @@ coverage_tmp.json
 services/data-sync-service/data/backtest_reports/*_latest.json
 # Factor-vault live overlay: generated daily by factor_live_append (19:00).
 services/data-sync-service/data/backtest_reports/factor_live_trades.json
+services/data-sync-service/data/backtest_reports/factor_live_daily_prefix.json
 services/data-sync-service/data/backtest_reports/timeline_cache/
 services/data-sync-service/data/twin_star_intraday/
 services/data-sync-service/data/third_asset_cache.json

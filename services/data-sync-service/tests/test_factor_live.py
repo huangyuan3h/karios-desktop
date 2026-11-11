@@ -101,6 +101,11 @@ def _live_payload(
     }
 
 
+def _no_daily_replay(family: str, start: str, end: str) -> dict[str, Any]:
+    """Hermetic H01/H02/H03 stand-in (tests inject their own when needed)."""
+    return {"ok": True, "asOf": end, "trades": []}
+
+
 def _write_vault(reports: Path) -> None:
     """Minimal two-factor vault for the factor-system contract."""
     factors = [
@@ -229,6 +234,8 @@ def test_refresh_appends_only_closed_trades_after_frozen_entry(tmp_path: Path) -
         frozen_harbor_path=frozen_harbor,
         sgap_replay=sgap_replay,
         harbor_replay=harbor_replay,
+        frozen_daily_prefix={},
+        daily_replay=_no_daily_replay,
         session_after=lambda _d: "2026-05-30",
     )
     payload = fl.refresh_live_blotter(reports, **kwargs)
@@ -269,6 +276,8 @@ def test_failed_replay_keeps_yesterday_rows_and_marks_degraded(tmp_path: Path) -
         frozen_sgap_path=frozen_sgap,
         frozen_harbor_path=frozen_harbor,
         harbor_replay=ok_replay,
+        frozen_daily_prefix={},
+        daily_replay=_no_daily_replay,
         session_after=lambda _d: "2026-05-30",
     )
     first = fl.refresh_live_blotter(reports, sgap_replay=ok_replay, **base)
@@ -485,6 +494,24 @@ def test_freshness_stale_when_an_input_is_missing(tmp_path: Path) -> None:
     assert "ETF daily ends 2026-11-06" in (fresh["reason"] or "")
 
 
+def test_freshness_tolerates_a_failed_daily_family(tmp_path: Path) -> None:
+    """H01/H02/H03 are additive: one failing pilot never masks a live core."""
+    _write_vault(tmp_path)
+    live = _live_payload(as_of="2026-11-10", status="degraded")
+    live["meta"]["inputs"]["h01"] = {"ok": False, "reason": "no daily bars for 2026-11-10"}
+    live["meta"]["inputs"]["h02"] = {"ok": True, "reason": None}
+    live["meta"]["inputs"]["h03"] = {"ok": True, "reason": None}
+    _write(tmp_path / fl.LIVE_FILENAME, live)
+    out = factor_system.build_factor_system(
+        reports_dir=tmp_path, now="2026-11-11", latest_session="2026-11-10"
+    )
+    fresh = out["freshness"]
+    assert fresh["stale"] is False
+    assert fresh["degradedFamilies"] == ["h01"]
+    assert "h01" in (fresh["reason"] or "")
+    assert "不影响核心重演" in (fresh["reason"] or "")
+
+
 # ---------------------------------------------------------------------------
 # generate_factor_vault prefers the live file
 # ---------------------------------------------------------------------------
@@ -658,10 +685,14 @@ def test_refresh_marks_missing_frozen_prefix_degraded(tmp_path: Path) -> None:
         etf_session="2026-11-10",
         frozen_sgap_path=tmp_path / "missing_sgap.json",
         frozen_harbor_path=tmp_path / "missing_harbor.json",
+        frozen_daily_prefix={},
+        daily_replay=_no_daily_replay,
     )
     assert payload["meta"]["status"] == "degraded"
     assert "frozen prefix missing" in str(payload["meta"]["reason"])
-    assert payload["appended"] == {"sgap": [], "harbor": []}
+    assert payload["appended"]["sgap"] == []
+    assert payload["appended"]["harbor"] == []
+    assert payload["appended"]["h01"] == []
 
 
 def test_refresh_marks_etf_lag_degraded(tmp_path: Path) -> None:
@@ -675,6 +706,8 @@ def test_refresh_marks_etf_lag_degraded(tmp_path: Path) -> None:
         frozen_sgap_path=frozen_sgap,
         frozen_harbor_path=frozen_harbor,
         sgap_replay=lambda s, e: {"ok": True, "trades": [], "asOf": e},
+        frozen_daily_prefix={},
+        daily_replay=_no_daily_replay,
         session_after=lambda _d: "2026-05-30",
     )
     assert payload["meta"]["status"] == "degraded"
@@ -693,6 +726,8 @@ def test_refresh_handles_no_session_after_prefix(tmp_path: Path) -> None:
         frozen_harbor_path=frozen_harbor,
         sgap_replay=lambda s, e: pytest.fail("must not replay before the frozen exit"),
         harbor_replay=lambda s, e: pytest.fail("must not replay before the frozen exit"),
+        daily_replay=lambda f, s, e: pytest.fail("must not replay before the frozen exit"),
+        frozen_daily_prefix={},
         session_after=lambda _d: "2027-01-01",
     )
     assert payload["meta"]["status"] == "ok"
@@ -717,9 +752,13 @@ def test_refresh_unknown_watermark_keeps_old_rows(tmp_path: Path, monkeypatch) -
         frozen_harbor_path=frozen_harbor,
         sgap_replay=lambda s, e: pytest.fail("no watermark -> no replay"),
         harbor_replay=lambda s, e: pytest.fail("no watermark -> no replay"),
+        daily_replay=lambda f, s, e: pytest.fail("no watermark -> no replay"),
+        frozen_daily_prefix={},
         session_after=lambda _d: "2026-05-30",
     )
     assert payload["meta"]["status"] == "degraded"
     assert "latest complete trading session unknown" in str(payload["meta"]["reason"])
     # Yesterday's payload is preserved (only the metadata degrades).
-    assert payload["appended"] == {"sgap": [], "harbor": []}
+    assert payload["appended"]["sgap"] == []
+    assert payload["appended"]["harbor"] == []
+    assert payload["appended"]["h02"] == []

@@ -10,6 +10,9 @@ existing audit data (no DB queries, no live-param changes, no orders):
 - Harbor S-3 stock leg last-40: h2d_blotter_long.json (416 frozen trades,
   read-only) plus live stock-leg appends and live parking episodes from the
   same overlay (all additive Harbor NAV points), with the H2d calibration.
+- H01/H02/H03 daily event pilots last-40: the frozen-prefix sidecar extracted
+  from h2_records.pkl (read-only) plus live closed appends, reported as the
+  mean % per trade (``%/笔``) — never revived without a real percentile.
 - All other pilots: frozen window aggregates embedded in
   service/factor_vault.py (FINAL/H2/G/H2b/H2d/H2j/H2k).
 
@@ -37,6 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from data_sync_service.service import factor_live as fl  # noqa: E402
+from data_sync_service.service import factor_live_daily as fld  # noqa: E402
 from data_sync_service.service import factor_vault as fv  # noqa: E402
 
 AUDIT_SCRATCH = fl.audit_scratch_dir()
@@ -112,10 +116,43 @@ def _live_meta(live: dict | None) -> dict | None:
         "updatedAt": meta.get("updatedAt"),
         "reason": meta.get("reason"),
         "appended": {
-            fam: len((live.get("appended") or {}).get(fam) or []) for fam in ("sgap", "harbor")
+            fam: len((live.get("appended") or {}).get(fam) or [])
+            for fam in ("sgap", "harbor", *fld.FAMILIES)
         },
         "parkingEpisodes": len((live.get("parking") or {}).get("episodes") or []),
     }
+
+
+def _daily_override(
+    live: dict | None, prefix: dict | None
+) -> dict[str, dict] | None:
+    """Exact H01/H02/H03 last-40 as mean %/笔 (frozen prefix + live appends).
+
+    The audit windows stay frozen; only the rolling window follows the live
+    daily replay. Without both a prefix row and an appended row the builder
+    returns nothing and the vault keeps its embedded holdout proxy.
+    """
+    if not prefix:
+        return None
+    out: dict[str, dict] = {}
+    appended = (live or {}).get("appended") or {}
+    for family in fld.FAMILIES:
+        frozen = fld.family_rows(prefix, family)
+        stats = fl.daily_override_stats(live, family=family, frozen=frozen)
+        if stats is None:
+            continue
+        is_live = bool(appended.get(family))
+        out[family] = {
+            "percentile": stats["percentile"],
+            "net": stats["net"],
+            "win_rate": stats["win_rate"],
+            "trades": stats["trades"],
+            "window": "live" if is_live else "holdout",
+            "as_of": stats["as_of"],
+            "last_trade_as_of": stats["last_trade_as_of"],
+            "basis": f"live:{family}" if is_live else f"frozen:{family}",
+        }
+    return out or None
 
 
 def _load_history(path: Path) -> list[dict]:
@@ -141,6 +178,10 @@ def main() -> int:
     out_path = Path(args.output)
     hist_path = Path(args.history)
     live = fl.load_live_payload(out_path.parent / fl.LIVE_FILENAME)
+    try:
+        daily_prefix = fld.load_frozen_prefix(out_path.parent)
+    except Exception:
+        daily_prefix = None
 
     overrides: dict[str, dict] = {}
     for builder in (_sgap_override, _harbor_override):
@@ -150,6 +191,12 @@ def main() -> int:
             ov = None
         if ov:
             overrides.update(ov)
+    try:
+        daily_ov = _daily_override(live, daily_prefix)
+    except Exception:
+        daily_ov = None
+    if daily_ov:
+        overrides.update(daily_ov)
 
     prev_history = _load_history(hist_path)
 
@@ -159,10 +206,12 @@ def main() -> int:
         generated_at=args.date,
     )
     payload["meta"]["source_path"] = (
-        "scratch/h2f_trades.json + h2d_blotter_long.json (frozen prefix, read-only) "
-        "+ factor_live_trades.json (live overlay) + frozen FACTOR_DEFS"
+        "scratch/h2f_trades.json + h2d_blotter_long.json + h2_records.pkl "
+        "(frozen prefix, read-only) + factor_live_trades.json (live overlay) "
+        "+ frozen FACTOR_DEFS"
         if live
-        else "scratch/h2f_trades.json + h2d_blotter_long.json + frozen FACTOR_DEFS"
+        else "scratch/h2f_trades.json + h2d_blotter_long.json + h2_records.pkl "
+        "+ frozen FACTOR_DEFS"
     )
     payload["meta"]["overrides"] = sorted(overrides.keys())
     payload["meta"]["liveOverlay"] = _live_meta(live)

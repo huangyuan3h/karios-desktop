@@ -8,7 +8,8 @@ sleeve_etf_daily 17:25, bar_5min 18:40) and before ``factor_vault_refresh``
    h2f_trades prefix (only closed trades on a complete daily bar),
 2. replay the frozen S-3 stock leg + the Harbor parking path after the frozen
    H2d blotter exit,
-3. append the new closed trades to ``factor_live_trades.json`` (the frozen
+3. replay the H01/H02/H03 daily event recipes after the frozen audit prefix,
+4. append the new closed trades to ``factor_live_trades.json`` (the frozen
    audit prefix stays frozen and read-only).
 
 Pure display data: never touches live strategy params, TRAIL_PCT, the parking
@@ -63,10 +64,11 @@ def run() -> None:
         return
 
     logger.info(
-        "factor_live_append ok: as_of=%s sgap+%s harbor+%s parking=%s",
+        "factor_live_append ok: as_of=%s sgap+%s harbor+%s parking=%s daily=%s",
         meta.get("asOf"),
         (inputs.get("sgap") or {}).get("newTrades"),
         (inputs.get("harbor") or {}).get("newTrades"),
         (inputs.get("harbor") or {}).get("parkingTrades"),
+        {fam: (inputs.get(fam) or {}).get("newTrades") for fam in ("h01", "h02", "h03")},
     )
     record_success(JOB_ID)

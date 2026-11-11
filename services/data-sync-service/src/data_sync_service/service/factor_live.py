@@ -42,6 +42,9 @@ Design invariants
   Sessions between the frozen last entry and last exit are deliberately not
   replayed: the frozen book still occupied slots then, and re-entering them
   with an empty replay book would fabricate fills the audit never made.
+  The daily pilots restart after their frozen last *signal* day instead
+  (their pkl prefix stores neither ts_code nor dates), which is the same
+  boundary once the next session's entry is required.
 - Only trades whose exit already happened on a complete daily bar are
   appended (``exit <= as_of``).
 - Idempotent: appended rows are merged by ``(family, ts, entry, exit)`` and
@@ -68,6 +71,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from data_sync_service.service import factor_live_daily as fld
+
 logger = logging.getLogger(__name__)
 
 LIVE_FILENAME = "factor_live_trades.json"
@@ -85,10 +90,14 @@ LIVE_JOB_HOUR_CN = 19
 # A 14:30 panel day needs at least one print to be replayable at all.
 MIN_PANEL_PRINTS = 1
 
-_FAMILIES = ("sgap", "harbor")
+# H01/H02/H03 daily event pilots ride the same overlay (mean %/笔 window).
+DAILY_FAMILIES: tuple[str, ...] = fld.FAMILIES
+
+_FAMILIES = ("sgap", "harbor", *DAILY_FAMILIES)
 
 SgapReplay = Callable[[str, str], dict[str, Any]]
 HarborReplay = Callable[[str, str], dict[str, Any]]
+DailyReplay = Callable[[str, str, str], dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +133,10 @@ def load_live_payload(path: Path | str | None = None) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     if not isinstance(raw.get("appended"), dict):
-        raw["appended"] = {"sgap": [], "harbor": []}
+        raw["appended"] = {}
+    for fam in _FAMILIES:
+        if not isinstance(raw["appended"].get(fam), list):
+            raw["appended"][fam] = []
     if not isinstance(raw.get("parking"), dict):
         raw["parking"] = {"episodes": []}
     return raw
@@ -238,10 +250,17 @@ def last_frozen_exit(rows: list[dict[str, Any]]) -> str | None:
 
 
 def trade_key(family: str, trade: dict[str, Any]) -> str:
+    ts = str(trade.get("ts") or "")
+    if not ts:
+        # Frozen daily-prefix rows have no ts_code (the audit pkl never stored
+        # one); they carry a stable ``key`` built from (family, signal, seq).
+        key = trade.get("key")
+        if key:
+            return str(key)
     return "|".join(
         [
             str(family),
-            str(trade.get("ts") or ""),
+            ts,
             str(trade.get("entry") or ""),
             str(trade.get("exit") or ""),
         ]
@@ -651,7 +670,7 @@ def _empty_payload() -> dict[str, Any]:
     return {
         "version": LIVE_VERSION,
         "meta": {},
-        "appended": {"sgap": [], "harbor": []},
+        "appended": {fam: [] for fam in _FAMILIES},
         "parking": {"episodes": []},
     }
 
@@ -668,15 +687,20 @@ def refresh_live_blotter(
     etf_session: str | None = None,
     frozen_sgap_path: Path | str | None = None,
     frozen_harbor_path: Path | str | None = None,
+    frozen_daily_prefix: dict[str, Any] | None = None,
     sgap_replay: SgapReplay | None = None,
     harbor_replay: HarborReplay | None = None,
+    daily_replay: DailyReplay | None = None,
     session_after: Callable[[str], str | None] | None = None,
     write: bool = True,
 ) -> dict[str, Any]:
     """Append new closed trades and rewrite the live blotter (fail-open).
 
     Every external dependency is injectable (paths, session dates, replay
-    callables) so the merge/append logic is unit-testable with no DB.
+    callables) so the merge/append logic is unit-testable with no DB:
+    ``frozen_daily_prefix`` is the H01/H02/H03 sidecar payload (``None``
+    rebuilds/loads it, ``{}`` means live-only fallback), and ``daily_replay``
+    is ``(family, start, end) -> {ok, trades, asOf}``.
     """
     base = Path(reports_dir) if reports_dir is not None else _default_reports_dir()
     path = base / LIVE_FILENAME
@@ -695,14 +719,20 @@ def refresh_live_blotter(
     )
     sgap_frozen = load_frozen_sgap(sgap_frozen_path)
     harbor_frozen = load_frozen_harbor(harbor_frozen_path)
+    if frozen_daily_prefix is None:
+        try:
+            frozen_daily_prefix = fld.load_frozen_prefix(base, write=write)
+        except Exception as exc:  # noqa: BLE001 - live-only fallback, never fatal
+            logger.warning("factor_live: daily frozen prefix unavailable: %s", exc)
+            frozen_daily_prefix = None
 
     watermark = latest_session if latest_session is not None else latest_complete_session()
     etf_mark = etf_session if etf_session is not None else latest_etf_session()
 
     inputs: dict[str, dict[str, Any]] = {}
     appended = {
-        "sgap": _sorted(list(existing.get("appended", {}).get("sgap") or [])),
-        "harbor": _sorted(list(existing.get("appended", {}).get("harbor") or [])),
+        fam: _sorted(list(existing.get("appended", {}).get(fam) or []))
+        for fam in _FAMILIES
     }
     parking = existing.get("parking") or {}
     if not isinstance(parking, dict) or not isinstance(parking.get("episodes"), list):
@@ -816,6 +846,61 @@ def refresh_live_blotter(
                 )
     inputs["harbor"] = harbor_entry
 
+    # --- H01/H02/H03 daily event pilots ------------------------------------
+    # Fail-open per pilot: a failing family keeps yesterday's appended rows and
+    # never blocks the others (or the S-gap/Harbor inputs above).
+    for family in DAILY_FAMILIES:
+        frozen_rows = fld.family_rows(frozen_daily_prefix, family)
+        entry = _input_meta(frozen_rows, watermark)
+        entry["frozenFingerprint"] = fld.prefix_fingerprint(frozen_daily_prefix, family)
+        frozen_signal = fld.last_signal(frozen_rows)
+        entry["frozenLastSignal"] = frozen_signal
+        # Without the audit pkl the replay still starts after the frozen
+        # holdout edge and the window uses live closed trades only.
+        base_signal = frozen_signal or fld.HOLDOUT_END
+        if watermark is None:
+            entry.update(ok=False, reason="latest complete trading session unknown")
+        else:
+            start = (session_after or first_session_after)(base_signal)
+            entry["replayStart"] = start
+            if start is None or start > watermark:
+                entry.update(ok=True, newTrades=0, note="no session after frozen prefix")
+            else:
+                try:
+                    result = (daily_replay or fld.replay_family)(family, start, watermark)
+                except Exception as exc:  # noqa: BLE001 - keep yesterday's rows
+                    logger.warning("factor_live: %s replay failed: %s", family, exc)
+                    entry.update(ok=False, reason=f"{family} replay failed: {exc}")
+                else:
+                    ok = bool(result.get("ok", True))
+                    entry.update(
+                        ok=ok,
+                        reason=result.get("reason"),
+                        asOf=result.get("asOf") or watermark,
+                        codes=result.get("codes"),
+                    )
+                    if ok:
+                        last_entry = fld.last_entry(frozen_rows) or fld.HOLDOUT_END
+                        new_rows = [
+                            t
+                            for t in result.get("trades") or []
+                            if t.get("ts")
+                            and str(t.get("signal") or "") > base_signal
+                            and t.get("exit")
+                            and str(t["exit"]) <= watermark
+                        ]
+                        appended[family] = _prune_appended(
+                            merge_appended(appended[family], new_rows, family=family),
+                            last_entry,
+                            watermark,
+                            family=family,
+                        )
+                        # Rolling ledger: 15x the window is plenty for the
+                        # vault override; the frozen prefix is never trimmed.
+                        appended[family] = fld.trim_appended(appended[family])
+                        entry["newTrades"] = len(new_rows)
+        inputs[family] = entry
+
     bad = [f"{fam}: {meta.get('reason')}" for fam, meta in inputs.items() if not meta.get("ok")]
     meta: dict[str, Any] = {
         "version": LIVE_VERSION,
@@ -830,6 +915,10 @@ def refresh_live_blotter(
         "frozenPrefix": {
             "sgap": frozen_fingerprint(sgap_frozen_path, sgap_frozen),
             "harbor": frozen_fingerprint(harbor_frozen_path, harbor_frozen),
+            **{
+                fam: fld.prefix_fingerprint(frozen_daily_prefix, fam)
+                for fam in DAILY_FAMILIES
+            },
         },
         "inputs": inputs,
         "parkingAsOf": (
@@ -838,14 +927,15 @@ def refresh_live_blotter(
         "note": (
             "appended = new closed trades after the frozen prefix; the frozen audit "
             "windows stay frozen. stock/harbor contributions are additive points; "
-            "parking episodes are the same additive Harbor NAV points."
+            "parking episodes are the same additive Harbor NAV points; h01/h02/h03 "
+            "net is a decimal per-trade return displayed as mean %/笔."
         ),
     }
 
     payload = {
         "version": LIVE_VERSION,
         "meta": meta,
-        "appended": {"sgap": appended["sgap"], "harbor": appended["harbor"]},
+        "appended": {fam: appended[fam] for fam in _FAMILIES},
         "parking": parking,
     }
     if write:
@@ -934,4 +1024,33 @@ def live_override_stats(
         mu=mu,
         sigma=sigma,
         as_of=meta.get("asOf"),
+    )
+
+
+def daily_override_stats(
+    payload: dict[str, Any] | None,
+    *,
+    family: str,
+    frozen: list[dict[str, Any]],
+    as_of: str | None = None,
+) -> dict[str, Any] | None:
+    """Last-40 for a daily event pilot as mean %/笔 (live overlay preferred).
+
+    Deliberately not ``rolling_stats``: S-gap/Harbor sum additive points, but
+    these bricks are ``%/笔`` so the window is the *mean* per-trade return.
+    Returns None when there is neither a frozen prefix nor an appended row
+    (the vault then keeps its embedded frozen proxy — never invent a window).
+    """
+    appended = [
+        r
+        for r in ((payload or {}).get("appended", {}) or {}).get(family) or []
+        if isinstance(r, dict)
+    ]
+    if not frozen and not appended:
+        return None
+    meta = (payload or {}).get("meta") or {}
+    return fld.rolling_stats(
+        frozen,
+        appended,
+        as_of=as_of or meta.get("asOf"),
     )

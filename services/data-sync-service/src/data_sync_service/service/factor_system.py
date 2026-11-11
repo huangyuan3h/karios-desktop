@@ -929,14 +929,36 @@ def _freshness(
             expected = fl.latest_complete_session()
         reasons: list[str] = []
         stale = False
-        if meta.get("status") != "ok":
+        core_bad = [
+            fam
+            for fam in ("sgap", "harbor")
+            if (inputs.get(fam) or {}).get("ok") is False
+        ]
+        # H01/H02/H03 ride the same overlay but are additive: a family that
+        # failed (or had no new closed trade) is surfaced without masking a
+        # caught-up S-gap/Harbor core.
+        degraded_daily = [
+            fam
+            for fam in fl.DAILY_FAMILIES
+            if (inputs.get(fam) or {}).get("ok") is False
+        ]
+        if core_bad:
             stale = True
             reasons.append(str(meta.get("reason") or "实盘重演输入缺失"))
-        for fam in ("sgap", "harbor"):
-            inp = inputs.get(fam) or {}
-            if inp.get("ok") is False:
-                stale = True
-                reasons.append(f"{fam} 实盘重演未跟新：{inp.get('reason')}")
+        elif meta.get("status") != "ok" and not degraded_daily:
+            # Degraded for an input this build does not know about.
+            stale = True
+            reasons.append(str(meta.get("reason") or "实盘重演输入缺失"))
+        for fam in core_bad:
+            reasons.append(f"{fam} 实盘重演未跟新：{(inputs.get(fam) or {}).get('reason')}")
+        if degraded_daily:
+            reasons.append(
+                "；".join(
+                    f"{fam} 实盘重演未跟新：{(inputs.get(fam) or {}).get('reason')}"
+                    for fam in degraded_daily
+                )
+                + "（不影响核心重演）"
+            )
         if not as_of:
             stale = True
             reasons.append("实盘流水缺少 asOf")
@@ -958,6 +980,7 @@ def _freshness(
             "liveUpdatedAt": meta.get("updatedAt"),
             "expectedSession": expected or meta.get("expectedSession"),
             "ageDays": _age_days(as_of, today),
+            "degradedFamilies": degraded_daily,
             "stale": stale,
             "reason": "；".join(r for r in reasons if r),
         }
