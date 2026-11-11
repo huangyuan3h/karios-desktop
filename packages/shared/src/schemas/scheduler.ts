@@ -763,6 +763,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     3,
   ),
   meta(
+    'strategy_alerts_refresh',
+    'factors',
+    '盘后策略提醒',
+    '工作日 19:20 生成盘后策略提醒快照：因子灯新衰减/复活、同口径近期净相对母港 M30 基线的超额变化；只告知、不自动改设置、不下单，无新增则保持安静。',
+    '工作日 19:20',
+    '20 19 * * 1-5',
+    'cron',
+    true,
+    4,
+    { endpoint: '/v1/agent/strategy-alerts/run', method: 'POST', label: '立即生成提醒' },
+  ),
+  meta(
     'xq_follow_snapshot',
     'factors',
     '雪球关注度快照',

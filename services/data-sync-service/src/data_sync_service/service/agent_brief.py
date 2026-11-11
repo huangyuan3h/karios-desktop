@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-12.1"
+BRIEF_VERSION = "2026-11-12.2"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Today + the last N open sessions of explicit decision-log rows folded into
@@ -1182,6 +1182,21 @@ def _factor_system_block(*, day: str, compact: bool) -> dict[str, Any]:
     return compact_factor_system(payload) if compact else payload
 
 
+def _strategy_alerts_block(*, day: str) -> dict[str, Any]:
+    """Compact after-close alert pack (2026-11-12.2, read-only).
+
+    Reads the persisted 19:20 snapshot for ``day``; never builds or writes on
+    the brief path. A missing snapshot degrades to ``available: false`` so the
+    brief still renders and no alert is invented.
+    """
+    from data_sync_service.service.agent_strategy_alerts import (
+        compact_strategy_alerts,
+        read_strategy_alerts,
+    )
+
+    return compact_strategy_alerts(read_strategy_alerts(as_of=day))
+
+
 def _backtest_block(
     *,
     contract: dict[str, Any],
@@ -1677,6 +1692,13 @@ def build_judgment_brief(
                     lambda: _factor_system_block(day=day, compact=compact),
                 ),
             ),
+            "strategyAlerts": _timed(
+                "strategyAlertsMs",
+                lambda: _safe(
+                    "strategyAlerts",
+                    lambda: _strategy_alerts_block(day=day),
+                ),
+            ),
             "omitted": list(OMITTED_PACKS),
             "omittedNote": (
                 "research_reports / alpha_radar_* / alpha_auto_qa are human-browsing pages; "
@@ -1990,6 +2012,32 @@ def _render_alerts(brief: dict[str, Any]) -> list[str]:
         lines.append(
             f"- 🚫 **拟买入即同键回买**：{match.get('symbol') or match.get('key')} · "
             f"{match.get('copy')}（{match.get('key')} {match.get('lastExitDate')} 止损）"
+        )
+
+    # After-close strategy alerts (2026-11-12.2): new decay / revival / excess
+    # events, front-loaded so a light change is hard to miss. Standing cold /
+    # revived facts are NOT repeated here (they live in factorSystem).
+    strategy_alerts = brief.get("strategyAlerts") or {}
+    new_events = strategy_alerts.get("newToday") or []
+    if new_events:
+        alerts += len(new_events)
+        lines.append("")
+        lines.append(
+            "### 盘后策略提醒 strategy alerts（仅告知，不自动改设置、不下单）"
+        )
+        for event in new_events:
+            lines.append(f"- {event.get('copy')}")
+    sa_fresh = strategy_alerts.get("freshness") or {}
+    if strategy_alerts.get("available") and sa_fresh.get("stale"):
+        alerts += 1
+        lines.append(
+            f"- ⚠️ **盘后策略提醒数据陈旧**：{sa_fresh.get('reason') or '因子库/交易流水未跟上最新收盘'}"
+        )
+    elif strategy_alerts.get("degraded") and strategy_alerts.get("available") is not True:
+        alerts += 1
+        lines.append(
+            f"- ⚠️ **盘后策略提醒暂不可用**："
+            f"{sa_fresh.get('reason') or strategy_alerts.get('reason') or '快照缺失'}"
         )
     if not alerts:
         lines.append("- 无致命提醒（价格口径、路径、时钟、鞭打均正常）。")

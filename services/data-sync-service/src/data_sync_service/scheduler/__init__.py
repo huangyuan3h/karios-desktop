@@ -59,6 +59,7 @@ from data_sync_service.scheduler import (
     sgap_decay_job,
     sleeve_paper_job,
     stock_basic_job,
+    strategy_alerts_job,
     timeline_warmup_job,
     trading_brief_job,
     watchlist_automation_job,
@@ -470,6 +471,14 @@ def create_scheduler() -> BackgroundScheduler:
         sgap_decay_job.run,
         sgap_decay_job.build_trigger(),
         id=sgap_decay_job.JOB_ID,
+        replace_existing=True,
+    )
+    # After-close strategy alerts (weekdays 19:20 — decay / revival / excess
+    # delta pack for chat; read-only against the vault, advice only).
+    scheduler.add_job(
+        strategy_alerts_job.run,
+        strategy_alerts_job.build_trigger(),
+        id=strategy_alerts_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

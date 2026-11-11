@@ -6,6 +6,8 @@
 | GET  /v1/agent/judgment-brief           | Full judgment pack (contract + market + backtest) |
 | GET  /v1/agent/judgment-brief.md        | Same payload as compact Markdown (Sync & Copy) |
 | GET  /v1/agent/factor-system            | Advice-only factor-system policy (JSON / md) |
+| GET  /v1/agent/strategy-alerts          | After-close decay / revival / excess pack |
+| POST /v1/agent/strategy-alerts/run      | Build today's alert snapshot on demand |
 | GET  /v1/agent/overlays                 | Read proposed/accepted/expired overlays |
 | POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
 | GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
@@ -277,6 +279,83 @@ def get_factor_system_md() -> Response:
         raise HTTPException(status_code=500, detail=f"factor system failed: {exc}") from exc
     body = render_factor_system_markdown(payload)
     return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+@router.get(
+    "/strategy-alerts",
+    summary="After-close decay / revival / excess alerts (read-only snapshot).",
+)
+def get_strategy_alerts(
+    asOf: str | None = Query(
+        default=None,
+        description=(
+            "ISO date (YYYY-MM-DD); default the latest complete A-share session. "
+            "Reads the persisted 19:20 snapshot; GET never writes one."
+        ),
+    ),
+) -> dict[str, Any]:
+    """Delta pack 乐乐 can broadcast in chat (advice only).
+
+    Quiet when nothing new happened: standing cold / revived lights live in
+    ``currentState`` and are never re-broadcast as today's events. Missing
+    snapshot returns ``available: false`` with a reason instead of silently
+    running the writer. Read-only: no alert row, decision row, or confirmation
+    is written on this path.
+    """
+    from data_sync_service.service.agent_strategy_alerts import read_strategy_alerts
+
+    day = str(asOf or "").strip()[:10]
+    if day:
+        try:
+            date.fromisoformat(day)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid asOf: {day}") from exc
+    try:
+        return read_strategy_alerts(as_of=day or None)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"strategy alerts failed: {exc}") from exc
+
+
+@router.post(
+    "/strategy-alerts/run",
+    summary="Build (and persist) today's after-close strategy alert snapshot.",
+)
+def post_strategy_alerts_run(
+    asOf: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default the latest complete A-share session.",
+    ),
+) -> dict[str, Any]:
+    """One-shot writer (the weekday 19:20 cron calls the same service).
+
+    Never places orders, never edits settings / the watchlist, never changes a
+    target weight. Idempotent per ``asOf``: a re-run overwrites that day's
+    snapshot and does not duplicate event keys.
+    """
+    from data_sync_service.service.agent_strategy_alerts import run_strategy_alerts
+
+    day = str(asOf or "").strip()[:10]
+    if day:
+        try:
+            date.fromisoformat(day)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid asOf: {day}") from exc
+    try:
+        out = run_strategy_alerts(as_of=day or None)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"strategy alerts run failed: {exc}") from exc
+    if not out.get("persisted"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"strategy alerts snapshot not persisted: {out.get('writeError')}",
+        )
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("strategy_alerts")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
+    return out
 
 
 @router.get(

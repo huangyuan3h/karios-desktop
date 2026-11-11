@@ -195,6 +195,7 @@ class TestCreateScheduler:
             "sgap_decay_refresh",
             "factor_live_append",
             "daily_confirm_reconcile",
+            "strategy_alerts_refresh",
         }
         assert ids == expected
 

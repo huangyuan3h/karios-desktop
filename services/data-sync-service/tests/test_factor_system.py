@@ -440,7 +440,7 @@ def test_compact_shape_keeps_status_only(tmp_path: Path) -> None:
 def test_agent_brief_block_and_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reports = _write_reports(tmp_path)
     monkeypatch.setattr(br, "REPORTS_DIR", reports)
-    assert agent_brief.BRIEF_VERSION == "2026-11-11.5"
+    assert agent_brief.BRIEF_VERSION == "2026-11-12.2"
     full = agent_brief._factor_system_block(day="2026-11-11", compact=False)
     compact = agent_brief._factor_system_block(day="2026-11-11", compact=True)
     assert full["available"] is True
