@@ -5,6 +5,7 @@
 | GET  /v1/agent/decision-contract        | One stable JSON for the decision agent |
 | GET  /v1/agent/judgment-brief           | Full judgment pack (contract + market + backtest) |
 | GET  /v1/agent/judgment-brief.md        | Same payload as compact Markdown (Sync & Copy) |
+| GET  /v1/agent/factor-system            | Advice-only factor-system policy (JSON / md) |
 | GET  /v1/agent/overlays                 | Read proposed/accepted/expired overlays |
 | POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
 | GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
@@ -47,6 +48,10 @@ from data_sync_service.service.agent_overlays import (
     group_overlays,
     list_overlays,
     upsert_overlay,
+)
+from data_sync_service.service.factor_system import (
+    build_factor_system,
+    render_factor_system_markdown,
 )
 from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 
@@ -199,6 +204,51 @@ def get_judgment_brief_md(
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"judgment brief failed: {exc}") from exc
+    return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+@router.get(
+    "/factor-system",
+    summary="Advice-only factor-system policy from the frozen factor vault.",
+)
+def get_factor_system(
+    format: str = Query(
+        default="json",
+        description="json | md. 'md' returns the same contract as Markdown.",
+    ),
+) -> Any:
+    """Vault state -> follow / exit / wait-in-M30 advice (never an order).
+
+    Fail-open: a missing/corrupt vault returns ``available: false`` with an
+    error and a conservative wait-in-baseline policy instead of raising.
+    Live preconditions (paper-20 / holdout recovery / filtered valid) block
+    ``suggestedLiveWeight`` at 0 while still showing a revived light.
+    """
+    fmt = str(format or "json").strip().lower()
+    if fmt not in ("json", "md", "markdown"):
+        raise HTTPException(status_code=422, detail="format must be 'json' or 'md'")
+    try:
+        payload = build_factor_system()
+    except Exception as exc:  # noqa: BLE001 — mirrors the other agent routes
+        raise HTTPException(status_code=500, detail=f"factor system failed: {exc}") from exc
+    if fmt in ("md", "markdown"):
+        body = render_factor_system_markdown(payload)
+        return Response(content=body, media_type="text/markdown; charset=utf-8")
+    return payload
+
+
+@router.get(
+    "/factor-system.md",
+    summary="Advice-only factor system as Markdown.",
+    response_class=Response,
+)
+def get_factor_system_md() -> Response:
+    """Same payload as ``/v1/agent/factor-system``, rendered as Markdown."""
+    try:
+        payload = build_factor_system()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"factor system failed: {exc}") from exc
+    body = render_factor_system_markdown(payload)
     return Response(content=body, media_type="text/markdown; charset=utf-8")
 
 

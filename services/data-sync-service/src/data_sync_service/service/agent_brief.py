@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11.3"
+BRIEF_VERSION = "2026-11-11.4"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Today + the last N open sessions of explicit decision-log rows folded into
@@ -1165,6 +1165,23 @@ def _strategy_catalog_cached(
     return catalog_rows
 
 
+def _factor_system_block(*, day: str, compact: bool) -> dict[str, Any]:
+    """Advice-only factor-system contract (2026-11-11.4).
+
+    Fail-open by construction: ``build_factor_system`` returns
+    ``available: false`` for missing/corrupt vaults, so the brief still renders.
+    Compact mode keeps only counts, policy action, freshness and the
+    liveBlocked one-liner.
+    """
+    from data_sync_service.service.factor_system import (
+        build_factor_system,
+        compact_factor_system,
+    )
+
+    payload = build_factor_system(now=day)
+    return compact_factor_system(payload) if compact else payload
+
+
 def _backtest_block(
     *,
     contract: dict[str, Any],
@@ -1530,6 +1547,13 @@ def build_judgment_brief(
                         refresh=refresh,
                         cache_marks=cache_marks,
                     ),
+                ),
+            ),
+            "factorSystem": _timed(
+                "factorSystemMs",
+                lambda: _safe(
+                    "factorSystem",
+                    lambda: _factor_system_block(day=day, compact=compact),
                 ),
             ),
             "omitted": list(OMITTED_PACKS),
@@ -2360,6 +2384,37 @@ def _render_decision_log(brief: dict[str, Any], compact: bool) -> list[str]:
     return lines
 
 
+def _render_factor_system(brief: dict[str, Any]) -> list[str]:
+    block = brief.get("factorSystem") or {}
+    lines = ["## 因子系统 factor system", ""]
+    if not block.get("available"):
+        lines.append(f"- 可用: 否（{block.get('error') or '因子库不可读'}）")
+        lines.append("- 政策: 母港 M30 等待（fail-open，不自动跟卫星）")
+        lines.append("")
+        return lines
+    summary = block.get("summary") or {}
+    fresh = block.get("freshness") or {}
+    policy = block.get("policy") or {}
+    lines.append(
+        f"- 因子: {summary.get('nFactors')}（冷库 {summary.get('nCold')} / "
+        f"观察 {summary.get('nWatch')} / 复活 {summary.get('nRevived')}）"
+    )
+    lines.append(f"- 新鲜度: {'陈旧' if fresh.get('stale') else '正常'} — {fresh.get('reason')}")
+    lines.append(
+        f"- 政策: `{policy.get('action')}` · 基线 {policy.get('baselineLabel')} · "
+        f"规则建议 {policy.get('suggestedWeight')}% · "
+        f"建议实盘 {policy.get('suggestedLiveWeight')}%"
+    )
+    if policy.get("liveBlocked"):
+        lines.append(f"- 实盘受阻: {policy.get('liveBlockedReason')}")
+    lines.append(f"- 理由: {policy.get('reason')}")
+    focus = block.get("focus") or []
+    if focus:
+        lines.append("- 关注: " + " · ".join(str(f.get("name")) for f in focus))
+    lines.append("")
+    return lines
+
+
 def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = False) -> str:
     """Render the same payload as compact Markdown (the Copy All clipboard body)."""
     contract = brief.get("contract") or {}
@@ -2390,7 +2445,8 @@ def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = Fal
     lines.extend(_render_freshness(brief))
     lines.extend(_render_execution(brief))
     lines.extend(_render_decision_log(brief, compact))
-    lines.append("## 12. 故意省略 omitted")
+    lines.extend(_render_factor_system(brief))
+    lines.append("## 13. 故意省略 omitted")
     lines.append("")
     lines.append("- " + " · ".join(str(x) for x in brief.get("omitted") or []))
     if brief.get("omittedNote"):
