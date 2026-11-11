@@ -889,7 +889,9 @@ export function WatchlistTable({
             </div>
           </div>
         ) : (
-          <div className="text-sm text-[var(--k-muted)]">暂无标的，在上方输入代码添加（如 600519）。</div>
+          <div className="text-sm text-[var(--k-muted)]">
+            暂无标的，在上方输入代码添加（如 600519）。
+          </div>
         )}
       </section>
 

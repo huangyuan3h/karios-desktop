@@ -74,7 +74,12 @@ describe('MultiAssetHealthBlock', () => {
       overlay: { id: 'ov-1', effectiveStatus: 'accepted', validUntil: '2026-11-20' },
     } as never;
     render(
-      <MultiAssetHealthBlock holdings={HOLDINGS} sleeve={SLEEVE} whip={whip} onOverlay={() => {}} />,
+      <MultiAssetHealthBlock
+        holdings={HOLDINGS}
+        sleeve={SLEEVE}
+        whip={whip}
+        onOverlay={() => {}}
+      />,
     );
     const strip = screen.getByTestId('parking-whip');
     expect(strip.textContent).toMatch(/建议暂缓 · 需确认/);

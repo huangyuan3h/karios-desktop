@@ -14,7 +14,16 @@ const VAULT = {
     meta: {
       source: 'frozen',
       n_factors: 3,
-      revival: { rule: 'H2k-K2', N: 40, X: 75, off_below: 50, steps: [0, 10, 20], min_trades: 20, step_gap: 20, note: 'rule' },
+      revival: {
+        rule: 'H2k-K2',
+        N: 40,
+        X: 75,
+        off_below: 50,
+        steps: [0, 10, 20],
+        min_trades: 20,
+        step_gap: 20,
+        note: 'rule',
+      },
       cost: '32.28bp',
     },
     summary: { n_factors: 3, n_cold: 1, n_watch: 1, n_revived: 1 },
@@ -36,10 +45,38 @@ const VAULT = {
         rolling_window: 'holdout',
         spark: [99.9, 100, 50.2, 10.9],
         history: [
-          { window: 'OOS2', date: '2025-08-07', percentile: 99.9, net: 221.9, trades: 293, revived: true },
-          { window: 'train', date: '2026-02-27', percentile: 100, net: 71.4, trades: 124, revived: true },
-          { window: 'valid', date: '2026-08-07', percentile: 50.2, net: 5.9, trades: 52, revived: false },
-          { window: 'holdout', date: '2026-09-30', percentile: 10.9, net: -19.8, trades: 52, revived: false },
+          {
+            window: 'OOS2',
+            date: '2025-08-07',
+            percentile: 99.9,
+            net: 221.9,
+            trades: 293,
+            revived: true,
+          },
+          {
+            window: 'train',
+            date: '2026-02-27',
+            percentile: 100,
+            net: 71.4,
+            trades: 124,
+            revived: true,
+          },
+          {
+            window: 'valid',
+            date: '2026-08-07',
+            percentile: 50.2,
+            net: 5.9,
+            trades: 52,
+            revived: false,
+          },
+          {
+            window: 'holdout',
+            date: '2026-09-30',
+            percentile: 10.9,
+            net: -19.8,
+            trades: 52,
+            revived: false,
+          },
         ],
         position: 0,
         confirmations: 0,
@@ -63,10 +100,38 @@ const VAULT = {
         rolling_window: 'valid',
         spark: [48.6, 99.6, 99.8, null],
         history: [
-          { window: 'OOS2', date: '2025-08-07', percentile: 48.6, net: 31.7, trades: 83, revived: false },
-          { window: 'holdout', date: '2026-09-30', percentile: null, net: 0, trades: 0, revived: false },
-          { window: 'valid', date: '2026-08-07', percentile: 99.8, net: 37.5, trades: 16, revived: false },
-          { window: 'train', date: '2026-02-27', percentile: 99.6, net: 40.9, trades: 52, revived: true },
+          {
+            window: 'OOS2',
+            date: '2025-08-07',
+            percentile: 48.6,
+            net: 31.7,
+            trades: 83,
+            revived: false,
+          },
+          {
+            window: 'holdout',
+            date: '2026-09-30',
+            percentile: null,
+            net: 0,
+            trades: 0,
+            revived: false,
+          },
+          {
+            window: 'valid',
+            date: '2026-08-07',
+            percentile: 99.8,
+            net: 37.5,
+            trades: 16,
+            revived: false,
+          },
+          {
+            window: 'train',
+            date: '2026-02-27',
+            percentile: 99.6,
+            net: 40.9,
+            trades: 52,
+            revived: true,
+          },
         ],
         position: 0,
         confirmations: 0,
@@ -90,10 +155,38 @@ const VAULT = {
         rolling_window: 'holdout',
         spark: [96.4, 90, 0.0, 98.0],
         history: [
-          { window: 'OOS2', date: '2025-08-07', percentile: 96.4, net: 0.47, trades: 18688, revived: true },
-          { window: 'train', date: '2026-02-27', percentile: 90, net: 0.54, trades: 13051, revived: true },
-          { window: 'valid', date: '2026-08-07', percentile: 0.0, net: -1.21, trades: 15809, revived: false },
-          { window: 'holdout', date: '2026-09-30', percentile: 98.0, net: 2.16, trades: 3016, revived: true },
+          {
+            window: 'OOS2',
+            date: '2025-08-07',
+            percentile: 96.4,
+            net: 0.47,
+            trades: 18688,
+            revived: true,
+          },
+          {
+            window: 'train',
+            date: '2026-02-27',
+            percentile: 90,
+            net: 0.54,
+            trades: 13051,
+            revived: true,
+          },
+          {
+            window: 'valid',
+            date: '2026-08-07',
+            percentile: 0.0,
+            net: -1.21,
+            trades: 15809,
+            revived: false,
+          },
+          {
+            window: 'holdout',
+            date: '2026-09-30',
+            percentile: 98.0,
+            net: 2.16,
+            trades: 3016,
+            revived: true,
+          },
         ],
         position: 0,
         confirmations: 1,
@@ -129,7 +222,10 @@ beforeEach(() => {
   apiGetJson.mockImplementation(async (path: string) => {
     if (String(path).includes('/api/backtest/factor-vault')) return VAULT;
     if (String(path).includes('/api/backtest/sgap-decay'))
-      return { ok: true, decay: { summary: {}, rolling: [], monthly: [], equity: [], meta: { windows: {} } } };
+      return {
+        ok: true,
+        decay: { summary: {}, rolling: [], monthly: [], equity: [], meta: { windows: {} } },
+      };
     if (String(path).includes('/api/backtest/strategy-catalog'))
       return { ok: true, strategies: [] };
     if (String(path).includes('/api/backtest/timeline'))

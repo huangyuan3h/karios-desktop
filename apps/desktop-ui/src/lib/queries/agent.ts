@@ -149,9 +149,10 @@ export function useDecisionContractQuery(tradeDate?: string, enabled = true) {
   const q = tradeDate ? `?tradeDate=${encodeURIComponent(tradeDate)}` : '';
   return useQuery({
     queryKey: ['agent', 'decision-contract', tradeDate ?? 'today'],
-    queryFn: () => apiGetJson<DecisionContract>(`/v1/agent/decision-contract${q}`, {
-      timeoutMs: 120_000,
-    }),
+    queryFn: () =>
+      apiGetJson<DecisionContract>(`/v1/agent/decision-contract${q}`, {
+        timeoutMs: 120_000,
+      }),
     staleTime: 5 * 60_000,
     enabled,
   });

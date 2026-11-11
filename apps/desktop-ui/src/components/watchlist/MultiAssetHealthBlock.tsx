@@ -1,7 +1,11 @@
 'use client';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { intradayTrailWarnFromSleeve, isM30B3Symbol, pendingParkSellFromSleeve } from '@/lib/m30-follow';
+import {
+  intradayTrailWarnFromSleeve,
+  isM30B3Symbol,
+  pendingParkSellFromSleeve,
+} from '@/lib/m30-follow';
 import { WHIP_ANNOTATION } from '@/lib/follow-timing';
 import { PARKING_META, parkingKeyForSymbol } from '@/lib/parking-universe';
 import type { AgentWhipState } from '@/lib/queries/agent';
@@ -89,9 +93,7 @@ export function MultiAssetHealthBlock({
       <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="h-3 w-[3px] rounded-full bg-sky-500" />
         停车体检
-        <span className="text-[10px] font-normal text-[var(--k-muted)]">
-          闲置现金 ETF 停车场
-        </span>
+        <span className="text-[10px] font-normal text-[var(--k-muted)]">闲置现金 ETF 停车场</span>
       </div>
       <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
@@ -166,9 +168,7 @@ export function MultiAssetHealthBlock({
           data-testid="parking-must-act"
           className="rounded-md border border-red-500/50 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-100"
         >
-          <div className="font-semibold">
-            ⛔ 断线止损待执行：卖出 {pendingSellCode} → 逆回购
-          </div>
+          <div className="font-semibold">⛔ 断线止损待执行：卖出 {pendingSellCode} → 逆回购</div>
           <div className="mt-0.5">
             {sleeve?.message ?? '峰值回撤触线'}
             {pendingSell.signalDate ? ` · 信号日 ${pendingSell.signalDate} 收盘` : ''}
@@ -264,44 +264,42 @@ export function MultiAssetHealthBlock({
                 ? {
                     label: intradayWarn?.status === 'breached' ? '已触线' : '临近触线',
                     cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-                    tip: `${
-                      intradayWarn?.message ?? '14:30 现价接近卖出阈值价'
-                    }；${
+                    tip: `${intradayWarn?.message ?? '14:30 现价接近卖出阈值价'}；${
                       intradayWarn?.executeHint ?? '若收盘仍低于阈值价 → 明日开盘卖出转逆回购'
                     }`,
                   }
                 : m30B3
-              ? {
-                  label: 'B3 腿',
-                  cls: 'bg-sky-500/10 text-sky-700',
-                  tip: '母港M30：B3 成分（30% 腿），按月频目标调整，份数见上方操作清单',
-                }
-              : pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
-                ? pickKey === 'STOCK' && !coreDestinationReady
-                  ? null
-                  : {
-                      label: '卖出',
-                      cls: 'bg-red-500/10 text-red-600',
-                      tip: `停车轮动：非今日 pick（${pickKey}），资金调向 ${pickKey}`,
+                  ? {
+                      label: 'B3 腿',
+                      cls: 'bg-sky-500/10 text-sky-700',
+                      tip: '母港M30：B3 成分（30% 腿），按月频目标调整，份数见上方操作清单',
                     }
-                : isPick
-                  ? pos != null && parkTarget != null && pos < parkTarget - 1
-                    ? {
-                        label: '加仓',
-                        cls: 'bg-sky-500/10 text-sky-700',
-                        tip:
-                          parkTarget != null
-                            ? `今日 pick · 停车目标 ${parkTarget.toFixed(0)}%（当前 ${pos.toFixed(1)}%）`
-                            : `今日 pick · 当前 ${pos.toFixed(1)}%`,
-                      }
-                    : {
-                        label: '持有',
-                        cls: 'bg-emerald-500/10 text-emerald-700',
-                        tip: holdTip ?? '今日 pick（mom60+MA200 选趋势最好）',
-                      }
-                  : holdTip
-                    ? { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip }
-                    : null;
+                  : pickKey != null && key !== pickKey && key !== 'OTHER' && pos != null && pos > 0
+                    ? pickKey === 'STOCK' && !coreDestinationReady
+                      ? null
+                      : {
+                          label: '卖出',
+                          cls: 'bg-red-500/10 text-red-600',
+                          tip: `停车轮动：非今日 pick（${pickKey}），资金调向 ${pickKey}`,
+                        }
+                    : isPick
+                      ? pos != null && parkTarget != null && pos < parkTarget - 1
+                        ? {
+                            label: '加仓',
+                            cls: 'bg-sky-500/10 text-sky-700',
+                            tip:
+                              parkTarget != null
+                                ? `今日 pick · 停车目标 ${parkTarget.toFixed(0)}%（当前 ${pos.toFixed(1)}%）`
+                                : `今日 pick · 当前 ${pos.toFixed(1)}%`,
+                          }
+                        : {
+                            label: '持有',
+                            cls: 'bg-emerald-500/10 text-emerald-700',
+                            tip: holdTip ?? '今日 pick（mom60+MA200 选趋势最好）',
+                          }
+                      : holdTip
+                        ? { label: '持有', cls: 'bg-emerald-500/10 text-emerald-700', tip: holdTip }
+                        : null;
             return (
               <div
                 key={h.symbol}
@@ -387,9 +385,7 @@ export function MultiAssetHealthBlock({
           <span
             className={cn(
               'font-medium',
-              pendingSell || intradayWarn
-                ? 'text-red-600 dark:text-red-400'
-                : 'text-[var(--k-fg)]',
+              pendingSell || intradayWarn ? 'text-red-600 dark:text-red-400' : 'text-[var(--k-fg)]',
             )}
           >
             {pendingSell

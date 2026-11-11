@@ -28,10 +28,7 @@ describe('follow-timing · achievable execution clock', () => {
   });
 
   it('keeps the 14:30 → close-confirm → next-open sell flow', () => {
-    const t = executionTiming(
-      'close-sell-pending',
-      new Date('2026-11-05T14:30:00+08:00'),
-    );
+    const t = executionTiming('close-sell-pending', new Date('2026-11-05T14:30:00+08:00'));
     expect(t.label).toBe('收盘待确认 → 次日开盘卖');
     expect(t.detail).toMatch(/14:30 现价触线只做预警/);
     expect(t.detail).toMatch(/收盘仍触发才卖/);

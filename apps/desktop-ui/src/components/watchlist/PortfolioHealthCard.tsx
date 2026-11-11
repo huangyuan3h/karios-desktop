@@ -54,7 +54,13 @@ import {
   useRecentTrailExits,
 } from '@/lib/follow-timing';
 import { PARKING_KEYS, PARKING_META } from '@/lib/parking-universe';
-import { useTimelineQuery, useSatelliteLivePanelQuery, useSatellitePaperQuery, useUserSatelliteBookQuery, type TimelineStrategy } from '@/lib/queries/backtest';
+import {
+  useTimelineQuery,
+  useSatelliteLivePanelQuery,
+  useSatellitePaperQuery,
+  useUserSatelliteBookQuery,
+  type TimelineStrategy,
+} from '@/lib/queries/backtest';
 import type { StrategyMode } from '@/lib/strategy-settings';
 import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 import { MultiAssetHealthBlock } from './MultiAssetHealthBlock';
@@ -149,7 +155,9 @@ function PickStrongOpsPanel({
   const parkPct = sleeve?.parkPct ?? idlePct;
   const fmt = (v: number | null | undefined) => (v != null ? `${v.toFixed(0)}%` : '—');
   const pendingSell = pendingParkSellFromSleeve(sleeve);
-  const pendingSellCode = pendingSell ? pendingSell.symbol.replace(/^ETF:/, '').split('.')[0] : null;
+  const pendingSellCode = pendingSell
+    ? pendingSell.symbol.replace(/^ETF:/, '').split('.')[0]
+    : null;
   const intradayWarn = intradayTrailWarnFromSleeve(sleeve);
   const intradayWarnCode = intradayWarn
     ? intradayWarn.symbol.replace(/^ETF:/, '').split('.')[0]
@@ -199,9 +207,7 @@ function PickStrongOpsPanel({
           : '') +
         `${intradayWarn.px != null || intradayWarn.thresholdPx != null ? '）' : ''}`,
     );
-    steps.push(
-      intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）',
-    );
+    steps.push(intradayWarn.executeHint ?? '若收盘仍低于门槛价 → 明日开盘卖出转逆回购（不盘中卖）');
     steps.push('该停车腿今日不加仓、不买回；其余腿按各自目标处理');
     if (action === 'ROTATE' || action === 'BUY') {
       if (pickWhip) {
@@ -225,7 +231,8 @@ function PickStrongOpsPanel({
         ? '核心：按下方股票篮买入（见仓位%，停车只停剩下的闲钱）'
         : '核心目标股票篮，但今日 0 只可执行 → 不要为 STOCK 卖光 ETF 停车场',
     );
-    if (sleeve?.holding && coreBuyable) steps.push('若仍持有停车 ETF：按上方操作清单先卖出 ETF，再配股票');
+    if (sleeve?.holding && coreBuyable)
+      steps.push('若仍持有停车 ETF：按上方操作清单先卖出 ETF，再配股票');
   } else if (isEtf) {
     steps.push(
       pickWhip
@@ -324,10 +331,7 @@ function PickStrongOpsPanel({
         <p className="mt-1.5 text-[12px] text-[var(--k-fg)]">引擎：{sleeve.message}</p>
       ) : null}
       {m30 ? (
-        <p
-          data-testid="pick-single-voice"
-          className="mt-2 text-[10px] text-[var(--k-muted)]"
-        >
+        <p data-testid="pick-single-voice" className="mt-2 text-[10px] text-[var(--k-muted)]">
           执行以上方「今日操作」为准；本卡只做停车体检，不再重复下单指令（避免两个声音打架）。
         </p>
       ) : (
@@ -593,9 +597,7 @@ function M30OpsSection({
       ...mustActActions,
       ...hardActions,
       ...(gate.needsRebalance ? rebalanceActions : []),
-    ].filter(
-      (a) => !(a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol))),
-    );
+    ].filter((a) => !(a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol))));
     const whip = (a: M30Action) => isWhipRebuy(a.side, a.symbol, trailExitSymbols);
     return [...list].sort((x, y) => {
       if (!!x.mustAct !== !!y.mustAct) return x.mustAct ? -1 : 1;
@@ -614,18 +616,16 @@ function M30OpsSection({
   const buys = orders.filter((a) => a.side === 'BUY').length;
   const suppressedSameKeyBuys = React.useMemo(
     () =>
-      [
-        ...hardActions,
-        ...(gate.needsRebalance ? rebalanceActions : []),
-      ].filter((a) => a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol))).length,
+      [...hardActions, ...(gate.needsRebalance ? rebalanceActions : [])].filter(
+        (a) => a.side === 'BUY' && mustActKeys.has(followSymbolKey(a.symbol)),
+      ).length,
     [hardActions, rebalanceActions, gate.needsRebalance, mustActKeys],
   );
   const whipBuys = orders.filter((a) => isWhipRebuy(a.side, a.symbol, trailExitSymbols));
   const whipOverlay = whip?.overlay ?? null;
   const whipOverlayActive = whipOverlay?.effectiveStatus === 'accepted';
   const showWhipNote = Boolean(whip?.sameKeyRebuy) || whipBuys.length > 0;
-  const whipLabel =
-    whip?.pickKey ?? whipBuys.map((a) => followSymbolKey(a.symbol)).join('、');
+  const whipLabel = whip?.pickKey ?? whipBuys.map((a) => followSymbolKey(a.symbol)).join('、');
 
   const circuitBlocked = data.circuitBlocked === true;
   const regimeWeak = data.regime === 'Weak';
@@ -659,9 +659,8 @@ function M30OpsSection({
   const mustActSym = mustActRow ? m30BareCode(mustActRow.symbol) : null;
   /** Backend target line for the warned leg (pct / price for the conditional row). */
   const intradayWarnLine = intradayWarn
-    ? (report.targets.find(
-        (t) => m30BareCode(t.symbol) === m30BareCode(intradayWarn.symbol),
-      ) ?? null)
+    ? (report.targets.find((t) => m30BareCode(t.symbol) === m30BareCode(intradayWarn.symbol)) ??
+      null)
     : null;
   const intradayWarnAmt =
     intradayWarnLine != null && capital != null
@@ -713,7 +712,8 @@ function M30OpsSection({
           data-testid="ops-same-key-blocked"
           className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-2.5 py-1 text-[10px] font-medium text-red-800 dark:text-red-200"
         >
-          ⛔ Must-act 优先：已抑制 {suppressedSameKeyBuys} 笔同键目标回买（先卖后买，避免当天自相矛盾）。
+          ⛔ Must-act 优先：已抑制 {suppressedSameKeyBuys}{' '}
+          笔同键目标回买（先卖后买，避免当天自相矛盾）。
         </p>
       ) : null}
       {showWhipNote ? (
@@ -731,9 +731,7 @@ function M30OpsSection({
           data-testid="ops-must-act"
           className="mt-1.5 rounded-md border border-red-500/50 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-800 dark:text-red-100"
         >
-          <div className="font-semibold">
-            ⛔ 停车腿止损待执行：卖出 {mustActSym} → 逆回购
-          </div>
+          <div className="font-semibold">⛔ 停车腿止损待执行：卖出 {mustActSym} → 逆回购</div>
           <div className="mt-0.5 font-normal">
             {pendingParkSell?.reason ?? '峰值回撤触线'}
             {pendingParkSell?.signalDate ? ` · 信号日 ${pendingParkSell.signalDate} 收盘` : ''}
@@ -770,8 +768,8 @@ function M30OpsSection({
           data-testid="ops-risk-note"
           className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-800 dark:text-red-100"
         >
-          ⏸ 回撤熔断中：S-3 股票买入暂缓 {deferredStockBuys} 笔（下方 S-3 买入已标“暂缓”）；停车
-          ETF / B3 买入与卖出照常
+          ⏸ 回撤熔断中：S-3 股票买入暂缓 {deferredStockBuys} 笔（下方 S-3 买入已标“暂缓”）；停车 ETF
+          / B3 买入与卖出照常
         </div>
       ) : null}
       {hasDeferred && !circuitBlocked && regimeWeak ? (
@@ -779,8 +777,8 @@ function M30OpsSection({
           data-testid="ops-risk-note"
           className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
         >
-          弱市观望：S-3 股票今日不新开仓（{deferredStockBuys} 笔暂缓），只处理卖出；停车 ETF /
-          B3 买入照常
+          弱市观望：S-3 股票今日不新开仓（{deferredStockBuys} 笔暂缓），只处理卖出；停车 ETF / B3
+          买入照常
         </div>
       ) : null}
       {hasDeferred && !circuitBlocked && !regimeWeak && panicActive ? (
@@ -818,9 +816,7 @@ function M30OpsSection({
             </span>
             <ExecutionTimingBadge kind="close-sell-pending" testId="ops-row-timing" />
             <span className="font-semibold text-red-600 dark:text-red-400">卖</span>
-            <span className="font-medium">
-              {intradayWarnLine?.name ?? '港湾停车'}
-            </span>
+            <span className="font-medium">{intradayWarnLine?.name ?? '港湾停车'}</span>
             <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
               {m30BareCode(intradayWarn.symbol)}
             </span>
@@ -963,7 +959,9 @@ function M30OpsSection({
 
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--k-muted)]">
         <span>B3 腿只按月频目标调，不随停车轮动换仓。</span>
-        <span className="ml-auto">跟仓 {FOLLOW_CADENCE_LABELS[cadence]} · 上次 {status.last} · 下次 {status.next}</span>
+        <span className="ml-auto">
+          跟仓 {FOLLOW_CADENCE_LABELS[cadence]} · 上次 {status.last} · 下次 {status.next}
+        </span>
         <span className="flex gap-1">
           {(['weekly', 'monthly', 'daily'] as FollowCadence[]).map((c) => (
             <button
@@ -1170,7 +1168,10 @@ function BuyList({
     }
   }, []);
   return (
-    <div id="buy-list" className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+    <div
+      id="buy-list"
+      className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2"
+    >
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
         <span>{buyWindowLabel}（S-3 核心 · score 前 5）</span>
         <ExecutionTimingBadge kind="intraday-buy" testId="buy-list-timing" />
@@ -1516,8 +1517,8 @@ function SleeveReconBlock({
           <span className="text-[var(--k-muted)]">你</span>
           <span>
             已买 {recon.userBuys.map(pretty).join(', ') || '—'} · 已卖{' '}
-            {recon.userSells.map(pretty).join(', ') || '—'} · 执行日{' '}
-            {recon.userExecDate ?? '—'} / {recon.exitExecDate ?? '—'}
+            {recon.userSells.map(pretty).join(', ') || '—'} · 执行日 {recon.userExecDate ?? '—'} /{' '}
+            {recon.exitExecDate ?? '—'}
           </span>
         </div>
       ) : null}
@@ -1528,7 +1529,6 @@ function SleeveReconBlock({
     </div>
   );
 }
-
 
 function HealthPanel({
   title,
@@ -1709,8 +1709,8 @@ function HealthPanel({
         />
       ) : !allowStockBuys && candidates.length > 0 ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-          股票候选 <strong>{candidates.length}</strong> 只 · 今日不满足 S-3
-          开仓条件（闸门/市况）→ <strong>不执行买入</strong>
+          股票候选 <strong>{candidates.length}</strong> 只 · 今日不满足 S-3 开仓条件（闸门/市况）→{' '}
+          <strong>不执行买入</strong>
         </div>
       ) : allowStockBuys && block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
@@ -1870,7 +1870,10 @@ export function PortfolioHealthCard({
     return d.toISOString().slice(0, 10);
   })();
   const satStrategy: TimelineStrategy =
-    mode === 'starship' || mode === 'starship_robust' || mode === 'starship_b' || mode === 'twin_star'
+    mode === 'starship' ||
+    mode === 'starship_robust' ||
+    mode === 'starship_b' ||
+    mode === 'twin_star'
       ? mode
       : 'starport';
   const satQ = useTimelineQuery(satStart, satToday, satStrategy, satelliteMode);
@@ -2063,7 +2066,10 @@ export function PortfolioHealthCard({
       </div>
 
       {coreView && reminders.length > 0 && (
-        <div id="buy-reminders" className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+        <div
+          id="buy-reminders"
+          className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2"
+        >
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
             <BellRing size={11} className="inline-block" />
             买入提醒（{reminders.length}）
@@ -2105,106 +2111,106 @@ export function PortfolioHealthCard({
       <div className="flex flex-col gap-3">
         {coreView ? (
           <>
-        {mode === 'homeport' && data ? (
-          <M30OpsSection
-            data={data}
-            capital={capital}
-            b3={m30B3}
-            b3Error={b3Error}
-            onRecord={handleRecordM30Action}
-            trailExitSymbols={trailExitSymbols}
-            whip={whip}
-            overlayBusy={overlayBusy}
-            overlayError={overlayError}
-            onWhipOverlay={handleWhipOverlay}
-          />
-        ) : null}
-        {/* 次要信息：规则说明 / 动量条 / 停车体检 / 对账细节 / 股票篮 ——
+            {mode === 'homeport' && data ? (
+              <M30OpsSection
+                data={data}
+                capital={capital}
+                b3={m30B3}
+                b3Error={b3Error}
+                onRecord={handleRecordM30Action}
+                trailExitSymbols={trailExitSymbols}
+                whip={whip}
+                overlayBusy={overlayBusy}
+                overlayError={overlayError}
+                onWhipOverlay={handleWhipOverlay}
+              />
+            ) : null}
+            {/* 次要信息：规则说明 / 动量条 / 停车体检 / 对账细节 / 股票篮 ——
             保留在同一组件内、放在操作清单下面，视觉弱化但不折叠隐藏。 */}
-        <div className="flex flex-col gap-3 opacity-90">
-        {sleeve ? (
-          <PickStrongOpsPanel
-            sleeve={sleeve}
-            stockHoldingsCount={stockHoldingsCount}
-            coreBuyable={stockBuyable}
-            m30={mode === 'homeport'}
-            trailExitSymbols={trailExitSymbols}
-            whipOverlayActive={whip?.overlay?.effectiveStatus === 'accepted'}
-          />
-        ) : (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
-            live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离港湾）
-          </div>
-        )}
-        <MultiAssetHealthBlock
-          holdings={data?.multiAssetHoldings}
-          sleeve={sleeve}
-          onOpen={onOpenStock}
-          coreDestinationReady={coreDestinationReady}
-          m30={mode === 'homeport'}
-          whip={whip}
-          overlayBusy={overlayBusy}
-          onOverlay={handleWhipOverlay}
-        />
-        <SleeveReconBlock
-          recon={sleeveReconQ.data?.recon}
-          updatedAt={sleeveReconQ.dataUpdatedAt}
-          holdings={data?.multiAssetHoldings}
-        />
-        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
-          <button
-            type="button"
-            onClick={() => setStockOpen((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold"
-          >
-            <span>股票篮细节（仅 pick=STOCK 时开仓）</span>
-            <span className="text-[10px] font-normal text-[var(--k-muted)]">
-              {allowStockBuys
-                ? stockBuyable
-                  ? '今日可执行'
-                  : '今日无候选'
-                : pickKey
-                  ? `今日 pick=${pickKey} · 只看仓/轮出`
-                  : '等待 pick'}
-            </span>
-            <span className="ml-auto text-[10px] text-[var(--k-muted)]">
-              {stockOpen ? '收起' : '展开'}
-            </span>
-          </button>
-          {stockOpen ? (
-            <div className="flex flex-col gap-2 border-t border-[var(--k-border)] p-2.5">
-              <HealthPanel
-                title="A股线（股票篮生成器）"
-                tag="CN"
-                block={data}
-                recon={reconByMarket.get('CN')}
+            <div className="flex flex-col gap-3 opacity-90">
+              {sleeve ? (
+                <PickStrongOpsPanel
+                  sleeve={sleeve}
+                  stockHoldingsCount={stockHoldingsCount}
+                  coreBuyable={stockBuyable}
+                  m30={mode === 'homeport'}
+                  trailExitSymbols={trailExitSymbols}
+                  whipOverlayActive={whip?.overlay?.effectiveStatus === 'accepted'}
+                />
+              ) : (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+                  live pick 未返回 — 请刷新；未拿到 pick 前不执行股票买入（避免偏离港湾）
+                </div>
+              )}
+              <MultiAssetHealthBlock
+                holdings={data?.multiAssetHoldings}
+                sleeve={sleeve}
                 onOpen={onOpenStock}
-                onRemind={handleRemind}
-                onBuy={handleBuy}
-                remindedSymbols={remindedSymbols}
-                boughtSymbols={boughtSymbols}
-                overall={data}
-                allowStockBuys={allowStockBuys}
-                rotateOutStocks={rotateOutCn}
+                coreDestinationReady={coreDestinationReady}
+                m30={mode === 'homeport'}
+                whip={whip}
+                overlayBusy={overlayBusy}
+                onOverlay={handleWhipOverlay}
               />
-              <HealthPanel
-                title="港股线（股票篮生成器）"
-                tag="HK"
-                block={data?.hkHealth}
-                recon={reconByMarket.get('HK')}
-                onOpen={onOpenStock}
-                onRemind={handleRemind}
-                onBuy={handleBuy}
-                remindedSymbols={remindedSymbols}
-                boughtSymbols={boughtSymbols}
-                overall={data}
-                allowStockBuys={allowStockBuys}
-                rotateOutStocks={rotateOutHk}
+              <SleeveReconBlock
+                recon={sleeveReconQ.data?.recon}
+                updatedAt={sleeveReconQ.dataUpdatedAt}
+                holdings={data?.multiAssetHoldings}
               />
+              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/40">
+                <button
+                  type="button"
+                  onClick={() => setStockOpen((v) => !v)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold"
+                >
+                  <span>股票篮细节（仅 pick=STOCK 时开仓）</span>
+                  <span className="text-[10px] font-normal text-[var(--k-muted)]">
+                    {allowStockBuys
+                      ? stockBuyable
+                        ? '今日可执行'
+                        : '今日无候选'
+                      : pickKey
+                        ? `今日 pick=${pickKey} · 只看仓/轮出`
+                        : '等待 pick'}
+                  </span>
+                  <span className="ml-auto text-[10px] text-[var(--k-muted)]">
+                    {stockOpen ? '收起' : '展开'}
+                  </span>
+                </button>
+                {stockOpen ? (
+                  <div className="flex flex-col gap-2 border-t border-[var(--k-border)] p-2.5">
+                    <HealthPanel
+                      title="A股线（股票篮生成器）"
+                      tag="CN"
+                      block={data}
+                      recon={reconByMarket.get('CN')}
+                      onOpen={onOpenStock}
+                      onRemind={handleRemind}
+                      onBuy={handleBuy}
+                      remindedSymbols={remindedSymbols}
+                      boughtSymbols={boughtSymbols}
+                      overall={data}
+                      allowStockBuys={allowStockBuys}
+                      rotateOutStocks={rotateOutCn}
+                    />
+                    <HealthPanel
+                      title="港股线（股票篮生成器）"
+                      tag="HK"
+                      block={data?.hkHealth}
+                      recon={reconByMarket.get('HK')}
+                      onOpen={onOpenStock}
+                      onRemind={handleRemind}
+                      onBuy={handleBuy}
+                      remindedSymbols={remindedSymbols}
+                      boughtSymbols={boughtSymbols}
+                      overall={data}
+                      allowStockBuys={allowStockBuys}
+                      rotateOutStocks={rotateOutHk}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ) : null}
-        </div>
-        </div>
           </>
         ) : null}
         {mode === 'starship_robust' || mode === 'starship_b' ? (
@@ -2237,7 +2243,11 @@ export function PortfolioHealthCard({
             hideBuyRows={mode === 'starship_robust' || mode === 'starship_b'}
             trailExitSymbols={trailExitSymbols}
             timelineUnavailable={satQ.isLoading ? 'loading' : satQ.error ? 'error' : null}
-            timelineError={satQ.error ? String(satQ.error instanceof Error ? satQ.error.message : satQ.error) : null}
+            timelineError={
+              satQ.error
+                ? String(satQ.error instanceof Error ? satQ.error.message : satQ.error)
+                : null
+            }
             onRetryTimeline={() =>
               queryClient.invalidateQueries({ queryKey: ['backtest', 'timeline'] })
             }

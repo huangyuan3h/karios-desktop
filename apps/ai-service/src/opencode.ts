@@ -117,7 +117,9 @@ export function runOpenCode(options: RunOpenCodeOptions): Promise<string> {
     mkdirSync(cwd, { recursive: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return Promise.reject(new Error(`Cannot prepare OpenCode working directory ${cwd}: ${message}`));
+    return Promise.reject(
+      new Error(`Cannot prepare OpenCode working directory ${cwd}: ${message}`),
+    );
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -191,9 +193,7 @@ export function runOpenCode(options: RunOpenCodeOptions): Promise<string> {
       const text = parseOpenCodeJsonl(stdout);
       if (!text.trim()) {
         const detail = stderr.trim().slice(-500);
-        finish(
-          new Error(`OpenCode returned no text${detail ? ` (stderr: ${detail})` : ''}`),
-        );
+        finish(new Error(`OpenCode returned no text${detail ? ` (stderr: ${detail})` : ''}`));
         return;
       }
       finish(null, text);

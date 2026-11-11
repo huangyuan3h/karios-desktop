@@ -49,7 +49,16 @@ const VAULT = {
         trades_raw: 40,
         rolling_window: '40',
         spark: [],
-        history: [{ window: 'valid', date: '2026-10-01', percentile: 99.9, net: 42.7, trades: 40, revived: true }],
+        history: [
+          {
+            window: 'valid',
+            date: '2026-10-01',
+            percentile: 99.9,
+            net: 42.7,
+            trades: 40,
+            revived: true,
+          },
+        ],
         position: 0,
         confirmations: 2,
         days_since_change: 3,

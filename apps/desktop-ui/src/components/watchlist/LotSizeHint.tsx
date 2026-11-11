@@ -49,7 +49,11 @@ export function LotSizeHint({
               if (e.key === 'Enter') save();
             }}
           />
-          <button type="button" className="rounded border border-[var(--k-border)] px-1" onClick={save}>
+          <button
+            type="button"
+            className="rounded border border-[var(--k-border)] px-1"
+            onClick={save}
+          >
             设好
           </button>
           <span>→ 自动换算整数股数（只影响下单建议）</span>
@@ -85,8 +89,7 @@ export function LotSizeHint({
       )}
       <div className="mt-0.5 text-[var(--k-muted)]">
         {rule.note}
-        {sizing.boost > 1 ? ` · 排名 #${rank} 加成 ×${sizing.boost}` : ''} · 总资金{' '}
-        {money(capital)}
+        {sizing.boost > 1 ? ` · 排名 #${rank} 加成 ×${sizing.boost}` : ''} · 总资金 {money(capital)}
       </div>
     </div>
   );

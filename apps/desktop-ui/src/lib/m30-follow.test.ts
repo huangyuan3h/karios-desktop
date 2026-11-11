@@ -177,7 +177,8 @@ describe('buildM30Targets', () => {
     expect((park?.targetShares ?? 0) % 100).toBe(0);
   });
 
-  it('orders sells before buys', () => {    const r = buildM30Targets({
+  it('orders sells before buys', () => {
+    const r = buildM30Targets({
       capital: 1_000_000,
       pickKey: 'GOLD',
       pickSymbol: 'ETF:518880',
@@ -450,7 +451,9 @@ describe('rebalanceGate', () => {
   it('fires on the rebalance day or past the 5pt drift thresholds', () => {
     expect(M30_DRIFT_LEG_PT).toBe(5);
     expect(M30_DRIFT_LINE_PT).toBe(5);
-    expect(rebalanceGate({ isRebalanceDay: true, legDriftPt: 0, maxLineDriftPt: 0 }).needsRebalance).toBe(true);
+    expect(
+      rebalanceGate({ isRebalanceDay: true, legDriftPt: 0, maxLineDriftPt: 0 }).needsRebalance,
+    ).toBe(true);
     expect(
       rebalanceGate({ isRebalanceDay: false, legDriftPt: 5, maxLineDriftPt: 0 }).needsRebalance,
     ).toBe(true);
@@ -474,13 +477,9 @@ describe('buildM30Targets — 14:30 warning blocks adds (clock unchanged)', () =
       holdings: [{ symbol: 'ETF:518880', positionPct: 20 }],
     };
     const before = buildM30Targets(input);
-    expect(
-      before.actions.some((a) => a.side === 'BUY' && a.symbol === 'ETF:513350'),
-    ).toBe(true);
+    expect(before.actions.some((a) => a.side === 'BUY' && a.symbol === 'ETF:513350')).toBe(true);
     const after = buildM30Targets({ ...input, parkBuyBlockedSymbol: 'ETF:513350' });
-    expect(
-      after.actions.some((a) => a.side === 'BUY' && a.symbol === 'ETF:513350'),
-    ).toBe(false);
+    expect(after.actions.some((a) => a.side === 'BUY' && a.symbol === 'ETF:513350')).toBe(false);
     // The clock is unchanged: a warning alone never creates a SELL.
     expect(after.actions.some((a) => a.symbol === 'ETF:513350' && a.side === 'SELL')).toBe(false);
     expect(after.actions.some((a) => a.mustAct)).toBe(false);

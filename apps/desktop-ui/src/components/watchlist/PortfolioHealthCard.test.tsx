@@ -200,9 +200,7 @@ describe('PortfolioHealthCard (harbor)', () => {
             aligned: 3,
             missing: 2,
             extra: 0,
-            detail: [
-              { type: 'missing', symbol: 'CN:600519', score: 80, positionPct: 0.1 },
-            ],
+            detail: [{ type: 'missing', symbol: 'CN:600519', score: 80, positionPct: 0.1 }],
           },
         ],
       },
@@ -348,9 +346,7 @@ describe('PortfolioHealthCard (harbor)', () => {
     renderCard();
     expect(await screen.findByText(/核心腿对账 · 2026-09-01/)).toBeDefined();
     expect(screen.getAllByText(/你的账户/).length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/待执行 · 下一交易日 开盘买 CN:600519/),
-    ).toBeDefined();
+    expect(screen.getByText(/待执行 · 下一交易日 开盘买 CN:600519/)).toBeDefined();
     expect(screen.getByText(/镜像盘/)).toBeDefined();
     expect(screen.getByText(/缺卖 513110/)).toBeDefined();
   });
@@ -511,9 +507,9 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     // B3 纯月频补足行保留月频原因。
     expect(screen.getAllByText('（B3 月频目标）').length).toBeGreaterThanOrEqual(3);
     // 停车相关行注明 T+1 开盘执行（港湾停车买入 + 腾资金补停车的 511260 卖出）。
-    expect(
-      screen.getAllByText('信号日收盘后、下一交易日开盘执行').length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('信号日收盘后、下一交易日开盘执行').length).toBeGreaterThanOrEqual(
+      2,
+    );
     // 每条直接给出份数 + 约金额，不再指向已下线的跟仓卡。
     expect(screen.queryByText(/母港M30跟仓/)).toBeNull();
     const amounts = screen.getAllByText(/份 ≈ ¥/);
@@ -527,15 +523,14 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     renderCard({ mode: 'homeport' });
     await screen.findByTestId('m30-ops');
     // 同一句话在整页只出现一次（操作引导保留一处，停车体检/对账不再重复）。
-    const hits = (document.body.textContent ?? '').split(
-      '港湾停车轮动：卖出 ETF:513110 → ETF:513350',
-    ).length - 1;
+    const hits =
+      (document.body.textContent ?? '').split('港湾停车轮动：卖出 ETF:513110 → ETF:513350').length -
+      1;
     expect(hits).toBe(1);
     // “B3 腿 ETF 不卖”是错的（B3 按月频目标会产生买卖单）：只保留准确说法一处。
     expect(screen.queryByText(/B3 腿 ETF 不卖/)).toBeNull();
-    const b3Hits = (document.body.textContent ?? '').split(
-      'B3 腿只按月频目标调，不随停车轮动换仓',
-    ).length - 1;
+    const b3Hits =
+      (document.body.textContent ?? '').split('B3 腿只按月频目标调，不随停车轮动换仓').length - 1;
     expect(b3Hits).toBe(1);
   });
 
@@ -566,7 +561,9 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
       panicCooldown: null,
       s3Candidates: [],
       // 3% 实持 → 7% 目标：S-3 股票买入 4%，应被熔断暂缓。
-      holdings: [{ symbol: 'CN:600519', name: '贵州茅台', positionPct: 3, action: 'HOLD', lastClose: 10 }],
+      holdings: [
+        { symbol: 'CN:600519', name: '贵州茅台', positionPct: 3, action: 'HOLD', lastClose: 10 },
+      ],
       hkHealth: { holdings: [] },
       multiAssetHoldings: [],
       multiAssetSleeve: {
@@ -600,7 +597,9 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
       scoreFresh: true,
       circuitBlocked: false,
       s3Candidates: [],
-      holdings: [{ symbol: 'CN:600519', name: '贵州茅台', positionPct: 3, action: 'HOLD', lastClose: 10 }],
+      holdings: [
+        { symbol: 'CN:600519', name: '贵州茅台', positionPct: 3, action: 'HOLD', lastClose: 10 },
+      ],
       hkHealth: { holdings: [] },
       multiAssetHoldings: [],
       multiAssetSleeve: {
@@ -734,7 +733,8 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     // Never buy the leg we are exiting.
     expect(
       rows.some(
-        (r) => r.getAttribute('data-side') === 'BUY' && r.getAttribute('data-symbol') === 'ETF:513350',
+        (r) =>
+          r.getAttribute('data-side') === 'BUY' && r.getAttribute('data-symbol') === 'ETF:513350',
       ),
     ).toBe(false);
     // Must-act banner + 操作引导 first step.
@@ -806,9 +806,12 @@ describe('PortfolioHealthCard M30 ops (homeport)', () => {
     // Clock unchanged: no executable SELL row from the warning alone, but the
     // page must not say 「今天无需操作」 nor suggest buying the same leg.
     expect(
-      screen.queryAllByTestId('m30-ops-row').some(
-        (r) => r.getAttribute('data-side') === 'BUY' && r.getAttribute('data-symbol') === 'ETF:513350',
-      ),
+      screen
+        .queryAllByTestId('m30-ops-row')
+        .some(
+          (r) =>
+            r.getAttribute('data-side') === 'BUY' && r.getAttribute('data-symbol') === 'ETF:513350',
+        ),
     ).toBe(false);
     expect(screen.queryByText(/今天无需操作/)).toBeNull();
   });

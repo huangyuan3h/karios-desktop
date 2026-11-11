@@ -239,7 +239,8 @@ describe('useFactorVaultQuery', () => {
   });
 });
 
-describe('useFleetQuery', () => {  beforeEach(() => {
+describe('useFleetQuery', () => {
+  beforeEach(() => {
     mockedApiGetJson.mockReset();
     mockedUseQuery.mockClear();
   });

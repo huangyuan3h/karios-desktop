@@ -72,8 +72,8 @@ export function StrategyCatalogPanel({
         <div className="flex items-center gap-2 text-[12px] font-medium">
           策略族总览
           <span className="text-[10px] font-normal text-[var(--k-muted)]">
-             2026-10-03 M30 基线（母港M30=基线；星舰B=观察，复活需 rolling40转正 AND 大盘P&L转正；live决策由Yuan定）
-
+            2026-10-03 M30 基线（母港M30=基线；星舰B=观察，复活需 rolling40转正 AND
+            大盘P&L转正；live决策由Yuan定）
           </span>
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -96,12 +96,7 @@ export function StrategyCatalogPanel({
               <span className={cn('ml-1.5 rounded px-1 py-0.5 text-[9px]', roleTone(s.role))}>
                 {s.roleLabel}
               </span>
-              <span
-                className={cn(
-                  'ml-1.5 rounded px-1 py-0.5 text-[9px]',
-                  statusTone(s.status),
-                )}
-              >
+              <span className={cn('ml-1.5 rounded px-1 py-0.5 text-[9px]', statusTone(s.status))}>
                 {s.statusLabel}
               </span>
             </button>
@@ -122,20 +117,20 @@ export function StrategyCatalogPanel({
             {selected.tag} · 更新 {selected.updated}
           </span>
         </div>
-         <p className="mt-1 text-xs text-[var(--k-muted)]">{selected.structure}</p>
-         {selected.canonical ? (
-           <div className="mt-1 text-[10px] font-medium text-sky-700 dark:text-sky-300">
-             canonical · {selected.variant?.sleeveMode} · H2 {selected.variant?.hystBand} · {selected.variant?.sleeveWeight}/{selected.variant?.b3Weight}
-           </div>
-         ) : null}
-         {selected.risk ? (
-           <div className="mt-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-             风险：{selected.risk}
-           </div>
-         ) : null}
+        <p className="mt-1 text-xs text-[var(--k-muted)]">{selected.structure}</p>
+        {selected.canonical ? (
+          <div className="mt-1 text-[10px] font-medium text-sky-700 dark:text-sky-300">
+            canonical · {selected.variant?.sleeveMode} · H2 {selected.variant?.hystBand} ·{' '}
+            {selected.variant?.sleeveWeight}/{selected.variant?.b3Weight}
+          </div>
+        ) : null}
+        {selected.risk ? (
+          <div className="mt-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+            风险：{selected.risk}
+          </div>
+        ) : null}
 
-         <div className="mt-3 overflow-hidden rounded border border-[var(--k-border)]">
-
+        <div className="mt-3 overflow-hidden rounded border border-[var(--k-border)]">
           <table className="w-full text-left text-xs tabular-nums">
             <thead className="bg-[var(--k-surface)] text-[10px] text-[var(--k-muted)]">
               <tr>
@@ -175,7 +170,9 @@ export function StrategyCatalogPanel({
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2">
-            <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">优点</div>
+            <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+              优点
+            </div>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[var(--k-muted)]">
               {selected.pros.map((p) => (
                 <li key={p}>{p}</li>
@@ -221,7 +218,10 @@ export function StrategyCatalogPanel({
               <table className="mt-2 w-full text-left text-[10px] tabular-nums">
                 <tbody>
                   {selected.regime.evidence.map((e) => (
-                    <tr key={`${e.label}-${e.value}`} className="border-t border-[var(--k-border)]/50">
+                    <tr
+                      key={`${e.label}-${e.value}`}
+                      className="border-t border-[var(--k-border)]/50"
+                    >
                       <td className="w-[88px] py-0.5 pr-2 text-[var(--k-muted)]">{e.label}</td>
                       <td className="py-0.5">{e.value}</td>
                     </tr>

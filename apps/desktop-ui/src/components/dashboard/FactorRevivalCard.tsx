@@ -37,10 +37,7 @@ export function FactorRevivalCard({
   const vault = vaultQ.data?.vault;
   const factors = React.useMemo(() => vault?.factors ?? [], [vault]);
   const summary = vault?.summary;
-  const revived = React.useMemo(
-    () => factors.filter((f) => f.status === 'revived'),
-    [factors],
-  );
+  const revived = React.useMemo(() => factors.filter((f) => f.status === 'revived'), [factors]);
 
   /** Latest date/window each factor flipped (or last sat) in the revived state. */
   const revivedAt = React.useMemo(() => {
@@ -55,8 +52,7 @@ export function FactorRevivalCard({
   const s = sgapQ.data?.decay.summary;
   const sgapPos = s?.revival_pos ?? 0;
   const sgapActive = sgapPos > 0;
-  const sgapLabel =
-    sgapPos >= 20 ? '半仓观察' : sgapPos >= 10 ? '试探加回' : '保持观察';
+  const sgapLabel = sgapPos >= 20 ? '半仓观察' : sgapPos >= 10 ? '试探加回' : '保持观察';
   const loading = vaultQ.isPending || sgapQ.isPending;
 
   return (
@@ -113,10 +109,8 @@ export function FactorRevivalCard({
         <span className="font-semibold">S-gap 复活灯 {sgapPos}%</span>
         <span className="text-[10px]">（{sgapLabel}）</span>
         <span className="text-[10px] tabular-nums">
-          滚动40笔分位 {fmtPct(s?.latest_r40_percentile)} · 均值{' '}
-          {fmtSigned(s?.latest_r40_mean)} · 胜率 {fmtPct(
-            s?.latest_r40_win_rate != null ? s.latest_r40_win_rate * 100 : null,
-          )}
+          滚动40笔分位 {fmtPct(s?.latest_r40_percentile)} · 均值 {fmtSigned(s?.latest_r40_mean)} ·
+          胜率 {fmtPct(s?.latest_r40_win_rate != null ? s.latest_r40_win_rate * 100 : null)}
         </span>
         {onOpenSgap ? (
           <button

@@ -11,8 +11,7 @@ vi.mock('@/lib/queries/portfolioHealth', async (importOriginal) => {
 
 const b3Mock = vi.hoisted(() => ({ useB3StateQuery: vi.fn() }));
 vi.mock('@/lib/queries/backtest', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@/lib/queries/backtest')>();
+  const actual = await importOriginal<typeof import('@/lib/queries/backtest')>();
   return { ...actual, useB3StateQuery: b3Mock.useB3StateQuery };
 });
 
@@ -39,7 +38,11 @@ describe('PickStrongAlignBanner', () => {
 
   it('shows a quiet aligned stamp (not silence) when the book is aligned', async () => {
     mockHealth.mockResolvedValue({
-      multiAssetSleeve: { active: true, action: 'HOLD', pick: { key: 'OIL', symbol: 'ETF:513350' } },
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        pick: { key: 'OIL', symbol: 'ETF:513350' },
+      },
       holdings: [],
       multiAssetHoldings: [{ symbol: 'ETF:513350', positionPct: 100 }],
       hkHealth: { holdings: [] },
@@ -52,7 +55,11 @@ describe('PickStrongAlignBanner', () => {
 
   it('shows the strategy-labeled banner and the unwired-legs note when diverged', async () => {
     mockHealth.mockResolvedValue({
-      multiAssetSleeve: { active: true, action: 'HOLD', pick: { key: 'OIL', symbol: 'ETF:513350' } },
+      multiAssetSleeve: {
+        active: true,
+        action: 'HOLD',
+        pick: { key: 'OIL', symbol: 'ETF:513350' },
+      },
       holdings: [{ symbol: 'CN:600519', positionPct: 100 }],
       multiAssetHoldings: [],
       hkHealth: { holdings: [] },
@@ -78,11 +85,32 @@ describe('PickStrongAlignBanner', () => {
       data: {
         ok: true,
         universe: [
-          { symbol: '510300.SH', name: '沪深300', targetPct: 20, driftPct: 20, deltaPct: 0, px: 4.6 },
+          {
+            symbol: '510300.SH',
+            name: '沪深300',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 4.6,
+          },
           { symbol: '510500.SH', name: '中证500', targetPct: 20, driftPct: 20, deltaPct: 0, px: 7 },
           { symbol: '518880.SH', name: '黄金', targetPct: 20, driftPct: 20, deltaPct: 0, px: 6 },
-          { symbol: '513100.SH', name: '纳指100', targetPct: 20, driftPct: 20, deltaPct: 0, px: 1.6 },
-          { symbol: '511260.SH', name: '10年国债', targetPct: 20, driftPct: 20, deltaPct: 0, px: 134 },
+          {
+            symbol: '513100.SH',
+            name: '纳指100',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 1.6,
+          },
+          {
+            symbol: '511260.SH',
+            name: '10年国债',
+            targetPct: 20,
+            driftPct: 20,
+            deltaPct: 0,
+            px: 134,
+          },
         ],
       },
     });

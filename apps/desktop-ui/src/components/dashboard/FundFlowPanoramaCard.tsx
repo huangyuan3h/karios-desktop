@@ -57,12 +57,7 @@ export function FundFlowPanoramaCard({
           参考页：zhibiao · 国家队 <ExternalLink size={10} />
         </a>
       </div>
-      <FundFlowPanel
-        embedded
-        sections={PANORAMA_SECTIONS}
-        chartHeight={chartHeight}
-        span="1y"
-      />
+      <FundFlowPanel embedded sections={PANORAMA_SECTIONS} chartHeight={chartHeight} span="1y" />
     </section>
   );
 }

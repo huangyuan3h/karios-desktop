@@ -132,9 +132,7 @@ export function ReplicaGapCard({
         <div className="flex flex-col gap-3">
           <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2">
-              <div className="text-[10px] text-[var(--k-muted)]">
-                港湾核心区间几何
-              </div>
+              <div className="text-[10px] text-[var(--k-muted)]">港湾核心区间几何</div>
               <div className={cn('text-[15px] font-semibold tabular-nums', tone(ps.totalGeoPct))}>
                 {ps.totalGeoPct.toFixed(1)}%
               </div>
@@ -226,8 +224,7 @@ export function ReplicaGapCard({
           </div>
 
           <p className="text-[10px] text-[var(--k-muted)]">
-            {method?.detail}{' '}
-            下方「涨跌归因」拆的是港湾核心腿；本卡把同一套 byPick
+            {method?.detail} 下方「涨跌归因」拆的是港湾核心腿；本卡把同一套 byPick
             与你的仓位/成交对齐。今日 pick 只作脚注——战术换仓看体检卡。
           </p>
         </div>

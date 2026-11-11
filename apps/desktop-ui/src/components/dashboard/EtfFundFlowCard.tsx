@@ -78,8 +78,7 @@ export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
                 (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
               const shareImplied = it?.netFlowMetric === 'share_change_implied';
               const shareImplied3d =
-                it?.netFlow3dMetric === 'share_change_implied' ||
-                it?.netFlow3dMetric === 'mixed';
+                it?.netFlow3dMetric === 'share_change_implied' || it?.netFlow3dMetric === 'mixed';
               const flow1dDisplay = flow1dStale
                 ? '— (stale)'
                 : `${fmtSignedAmountCn(it?.netFlow1d)}${shareImplied && it?.netFlow1d != null ? '*' : ''}`;

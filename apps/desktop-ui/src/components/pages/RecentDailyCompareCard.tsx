@@ -21,9 +21,7 @@ function tone(v: number | null | undefined): string {
 }
 
 const PICK_TS: Record<string, string> = {
-  ...Object.fromEntries(
-    PARKING_KEYS.map((key) => [key, PARKING_META[key].ts.split('.')[0]]),
-  ),
+  ...Object.fromEntries(PARKING_KEYS.map((key) => [key, PARKING_META[key].ts.split('.')[0]])),
   REPO: 'GC001',
 };
 

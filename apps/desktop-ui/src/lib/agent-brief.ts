@@ -59,7 +59,9 @@ export async function fetchJudgmentBriefMarkdown(opts?: {
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`决策简报生成失败：HTTP ${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
+    throw new Error(
+      `决策简报生成失败：HTTP ${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
+    );
   }
   const text = await res.text();
   if (!text.trim()) {

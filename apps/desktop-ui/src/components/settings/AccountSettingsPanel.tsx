@@ -23,9 +23,9 @@ export function AccountSettingsPanel() {
       <div>
         <h3 className="text-sm font-semibold">账户与下单</h3>
         <p className="mt-1 text-xs text-[var(--k-muted)]">
-          买入弹窗里把「仓位 %」换算成整数股数用（A股 100
-          股/手、科创板 200 股起+1、北交所 100 股起+1、ETF 100 份、港股每手）。只影响下单建议与记账提示，不改变策略仓位与
-          Live 决策。存放在本机浏览器。
+          买入弹窗里把「仓位 %」换算成整数股数用（A股 100 股/手、科创板 200 股起+1、北交所 100
+          股起+1、ETF 100 份、港股每手）。只影响下单建议与记账提示，不改变策略仓位与 Live
+          决策。存放在本机浏览器。
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -72,8 +72,8 @@ export function AccountSettingsPanel() {
         </label>
       </div>
       <p className="text-[11px] text-[var(--k-muted)]">
-        {capital != null ? `当前总资金 ¥${capital.toLocaleString('zh-CN')}` : '总资金未设置'} ·
-        汇率 {(rate * 100).toFixed(1)}%
+        {capital != null ? `当前总资金 ¥${capital.toLocaleString('zh-CN')}` : '总资金未设置'} · 汇率{' '}
+        {(rate * 100).toFixed(1)}%
       </p>
     </div>
   );

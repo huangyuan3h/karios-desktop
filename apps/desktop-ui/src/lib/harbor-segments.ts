@@ -120,7 +120,9 @@ export function harborHoldLine(r: TimelineRow, riskNames?: Record<string, string
   const gate = r.gateOpen === false ? ' · 闸关' : '';
   const filled = r.filledToday ? ` · 成交${r.filledToday}` : '';
   const parkName =
-    r.parkedPick && r.parkedPick !== 'REPO' ? `${PICK_META[r.parkedPick]?.name ?? r.parkedPick} ` : '';
+    r.parkedPick && r.parkedPick !== 'REPO'
+      ? `${PICK_META[r.parkedPick]?.name ?? r.parkedPick} `
+      : '';
   const park =
     r.parkedWeight != null && r.parkedWeight > 0.001
       ? ` · 停车 ${parkName}${Math.round(r.parkedWeight * 100)}%`
@@ -239,11 +241,13 @@ export type BuildSegmentsOptions = {
   meta?: Record<string, PickMeta>;
 };
 
-export function buildHarborSegments(rows: TimelineRow[], opts?: BuildSegmentsOptions): HarborSegment[] {
+export function buildHarborSegments(
+  rows: TimelineRow[],
+  opts?: BuildSegmentsOptions,
+): HarborSegment[] {
   const out: HarborSegment[] = [];
   const meta = opts?.meta;
-  const metaName = (pick: string): string =>
-    meta?.[pick]?.name ?? PICK_META[pick]?.name ?? pick;
+  const metaName = (pick: string): string => meta?.[pick]?.name ?? PICK_META[pick]?.name ?? pick;
   let prevNavEnd: number | null = null;
   let current: HarborSegment | null = null;
   let counts = new Map<string, number>();
@@ -285,9 +289,10 @@ export function buildHarborSegments(rows: TimelineRow[], opts?: BuildSegmentsOpt
     const satRow = opts?.ignoreSat ? false : isSatelliteRow(r);
     const pick = satRow ? 'S-GAP' : (r.pick ?? 'REPO');
     const mode: HarborSegment['mode'] = satRow ? 'SAT' : segmentMode(r);
-    const code = satRow || mode === 'STOCK'
-      ? null
-      : (shortCode(r.pickTs) ?? meta?.[pick]?.code ?? PICK_META[pick]?.code ?? null);
+    const code =
+      satRow || mode === 'STOCK'
+        ? null
+        : (shortCode(r.pickTs) ?? meta?.[pick]?.code ?? PICK_META[pick]?.code ?? null);
     const sat: HarborSegment['sat'] = satRow
       ? {
           positions: r.satPositions ?? 0,

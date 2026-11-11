@@ -103,9 +103,7 @@ describe('useDashboardAutoSync', () => {
     expect(onSync).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      vi.advanceTimersByTime(
-        DASHBOARD_AUTO_SYNC_AFTER_HOURS_MS - DASHBOARD_AUTO_SYNC_TRADING_MS,
-      );
+      vi.advanceTimersByTime(DASHBOARD_AUTO_SYNC_AFTER_HOURS_MS - DASHBOARD_AUTO_SYNC_TRADING_MS);
     });
     expect(onSync).toHaveBeenCalledTimes(2);
   });

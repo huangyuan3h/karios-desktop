@@ -84,7 +84,9 @@ export async function fetchJudgmentBriefMarkdown(
  * world-model for a starship / parking-only conversation.
  */
 export function shouldIncludeS3Rules(mode: string | null, question: string): boolean {
-  if (/(?:^|[^a-z0-9])s-?3(?:[^a-z0-9]|$)|b3|股票核心|持仓体检|金字塔|止损线|加仓/i.test(question)) {
+  if (
+    /(?:^|[^a-z0-9])s-?3(?:[^a-z0-9]|$)|b3|股票核心|持仓体检|金字塔|止损线|加仓/i.test(question)
+  ) {
     return true;
   }
   return S3_MODES.has(String(mode ?? '').toLowerCase());
@@ -418,10 +420,12 @@ function abilityWarn(integrity: Json): boolean {
  * markdown → S-3-only degraded context, never a hang beyond the timeout.
  * S-3 holdings health is fetched only when the mode / question needs it.
  */
-export async function buildDecisionContext(opts: {
-  question?: string;
-  timeoutMs?: number;
-} = {}): Promise<{
+export async function buildDecisionContext(
+  opts: {
+    question?: string;
+    timeoutMs?: number;
+  } = {},
+): Promise<{
   brief: Json | null;
   briefMarkdown: string | null;
   mode: string | null;

@@ -107,8 +107,8 @@ function HarborAlignBanner({ mode }: { mode: StrategyMode }) {
           {verdictLabel}
         </span>
         <span className="ml-auto font-mono text-[10px] font-normal text-[var(--k-muted)]">
-          目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF{' '}
-          {report.etfWeightPct}% · 闲置 {report.idlePct}%
+          目标腿 {report.targetWeightPct}% · 股 {report.stockWeightPct}% · ETF {report.etfWeightPct}
+          % · 闲置 {report.idlePct}%
         </span>
       </div>
       {mode !== 'harbor' ? (
@@ -121,11 +121,9 @@ function HarborAlignBanner({ mode }: { mode: StrategyMode }) {
               : mode === 'starship'
                 ? '卫星 standalone + 闲钱停车'
                 : mode === 'starship_robust'
-                   ? '卫星 standalone + 闲钱 25% H2 ETF / 75% B3'
-
+                  ? '卫星 standalone + 闲钱 25% H2 ETF / 75% B3'
                   : mode === 'starship_b'
                     ? '卫星 standalone + 闲钱 100% {国债+黄金+纳指} 逆波动率'
-
                     : 'B3 月频 + 卫星 0.2 overlay'}
           未接入日对齐（OPT-186）。
         </p>

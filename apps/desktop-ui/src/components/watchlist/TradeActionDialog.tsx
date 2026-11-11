@@ -157,11 +157,7 @@ export function TradeActionDialog({
             />
           </div>
           {kind !== 'sell' && valid ? (
-            <LotSizeHint
-              symbol={state.item.symbol}
-              price={parsedPrice}
-              targetPct={parsedPct}
-            />
+            <LotSizeHint symbol={state.item.symbol} price={parsedPrice} targetPct={parsedPct} />
           ) : null}
           {missingCost ? (
             <div>

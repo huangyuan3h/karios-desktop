@@ -170,9 +170,9 @@ describe('dashboardSyncDegradedNote', () => {
   });
 
   it('summarizes warnings when only soft warnings are present', () => {
-    expect(
-      dashboardSyncDegradedNote({ ok: true, warnings: ['option_iv: no_iv_data'] }),
-    ).toContain('部分降级');
+    expect(dashboardSyncDegradedNote({ ok: true, warnings: ['option_iv: no_iv_data'] })).toContain(
+      '部分降级',
+    );
   });
 
   it('returns null for clean or junk results', () => {

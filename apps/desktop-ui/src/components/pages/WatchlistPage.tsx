@@ -344,7 +344,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         {/* The banner aligns the account against the HARBOR core leg (target
             100% ETF). The satellite-standalone modes hold no core leg, so it
             only reports "idle too high" — pure noise for 星舰/稳健星舰. */}
-        {strategyMode === 'starship' || strategyMode === 'starship_robust' || strategyMode === 'starship_b' ? null : (
+        {strategyMode === 'starship' ||
+        strategyMode === 'starship_robust' ||
+        strategyMode === 'starship_b' ? null : (
           <PickStrongAlignBanner mode={strategyMode} />
         )}
         <PortfolioHealthCard mode={strategyMode} onOpenStock={onOpenStock} />

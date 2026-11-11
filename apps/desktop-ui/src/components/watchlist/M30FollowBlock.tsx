@@ -287,8 +287,9 @@ export function M30FollowBlock() {
       </div>
 
       <p className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
-        闲置 {report.cashCurrentPct}%{report.cashTargetPct > 0 ? `（目标现金 ${report.cashTargetPct}%）` : '（目标满仓）'}
-        · S-3 每腿 7%（10%×70%）上限 10 腿 · B3 腿内占比×0.3 · 最小 {M30_MIN_TRADE_PCT}%/{'1 手'}
+        闲置 {report.cashCurrentPct}%
+        {report.cashTargetPct > 0 ? `（目标现金 ${report.cashTargetPct}%）` : '（目标满仓）'}· S-3
+        每腿 7%（10%×70%）上限 10 腿 · B3 腿内占比×0.3 · 最小 {M30_MIN_TRADE_PCT}%/{'1 手'}
       </p>
 
       {report.nonTargets.length > 0 ? (
@@ -337,11 +338,26 @@ export function M30FollowBlock() {
       <details className="mt-2 text-[10px] text-[var(--k-muted)]">
         <summary className="cursor-pointer">口径说明</summary>
         <ul className="mt-1 list-disc space-y-0.5 pl-4">
-          <li>回测定义：港湾70%+B3 30%，每月首个交易日复位（5bp/边）；跟仓每周一次只定何时动手，不改引擎。</li>
-          <li>港湾腿内：S-3 每腿 7%（引擎 10%×0.7，上限 10 腿，仅 A 股；港股不属于 M30），余量停当日 harbor pick ETF；pick=REPO 时余量留现金（计入港湾腿）。</li>
-          <li>停车 ETF 若本身是 B3 成分（黄金 518880 / 纳指 513100 / 国债 511260），两份目标合并成一行，持仓不重复计。</li>
-          <li>再平衡：再平衡日全量提示；非再平衡日仅腿偏离≥{M30_DRIFT_LEG_PT}pt 或单线≥{M30_DRIFT_LINE_PT}pt 才提示；S-3 硬退出不受此限。</li>
-          <li>价格：B3 用 b3-state raw px（可交易价），停车用 sleeve pick close，股票用持仓 lastClose；缺价时只给 %。</li>
+          <li>
+            回测定义：港湾70%+B3
+            30%，每月首个交易日复位（5bp/边）；跟仓每周一次只定何时动手，不改引擎。
+          </li>
+          <li>
+            港湾腿内：S-3 每腿 7%（引擎 10%×0.7，上限 10 腿，仅 A 股；港股不属于 M30），余量停当日
+            harbor pick ETF；pick=REPO 时余量留现金（计入港湾腿）。
+          </li>
+          <li>
+            停车 ETF 若本身是 B3 成分（黄金 518880 / 纳指 513100 / 国债
+            511260），两份目标合并成一行，持仓不重复计。
+          </li>
+          <li>
+            再平衡：再平衡日全量提示；非再平衡日仅腿偏离≥{M30_DRIFT_LEG_PT}pt 或单线≥
+            {M30_DRIFT_LINE_PT}pt 才提示；S-3 硬退出不受此限。
+          </li>
+          <li>
+            价格：B3 用 b3-state raw px（可交易价），停车用 sleeve pick close，股票用持仓
+            lastClose；缺价时只给 %。
+          </li>
         </ul>
       </details>
     </div>

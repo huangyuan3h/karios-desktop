@@ -217,7 +217,12 @@ function briefFor(mode: string): Record<string, unknown> {
       attention: {
         counts: { mustAct: 1, exits: 1, trims: 0, fires: 0, blockedFires: 0 },
         mustAct: [
-          { symbol: 'ETF:513350', action: 'EXIT', why: 'trail_exit', fill: { label: '明日开盘卖' } },
+          {
+            symbol: 'ETF:513350',
+            action: 'EXIT',
+            why: 'trail_exit',
+            fill: { label: '明日开盘卖' },
+          },
         ],
       },
     },

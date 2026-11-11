@@ -297,9 +297,27 @@ describe('harbor-segments', () => {
 
   it('builds the parking strip keyed by parkedPick', () => {
     const rows = [
-      row({ date: '2026-08-03', pick: 'S-GAP', satPositions: 2, parkedPick: 'GOLD', parkedTs: '518880.SH' }),
-      row({ date: '2026-08-04', pick: 'S-GAP', satPositions: 2, parkedPick: 'GOLD', parkedTs: '518880.SH' }),
-      row({ date: '2026-08-05', pick: 'S-GAP', satPositions: 0, parkedPick: 'REPO', parkedTs: 'GC001' }),
+      row({
+        date: '2026-08-03',
+        pick: 'S-GAP',
+        satPositions: 2,
+        parkedPick: 'GOLD',
+        parkedTs: '518880.SH',
+      }),
+      row({
+        date: '2026-08-04',
+        pick: 'S-GAP',
+        satPositions: 2,
+        parkedPick: 'GOLD',
+        parkedTs: '518880.SH',
+      }),
+      row({
+        date: '2026-08-05',
+        pick: 'S-GAP',
+        satPositions: 0,
+        parkedPick: 'REPO',
+        parkedTs: 'GC001',
+      }),
     ];
     const strip = buildParkingStrip(rows);
     expect(strip).toHaveLength(2);

@@ -757,10 +757,7 @@ export function useSatelliteLivePanelQuery(enabled = true) {
  * sourced from the journal (`user_trades` leg='satellite'), so the `paper 20 笔`
  * prerequisite counts trades the user actually made.
  */
-export function useUserSatelliteBookQuery(
-  strategyMode = 'starship_b',
-  enabled = true,
-) {
+export function useUserSatelliteBookQuery(strategyMode = 'starship_b', enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'satellite-paper-user', strategyMode],
     queryFn: () =>
@@ -1034,7 +1031,16 @@ export type FactorVaultResponse = {
       source: string;
       n_factors: number;
       generated_at?: string | null;
-      revival: { rule: string; N: number; X: number; off_below: number; steps: number[]; min_trades: number; step_gap: number; note: string };
+      revival: {
+        rule: string;
+        N: number;
+        X: number;
+        off_below: number;
+        steps: number[];
+        min_trades: number;
+        step_gap: number;
+        note: string;
+      };
       cost: string;
     };
     summary: { n_factors: number; n_cold: number; n_watch: number; n_revived: number };
@@ -1069,9 +1075,25 @@ export type FleetResponse = {
   ok: boolean;
   fleet: {
     meta?: { source?: string; generated_at?: string | null; note?: string };
-    windows?: { fleet?: Record<string, FleetWindowMetrics>; base?: Record<string, FleetWindowMetrics> };
-    defense?: { days?: number; L1_days?: number; L2_days?: number; L3_days?: number; L4_days?: number; recommendation?: string };
-    equity?: { dates?: string[]; fleet?: Array<number | null>; base?: Array<number | null>; starship_b?: Array<number | null>; hs300?: Array<number | null> };
+    windows?: {
+      fleet?: Record<string, FleetWindowMetrics>;
+      base?: Record<string, FleetWindowMetrics>;
+    };
+    defense?: {
+      days?: number;
+      L1_days?: number;
+      L2_days?: number;
+      L3_days?: number;
+      L4_days?: number;
+      recommendation?: string;
+    };
+    equity?: {
+      dates?: string[];
+      fleet?: Array<number | null>;
+      base?: Array<number | null>;
+      starship_b?: Array<number | null>;
+      hs300?: Array<number | null>;
+    };
   };
 };
 

@@ -349,9 +349,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         {!summaryLoading && summary && !isShanghaiSyncWindow() ? (
           <span>盘后模式：仅读缓存，同步跳过实时抓取</span>
         ) : null}
-        {lastAutoSyncAt ? (
-          <span>上次自动同步 {fmtDateTime(lastAutoSyncAt)}</span>
-        ) : null}
+        {lastAutoSyncAt ? <span>上次自动同步 {fmtDateTime(lastAutoSyncAt)}</span> : null}
       </div>
       {copyAllStatus ? (
         <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>

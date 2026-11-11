@@ -32,9 +32,9 @@ describe('WatchlistRegistryItemSchema', () => {
   });
 
   it('accepts the OPT-209 strategy-pool sources', () => {
-    expect(
-      WatchlistRegistryItemSchema.parse({ symbol: 'CN:600001', source: 's3' }).source,
-    ).toBe('s3');
+    expect(WatchlistRegistryItemSchema.parse({ symbol: 'CN:600001', source: 's3' }).source).toBe(
+      's3',
+    );
     expect(
       WatchlistRegistryItemSchema.parse({ symbol: 'CN:300906', source: 'satellite' }).source,
     ).toBe('satellite');

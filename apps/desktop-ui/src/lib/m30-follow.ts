@@ -209,7 +209,9 @@ function bareCode(sym: string): string {
 }
 
 function etfCode(ts: string): string {
-  return String(ts || '').split('.')[0]!.toUpperCase();
+  return String(ts || '')
+    .split('.')[0]!
+    .toUpperCase();
 }
 
 /**
@@ -250,12 +252,17 @@ function amtOf(capital: number | null, pct: number): number | null {
   return Math.round((capital * pct) / 100);
 }
 
-function sharesFor(symbol: string, price: number | null, capital: number | null, pct: number): number | null {
+function sharesFor(
+  symbol: string,
+  price: number | null,
+  capital: number | null,
+  pct: number,
+): number | null {
   if (price == null || !Number.isFinite(price) || price <= 0) return null;
   if (capital == null || !Number.isFinite(capital) || capital <= 0) return null;
   if (!Number.isFinite(pct) || pct <= 0) return null;
   const rule = lotRuleFor(symbol);
-  return roundToLot(capital * (pct / 100) / price, rule);
+  return roundToLot((capital * (pct / 100)) / price, rule);
 }
 
 function isStockSymbol(symbol: string): boolean {
@@ -265,7 +272,9 @@ function isStockSymbol(symbol: string): boolean {
 
 /** M30's Harbor S-3 leg is CN-only (see header). */
 function isCnStock(symbol: string): boolean {
-  return String(symbol || '').toUpperCase().startsWith('CN:');
+  return String(symbol || '')
+    .toUpperCase()
+    .startsWith('CN:');
 }
 
 function currentForB3(symbol: string, holdings: M30Holding[]): number {
@@ -374,9 +383,7 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   // even when the mom60 pick points at the same ETF. This is what kept the
   // Watchlist printing 买 513350 while the sleeve said SELL_TO_REPO.
   const pendingSell = input.pendingParkSell ?? null;
-  const pendingSellSym = pendingSell?.symbol
-    ? `ETF:${bareCode(pendingSell.symbol)}`
-    : null;
+  const pendingSellSym = pendingSell?.symbol ? `ETF:${bareCode(pendingSell.symbol)}` : null;
   const parkSymbol = pendingSellSym ?? parkingSymbolForPick(pickKey, input.pickSymbol ?? null);
   const pendingSellKey = pendingSellSym ? parkingKeyForSymbol(pendingSellSym) : null;
 
@@ -408,7 +415,18 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   const parkTargetTotal = pendingSellSym ? 0 : harborParkTargetTotal;
 
   const targets: M30TargetLine[] = [];
-  const pushLine = (line: Omit<M30TargetLine, 'targetAmt' | 'currentAmt' | 'deltaAmt' | 'targetShares' | 'deltaShares' | 'side' | 'suppressed'> & { price: number | null }): M30TargetLine => {
+  const pushLine = (
+    line: Omit<
+      M30TargetLine,
+      | 'targetAmt'
+      | 'currentAmt'
+      | 'deltaAmt'
+      | 'targetShares'
+      | 'deltaShares'
+      | 'side'
+      | 'suppressed'
+    > & { price: number | null },
+  ): M30TargetLine => {
     const targetAmt = amtOf(capital, line.targetPct);
     const currentAmt = amtOf(capital, line.currentPct);
     const deltaAmt = targetAmt != null && currentAmt != null ? targetAmt - currentAmt : null;
@@ -488,14 +506,20 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
   // Harbor parking line (ETF) or cash when REPO/STOCK. Merged into the B3
   // line below when the pick ETF is a B3 member.
   if (parkSymbol && !parkMerged) {
-    const price = priceForSymbol(parkSymbol, { b3, parkPrice: input.pickPrice ?? null, stockCloses });
+    const price = priceForSymbol(parkSymbol, {
+      b3,
+      parkPrice: input.pickPrice ?? null,
+      stockCloses,
+    });
     pushLine({
       id: `harbor-park-${parkSymbol}`,
       leg: 'harbor-park',
       symbol: parkSymbol,
       ts: '',
       name: pendingSellSym
-        ? (pendingSellKey ? PARKING_META[pendingSellKey].short : pendingSellSym)
+        ? pendingSellKey
+          ? PARKING_META[pendingSellKey].short
+          : pendingSellSym
         : parkingNameForPick(pickKey),
       price,
       targetPct: parkTargetTotal,
@@ -598,10 +622,7 @@ export function buildM30Targets(input: BuildM30Input): M30FollowReport {
       symbol: t.symbol,
       name: t.name,
       pct: round2(Math.abs(t.deltaPct)),
-      amt:
-        t.deltaAmt != null
-          ? Math.abs(t.deltaAmt)
-          : amtOf(capital, Math.abs(t.deltaPct)),
+      amt: t.deltaAmt != null ? Math.abs(t.deltaAmt) : amtOf(capital, Math.abs(t.deltaPct)),
       shares: t.deltaShares,
       reason: mustAct
         ? `港湾停车止损 → 逆回购（${pendingSell?.reason?.trim() || '峰值回撤'}）`
@@ -694,7 +715,9 @@ export function pendingParkSellFromSleeve(
 ): M30PendingParkSell | null {
   if (!sleeve) return null;
   if (String(sleeve.action || '').toUpperCase() !== 'SELL_TO_REPO') return null;
-  const symbol = String(sleeve.symbol || '').trim().toUpperCase();
+  const symbol = String(sleeve.symbol || '')
+    .trim()
+    .toUpperCase();
   if (!symbol) return null;
   return {
     symbol,
@@ -743,7 +766,9 @@ export function intradayTrailWarnFromSleeve(
   if (!sleeve || !warn || warn.active !== true) return null;
   // A confirmed exit is stronger copy — never show both as equal.
   if (String(sleeve.action || '').toUpperCase() === 'SELL_TO_REPO') return null;
-  const symbol = String(warn.symbol || '').trim().toUpperCase();
+  const symbol = String(warn.symbol || '')
+    .trim()
+    .toUpperCase();
   if (!symbol) return null;
   return {
     symbol,
@@ -852,7 +877,11 @@ export function cadenceStatus(cadence: FollowCadence, todayIso: string): Cadence
     const first = firstWeekdayOfMonthIso(p.y, p.m);
     if (todayIso >= first) {
       const n = nextMonth(p.y, p.m);
-      return { last: first, next: firstWeekdayOfMonthIso(n.y, n.m), isRebalanceDay: todayIso === first };
+      return {
+        last: first,
+        next: firstWeekdayOfMonthIso(n.y, n.m),
+        isRebalanceDay: todayIso === first,
+      };
     }
     const pr = prevMonth(p.y, p.m);
     return { last: firstWeekdayOfMonthIso(pr.y, pr.m), next: first, isRebalanceDay: false };
@@ -885,6 +914,7 @@ export function rebalanceGate(opts: {
 }): RebalanceGate {
   if (opts.isRebalanceDay) return { needsRebalance: true, reason: 'rebalance-day' };
   if (opts.legDriftPt >= M30_DRIFT_LEG_PT) return { needsRebalance: true, reason: 'leg-drift' };
-  if (opts.maxLineDriftPt >= M30_DRIFT_LINE_PT) return { needsRebalance: true, reason: 'line-drift' };
+  if (opts.maxLineDriftPt >= M30_DRIFT_LINE_PT)
+    return { needsRebalance: true, reason: 'line-drift' };
   return { needsRebalance: false, reason: 'on-track' };
 }

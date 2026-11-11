@@ -204,7 +204,14 @@ beforeEach(() => {
         ok: true,
         strategies: [
           entry('starship', '星舰', 'aggressive_pending', '激进 · 前置未满', 'offense', '进攻'),
-          entry('starport', '星港', 'product_candidate_increment', '产品候选增量', 'balanced', '均衡'),
+          entry(
+            'starport',
+            '星港',
+            'product_candidate_increment',
+            '产品候选增量',
+            'balanced',
+            '均衡',
+          ),
           entry(
             'homeport',
             '母港',
@@ -226,95 +233,95 @@ beforeEach(() => {
       const isStarport = String(path).includes('strategy=starport');
       const satLeg = satelliteOnly || isStarport;
       const rows = [
-          {
-            date: '2026-08-01',
-            deployedPct: 100,
-            idlePct: 0,
-            positions: 10,
-            cnPositions: 10,
-            hkPositions: 0,
-            stockMarket: 'A股',
-            stockSymbols: ['600519', '000858'],
-            stockMom: null,
-            pick: 'NASDAQ',
-            pickTs: '513100.SH',
-            navBase: 1.01,
-            navSleeve: null,
-            navSingle: 1.05,
-            navMulti: 1.05,
-            navBaseReturnPct: 1,
-            navSingleReturnPct: 5,
-            navMultiReturnPct: 5,
-            navSimReturnPct: 6,
-            exits: [],
-          },
-          {
-            date: '2026-08-04',
-            deployedPct: 100,
-            idlePct: 0,
-            positions: 10,
-            cnPositions: 10,
-            hkPositions: 0,
-            stockMarket: 'A股',
-            stockSymbols: ['600519', '300750'],
-            stockMom: null,
-            pick: 'NASDAQ',
-            pickTs: '513100.SH',
-            navBase: 1.02,
-            navSleeve: null,
-            navSingle: 1.08,
-            navMulti: 1.08,
-            navBaseReturnPct: 2,
-            navSingleReturnPct: 8,
-            navMultiReturnPct: 8,
-            navSimReturnPct: 9,
-            exits: ['000858'],
-          },
-          {
-            date: '2026-08-05',
-            deployedPct: 0,
-            idlePct: 100,
-            positions: 0,
-            cnPositions: 0,
-            hkPositions: 0,
-            stockMarket: '空仓',
-            stockSymbols: [],
-            stockMom: null,
-            pick: 'OIL',
-            pickTs: '513350.SH',
-            navBase: 1.02,
-            navSleeve: null,
-            navSingle: 1.08,
-            navMulti: 1.08,
-            navBaseReturnPct: 2,
-            navSingleReturnPct: 8,
-            navMultiReturnPct: 8,
-            navSimReturnPct: 9,
-            exits: [],
-          },
-          {
-            date: '2026-08-06',
-            deployedPct: 0,
-            idlePct: 100,
-            positions: 0,
-            cnPositions: 0,
-            hkPositions: 0,
-            stockMarket: '空仓',
-            stockSymbols: [],
-            stockMom: null,
-            pick: 'REPO',
-            pickTs: null,
-            navBase: 1.02,
-            navSleeve: null,
-            navSingle: 1.08,
-            navMulti: 1.08,
-            navBaseReturnPct: 2,
-            navSingleReturnPct: 8,
-            navMultiReturnPct: 8,
-            navSimReturnPct: 9,
-            exits: [],
-          },
-        ];
+        {
+          date: '2026-08-01',
+          deployedPct: 100,
+          idlePct: 0,
+          positions: 10,
+          cnPositions: 10,
+          hkPositions: 0,
+          stockMarket: 'A股',
+          stockSymbols: ['600519', '000858'],
+          stockMom: null,
+          pick: 'NASDAQ',
+          pickTs: '513100.SH',
+          navBase: 1.01,
+          navSleeve: null,
+          navSingle: 1.05,
+          navMulti: 1.05,
+          navBaseReturnPct: 1,
+          navSingleReturnPct: 5,
+          navMultiReturnPct: 5,
+          navSimReturnPct: 6,
+          exits: [],
+        },
+        {
+          date: '2026-08-04',
+          deployedPct: 100,
+          idlePct: 0,
+          positions: 10,
+          cnPositions: 10,
+          hkPositions: 0,
+          stockMarket: 'A股',
+          stockSymbols: ['600519', '300750'],
+          stockMom: null,
+          pick: 'NASDAQ',
+          pickTs: '513100.SH',
+          navBase: 1.02,
+          navSleeve: null,
+          navSingle: 1.08,
+          navMulti: 1.08,
+          navBaseReturnPct: 2,
+          navSingleReturnPct: 8,
+          navMultiReturnPct: 8,
+          navSimReturnPct: 9,
+          exits: ['000858'],
+        },
+        {
+          date: '2026-08-05',
+          deployedPct: 0,
+          idlePct: 100,
+          positions: 0,
+          cnPositions: 0,
+          hkPositions: 0,
+          stockMarket: '空仓',
+          stockSymbols: [],
+          stockMom: null,
+          pick: 'OIL',
+          pickTs: '513350.SH',
+          navBase: 1.02,
+          navSleeve: null,
+          navSingle: 1.08,
+          navMulti: 1.08,
+          navBaseReturnPct: 2,
+          navSingleReturnPct: 8,
+          navMultiReturnPct: 8,
+          navSimReturnPct: 9,
+          exits: [],
+        },
+        {
+          date: '2026-08-06',
+          deployedPct: 0,
+          idlePct: 100,
+          positions: 0,
+          cnPositions: 0,
+          hkPositions: 0,
+          stockMarket: '空仓',
+          stockSymbols: [],
+          stockMom: null,
+          pick: 'REPO',
+          pickTs: null,
+          navBase: 1.02,
+          navSleeve: null,
+          navSingle: 1.08,
+          navMulti: 1.08,
+          navBaseReturnPct: 2,
+          navSingleReturnPct: 8,
+          navMultiReturnPct: 8,
+          navSimReturnPct: 9,
+          exits: [],
+        },
+      ];
       const satRows = rows.map((r, i) => ({
         ...r,
         // Standalone satellite rows (starship) carry no base-leg columns —
@@ -414,7 +421,11 @@ beforeEach(() => {
       };
       const addRiskTop = (rs: typeof rows) =>
         rs.map((r) => ({ ...r, riskTop: '518880.SH', riskTopW: 0.3 }));
-      const outRows = withRisk ? addRiskTop(satLeg ? satRows : baseRows) : satLeg ? satRows : baseRows;
+      const outRows = withRisk
+        ? addRiskTop(satLeg ? satRows : baseRows)
+        : satLeg
+          ? satRows
+          : baseRows;
       // Harbor-family parking audit trail (harbor/homeport + overlays carry it).
       const harborParkedBlotter = [
         {
@@ -674,8 +685,7 @@ describe('BacktestPage', () => {
     expect((await screen.findAllByText(/停车 黄金 100%/)).length).toBeGreaterThanOrEqual(1);
     expect((await screen.findAllByText(/停车 原油 50%/)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/停车均值 75%/)).toBeDefined();
-     expect(await screen.findByText(/激进对照：卫星 \+ 闲钱 100% 停 H2 ETF/)).toBeDefined();
-
+    expect(await screen.findByText(/激进对照：卫星 \+ 闲钱 100% 停 H2 ETF/)).toBeDefined();
   });
 
   it('records the parking ETF per day (建仓/换仓/回撤转现金) in the starship day table', async () => {
@@ -728,9 +738,7 @@ describe('BacktestPage', () => {
   it('labels the satellite overlay weight and caliber per strategy', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /产品候选增量/ }));
-    expect(
-      await screen.findByText(/组合权重 0\.2（卫星 v1 · 冻结口径）/),
-    ).toBeDefined();
+    expect(await screen.findByText(/组合权重 0\.2（卫星 v1 · 冻结口径）/)).toBeDefined();
     expect(await screen.findByText(/贡献%（腿内）/)).toBeDefined();
   });
 
@@ -873,9 +881,7 @@ describe('BacktestPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '母港' }));
     expect(await screen.findByText(/Timeline（母港/)).toBeDefined();
     expect(await screen.findByText('B3篮子明细（风险预算）')).toBeDefined();
-    expect(
-      await screen.findByText(/当前权重 沪深300 15% · 中证500 15% · 黄金 30%/),
-    ).toBeDefined();
+    expect(await screen.findByText(/当前权重 沪深300 15% · 中证500 15% · 黄金 30%/)).toBeDefined();
     expect((await screen.findAllByText(/黄金 30%/)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/B3 8.8%/)).toBeDefined();
   });
@@ -911,5 +917,4 @@ describe('BacktestPage', () => {
     expect(card.textContent).toContain('2026-09-01');
     expect(card.textContent).toContain('511260');
   });
-
 });

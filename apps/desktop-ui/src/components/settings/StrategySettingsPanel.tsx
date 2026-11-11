@@ -48,7 +48,8 @@ export function StrategySettingsPanel() {
       <div>
         <h3 className="text-sm font-semibold">默认策略</h3>
         <p className="mt-1 text-xs text-[var(--k-muted)]">
-          只影响本机展示（Timeline 默认档）；基线为母港M30（港湾70%+B3 30%，回测月初再平衡，跟仓每周一次）。存储在本机浏览器。
+          只影响本机展示（Timeline 默认档）；基线为母港M30（港湾70%+B3
+          30%，回测月初再平衡，跟仓每周一次）。存储在本机浏览器。
         </p>
       </div>
       <div className="space-y-2">

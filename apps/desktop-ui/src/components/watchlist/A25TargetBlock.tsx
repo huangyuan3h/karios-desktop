@@ -22,11 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { isWhipRebuy } from '@/lib/follow-timing';
 import { ExecutionTimingBadge, WhipBadge } from '@/components/watchlist/ExecutionTimingBadge';
-import {
-  loadWatchlist,
-  saveWatchlist,
-  upsertWatchlistOpenTrade,
-} from '@/lib/watchlist-storage';
+import { loadWatchlist, saveWatchlist, upsertWatchlistOpenTrade } from '@/lib/watchlist-storage';
 
 /** H2-a25 recipe constants (mirror the canonical research/display spec). */
 const SLOT_PCT = 25;
@@ -182,12 +178,9 @@ export function A25TargetBlock({
   // Journaled on the given day (survives reloads).
   const recordedOn = React.useCallback(
     (symbol: string, day: string) =>
-       (tradesQ.data ?? []).some(
-         (t) =>
-           t.strategyMode === 'starship_robust' &&
-           t.symbol === symbol &&
-           t.tradeDate === day,
-       ),
+      (tradesQ.data ?? []).some(
+        (t) => t.strategyMode === 'starship_robust' && t.symbol === symbol && t.tradeDate === day,
+      ),
 
     [tradesQ.data],
   );
@@ -242,7 +235,7 @@ export function A25TargetBlock({
   );
 
   // 星舰 B park leg = the 3-leg state; H2-a25 park = B3 (5-leg).
-  const b3 = isB ? (starBQ.data?.ok ? starBQ.data : null) : (b3Q.data?.ok ? b3Q.data : null);
+  const b3 = isB ? (starBQ.data?.ok ? starBQ.data : null) : b3Q.data?.ok ? b3Q.data : null;
 
   // Parking ETF: prefer the timeline (fresh price); fall back to the health
   // sleeve pick so the row survives a timeline hiccup ("状态不可用").
@@ -307,10 +300,7 @@ export function A25TargetBlock({
       const ts = tsMap.get(sym) ?? guessTs(sym);
       const entryDate = entryMap.get(sym) ?? null;
       const px =
-        rankedPx.get(code(ts)) ??
-        enginePx.get(code(ts)) ??
-        holdingLastClose?.[sym] ??
-        null;
+        rankedPx.get(code(ts)) ?? enginePx.get(code(ts)) ?? holdingLastClose?.[sym] ?? null;
       const cost = costMap.get(sym) ?? null;
       out.push({
         symbol: sym,
@@ -440,16 +430,7 @@ export function A25TargetBlock({
       });
     }
     return out;
-  }, [
-    dueToday,
-    buys,
-    etf,
-    b3,
-    sleevePct,
-    b3TotalPct,
-    nameMap,
-    holdsMap,
-  ]);
+  }, [dueToday, buys, etf, b3, sleevePct, b3TotalPct, nameMap, holdsMap]);
 
   // --- 当前持有: only positions the user actually holds --------------------
   // The registry mirrors the strategy's legs (source='satellite', no size), so
@@ -605,11 +586,10 @@ export function A25TargetBlock({
           price: o.px,
           positionPct: round2(trade.pct),
           source: 'RESEARCH',
-           market: 'CN',
-           leg: o.leg,
-           strategyMode: 'starship_robust',
-           tradeDate: day,
-
+          market: 'CN',
+          leg: o.leg,
+          strategyMode: 'starship_robust',
+          tradeDate: day,
         });
         void invalidateUserTradesQueries(queryClient).catch(() => {});
       }
@@ -626,8 +606,7 @@ export function A25TargetBlock({
         data-testid="a25-target-block"
         className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]/45 px-3 py-2 text-xs text-[var(--k-muted)]"
       >
-         {isB ? '星舰 B' : '稳健星舰 H2-a25'} · 今日下单：在上方「账户」填总资金后列出标的与份数
-
+        {isB ? '星舰 B' : '稳健星舰 H2-a25'} · 今日下单：在上方「账户」填总资金后列出标的与份数
       </div>
     );
   }
@@ -638,8 +617,10 @@ export function A25TargetBlock({
       className="space-y-1 rounded-xl border border-sky-500/25 bg-[var(--k-surface)]/55 p-2 shadow-sm backdrop-blur-md"
     >
       <div className="flex flex-wrap items-baseline gap-2 px-1 text-xs">
-         <span className="font-semibold">{isB ? '星舰 B' : 'H2-a25'} · {fresh ? '今日下单' : '当前持有'}</span>
-         <span className="text-[10px] text-[var(--k-muted)]">人工账本目标</span>
+        <span className="font-semibold">
+          {isB ? '星舰 B' : 'H2-a25'} · {fresh ? '今日下单' : '当前持有'}
+        </span>
+        <span className="text-[10px] text-[var(--k-muted)]">人工账本目标</span>
         <ExecutionTimingBadge
           kind={fresh ? 'intraday-buy' : 'close-buy'}
           testId="a25-header-timing"
@@ -742,7 +723,8 @@ export function A25TargetBlock({
                 ) : null}
                 {o.exitDue ? (
                   <span className="tabular-nums text-[var(--k-muted)]">
-                    到期 {o.exitDue} <span className="text-sky-700 dark:text-sky-300">14:30</span> 卖出
+                    到期 {o.exitDue} <span className="text-sky-700 dark:text-sky-300">14:30</span>{' '}
+                    卖出
                     {o.offBook ? (
                       <span className="text-amber-700 dark:text-amber-300">（面板信号）</span>
                     ) : null}

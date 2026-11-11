@@ -60,9 +60,7 @@ export function WatchlistToolbar({
   const freshnessLine = React.useMemo(() => {
     const bits: string[] = [];
     bits.push(
-      trendUpdatedAt
-        ? `趋势更新于 ${trendUpdatedAt}`
-        : '趋势尚未更新（点 Refresh 拉最新行情重算）',
+      trendUpdatedAt ? `趋势更新于 ${trendUpdatedAt}` : '趋势尚未更新（点 Refresh 拉最新行情重算）',
     );
     if (latestAutomation) {
       const when = latestAutomation.createdAt
@@ -147,7 +145,8 @@ export function WatchlistToolbar({
         {automationSkipRun ? (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-[var(--k-muted)]">
-              自动化已跳过{automationSkipRun.skipReason ? `（${automationSkipRun.skipReason}）` : ''}。
+              自动化已跳过
+              {automationSkipRun.skipReason ? `（${automationSkipRun.skipReason}）` : ''}。
             </span>
             <Button
               size="sm"

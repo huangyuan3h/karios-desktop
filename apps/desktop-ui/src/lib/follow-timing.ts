@@ -109,7 +109,9 @@ export function whipCopy(overlayActive: boolean): string {
 
 /** Canonical key for cross-mode symbol comparison (ETF:513350.SH → 513350). */
 export function followSymbolKey(symbol: string | null | undefined): string {
-  const s = String(symbol || '').trim().toUpperCase();
+  const s = String(symbol || '')
+    .trim()
+    .toUpperCase();
   if (!s) return '';
   return (s.includes(':') ? s.split(':')[1]! : s).split('.')[0]!;
 }
@@ -216,10 +218,7 @@ export function rememberTrailExits(
 }
 
 /** Keys stopped out within `days`, mapped to their (latest) signal date. */
-export function recentTrailExits(
-  days = 10,
-  now: Date = new Date(),
-): Map<string, string> {
+export function recentTrailExits(days = 10, now: Date = new Date()): Map<string, string> {
   const floor = isoDaysAgo(days, now);
   const out = new Map<string, string>();
   for (const [k, v] of Object.entries(readTrailMemory())) {
@@ -234,10 +233,7 @@ export function recentTrailExits(
  * executed the holding disappears, but the memory keeps the key around for a
  * short window so the next-day ROTATE does not look like a clean buy.
  */
-export function useRecentTrailExits(
-  observed: string[],
-  days = 10,
-): Map<string, string> {
+export function useRecentTrailExits(observed: string[], days = 10): Map<string, string> {
   const key = React.useMemo(
     () => [...new Set(observed.map(followSymbolKey).filter(Boolean))].sort().join(','),
     [observed],

@@ -44,9 +44,23 @@ const STAR_B = {
   rebalanceDate: '2026-09-01',
   month: '2026-09',
   universe: [
-    { symbol: '511260.SH', name: '10年国债', targetPct: 92.4, driftPct: 92.4, deltaPct: 0, px: 134.8 },
+    {
+      symbol: '511260.SH',
+      name: '10年国债',
+      targetPct: 92.4,
+      driftPct: 92.4,
+      deltaPct: 0,
+      px: 134.8,
+    },
     { symbol: '518880.SH', name: '黄金', targetPct: 4.0, driftPct: 3.9, deltaPct: 0.1, px: 8.9 },
-    { symbol: '513100.SH', name: '纳指100', targetPct: 3.6, driftPct: 3.7, deltaPct: -0.2, px: 2.28 },
+    {
+      symbol: '513100.SH',
+      name: '纳指100',
+      targetPct: 3.6,
+      driftPct: 3.7,
+      deltaPct: -0.2,
+      px: 2.28,
+    },
   ],
   trades: [],
   note: '星舰 B 停放腿内部权重',
@@ -156,10 +170,34 @@ describe('A25TargetBlock', () => {
     // not the engine's — the engine's legs are a different cohort entirely).
     dueMock.value = { '2026-09-21': FAR };
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:300220', name: '金运激光', positionPct: 25, costPrice: 11.23, entryDate: '2026-09-21' },
-      { symbol: 'CN:300932', name: '三友联众', positionPct: 25, costPrice: 11.01, entryDate: '2026-09-21' },
-      { symbol: 'CN:603137', name: '恒尚节能', positionPct: 25, costPrice: 19.81, entryDate: '2026-09-21' },
-      { symbol: 'CN:001331', name: '胜通能源', positionPct: 25, costPrice: 45.9, entryDate: '2026-09-21' },
+      {
+        symbol: 'CN:300220',
+        name: '金运激光',
+        positionPct: 25,
+        costPrice: 11.23,
+        entryDate: '2026-09-21',
+      },
+      {
+        symbol: 'CN:300932',
+        name: '三友联众',
+        positionPct: 25,
+        costPrice: 11.01,
+        entryDate: '2026-09-21',
+      },
+      {
+        symbol: 'CN:603137',
+        name: '恒尚节能',
+        positionPct: 25,
+        costPrice: 19.81,
+        entryDate: '2026-09-21',
+      },
+      {
+        symbol: 'CN:001331',
+        name: '胜通能源',
+        positionPct: 25,
+        costPrice: 45.9,
+        entryDate: '2026-09-21',
+      },
     ]);
     renderBlock(<A25TargetBlock parkedHeld={PARKED} panel={PANEL} satCapacity={4} />);
     const t = screen.getByTestId('a25-target-block').textContent ?? '';
@@ -211,8 +249,20 @@ describe('A25TargetBlock', () => {
 
   it('rolls over to 当前持有 when the panel is not today (0-point rule)', () => {
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:300220', name: '金运激光', positionPct: 25, costPrice: 11.23, entryDate: '2026-09-21' },
-      { symbol: 'CN:300932', name: '三友联众', positionPct: 25, costPrice: 11.01, entryDate: '2026-09-21' },
+      {
+        symbol: 'CN:300220',
+        name: '金运激光',
+        positionPct: 25,
+        costPrice: 11.23,
+        entryDate: '2026-09-21',
+      },
+      {
+        symbol: 'CN:300932',
+        name: '三友联众',
+        positionPct: 25,
+        costPrice: 11.01,
+        entryDate: '2026-09-21',
+      },
     ]);
     dueMock.value = { '2026-09-21': TODAY };
     renderBlock(
@@ -220,8 +270,22 @@ describe('A25TargetBlock', () => {
         parkedHeld={PARKED}
         panel={{ ...PANEL, tradeDate: STALE_DAY }}
         openPositions={[
-          { ts: '300220.SZ', entryDate: '2026-09-21', entryPrice: 11.23, close: 11.24, pnlPct: 0.09, exitDue: FAR },
-          { ts: '300932.SZ', entryDate: '2026-09-21', entryPrice: 11.01, close: 11.2, pnlPct: 1.73, exitDue: TODAY },
+          {
+            ts: '300220.SZ',
+            entryDate: '2026-09-21',
+            entryPrice: 11.23,
+            close: 11.24,
+            pnlPct: 0.09,
+            exitDue: FAR,
+          },
+          {
+            ts: '300932.SZ',
+            entryDate: '2026-09-21',
+            entryPrice: 11.01,
+            close: 11.2,
+            pnlPct: 1.73,
+            exitDue: TODAY,
+          },
         ]}
       />,
     );
@@ -250,7 +314,14 @@ describe('A25TargetBlock', () => {
         parkedHeld={PARKED}
         panel={{ ...PANEL, tradeDate: STALE_DAY }}
         openPositions={[
-          { ts: '300932.SZ', entryDate: '2026-09-21', entryPrice: 11.01, close: 11.2, pnlPct: 1.73, exitDue: TODAY },
+          {
+            ts: '300932.SZ',
+            entryDate: '2026-09-21',
+            entryPrice: 11.01,
+            close: 11.2,
+            pnlPct: 1.73,
+            exitDue: TODAY,
+          },
         ]}
       />,
     );
@@ -263,8 +334,20 @@ describe('A25TargetBlock', () => {
   it('shows the sell time on stocks and the target drift on ETFs', () => {
     dueMock.value = { '2026-09-21': TODAY };
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:300932', name: '三友联众', positionPct: 25, costPrice: 11.01, entryDate: '2026-09-21' },
-      { symbol: 'CN:603019', name: '中科曙光', positionPct: 25, costPrice: 84.77, entryDate: '2026-09-22' },
+      {
+        symbol: 'CN:300932',
+        name: '三友联众',
+        positionPct: 25,
+        costPrice: 11.01,
+        entryDate: '2026-09-21',
+      },
+      {
+        symbol: 'CN:603019',
+        name: '中科曙光',
+        positionPct: 25,
+        costPrice: 84.77,
+        entryDate: '2026-09-22',
+      },
       { symbol: 'ETF:513350', name: '富国油气QDII', positionPct: 19, costPrice: 1.38 },
     ]);
     renderBlock(
@@ -272,7 +355,14 @@ describe('A25TargetBlock', () => {
         parkedHeld={PARKED}
         panel={{ ...PANEL, tradeDate: STALE_DAY }}
         openPositions={[
-          { ts: '300932.SZ', entryDate: '2026-09-21', entryPrice: 11.01, close: 11.2, pnlPct: 1.73, exitDue: TODAY },
+          {
+            ts: '300932.SZ',
+            entryDate: '2026-09-21',
+            entryPrice: 11.01,
+            close: 11.2,
+            pnlPct: 1.73,
+            exitDue: TODAY,
+          },
         ]}
       />,
     );
@@ -288,7 +378,13 @@ describe('A25TargetBlock', () => {
   it('derives the sell time for a held leg from the frozen rule (entry + BODY)', () => {
     dueMock.value = { '2026-09-22': '2026-09-24' };
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:603019', name: '中科曙光', positionPct: 25, costPrice: 84.77, entryDate: '2026-09-22' },
+      {
+        symbol: 'CN:603019',
+        name: '中科曙光',
+        positionPct: 25,
+        costPrice: 84.77,
+        entryDate: '2026-09-22',
+      },
     ]);
     renderBlock(<A25TargetBlock parkedHeld={PARKED} panel={{ ...PANEL, tradeDate: STALE_DAY }} />);
     const t = screen.getByTestId('a25-target-block').textContent ?? '';
@@ -320,7 +416,13 @@ describe('A25TargetBlock', () => {
     // target and nothing should be flagged (the engine's 31.24% parked weight
     // would have said "sell", which is a backtest artifact).
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:603019', name: '中科曙光', positionPct: 25, costPrice: 84.77, entryDate: '2026-09-22' },
+      {
+        symbol: 'CN:603019',
+        name: '中科曙光',
+        positionPct: 25,
+        costPrice: 84.77,
+        entryDate: '2026-09-22',
+      },
       { symbol: 'ETF:513350', name: '富国油气QDII', positionPct: 19, costPrice: 1.38 },
     ]);
     renderBlock(<A25TargetBlock parkedHeld={PARKED} panel={{ ...PANEL, tradeDate: STALE_DAY }} />);
@@ -357,7 +459,14 @@ describe('A25TargetBlock', () => {
         parkedHeld={PARKED}
         panel={{ ...PANEL, tradeDate: STALE_DAY }}
         openPositions={[
-          { ts: '300932.SZ', entryDate: '2026-09-21', entryPrice: 11.01, close: 11.2, pnlPct: 1.73, exitDue: TODAY },
+          {
+            ts: '300932.SZ',
+            entryDate: '2026-09-21',
+            entryPrice: 11.01,
+            close: 11.2,
+            pnlPct: 1.73,
+            exitDue: TODAY,
+          },
         ]}
       />,
     );
@@ -413,7 +522,13 @@ describe('A25TargetBlock', () => {
     dueMock.value = { '2026-09-22': TODAY };
     userTradesMock.recordUserTrade.mockClear();
     watchlistMock.loadWatchlist.mockReturnValueOnce([
-      { symbol: 'CN:603019', name: '中科曙光', positionPct: 25, costPrice: 84.77, entryDate: '2026-09-22' },
+      {
+        symbol: 'CN:603019',
+        name: '中科曙光',
+        positionPct: 25,
+        costPrice: 84.77,
+        entryDate: '2026-09-22',
+      },
     ]);
     renderBlock(
       <A25TargetBlock

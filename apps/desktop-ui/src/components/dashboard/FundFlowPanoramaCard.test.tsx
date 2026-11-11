@@ -80,16 +80,13 @@ describe('FundFlowPanoramaCard (Dashboard)', () => {
 });
 
 describe('Dashboard placement', () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, '..', 'pages', 'DashboardPage.tsx'),
-    'utf-8',
-  );
+  const source = fs.readFileSync(path.join(__dirname, '..', 'pages', 'DashboardPage.tsx'), 'utf-8');
 
   it('mounts the panorama as a standalone full-width block, not inside the two columns', () => {
     expect(source).toContain("from '@/components/dashboard/FundFlowPanoramaCard'");
     expect(source).toContain('<FundFlowPanoramaCard');
     // Rendered after the two-column card grid closes (full width, not in `renderCard`).
-    const gridEnd = source.indexOf("})()}");
+    const gridEnd = source.indexOf('})()}');
     expect(gridEnd).toBeGreaterThan(0);
     expect(source.indexOf('<FundFlowPanoramaCard')).toBeGreaterThan(gridEnd);
   });

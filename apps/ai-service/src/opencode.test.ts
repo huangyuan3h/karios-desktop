@@ -84,9 +84,9 @@ describe('runOpenCode', () => {
   it('returns visible text from a successful run', async () => {
     process.env.NEWS_OPENCODE_PROXY = '';
     const bin = writeScript(`echo '{"type":"text","part":{"text":"OK"}}'`);
-    await expect(
-      runOpenCode({ prompt: 'hi', bin, timeoutMs: 5_000, cwd: tmpDir! }),
-    ).resolves.toBe('OK');
+    await expect(runOpenCode({ prompt: 'hi', bin, timeoutMs: 5_000, cwd: tmpDir! })).resolves.toBe(
+      'OK',
+    );
   });
 
   it('rejects with the exit code and stderr tail on failure', async () => {
@@ -109,9 +109,9 @@ describe('runOpenCode', () => {
     process.env.NEWS_OPENCODE_PROXY = '';
     const bin = writeScript('exec sleep 30');
     const started = Date.now();
-    await expect(
-      runOpenCode({ prompt: 'hi', bin, timeoutMs: 150, cwd: tmpDir! }),
-    ).rejects.toThrow(/timed out after 150ms/);
+    await expect(runOpenCode({ prompt: 'hi', bin, timeoutMs: 150, cwd: tmpDir! })).rejects.toThrow(
+      /timed out after 150ms/,
+    );
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 

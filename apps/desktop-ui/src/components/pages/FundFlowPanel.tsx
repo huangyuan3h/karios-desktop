@@ -233,10 +233,7 @@ export function FundFlowPanel({
   const last = flowLatest(rows);
   // recharts sync works by data index — same window → link with the NAV chart.
   const syncId = mode === 'sync' ? 'harbor-nav' : 'fund-flow';
-  const shown = React.useMemo(
-    () => ALL_SECTIONS.filter((s) => sections.includes(s)),
-    [sections],
-  );
+  const shown = React.useMemo(() => ALL_SECTIONS.filter((s) => sections.includes(s)), [sections]);
   const show = (id: FlowSectionId) => shown.includes(id);
   const frameCls = embedded
     ? ''
@@ -680,13 +677,15 @@ export function FundFlowPanel({
 
       <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
         显示层 · 不影响交易 · 同步模式下十字线与上方 NAV 图联动（按 index 同步 → 同窗口才对齐）·
-        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye（仅 3 交易所完整日）、北向 =
-        2024-08-19 前日净买 / 后成交额（跨口径 20 日累计已断开，不混算）· 份额 2021-22 起完整 ·
-        两融 2021+ · 北向净买仅 2021–2024-08-18 有效 · 小单 2023+（2025-09~2026-07 缺口已回填）
+        三路 20 日累计 1:1:1（亿元）：国家队 = 宽基份额Δ×净值、两融 = Δrzye（仅 3
+        交易所完整日）、北向 = 2024-08-19 前日净买 / 后成交额（跨口径 20 日累计已断开，不混算）·
+        份额 2021-22 起完整 · 两融 2021+ · 北向净买仅 2021–2024-08-18 有效 · 小单
+        2023+（2025-09~2026-07 缺口已回填）
         {q.data?.marginIncompleteDates?.length ? (
           <span className="text-red-600 dark:text-red-400">
             {' '}
-            · 两融部分发布日已剔除（{q.data.marginIncompleteDates.slice(-3).join('、')}）：当日余额仅供参考，不计入累计。
+            · 两融部分发布日已剔除（{q.data.marginIncompleteDates.slice(-3).join('、')}
+            ）：当日余额仅供参考，不计入累计。
           </span>
         ) : null}
       </div>

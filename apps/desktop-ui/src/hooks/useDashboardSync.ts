@@ -17,8 +17,7 @@ function syncResultErrorMessage(result: unknown): string {
   // 2026-11-06: cap banner length — a raw upstream transport stack (EM
   // RemoteDisconnected × requests/curl/urllib) must never again render as an
   // enormous red banner. Full diagnostics stay in the per-step meta.
-  const truncate = (s: string) =>
-    s.length > 300 ? `${s.slice(0, 300)}…（详情见同步步骤）` : s;
+  const truncate = (s: string) => (s.length > 300 ? `${s.slice(0, 300)}…（详情见同步步骤）` : s);
   if (!result || typeof result !== 'object') return 'Sync returned an invalid result';
   const record = result as {
     error?: unknown;

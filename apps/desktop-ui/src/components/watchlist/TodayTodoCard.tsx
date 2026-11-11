@@ -16,15 +16,13 @@ import {
   type M30Holding,
 } from '@/lib/m30-follow';
 import { useStrategyMode, type StrategyMode } from '@/lib/strategy-settings';
-import { useBacktestReconQuery, useB3StateQuery, useSleeveReconQuery } from '@/lib/queries/backtest';
 import {
-  fetchPortfolioHealth,
-  type PortfolioHealthResponse,
-} from '@/lib/queries/portfolioHealth';
-import {
-  BUY_REMINDERS_UPDATED_EVENT,
-  loadBuyReminders,
-} from '@/lib/buy-reminders';
+  useBacktestReconQuery,
+  useB3StateQuery,
+  useSleeveReconQuery,
+} from '@/lib/queries/backtest';
+import { fetchPortfolioHealth, type PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
+import { BUY_REMINDERS_UPDATED_EVENT, loadBuyReminders } from '@/lib/buy-reminders';
 
 /** Shanghai clock (Asia/Shanghai — never UTC for trading-day copy). */
 function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
@@ -35,13 +33,20 @@ function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
     weekday: 'short',
     hour12: false,
   });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(d).map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value])) as Record<
+    string,
+    string
+  >;
   const [h, m] = String(parts.hour ?? '0').split(':');
   // "周一".."周日" → 1..7
   const wdMap: Record<string, number> = {
-    '周一': 1, '周二': 2, '周三': 3, '周四': 4, '周五': 5, '周六': 6, '周日': 7,
+    周一: 1,
+    周二: 2,
+    周三: 3,
+    周四: 4,
+    周五: 5,
+    周六: 6,
+    周日: 7,
   };
   return {
     mins: Number(h) * 60 + Number(m ?? 0),
@@ -52,7 +57,8 @@ function shanghaiParts(d = new Date()): { mins: number; weekday: number } {
 function phaseCopy(mins: number, weekend: boolean): string {
   if (weekend) return '周末复盘：核对持仓与提醒，不下单';
   if (mins < 9 * 60 + 15) return '盘前准备：先看待执行，再看今日候选';
-  if (mins < 14 * 60 + 30) return `盘中盯盘：14:30 前做买入决定（还剩约 ${14 * 60 + 30 - mins} 分钟）`;
+  if (mins < 14 * 60 + 30)
+    return `盘中盯盘：14:30 前做买入决定（还剩约 ${14 * 60 + 30 - mins} 分钟）`;
   if (mins < 15 * 60) return '尾盘执行窗：按清单买入/卖出';
   return '盘后核对：确认成交，对明天的待执行';
 }
@@ -100,7 +106,9 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
   );
 
   const data: PortfolioHealthResponse | undefined = healthQ.data;
-  const recon = (sleeveQ.data as { recon?: import('@/lib/queries/backtest').SleeveRecon } | undefined)?.recon;
+  const recon = (
+    sleeveQ.data as { recon?: import('@/lib/queries/backtest').SleeveRecon } | undefined
+  )?.recon;
   const { mins, weekday } = shanghaiParts();
   const weekend = weekday >= 6;
 
@@ -201,11 +209,19 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
       });
     }
     // 5) 回测对账缺/多（锚点精确到市场：单市场缺口直达该块）。
-    const reconItems = (reconQ.data as { items?: Array<{ missing?: number; extra?: number; market?: string }> } | undefined)?.items ?? [];
+    const reconItems =
+      (
+        reconQ.data as
+          | { items?: Array<{ missing?: number; extra?: number; market?: string }> }
+          | undefined
+      )?.items ?? [];
     const gapMarkets = reconItems.filter((r) => (r.missing ?? 0) > 0 || (r.extra ?? 0) > 0);
     if (gapMarkets.length > 0) {
       const anchor =
-        gapMarkets.length === 1 && String(gapMarkets[0].market ?? '').toUpperCase().includes('HK')
+        gapMarkets.length === 1 &&
+        String(gapMarkets[0].market ?? '')
+          .toUpperCase()
+          .includes('HK')
           ? 'recon-hk'
           : 'recon';
       out.push({
@@ -258,7 +274,10 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
     if (reminders.length > 0) {
       out.push({
         level: 'info',
-        text: `买入提醒 ${reminders.length} 条：${reminders.slice(0, 3).map((r) => r.symbol).join('、')}${reminders.length > 3 ? '…' : ''}`,
+        text: `买入提醒 ${reminders.length} 条：${reminders
+          .slice(0, 3)
+          .map((r) => r.symbol)
+          .join('、')}${reminders.length > 3 ? '…' : ''}`,
         anchor: 'buy-reminders',
       });
     }
@@ -327,7 +346,8 @@ export function TodayTodoCard({ mode: modeProp }: { mode?: StrategyMode } = {}) 
                   item.level === 'todo' && 'bg-red-500/15 text-red-700 dark:text-red-300',
                   item.level === 'warn' && 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
                   item.level === 'info' && 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-                  item.level === 'done' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                  item.level === 'done' &&
+                    'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
                 )}
               >
                 {i + 1}
