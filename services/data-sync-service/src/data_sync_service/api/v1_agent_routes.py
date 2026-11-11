@@ -12,6 +12,8 @@
 | GET  /v1/agent/timeline-brief           | Compact, cache-first recent timeline note |
 | GET  /v1/agent/decision-log             | Read back today's / recent decision rows |
 | POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
+| GET  /v1/agent/watchlist                | Current watchlist registry (+ positions) |
+| POST /v1/agent/watchlist                | Incremental symbol-scoped registry ops |
 
 Overlays annotate; they never rewrite the engine's ``sleeve.action``, the
 ``TRAIL_PCT`` exit, the parking cooldown (k=0) or any strategy weight. Event
@@ -27,7 +29,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from data_sync_service.api.auth import require_api_key
 from data_sync_service.service.agent_brief import (
@@ -454,3 +456,144 @@ def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
         pass
     return {"ok": True, "item": row}
+
+
+# ---------------------------------------------------------------------------
+# /v1/agent/watchlist — incremental (never full replace)
+# ---------------------------------------------------------------------------
+
+WATCHLIST_OPS_DESCRIPTION = (
+    "Incremental, symbol-scoped watchlist ops: upsert | set_position | remove. "
+    "This never replaces the whole book, never places orders, and never writes "
+    "the decision log. It updates the registry only (pool + position / cost)."
+)
+
+
+class AgentWatchlistOp(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    op: str = Field(..., description="upsert | set_position | remove")
+    symbol: str = Field(..., min_length=1, description="MARKET:TICKER, e.g. ETF:511260.")
+    force: bool | None = Field(
+        default=None,
+        description="remove only: required when the row still has positionPct > 0.",
+    )
+    name: str | None = None
+    source: str | None = None
+    color: str | None = None
+    positionPct: float | None = Field(
+        default=None,
+        description="Clamped to [0, 100] and rounded to 2 decimals. set_position requires it.",
+    )
+    costPrice: float | None = None
+    maxPrice: float | None = None
+    entryDate: str | None = None
+
+
+class AgentWatchlistBody(BaseModel):
+    reason: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Why the book is changing (required, 1-500 chars).",
+    )
+    source: str = Field(
+        default="agent",
+        max_length=50,
+        description="Provenance tag; also the default source for new rows.",
+    )
+    dryRun: bool = Field(default=False, description="Preview the before/after, write nothing.")
+    ops: list[AgentWatchlistOp] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description=WATCHLIST_OPS_DESCRIPTION,
+    )
+
+
+@router.get(
+    "/watchlist",
+    summary="Current watchlist registry (+ open positions). Incremental write API.",
+)
+def get_agent_watchlist(
+    format: str = Query(
+        default="json",
+        description="json | md. 'md' returns a compact Markdown table (text/markdown).",
+    ),
+) -> Any:
+    """Read the registry the agent writes with ``POST /v1/agent/watchlist``.
+
+    ``placesOrders`` is always false: this API is the book of record (pool +
+    position / cost), not an execution surface.
+    """
+    from data_sync_service.service.agent_watchlist import (
+        build_watchlist_snapshot,
+        render_watchlist_markdown,
+    )
+
+    fmt = str(format or "json").strip().lower()
+    if fmt not in ("json", "md", "markdown"):
+        raise HTTPException(status_code=422, detail="format must be 'json' or 'md'")
+    try:
+        snapshot = build_watchlist_snapshot()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"watchlist read failed: {exc}") from exc
+    if fmt in ("md", "markdown"):
+        return Response(
+            content=render_watchlist_markdown(snapshot),
+            media_type="text/markdown; charset=utf-8",
+        )
+    return snapshot
+
+
+@router.get(
+    "/watchlist.md",
+    summary="Current watchlist registry as a compact Markdown table.",
+    response_class=Response,
+)
+def get_agent_watchlist_md() -> Response:
+    from data_sync_service.service.agent_watchlist import (
+        build_watchlist_snapshot,
+        render_watchlist_markdown,
+    )
+
+    try:
+        snapshot = build_watchlist_snapshot()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"watchlist read failed: {exc}") from exc
+    return Response(
+        content=render_watchlist_markdown(snapshot),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@router.post(
+    "/watchlist",
+    summary="Incremental, symbol-scoped watchlist ops (never a full replace).",
+)
+def post_agent_watchlist(body: AgentWatchlistBody) -> dict[str, Any]:
+    """Apply ``upsert`` / ``set_position`` / ``remove`` ops to the registry.
+
+    Every op carries an explicit symbol, so unrelated rows are never deleted
+    (``POST /watchlist/registry`` keeps its desktop-UI full-replace contract).
+    ``placesOrders`` is always false; ``dryRun`` returns the would-be state.
+    """
+    from data_sync_service.service.agent_watchlist import (
+        WatchlistOpError,
+        apply_watchlist_ops,
+    )
+
+    ops = [op.model_dump(exclude_unset=True) for op in body.ops]
+    try:
+        return apply_watchlist_ops(
+            reason=body.reason,
+            ops=ops,
+            source=body.source,
+            dry_run=bool(body.dryRun),
+        )
+    except WatchlistOpError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"watchlist write failed: {exc}") from exc
