@@ -7,10 +7,14 @@
 | GET  /v1/agent/judgment-brief.md        | Same payload as compact Markdown (Sync & Copy) |
 | GET  /v1/agent/overlays                 | Read proposed/accepted/expired overlays |
 | POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
+| GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
+| POST /v1/agent/event-tags               | Record one sourced, advice-only tag |
 | POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
 
 Overlays annotate; they never rewrite the engine's ``sleeve.action``, the
-``TRAIL_PCT`` exit, the parking cooldown (k=0) or any strategy weight.
+``TRAIL_PCT`` exit, the parking cooldown (k=0) or any strategy weight. Event
+tags are further downstream: they can only advise whether to rebuy / which
+mode to maintain, and can never veto a triggered sell.
 Auth mirrors the other ``/v1/*`` business routes (opt-in via KARIOS_API_KEYS).
 """
 
@@ -29,6 +33,12 @@ from data_sync_service.service.agent_brief import (
     render_judgment_brief_markdown,
 )
 from data_sync_service.service.agent_contract import build_decision_contract
+from data_sync_service.service.agent_event_tags import (
+    EFFECT_WHITELIST,
+    MIN_CONFIDENCE,
+    list_event_tags,
+    record_event_tag,
+)
 from data_sync_service.service.agent_overlays import (
     group_overlays,
     list_overlays,
@@ -233,6 +243,97 @@ def post_overlay(body: OverlayBody) -> dict[str, Any]:
         "ok": True,
         "overlay": overlay,
         "overlays": group_overlays(list_overlays(day=as_of)),
+    }
+
+
+class EventTagSource(BaseModel):
+    url: str | None = Field(default=None, description="Real article / document URL.")
+    briefId: str | None = Field(default=None, description="News brief id (source list only).")
+    title: str | None = Field(default=None, max_length=300)
+
+
+class EventTagBody(BaseModel):
+    tag: str = Field(..., min_length=1, max_length=80)
+    effect: str = Field(
+        ...,
+        description=(
+            "Whitelist only: advise_defer_same_key_rebuy | advise_strategy | "
+            "trail_exit | below_ma200. Anything that blocks/delays a sell is 422."
+        ),
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    sources: list[EventTagSource] = Field(
+        default_factory=list,
+        description="At least one of url / briefId is required (no fabricated sources).",
+    )
+    relatedAssets: list[str] = Field(default_factory=list)
+    validFrom: str | None = Field(default=None, description="ISO date; defaults to today.")
+    validUntil: str | None = Field(default=None, description="ISO date the tag expires.")
+    validDays: int | None = Field(default=None, ge=1, le=90)
+    note: str | None = Field(default=None, max_length=500)
+    source: str = Field(default="agent", max_length=50)
+    status: str = Field(default="active", description="active | cleared | rejected")
+    newsBriefId: str | None = Field(
+        default=None,
+        description="Optional: when sources is empty, ingest this news brief's items as sources.",
+    )
+
+
+@router.get("/event-tags", summary="List advice-only event / geo tags.")
+def get_event_tags(
+    day: str | None = Query(default=None, description="ISO date; default today."),
+    effect: str | None = Query(default=None, description="Filter by whitelist effect."),
+    includeExpired: bool = Query(default=True),
+) -> dict[str, Any]:
+    as_of = str(day or shanghai_today_iso())[:10]
+    items = list_event_tags(day=as_of, effect=effect, include_expired=includeExpired)
+    active = [t for t in items if t.get("effectiveStatus") == "active"]
+    return {
+        "ok": True,
+        "asOfDate": as_of,
+        "threshold": MIN_CONFIDENCE,
+        "effects": sorted(EFFECT_WHITELIST),
+        "adviceOnly": True,
+        "neverVetoesExits": True,
+        "eventTags": {
+            "active": active,
+            "expired": [t for t in items if t.get("effectiveStatus") == "expired"],
+            "all": items,
+        },
+    }
+
+
+@router.post("/event-tags", summary="Record one sourced, advice-only event tag.")
+def post_event_tag(body: EventTagBody) -> dict[str, Any]:
+    from data_sync_service.service.agent_event_tags import news_brief_sources
+
+    sources = [s.model_dump(exclude_none=True) for s in body.sources]
+    if not sources and body.newsBriefId:
+        # News brief is a source list only — never a raw trade signal.
+        sources = [
+            s for s in news_brief_sources() if str(s.get("briefId") or "") == str(body.newsBriefId)
+        ]
+    try:
+        tag = record_event_tag(
+            tag=body.tag,
+            effect=body.effect,
+            confidence=body.confidence,
+            sources=sources,
+            related_assets=body.relatedAssets,
+            valid_from=body.validFrom,
+            valid_until=body.validUntil,
+            valid_days=body.validDays,
+            note=body.note,
+            source=body.source,
+            status=body.status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    as_of = shanghai_today_iso()
+    return {
+        "ok": True,
+        "eventTag": tag,
+        "eventTags": list_event_tags(day=as_of),
     }
 
 

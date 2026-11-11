@@ -25,6 +25,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from data_sync_service.service.agent_event_tags import (
+    assert_event_tags_never_override_exit,
+    build_event_tag_block,
+)
 from data_sync_service.service.agent_overlays import group_overlays, list_overlays
 from data_sync_service.service.agent_whip import evaluate_whip
 
@@ -508,7 +512,8 @@ def build_decision_contract(
     path_mismatch = _path_mismatch(mode, sleeve)
     whip_payload = dict(whip)
     whip_payload["context"] = _whip_context(whip, sleeve)
-    return {
+    fill_clock = _fill_clock(sleeve)
+    payload = {
         "ok": True,
         "contractId": contract_id,
         "asOfDate": day,
@@ -526,8 +531,26 @@ def build_decision_contract(
         "sleeve": _sleeve_summary(sleeve),
         "health": _health_summary(health),
         "nextLeg": _next_leg(sleeve),
-        "fillClock": _fill_clock(sleeve),
+        "fillClock": fill_clock,
         "whip": whip_payload,
         "overlays": overlays,
         "authority": AUTHORITY,
     }
+    # Advice-only event / geo tags (2026-11-11). Attached after the sleeve,
+    # fill clock and overlay blocks are final; the invariant below proves a
+    # triggered exit keeps both its action and its close-basis fill clock.
+    # No stored tag at/above MIN_CONFIDENCE → no block (Step-1 shape).
+    event_block = build_event_tag_block(
+        contract=payload,
+        day=day,
+        timeline=timeline_key,
+    )
+    if event_block:
+        assert_event_tags_never_override_exit(
+            sleeve=payload["sleeve"],
+            fill_clock=fill_clock,
+            tags=event_block["eventTags"]["tags"],
+        )
+        payload["eventTags"] = event_block["eventTags"]
+        payload["geoRegime"] = event_block["geoRegime"]
+    return payload

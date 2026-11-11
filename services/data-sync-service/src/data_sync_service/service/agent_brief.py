@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11"
+BRIEF_VERSION = "2026-11-11.2"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Research closes (qfq adjusted `daily` / panel) vs live raw 净价. A gap at or
@@ -1502,6 +1502,12 @@ def build_judgment_brief(
                 "priceIntegrity": brief["integrity"].get("status"),
             }
         )
+        # Advice-only event / geo tags (2026-11-11.2). Present only when the
+        # contract actually carries tags — no tags → identical Step-1 shape.
+        if contract.get("eventTags"):
+            brief["eventTags"] = contract["eventTags"]
+            brief["geoRegime"] = contract.get("geoRegime")
+            brief["judgment"]["eventTagCount"] = contract["eventTags"].get("count")
         timings.setdefault("quotesMs", 0.0)
         try:
             brief["payloadBytes"] = len(json.dumps(brief, ensure_ascii=False).encode("utf-8"))
@@ -1718,6 +1724,41 @@ def _render_alerts(brief: dict[str, Any]) -> list[str]:
         )
     if not alerts:
         lines.append("- 无致命提醒（价格口径、路径、时钟、鞭打均正常）。")
+
+    event_block = brief.get("eventTags") or {}
+    event_tags = event_block.get("tags") or []
+    if event_tags:
+        lines.append("")
+        lines.append("### 事件/地缘标签 event tags（仅建议）")
+        for tag in event_tags:
+            assets = "/".join(str(a) for a in (tag.get("relatedAssets") or [])) or "—"
+            lines.append(
+                f"- `{tag.get('tag')}` · 置信 {tag.get('confidence')} · "
+                f"effect=`{tag.get('effect')}` · 资产 {assets} · "
+                f"有效期 {tag.get('validFrom') or '—'}~{tag.get('validUntil') or '—'} · "
+                f"{tag.get('note') or ''}".rstrip()
+            )
+        advice = event_block.get("strategyAdvice") or {}
+        if advice:
+            lines.append(
+                f"- 策略建议（**仅建议**，改档需 Yuan 在 /settings/strategy-mode 确认）："
+                f"`{advice.get('advice')}` · 当前 `{advice.get('currentMode')}`"
+                + (
+                    f" → 建议 `{advice.get('recommendedMode')}`"
+                    if advice.get("recommendedMode")
+                    else ""
+                )
+            )
+            if advice.get("reason"):
+                lines.append(f"  - 依据: {advice.get('reason')}")
+        geo = brief.get("geoRegime") or {}
+        if geo.get("active"):
+            lines.append(
+                f"- geoRegime: `{geo.get('label')}` · 资产 "
+                f"{'/'.join(str(a) for a in (geo.get('assets') or []))}"
+                "（不是 market_regime 的 Weak/Strong，不挡开仓也不挡卖出）"
+            )
+        lines.append("- 不影响已触发的卖出")
     lines.append("")
     return lines
 
