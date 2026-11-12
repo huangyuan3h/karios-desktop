@@ -425,9 +425,7 @@ def reconcile_snapshot(
 
     if not targets and fills:
         sides = "、".join(sorted({str(f.get("side") or "") for f in fills if f.get("side")}))
-        symbols = "、".join(
-            sorted({str(f.get("symbol") or "") for f in fills if f.get("symbol")})
-        )
+        symbols = "、".join(sorted({str(f.get("symbol") or "") for f in fills if f.get("symbol")}))
         _dev(
             "unexpected_fill",
             symbols or "—",
@@ -459,9 +457,7 @@ def next_open_session(day_iso: str) -> str | None:
         start = date.fromisoformat(str(day_iso)[:10])
     except (TypeError, ValueError):
         return None
-    sessions = open_sessions_between(
-        start.isoformat(), (start + timedelta(days=45)).isoformat()
-    )
+    sessions = open_sessions_between(start.isoformat(), (start + timedelta(days=45)).isoformat())
     future = [s for s in sessions if s > str(day_iso)[:10]]
     return future[0] if future else None
 

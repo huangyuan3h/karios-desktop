@@ -643,8 +643,7 @@ def first_session_after(day: str) -> str | None:
         with _read_only_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT min(cal_date) FROM trade_calendar "
-                    "WHERE is_open = 1 AND cal_date > %s",
+                    "SELECT min(cal_date) FROM trade_calendar WHERE is_open = 1 AND cal_date > %s",
                     (day,),
                 )
                 row = cur.fetchone()
@@ -731,8 +730,7 @@ def refresh_live_blotter(
 
     inputs: dict[str, dict[str, Any]] = {}
     appended = {
-        fam: _sorted(list(existing.get("appended", {}).get(fam) or []))
-        for fam in _FAMILIES
+        fam: _sorted(list(existing.get("appended", {}).get(fam) or [])) for fam in _FAMILIES
     }
     parking = existing.get("parking") or {}
     if not isinstance(parking, dict) or not isinstance(parking.get("episodes"), list):
@@ -838,9 +836,7 @@ def refresh_live_blotter(
                     newTrades=len(new_rows),
                     parkingTrades=len(closed_eps),
                     parkingOpen=len(episodes) - len(closed_eps),
-                    parkingNet=round(
-                        sum(float(ep.get("contrib") or 0.0) for ep in closed_eps), 4
-                    ),
+                    parkingNet=round(sum(float(ep.get("contrib") or 0.0) for ep in closed_eps), 4),
                     asOf=result.get("asOf") or watermark,
                     etfAsOf=result.get("etfAsOf") or etf_mark,
                 )
@@ -915,14 +911,14 @@ def refresh_live_blotter(
         "frozenPrefix": {
             "sgap": frozen_fingerprint(sgap_frozen_path, sgap_frozen),
             "harbor": frozen_fingerprint(harbor_frozen_path, harbor_frozen),
-            **{
-                fam: fld.prefix_fingerprint(frozen_daily_prefix, fam)
-                for fam in DAILY_FAMILIES
-            },
+            **{fam: fld.prefix_fingerprint(frozen_daily_prefix, fam) for fam in DAILY_FAMILIES},
         },
         "inputs": inputs,
         "parkingAsOf": (
-            max((str(ep.get("exit")) for ep in parking.get("episodes") or [] if ep.get("exit")), default=None)
+            max(
+                (str(ep.get("exit")) for ep in parking.get("episodes") or [] if ep.get("exit")),
+                default=None,
+            )
         ),
         "note": (
             "appended = new closed trades after the frozen prefix; the frozen audit "

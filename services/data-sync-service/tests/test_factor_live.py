@@ -364,9 +364,7 @@ def test_last_40_uses_appended_trades() -> None:
         {"ts": "Z", "entry": "2026-10-09", "exit": "2026-10-13", "contrib": 9.0},
     ]
     merged = fl.merge_trades(frozen, appended, family="sgap")
-    stats = fl.rolling_stats(
-        merged, mu=fv.SGAP_MU, sigma=fv.SGAP_SIGMA, as_of="2026-11-10"
-    )
+    stats = fl.rolling_stats(merged, mu=fv.SGAP_MU, sigma=fv.SGAP_SIGMA, as_of="2026-11-10")
     assert stats["trades"] == 40
     assert stats["net"] > 8.0
     assert stats["as_of"] == "2026-11-10"
@@ -393,10 +391,7 @@ def test_live_override_prefers_appended_and_ignores_missing_prefix(tmp_path: Pat
     assert stats["as_of"] == "2026-11-10"
     assert stats["trades"] == 40
     # No frozen prefix -> no invented window.
-    assert (
-        fl.live_override_stats(live, family="sgap", frozen=[], mu=0.0, sigma=1.0)
-        is None
-    )
+    assert fl.live_override_stats(live, family="sgap", frozen=[], mu=0.0, sigma=1.0) is None
 
 
 def test_harbor_rolling_adds_parking_episodes() -> None:
@@ -559,14 +554,28 @@ def test_generate_factor_vault_prefers_live_override(tmp_path: Path, monkeypatch
 def test_replay_sgap_live_keeps_only_closed_fills(monkeypatch) -> None:
     from data_sync_service.service import state_bucket_track as sbt
 
-    monkeypatch.setattr(sbt, "load_sgap_context", lambda s, e: {"px_1430": {"A": {e: 1.0}}, "cal": [e]})
+    monkeypatch.setattr(
+        sbt, "load_sgap_context", lambda s, e: {"px_1430": {"A": {e: 1.0}}, "cal": [e]}
+    )
     monkeypatch.setattr(
         sbt,
         "replay_sgap_from_context",
         lambda ctx, **kw: {
             "blotter": [
-                {"kind": "fill", "ts": "A", "entryDate": "2026-10-01", "exitDate": "2026-10-05", "contribPct": 1.5},
-                {"kind": "fill", "ts": "B", "entryDate": "2026-10-08", "exitDate": "2026-12-01", "contribPct": 2.0},
+                {
+                    "kind": "fill",
+                    "ts": "A",
+                    "entryDate": "2026-10-01",
+                    "exitDate": "2026-10-05",
+                    "contribPct": 1.5,
+                },
+                {
+                    "kind": "fill",
+                    "ts": "B",
+                    "entryDate": "2026-10-08",
+                    "exitDate": "2026-12-01",
+                    "contribPct": 2.0,
+                },
                 {"kind": "open", "ts": "C", "entryDate": "2026-10-30", "exitDate": None},
                 {"kind": "skip_t1", "ts": "D", "entryDate": "2026-10-30"},
             ],
@@ -610,7 +619,9 @@ def test_replay_harbor_live_maps_trades_and_parking(monkeypatch) -> None:
     from data_sync_service.service import harbor
     from data_sync_service.service import portfolio_nav_sim as pns
 
-    monkeypatch.setattr(be, "BacktestData", lambda cfg: SimpleNamespace(calendar=["2026-06-01", "2026-11-10"]))
+    monkeypatch.setattr(
+        be, "BacktestData", lambda cfg: SimpleNamespace(calendar=["2026-06-01", "2026-11-10"])
+    )
     monkeypatch.setattr(
         be,
         "simulate",
@@ -641,8 +652,22 @@ def test_replay_harbor_live_maps_trades_and_parking(monkeypatch) -> None:
         "build_harbor_timeline",
         lambda **kw: {
             "rows": [
-                {"date": "2026-06-03", "pick": "GOLD", "pickTs": "518880.SH", "parkedSides": 1, "parkedRetPct": 1.0, "idlePct": 100.0},
-                {"date": "2026-06-04", "pick": "REPO", "pickTs": "GC001", "parkedSides": 1, "parkedRetPct": 0.0, "idlePct": 100.0},
+                {
+                    "date": "2026-06-03",
+                    "pick": "GOLD",
+                    "pickTs": "518880.SH",
+                    "parkedSides": 1,
+                    "parkedRetPct": 1.0,
+                    "idlePct": 100.0,
+                },
+                {
+                    "date": "2026-06-04",
+                    "pick": "REPO",
+                    "pickTs": "GC001",
+                    "parkedSides": 1,
+                    "parkedRetPct": 0.0,
+                    "idlePct": 100.0,
+                },
             ],
             "parkingTrades": 1,
         },

@@ -582,9 +582,7 @@ def build_strategy_alerts(
         prev_classes = {}
 
     prev_factors = (
-        {fid: {"position": pos} for fid, pos in prev_positions.items()}
-        if prev_positions
-        else None
+        {fid: {"position": pos} for fid, pos in prev_positions.items()} if prev_positions else None
     )
     payload = build_factor_system(
         reports_dir=base,
@@ -610,9 +608,7 @@ def build_strategy_alerts(
     summary = payload.get("summary") or {}
     factors = {str(row.get("id")): row for row in payload.get("bricks") or [] if row.get("id")}
 
-    vault_generated = str(
-        (payload.get("freshness") or {}).get("sourceGeneratedAt") or ""
-    )[:10]
+    vault_generated = str((payload.get("freshness") or {}).get("sourceGeneratedAt") or "")[:10]
     vault_dated_today = vault_generated == day
 
     history = _history_rows(base)
@@ -667,9 +663,7 @@ def build_strategy_alerts(
             continue
 
         row = factors.get(fid) or {}
-        from_status = (
-            str(candidate.get("from")) if candidate.get("from") is not None else None
-        )
+        from_status = str(candidate.get("from")) if candidate.get("from") is not None else None
         to_status = str(candidate.get("to")) if candidate.get("to") is not None else None
         from_position = _as_int(candidate.get("fromPosition"))
         to_position = _as_int(candidate.get("toPosition"))
@@ -687,8 +681,7 @@ def build_strategy_alerts(
                 continue
             from_status = before or from_status
             matching_transition = any(
-                str(t.get("factor_id") or "") == fid
-                and str(t.get("to") or "") == to_status
+                str(t.get("factor_id") or "") == fid and str(t.get("to") or "") == to_status
                 for t in transitions
             )
             if not vault_dated_today and not matching_transition:
@@ -768,12 +761,7 @@ def build_strategy_alerts(
             )
         )
 
-    if (
-        sgap_pos is not None
-        and prev_sgap is not None
-        and sgap_pos > prev_sgap
-        and sgap_dated_today
-    ):
+    if sgap_pos is not None and prev_sgap is not None and sgap_pos > prev_sgap and sgap_dated_today:
         _add(
             _revival_event(
                 fid="sgap",
@@ -877,9 +865,7 @@ def build_strategy_alerts(
     }
 
     states = {str(row.get("id")): str(row.get("status") or "") for row in factors.values()}
-    positions = {
-        str(row.get("id")): _as_int(row.get("position")) or 0 for row in factors.values()
-    }
+    positions = {str(row.get("id")): _as_int(row.get("position")) or 0 for row in factors.values()}
 
     new_today_summaries = [
         {

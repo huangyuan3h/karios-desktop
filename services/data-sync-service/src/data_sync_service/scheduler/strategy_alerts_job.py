@@ -45,9 +45,7 @@ def run() -> None:
         return
 
     if not result.get("persisted"):
-        record_failure(
-            JOB_ID, result.get("writeError") or "strategy alerts snapshot not persisted"
-        )
+        record_failure(JOB_ID, result.get("writeError") or "strategy alerts snapshot not persisted")
         return
     if not result.get("available"):
         record_failure(JOB_ID, result.get("error") or "factor vault unavailable")

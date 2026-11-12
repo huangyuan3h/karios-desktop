@@ -369,9 +369,7 @@ def load_sessions(start: str, end: str) -> list[str]:
     return [str(r[0])[:10] for r in rows]
 
 
-def load_bars(
-    codes: Sequence[str], since: str, until: str
-) -> dict[str, list[Bar]]:
+def load_bars(codes: Sequence[str], since: str, until: str) -> dict[str, list[Bar]]:
     """Daily bars per code, ordered by trade date (batched, read-only)."""
     bars: dict[str, list[Bar]] = {}
     for start in range(0, len(codes), BAR_BATCH):
@@ -422,11 +420,7 @@ def _shift_days(day: str, days: int) -> str:
 def load_context(start: str, end: str) -> DailyContext:
     global _CONTEXT_CACHE
     since = _shift_days(start, -LOOKBACK_CALENDAR_DAYS)
-    if (
-        _CONTEXT_CACHE is not None
-        and _CONTEXT_CACHE.until == end
-        and _CONTEXT_CACHE.since <= since
-    ):
+    if _CONTEXT_CACHE is not None and _CONTEXT_CACHE.until == end and _CONTEXT_CACHE.since <= since:
         return _CONTEXT_CACHE
     codes, list_dates = load_universe()
     bars = load_bars(codes, since, end)
@@ -551,9 +545,7 @@ def build_frozen_prefix(
                         "frozen": True,
                     }
                 )
-        holdout = [
-            r for r in all_rows if HOLDOUT_START <= str(r["signal"]) <= HOLDOUT_END
-        ]
+        holdout = [r for r in all_rows if HOLDOUT_START <= str(r["signal"]) <= HOLDOUT_END]
         n, mean = _holdout_mean(holdout)
         expected = ((daily.get("events") or {}).get(label) or {}).get("holdout") or {}
         expected_n = int(expected.get("n") or 0)
@@ -695,9 +687,7 @@ def _sorted(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
-def trim_appended(
-    rows: Sequence[dict[str, Any]], n: int = KEEP_ROWS
-) -> list[dict[str, Any]]:
+def trim_appended(rows: Sequence[dict[str, Any]], n: int = KEEP_ROWS) -> list[dict[str, Any]]:
     """Keep the most recent ``n`` closed rows (deterministic, idempotent)."""
     ordered = _sorted([r for r in rows if isinstance(r, dict)])
     if n <= 0 or len(ordered) <= n:

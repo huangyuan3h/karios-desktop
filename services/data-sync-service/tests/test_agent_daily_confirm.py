@@ -182,7 +182,9 @@ def test_reconcile_amended_lines_are_the_target() -> None:
     # The amended target is a BUY of 511260; the 513350 sell is unexpected.
     assert out["deviations"]
     assert any(d["type"] == "not_filled" and d["symbol"] == "ETF:511260" for d in out["deviations"])
-    assert any(d["type"] == "unexpected_fill" and d["symbol"] == "ETF:513350" for d in out["deviations"])
+    assert any(
+        d["type"] == "unexpected_fill" and d["symbol"] == "ETF:513350" for d in out["deviations"]
+    )
 
 
 def test_reconcile_wrong_direction_is_a_deviation() -> None:
@@ -323,9 +325,7 @@ def test_get_log_exposes_advice_decision_and_reconcile(
     source = _source()
     _post_confirm(source, decision="confirmed", note="同意")
 
-    out = agent_decision_log.read_decision_log(
-        trade_date="2026-11-10", lookback=1, limit=200
-    )
+    out = agent_decision_log.read_decision_log(trade_date="2026-11-10", lookback=1, limit=200)
     mine = [r for r in out["items"] if r.get("source") == source]
     assert len(mine) == 1
     row = mine[0]
@@ -381,9 +381,7 @@ def test_reconcile_pending_writes_back_same_row(
         lambda next_session: ([], [], []),
     )
     now = datetime(2026, 11, 30, 19, 0, tzinfo=SHANGHAI)
-    result = agent_daily_confirm.reconcile_pending(
-        trade_date="2026-11-30", source=source, now=now
-    )
+    result = agent_daily_confirm.reconcile_pending(trade_date="2026-11-30", source=source, now=now)
     assert result["ok"] is True
     assert result["checked"] == 1
     assert result["counts"]["done"] == 1
@@ -392,9 +390,7 @@ def test_reconcile_pending_writes_back_same_row(
     assert _count_rows(source) == 1
 
     # Already done → not selected again; no duplicate confirm rows.
-    again = agent_daily_confirm.reconcile_pending(
-        trade_date="2026-11-30", source=source, now=now
-    )
+    again = agent_daily_confirm.reconcile_pending(trade_date="2026-11-30", source=source, now=now)
     assert again["checked"] == 0
     assert _count_rows(source) == 1
 
@@ -417,9 +413,7 @@ def test_reconcile_pending_degrades_on_missing_evidence_and_keeps_row(
         lambda next_session: (None, None, ["registry down"]),
     )
     now = datetime(2026, 11, 30, 19, 0, tzinfo=SHANGHAI)
-    result = agent_daily_confirm.reconcile_pending(
-        trade_date="2026-11-30", source=source, now=now
-    )
+    result = agent_daily_confirm.reconcile_pending(trade_date="2026-11-30", source=source, now=now)
     assert result["counts"]["degraded"] == 1
     assert result["items"][0]["reconcile"]["status"] == "degraded"
     assert _count_rows(source) == 1
@@ -437,9 +431,7 @@ def test_reconcile_pending_waits_before_next_session_close(
     source = _source()
     _post_confirm(source, decision="confirmed")
     now = datetime(2026, 11, 11, 10, 0, tzinfo=SHANGHAI)  # during the next session
-    result = agent_daily_confirm.reconcile_pending(
-        trade_date="2026-11-11", source=source, now=now
-    )
+    result = agent_daily_confirm.reconcile_pending(trade_date="2026-11-11", source=source, now=now)
     assert result["counts"]["pending"] == 1
     assert result["items"][0]["reconcile"]["status"] == "pending"
 

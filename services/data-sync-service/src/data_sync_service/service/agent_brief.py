@@ -2022,9 +2022,7 @@ def _render_alerts(brief: dict[str, Any]) -> list[str]:
     if new_events:
         alerts += len(new_events)
         lines.append("")
-        lines.append(
-            "### 盘后策略提醒 strategy alerts（仅告知，不自动改设置、不下单）"
-        )
+        lines.append("### 盘后策略提醒 strategy alerts（仅告知，不自动改设置、不下单）")
         for event in new_events:
             lines.append(f"- {event.get('copy')}")
     sa_fresh = strategy_alerts.get("freshness") or {}

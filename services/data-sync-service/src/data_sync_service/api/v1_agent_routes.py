@@ -681,7 +681,9 @@ def post_daily_confirm_reconcile(body: DailyConfirmReconcileBody) -> dict[str, A
             source=body.source or "daily_confirm",
         )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"daily confirm reconcile failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"daily confirm reconcile failed: {exc}"
+        ) from exc
     try:
         from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
 

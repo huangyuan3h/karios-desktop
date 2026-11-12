@@ -138,7 +138,9 @@ def test_h03_rsi30_hold5() -> None:
     assert ev["signal"] == _day(100)
     assert ev["entry"] == _day(101)
     assert ev["exit"] == _day(105)
-    assert ev["net"] == pytest.approx((bars[101].close + 0.3) / bars[101].close - 1.0 - fld.COST, abs=1e-6)
+    assert ev["net"] == pytest.approx(
+        (bars[101].close + 0.3) / bars[101].close - 1.0 - fld.COST, abs=1e-6
+    )
 
 
 def test_entry_day_limit_up_is_skipped() -> None:
@@ -328,8 +330,14 @@ def test_load_frozen_prefix_is_none_without_pkl_or_sidecar(tmp_path: Path) -> No
 
 def test_last_40_is_mean_percent_per_trade_not_sum() -> None:
     frozen = [
-        {"key": f"h01|2026-09-{i:02d}|0", "signal": f"2026-09-{i:02d}", "entry": None,
-         "exit": None, "net": 0.01, "ts": ""}
+        {
+            "key": f"h01|2026-09-{i:02d}|0",
+            "signal": f"2026-09-{i:02d}",
+            "entry": None,
+            "exit": None,
+            "net": 0.01,
+            "ts": "",
+        }
         for i in range(1, 11)
     ]
     appended = [
@@ -358,8 +366,7 @@ def test_last_40_windows_the_tail_only() -> None:
         return (date(2026, 1, 1) + timedelta(days=i)).isoformat()
 
     rows = [
-        {"ts": f"CN:{i:06d}", "entry": day(i), "exit": day(i),
-         "net": 0.10 if i < 5 else -0.01}
+        {"ts": f"CN:{i:06d}", "entry": day(i), "exit": day(i), "net": 0.10 if i < 5 else -0.01}
         for i in range(45)
     ]
     stats = fld.rolling_stats([], rows, as_of="2026-11-11")
@@ -416,8 +423,13 @@ def _prefix(families: tuple[str, ...] = fld.FAMILIES) -> dict[str, Any]:
 
 def _sgap_frozen(n: int = 39) -> list[dict[str, Any]]:
     return [
-        {"ts": f"00000{i % 10}.SZ", "entry": f"2026-01-{i + 1:02d}", "exit": f"2026-01-{i + 1:02d}",
-         "contrib": 0.5, "win": True}
+        {
+            "ts": f"00000{i % 10}.SZ",
+            "entry": f"2026-01-{i + 1:02d}",
+            "exit": f"2026-01-{i + 1:02d}",
+            "contrib": 0.5,
+            "win": True,
+        }
         for i in range(n)
     ]
 
@@ -429,8 +441,12 @@ def _refresh_kwargs(tmp_path: Path) -> dict[str, Any]:
     frozen_harbor.write_text(
         json.dumps(
             [
-                {"ts": "CN:600000", "entry": f"2026-01-{i + 1:02d}", "exit": f"2026-01-{i + 1:02d}",
-                 "contrib": 0.8}
+                {
+                    "ts": "CN:600000",
+                    "entry": f"2026-01-{i + 1:02d}",
+                    "exit": f"2026-01-{i + 1:02d}",
+                    "contrib": 0.8,
+                }
                 for i in range(39)
             ]
         ),
@@ -444,7 +460,13 @@ def _refresh_kwargs(tmp_path: Path) -> dict[str, Any]:
         "frozen_harbor_path": frozen_harbor,
         "frozen_daily_prefix": _prefix(),
         "sgap_replay": lambda s, e: {"ok": True, "asOf": e, "trades": [], "parking": []},
-        "harbor_replay": lambda s, e: {"ok": True, "asOf": e, "etfAsOf": e, "trades": [], "parking": []},
+        "harbor_replay": lambda s, e: {
+            "ok": True,
+            "asOf": e,
+            "etfAsOf": e,
+            "trades": [],
+            "parking": [],
+        },
         "session_after": lambda _d: "2026-09-23",
     }
 
@@ -457,17 +479,38 @@ def test_refresh_appends_closed_daily_trades_idempotently(tmp_path: Path) -> Non
             "asOf": end,
             "trades": [
                 # new closed trade -> appended
-                {"ts": "CN:600001", "signal": "2026-10-09", "entry": "2026-10-12",
-                 "exit": "2026-10-16", "net": 0.05, "win": True},
+                {
+                    "ts": "CN:600001",
+                    "signal": "2026-10-09",
+                    "entry": "2026-10-12",
+                    "exit": "2026-10-16",
+                    "net": 0.05,
+                    "win": True,
+                },
                 # open leg (no exit) -> never appended
-                {"ts": "CN:600002", "signal": "2026-11-05", "entry": "2026-11-06",
-                 "exit": None, "net": 0.02},
+                {
+                    "ts": "CN:600002",
+                    "signal": "2026-11-05",
+                    "entry": "2026-11-06",
+                    "exit": None,
+                    "net": 0.02,
+                },
                 # exit after the watermark -> never appended
-                {"ts": "CN:600003", "signal": "2026-11-06", "entry": "2026-11-09",
-                 "exit": "2026-11-13", "net": 0.01},
+                {
+                    "ts": "CN:600003",
+                    "signal": "2026-11-06",
+                    "entry": "2026-11-09",
+                    "exit": "2026-11-13",
+                    "net": 0.01,
+                },
                 # inside the frozen prefix -> never duplicated
-                {"ts": "CN:600004", "signal": "2026-09-22", "entry": "2026-09-23",
-                 "exit": "2026-09-30", "net": 0.03},
+                {
+                    "ts": "CN:600004",
+                    "signal": "2026-09-22",
+                    "entry": "2026-09-23",
+                    "exit": "2026-09-30",
+                    "net": 0.03,
+                },
             ],
         }
 
@@ -489,8 +532,14 @@ def test_daily_failure_keeps_prior_rows_and_does_not_block_core(tmp_path: Path) 
             "ok": True,
             "asOf": end,
             "trades": [
-                {"ts": "CN:600001", "signal": "2026-10-09", "entry": "2026-10-12",
-                 "exit": "2026-10-16", "net": 0.05, "win": True}
+                {
+                    "ts": "CN:600001",
+                    "signal": "2026-10-09",
+                    "entry": "2026-10-12",
+                    "exit": "2026-10-16",
+                    "net": 0.05,
+                    "win": True,
+                }
             ],
         }
 
@@ -546,8 +595,13 @@ def test_vault_override_prefers_live_daily_rows() -> None:
         "meta": {"asOf": "2026-11-10", "status": "ok"},
         "appended": {
             "h01": [
-                {"ts": "CN:600001", "signal": "2026-10-09", "entry": "2026-10-12",
-                 "exit": "2026-10-16", "net": 0.05}
+                {
+                    "ts": "CN:600001",
+                    "signal": "2026-10-09",
+                    "entry": "2026-10-12",
+                    "exit": "2026-10-16",
+                    "net": 0.05,
+                }
             ],
             "h02": [],
             "h03": [],

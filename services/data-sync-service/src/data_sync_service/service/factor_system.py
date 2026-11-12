@@ -929,18 +929,12 @@ def _freshness(
             expected = fl.latest_complete_session()
         reasons: list[str] = []
         stale = False
-        core_bad = [
-            fam
-            for fam in ("sgap", "harbor")
-            if (inputs.get(fam) or {}).get("ok") is False
-        ]
+        core_bad = [fam for fam in ("sgap", "harbor") if (inputs.get(fam) or {}).get("ok") is False]
         # H01/H02/H03 ride the same overlay but are additive: a family that
         # failed (or had no new closed trade) is surfaced without masking a
         # caught-up S-gap/Harbor core.
         degraded_daily = [
-            fam
-            for fam in fl.DAILY_FAMILIES
-            if (inputs.get(fam) or {}).get("ok") is False
+            fam for fam in fl.DAILY_FAMILIES if (inputs.get(fam) or {}).get("ok") is False
         ]
         if core_bad:
             stale = True

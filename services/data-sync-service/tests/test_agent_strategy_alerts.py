@@ -274,9 +274,7 @@ def test_excess_classification_change_emits_once_and_is_idempotent(tmp_path: Pat
     assert keys_before == keys_after
     assert len(keys_after) == len(set(keys_after))
 
-    persisted = json.loads(
-        alerts.snapshot_path(AS_OF, reports_today).read_text(encoding="utf-8")
-    )
+    persisted = json.loads(alerts.snapshot_path(AS_OF, reports_today).read_text(encoding="utf-8"))
 
     def _keys(rows: list[dict[str, Any]]) -> list[str]:
         return [row["eventKey"] for row in rows]
@@ -319,7 +317,9 @@ def test_incomparable_units_are_skipped(tmp_path: Path) -> None:
 def test_get_reads_snapshot_and_never_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    reports = _write_reports(tmp_path, vault=_vault(), history=[{"date": AS_OF, "states": _states(_vault())}])
+    reports = _write_reports(
+        tmp_path, vault=_vault(), history=[{"date": AS_OF, "states": _states(_vault())}]
+    )
     monkeypatch.setattr(br, "REPORTS_DIR", reports)
     path = alerts.snapshot_path(AS_OF, reports)
     assert not path.exists()
@@ -351,9 +351,7 @@ def test_get_reads_snapshot_and_never_writes(
     assert path.stat().st_mtime_ns == mtime
 
 
-def test_brief_version_and_compact_block(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_brief_version_and_compact_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reports = _write_reports(tmp_path)
     monkeypatch.setattr(br, "REPORTS_DIR", reports)
 
