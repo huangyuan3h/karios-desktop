@@ -924,9 +924,9 @@ def _write_snapshot(
     payload: dict[str, Any], reports_dir: Path | str | None = None
 ) -> tuple[bool, str | None]:
     path = snapshot_path(str(payload.get("asOf") or ""), reports_dir)
+    tmp = path.with_suffix(".tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
         return True, None

@@ -323,7 +323,8 @@ def panel_events(
             hit = bias is not None and bias < -0.06
         else:
             assert rsi is not None
-            hit = rsi[i] is not None and rsi[i] < 30.0
+            rsi_value = rsi[i]
+            hit = rsi_value is not None and rsi_value < 30.0
         if not hit:
             continue
         trade = _forward_trade(ts, i, bars)
