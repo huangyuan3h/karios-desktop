@@ -180,7 +180,9 @@ function compareBricks(
 }
 
 function brickWindowLine(brick: FactorBrick): string {
-  const nets = BRICK_WINDOW_ORDER.map((window) => `${window} ${fmtNum(brickWindowNet(brick, window))}`);
+  const nets = BRICK_WINDOW_ORDER.map(
+    (window) => `${window} ${fmtNum(brickWindowNet(brick, window))}`,
+  );
   const hasWindow = BRICK_WINDOW_ORDER.some((window) => brickWindowNet(brick, window) != null);
   if (hasWindow) return nets.join(' · ');
   if (brick.spark?.length) {
@@ -450,13 +452,18 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
                           {brickWindowLine(brick)}
                         </div>
                         {brick.note ? (
-                          <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">{brick.note}</div>
+                          <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                            {brick.note}
+                          </div>
                         ) : null}
                       </td>
                       <td className="px-3 py-1.5 align-top text-[11px] text-[var(--k-muted)]">
                         <div>{brick.family ?? '—'}</div>
                         {brick.source ? (
-                          <div className="text-[10px]" data-testid={`factor-brick-source-${brick.id}`}>
+                          <div
+                            className="text-[10px]"
+                            data-testid={`factor-brick-source-${brick.id}`}
+                          >
                             {brick.source}
                           </div>
                         ) : null}
@@ -479,9 +486,7 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
                       </td>
                       <td className="px-3 py-1.5 align-top">
                         <div className="font-mono">
-                          {recent?.net == null
-                            ? '—'
-                            : `${fmtNum(recent.net)}${brick.unit ?? ''}`}
+                          {recent?.net == null ? '—' : `${fmtNum(recent.net)}${brick.unit ?? ''}`}
                         </div>
                         <div className="text-[10px] text-[var(--k-muted)]">
                           截至 {fmtDay(recent?.asOf)}
@@ -494,9 +499,7 @@ function FactorBricks({ bricks }: { bricks: FactorBrick[] }) {
                       <td className="px-3 py-1.5 align-top font-mono">
                         {fmtWinRate(recent?.winRate)}
                       </td>
-                      <td className="px-3 py-1.5 align-top font-mono">
-                        {recent?.trades ?? '—'}
-                      </td>
+                      <td className="px-3 py-1.5 align-top font-mono">{recent?.trades ?? '—'}</td>
                       <td className="px-3 py-1.5 align-top">
                         {brick.onceRevived ? (
                           <span

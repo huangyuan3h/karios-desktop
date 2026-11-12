@@ -1807,9 +1807,7 @@ export function BacktestPage() {
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
   const [advancedOn, setAdvancedOn] = React.useState(false);
-  const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline' | 'fleet'>(
-    'catalog',
-  );
+  const [tab, setTab] = React.useState<'catalog' | 'compare' | 'baseline' | 'fleet'>('catalog');
   const [catalogKey, setCatalogKey] = React.useState<StrategyCatalogKey>(() => getStrategyMode());
   const attrEnd = new Date().toISOString().slice(0, 10);
   const attrStartDefault = (() => {

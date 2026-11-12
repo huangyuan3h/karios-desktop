@@ -210,7 +210,8 @@ const PAYLOAD = {
         completed: 4,
         pass: false,
         asOfDate: '2026-10-03',
-        source: 'documented 2026-10-03 audit; the factor live overlay counts replay trades, not paper fills',
+        source:
+          'documented 2026-10-03 audit; the factor live overlay counts replay trades, not paper fills',
         stale: true,
       },
       holdoutRecovery: {
@@ -421,9 +422,7 @@ describe('FactorSystemPage', () => {
     expect(screen.queryByTestId('factor-brick-row-harbor')).toBeNull();
 
     // Default order: watch with positive holdout first, cold last.
-    const rows = screen
-      .getByTestId('factor-bricks-table')
-      .querySelectorAll('tbody tr');
+    const rows = screen.getByTestId('factor-bricks-table').querySelectorAll('tbody tr');
     expect(rows[0]?.getAttribute('data-testid')).toBe('factor-brick-row-h01');
     expect(rows[rows.length - 1]?.getAttribute('data-testid')).toBe('factor-brick-row-h05');
 
