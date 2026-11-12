@@ -96,17 +96,53 @@ export function setStrategyMode(mode: StrategyMode): void {
 }
 
 /**
- * OPT-223: mirror the selected mode to the backend so Bark/notification copy
- * is written for the strategy the user is watching. Fire-and-forget — the UI
- * stays usable when the backend is down (it will re-sync on the next change
- * or mount).
+ * OPT-223: mirror an **explicit user selection** to the backend so
+ * Bark/notification copy is written for the strategy the user is watching.
+ * Fire-and-forget — the UI stays usable when the backend is down.
+ * Never call this on mount: the backend is the live source of truth and the
+ * UI hydrates from it via `pullStrategyModeFromServer`.
  */
 export function pushStrategyModeToServer(mode: StrategyMode = getStrategyMode()): void {
   void import('@/lib/api/client')
     .then(({ apiPutJson }) => apiPutJson('/api/settings/strategy-mode', { mode }))
     .catch(() => {
-      // best-effort mirror; the backend falls back to the UI default
+      // best-effort mirror; the backend keeps its current value
     });
+}
+
+let pullInFlight: Promise<void> | null = null;
+
+/**
+ * Hydrate the UI from the backend on load (backend = live source of truth,
+ * 2026-11-12). If the server mode is valid and differs from localStorage,
+ * adopt it and notify `useStrategyMode` listeners. A failed/invalid GET keeps
+ * localStorage untouched. **Never PUTs** — only an explicit `setStrategyMode`
+ * click may write the backend setting.
+ *
+ * Single in-flight promise: several mounts (or a remount) share one GET.
+ */
+export function pullStrategyModeFromServer(): Promise<void> {
+  if (pullInFlight) return pullInFlight;
+  pullInFlight = (async () => {
+    try {
+      const { apiGetJson } = await import('@/lib/api/client');
+      const body = await apiGetJson<{ ok?: boolean; mode?: unknown }>(
+        '/api/settings/strategy-mode',
+      );
+      if (!body || body.ok === false) return;
+      const mode = body.mode;
+      if (!isStrategyMode(mode)) return;
+      const stored = loadJson<unknown>(STORAGE_KEY, null);
+      if (stored === mode) return;
+      saveJson(STORAGE_KEY, mode);
+      window.dispatchEvent(new Event('karios:strategy-mode'));
+    } catch {
+      // backend unreachable / malformed — keep localStorage, never PUT
+    } finally {
+      pullInFlight = null;
+    }
+  })();
+  return pullInFlight;
 }
 
 export function useStrategyMode(): StrategyMode {

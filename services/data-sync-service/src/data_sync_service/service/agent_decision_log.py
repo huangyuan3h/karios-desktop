@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOOKBACK_SESSIONS = 3
 MAX_LOOKBACK_SESSIONS = 20
 LOG_NOTE = (
-    "Rows are written only by POST /v1/agent/decision-log (explicit agent / "
-    "14:30 confirmation); a brief build never writes here."
+    "Rows are written only by POST /v1/agent/decision-log or "
+    "POST /v1/agent/daily-confirm (explicit agent / 14:30 confirmation); "
+    "a brief build never writes here."
 )
 
 
@@ -39,9 +40,69 @@ def _outcome_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _compact_advice(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or not value:
+        return None
+    if not value.get("available", True):
+        return {
+            "available": False,
+            "error": value.get("error"),
+        }
+    adjustments = []
+    for row in value.get("adjustments") or []:
+        if not isinstance(row, dict):
+            continue
+        adjustments.append(
+            {
+                k: row.get(k)
+                for k in ("symbol", "side", "to", "conditional", "pendingOpenSell")
+                if row.get(k) is not None
+            }
+        )
+    return {
+        "available": True,
+        "tradeDate": value.get("tradeDate"),
+        "mode": value.get("mode"),
+        "strategyLabel": value.get("strategyLabel"),
+        "noChange": value.get("noChange"),
+        "mustAct": value.get("mustAct"),
+        "mustWatch": value.get("mustWatch"),
+        "lines": [str(ln) for ln in (value.get("lines") or [])][:12],
+        "summary": value.get("summary"),
+        "adjustments": adjustments,
+    }
+
+
+def _compact_reconcile(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or not value:
+        return None
+    deviations = []
+    for row in value.get("deviations") or []:
+        if isinstance(row, dict):
+            deviations.append(
+                {
+                    k: row.get(k)
+                    for k in ("type", "symbol", "side", "copy")
+                    if row.get(k) is not None
+                }
+            )
+        elif row:
+            deviations.append({"copy": str(row)})
+    return {
+        "status": value.get("status"),
+        "asOf": value.get("asOf"),
+        "deviationCount": len(deviations),
+        "deviations": deviations[:8],
+        "fillCount": len(value.get("fills") or []),
+        "missing": [str(m) for m in (value.get("missing") or [])][:6],
+        "checkedAt": value.get("checkedAt"),
+    }
+
+
 def compact_decision_row(row: dict[str, Any]) -> dict[str, Any]:
     """Normalize one DB row to the fields needed to re-read the decision."""
     outcome = _outcome_dict(row.get("outcome"))
+    decision = outcome.get("decision")
     out = {
         "id": row.get("id"),
         "tradeDate": str(row.get("snapshotDate") or "")[:10] or None,
@@ -55,6 +116,12 @@ def compact_decision_row(row: dict[str, Any]) -> dict[str, Any]:
         "overlayId": outcome.get("overlayId"),
         "contractSnapshotId": outcome.get("contractSnapshotId"),
         "loggedAt": row.get("createdAt"),
+        "kind": outcome.get("kind"),
+        "mode": outcome.get("mode"),
+        "strategyLabel": outcome.get("strategyLabel"),
+        "advice": _compact_advice(outcome.get("advice")),
+        "decision": decision if isinstance(decision, dict) else None,
+        "reconcile": _compact_reconcile(outcome.get("reconcile")),
     }
     return {k: v for k, v in out.items() if v is not None}
 

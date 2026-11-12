@@ -386,6 +386,200 @@ def insert_action(
     return rec
 
 
+def upsert_daily_confirm(
+    *,
+    symbol: str,
+    action: str,
+    rationale: str | None,
+    snapshot_date: date,
+    source: str,
+    outcome: dict[str, Any],
+) -> dict[str, Any]:
+    """Insert or update one 14:30 confirmation row.
+
+    Idempotent on ``(snapshot_date, source, outcome.mode)`` for
+    ``kind='daily_confirm'``: re-confirming the same day updates 他的决定 and
+    the advice snapshot instead of appending a duplicate row.
+    """
+    ensure_table()
+    mode = str(outcome.get("mode") or "")
+    cols = (
+        "id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshotDate",
+        "outcome",
+        "createdAt",
+    )
+    payload = json.dumps(outcome)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id FROM {ACTIONS_TABLE}
+                WHERE snapshot_date = %s
+                  AND source = %s
+                  AND outcome->>'kind' = 'daily_confirm'
+                  AND COALESCE(outcome->>'mode', '') = %s
+                ORDER BY id DESC
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (snapshot_date, source, mode),
+            )
+            found = cur.fetchone()
+            if found:
+                cur.execute(
+                    f"""
+                    UPDATE {ACTIONS_TABLE}
+                    SET symbol = %s, action = %s, rationale = %s, status = 'logged',
+                        outcome = %s
+                    WHERE id = %s
+                    RETURNING id, symbol, action, rationale, confidence, status,
+                              source, snapshot_date, outcome, created_at
+                    """,
+                    (symbol, action, rationale, payload, found[0]),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    INSERT INTO {ACTIONS_TABLE}
+                        (symbol, action, rationale, status, source, snapshot_date, outcome)
+                    VALUES (%s, %s, %s, 'logged', %s, %s, %s)
+                    RETURNING id, symbol, action, rationale, confidence, status,
+                              source, snapshot_date, outcome, created_at
+                    """,
+                    (symbol, action, rationale, source, snapshot_date, payload),
+                )
+            row = cur.fetchone()
+        conn.commit()
+    rec = _row_dict(cols, row)
+    for key in ("snapshotDate", "createdAt"):
+        if rec.get(key) and hasattr(rec[key], "isoformat"):
+            rec[key] = rec[key].isoformat()
+    return rec
+
+
+def get_daily_confirm_row(
+    *,
+    trade_date: date | str,
+    source: str,
+    mode: str,
+) -> dict[str, Any] | None:
+    """The existing confirmation row for ``(trade_date, source, mode)``."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, symbol, action, rationale, confidence, status,
+                       source, snapshot_date, outcome, created_at
+                FROM {ACTIONS_TABLE}
+                WHERE snapshot_date = %s
+                  AND source = %s
+                  AND outcome->>'kind' = 'daily_confirm'
+                  AND COALESCE(outcome->>'mode', '') = %s
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (trade_date, source, mode),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    cols = (
+        "id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshotDate",
+        "outcome",
+        "createdAt",
+    )
+    rec = _row_dict(cols, row)
+    for key in ("snapshotDate", "createdAt"):
+        if rec.get(key) and hasattr(rec[key], "isoformat"):
+            rec[key] = rec[key].isoformat()
+    return rec
+
+
+def list_daily_confirms(
+    *,
+    before_date: date | str,
+    source: str = "daily_confirm",
+    mode: str | None = None,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    """Pending/degraded confirmation rows up to ``before_date`` (oldest first)."""
+    ensure_table()
+    clauses = [
+        "snapshot_date <= %s",
+        "source = %s",
+        "outcome->>'kind' = 'daily_confirm'",
+        "COALESCE(outcome->'reconcile'->>'status', 'pending') IN ('pending', 'degraded')",
+    ]
+    params: list[Any] = [before_date, source]
+    if mode:
+        clauses.append("COALESCE(outcome->>'mode', '') = %s")
+        params.append(mode)
+    params.append(max(1, min(int(limit), 200)))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, symbol, action, rationale, confidence, status,
+                       source, snapshot_date, outcome, created_at
+                FROM {ACTIONS_TABLE}
+                WHERE {" AND ".join(clauses)}
+                ORDER BY snapshot_date ASC, id ASC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    cols = (
+        "id",
+        "symbol",
+        "action",
+        "rationale",
+        "confidence",
+        "status",
+        "source",
+        "snapshotDate",
+        "outcome",
+        "createdAt",
+    )
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        rec = _row_dict(cols, row)
+        for key in ("snapshotDate", "createdAt"):
+            if rec.get(key) and hasattr(rec[key], "isoformat"):
+                rec[key] = rec[key].isoformat()
+        out.append(rec)
+    return out
+
+
+def update_action_outcome(action_id: int, outcome: dict[str, Any]) -> bool:
+    """Replace ``outcome`` JSON on one row (reconcile write-back)."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {ACTIONS_TABLE} SET outcome = %s WHERE id = %s RETURNING id",
+                (json.dumps(outcome), action_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return row is not None
+
+
 def list_actions_between(
     *,
     start_date: date | str,

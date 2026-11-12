@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-BRIEF_VERSION = "2026-11-11.3"
+BRIEF_VERSION = "2026-11-12.2"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # Today + the last N open sessions of explicit decision-log rows folded into
@@ -1165,6 +1165,38 @@ def _strategy_catalog_cached(
     return catalog_rows
 
 
+def _factor_system_block(*, day: str, compact: bool) -> dict[str, Any]:
+    """Advice-only factor-system contract (2026-11-11.5).
+
+    Fail-open by construction: ``build_factor_system`` returns
+    ``available: false`` for missing/corrupt vaults, so the brief still renders.
+    Compact mode keeps only counts, policy action, freshness and the
+    liveBlocked one-liner.
+    """
+    from data_sync_service.service.factor_system import (
+        build_factor_system,
+        compact_factor_system,
+    )
+
+    payload = build_factor_system(now=day)
+    return compact_factor_system(payload) if compact else payload
+
+
+def _strategy_alerts_block(*, day: str) -> dict[str, Any]:
+    """Compact after-close alert pack (2026-11-12.2, read-only).
+
+    Reads the persisted 19:20 snapshot for ``day``; never builds or writes on
+    the brief path. A missing snapshot degrades to ``available: false`` so the
+    brief still renders and no alert is invented.
+    """
+    from data_sync_service.service.agent_strategy_alerts import (
+        compact_strategy_alerts,
+        read_strategy_alerts,
+    )
+
+    return compact_strategy_alerts(read_strategy_alerts(as_of=day))
+
+
 def _backtest_block(
     *,
     contract: dict[str, Any],
@@ -1362,6 +1394,127 @@ def _cached_brief_response(
     return brief
 
 
+def _risk_holdings(health: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every held row the stop gate checks: CN + HK + parking legs."""
+    hk = health.get("hkHealth") or {}
+    rows = [r for r in (health.get("holdings") or []) if isinstance(r, dict)]
+    if isinstance(hk, dict):
+        rows += [r for r in (hk.get("holdings") or []) if isinstance(r, dict)]
+    rows += [r for r in (health.get("multiAssetHoldings") or []) if isinstance(r, dict)]
+    return rows
+
+
+def _risk_proposed_buys(
+    contract: dict[str, Any], holdings: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Risky symbols the sleeve proposes to buy (BUY / ROTATE target)."""
+    sleeve = contract.get("sleeve") or {}
+    action = str(sleeve.get("action") or "NONE").upper()
+    if action not in {"BUY", "ROTATE"}:
+        return []
+    pick = sleeve.get("pick") or {}
+    symbol = str(pick.get("symbol") or sleeve.get("symbol") or "").upper()
+    if not symbol:
+        return []
+    held = {str(r.get("symbol") or "").upper() for r in holdings}
+    if symbol in held:
+        return []
+    return [{"symbol": symbol, "key": pick.get("key"), "side": "BUY", "reason": "sleeve 目标买入"}]
+
+
+def _sleeve_holding_row(
+    contract: dict[str, Any], holdings: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """The live sleeve leg as a holding row when health did not list it."""
+    sleeve = contract.get("sleeve") or {}
+    if not sleeve.get("holding"):
+        return None
+    pick = sleeve.get("pick") or {}
+    symbol = str(sleeve.get("symbol") or pick.get("symbol") or "").upper()
+    if not symbol:
+        return None
+    if any(str(r.get("symbol") or "").upper() == symbol for r in holdings):
+        return None
+    return {
+        "symbol": symbol,
+        "key": pick.get("key") or sleeve.get("pickKey"),
+        "name": pick.get("name") or sleeve.get("label"),
+        "stopLossLine": sleeve.get("stopLossLine"),
+        "trailingLine": sleeve.get("trailingLine"),
+        "stopRule": sleeve.get("stopRule"),
+    }
+
+
+def _daily_adjust_for_mode(
+    *,
+    contract: dict[str, Any],
+    health: dict[str, Any],
+    day: str,
+    holdings: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Today's 14:30 table for the currently selected mode (fail-open).
+
+    One source for the brief and the 14:30 push. Satellite modes are skipped:
+    their panel only exists in ``satellite_live_panel`` and the brief must not
+    fabricate a "面板缺失" alarm.
+    """
+    from data_sync_service.service.daily_adjust import compose_daily_adjust
+    from data_sync_service.service.satellite_actions import SATELLITE_MODES
+
+    mode = str((contract.get("strategy") or {}).get("mode") or "")
+    if not mode:
+        return None
+    if mode in SATELLITE_MODES:
+        return {
+            "available": False,
+            "mode": mode,
+            "reason": "satellite_mode_panel_not_in_brief_path",
+            "note": "卫星 14:30 面板由 satellite_live_panel 推送；简报不伪造面板",
+        }
+    sleeve = health.get("multiAssetSleeve")
+    if not isinstance(sleeve, dict) or not sleeve:
+        return {"available": False, "mode": mode, "reason": "sleeve_unavailable"}
+    try:
+        return compose_daily_adjust(
+            mode,
+            trade_date=day,
+            sleeve=sleeve,
+            holdings=holdings,
+            whip=contract.get("whip"),
+        )
+    except Exception as exc:  # noqa: BLE001 — a composer error must not fail the brief
+        logger.warning("agent judgment brief daily adjust failed: %s", exc)
+        return {"available": False, "mode": mode, "error": str(exc) or exc.__class__.__name__}
+
+
+def _risk_gates_block(
+    *,
+    contract: dict[str, Any],
+    health: dict[str, Any],
+    day: str,
+) -> dict[str, Any]:
+    """Universal stop coverage + same-key rebuy gate (advice only)."""
+    from data_sync_service.service.agent_risk_gates import build_risk_gates
+
+    holdings = _risk_holdings(health)
+    sleeve_row = _sleeve_holding_row(contract, holdings)
+    if sleeve_row is not None:
+        holdings = [*holdings, sleeve_row]
+    proposed = _risk_proposed_buys(contract, holdings)
+    daily = _daily_adjust_for_mode(
+        contract=contract,
+        health=health,
+        day=day,
+        holdings=holdings,
+    )
+    return build_risk_gates(
+        whip=contract.get("whip"),
+        holdings=holdings,
+        proposed_buys=proposed,
+        daily_adjust=daily,
+    )
+
+
 def build_judgment_brief(
     *,
     trade_date: str | None = None,
@@ -1532,6 +1685,20 @@ def build_judgment_brief(
                     ),
                 ),
             ),
+            "factorSystem": _timed(
+                "factorSystemMs",
+                lambda: _safe(
+                    "factorSystem",
+                    lambda: _factor_system_block(day=day, compact=compact),
+                ),
+            ),
+            "strategyAlerts": _timed(
+                "strategyAlertsMs",
+                lambda: _safe(
+                    "strategyAlerts",
+                    lambda: _strategy_alerts_block(day=day),
+                ),
+            ),
             "omitted": list(OMITTED_PACKS),
             "omittedNote": (
                 "research_reports / alpha_radar_* / alpha_auto_qa are human-browsing pages; "
@@ -1563,6 +1730,19 @@ def build_judgment_brief(
             health=health or {},
             quotes=quotes_block if isinstance(quotes_block, dict) else {},
         )
+        # Universal stop coverage + same-key rebuy gates (2026-11-11.6). Advice
+        # only: Must-act sell > same-key rebuy; event tags never veto an exit
+        # and never swallow a missing-stop warning.
+        brief["riskGates"] = _timed(
+            "riskGatesMs",
+            lambda: _safe(
+                "riskGates",
+                lambda: _risk_gates_block(contract=contract, health=health or {}, day=day),
+            ),
+        )
+        risk_gates = brief["riskGates"] if isinstance(brief["riskGates"], dict) else {}
+        risk_stops = risk_gates.get("stops") or {}
+        risk_rebuy = risk_gates.get("sameKeyRebuy") or {}
         brief["judgment"] = _trim(
             {
                 "settingsMode": strategy_block.get("mode"),
@@ -1572,6 +1752,17 @@ def build_judgment_brief(
                 "fillClock": contract.get("fillClock"),
                 "whipContext": (contract.get("whip") or {}).get("context"),
                 "priceIntegrity": brief["integrity"].get("status"),
+                "riskGates": {
+                    "priority": risk_gates.get("priority"),
+                    "eventTagsNeverVetoExits": risk_gates.get("eventTagsNeverVetoExits"),
+                    "stopChecked": risk_stops.get("checked"),
+                    "stopMissingCount": risk_stops.get("missingCount"),
+                    "sameKeyRebuy": risk_rebuy.get("sameKeyRebuy"),
+                    "deferredRebuys": len(risk_rebuy.get("proposedRebuys") or []),
+                    "warnings": risk_gates.get("warnings") or [],
+                }
+                if risk_gates and risk_gates.get("available") is not False
+                else None,
             }
         )
         # Advice-only event / geo tags (2026-11-11.2). Present only when the
@@ -1785,14 +1976,66 @@ def _render_alerts(brief: dict[str, Any]) -> list[str]:
         alerts += 1
         lines.append("- ⚠️ **缺少执行时钟**：无法确认动作何时可成交。")
     oil = (whip_ctx or {}).get("oil") or {}
+    rebuy_ctx = (whip_ctx or {}).get("rebuy") or {}
+    rebuy_by_key = rebuy_ctx.get("byKey") or {}
     if oil.get("active"):
         alerts += 1
         lines.append(f"- 🛢 **同键回买（油）**：{oil.get('message')}")
-    elif whip_ctx.get("sameKeyRebuy"):
+    for key, info in rebuy_by_key.items():
+        if key == "OIL" and oil.get("active"):
+            continue
+        alerts += 1
+        lines.append(f"- 🔁 **同键回买（{key}）**：{info.get('message')}")
+    if not rebuy_by_key and not oil.get("active") and whip_ctx.get("sameKeyRebuy"):
         alerts += 1
         lines.append(
-            f"- 🛢 **同键回买**：pick={whip_ctx.get('pickKey')} 刚止损，"
+            f"- 🔁 **同键回买**：pick={whip_ctx.get('pickKey')} 刚止损，"
             f"先确认再买；覆盖 `/v1/agent/overlays`。"
+        )
+    risk_gates = brief.get("riskGates") or {}
+    stops = risk_gates.get("stops") or {}
+    if stops.get("missingCount"):
+        missing = stops.get("missing") or []
+        alerts += len(missing)
+        lines.append("- ⚠️ **止损缺口（风险持仓 / 拟买入没有止损）**:")
+        for row in missing:
+            lines.append(
+                f"  - {row.get('symbol') or row.get('key') or '—'}"
+                f"（{row.get('key') or '—'}，{row.get('source')}）：{row.get('message')}"
+            )
+        lines.append(
+            "  - 仅提醒：不改变已触发的止损/移动止损/ Must-act 卖出，时政标签也不能吞掉这条提醒。"
+        )
+    rebuy_gate = risk_gates.get("sameKeyRebuy") or {}
+    for match in rebuy_gate.get("proposedRebuys") or []:
+        alerts += 1
+        lines.append(
+            f"- 🚫 **拟买入即同键回买**：{match.get('symbol') or match.get('key')} · "
+            f"{match.get('copy')}（{match.get('key')} {match.get('lastExitDate')} 止损）"
+        )
+
+    # After-close strategy alerts (2026-11-12.2): new decay / revival / excess
+    # events, front-loaded so a light change is hard to miss. Standing cold /
+    # revived facts are NOT repeated here (they live in factorSystem).
+    strategy_alerts = brief.get("strategyAlerts") or {}
+    new_events = strategy_alerts.get("newToday") or []
+    if new_events:
+        alerts += len(new_events)
+        lines.append("")
+        lines.append("### 盘后策略提醒 strategy alerts（仅告知，不自动改设置、不下单）")
+        for event in new_events:
+            lines.append(f"- {event.get('copy')}")
+    sa_fresh = strategy_alerts.get("freshness") or {}
+    if strategy_alerts.get("available") and sa_fresh.get("stale"):
+        alerts += 1
+        lines.append(
+            f"- ⚠️ **盘后策略提醒数据陈旧**：{sa_fresh.get('reason') or '因子库/交易流水未跟上最新收盘'}"
+        )
+    elif strategy_alerts.get("degraded") and strategy_alerts.get("available") is not True:
+        alerts += 1
+        lines.append(
+            f"- ⚠️ **盘后策略提醒暂不可用**："
+            f"{sa_fresh.get('reason') or strategy_alerts.get('reason') or '快照缺失'}"
         )
     if not alerts:
         lines.append("- 无致命提醒（价格口径、路径、时钟、鞭打均正常）。")
@@ -1898,9 +2141,36 @@ def _render_contract(brief: dict[str, Any]) -> list[str]:
         lines.append(
             f"- 鞭打(whip): sameKeyRebuy={whip.get('sameKeyRebuy')} · {whip.get('copy') or '—'}"
         )
-        oil = ((whip.get("context") or {}).get("oil") or {}) if isinstance(whip, dict) else {}
+        whip_ctx = (whip.get("context") or {}) if isinstance(whip, dict) else {}
+        oil = whip_ctx.get("oil") or {}
         if oil.get("active"):
             lines.append(f"  - 油: {oil.get('message')}")
+        for key, info in (whip_ctx.get("rebuy") or {}).get("byKey", {}).items():
+            if key == "OIL" and oil.get("active"):
+                continue
+            lines.append(f"  - {key}: {info.get('message')}")
+    risk_gates = brief.get("riskGates") or {}
+    stops = risk_gates.get("stops") or {}
+    if stops:
+        lines.append(
+            f"- 止损覆盖: checked={stops.get('checked')} 缺口={stops.get('missingCount')} "
+            f"status={stops.get('status')}"
+        )
+        for row in stops.get("missing") or []:
+            lines.append(f"  - {row.get('symbol') or row.get('key') or '—'}: {row.get('message')}")
+    rebuy_gate = risk_gates.get("sameKeyRebuy") or {}
+    if rebuy_gate:
+        recent = rebuy_gate.get("recentExits") or {}
+        lines.append(
+            f"- 同键回买闸: recentExits={recent or '—'} · "
+            f"拟暂缓={len(rebuy_gate.get('proposedRebuys') or [])} · "
+            f"priority={rebuy_gate.get('priority') or risk_gates.get('priority')}"
+        )
+    if risk_gates:
+        lines.append(
+            f"- 风险闸口径: adviceOnly={risk_gates.get('adviceOnly')} · "
+            f"eventTagsNeverVetoExits={risk_gates.get('eventTagsNeverVetoExits')}"
+        )
     active = overlays.get("active") or []
     if active:
         lines.append(
@@ -2352,10 +2622,69 @@ def _render_decision_log(brief: dict[str, Any], compact: bool) -> list[str]:
         )
         if item.get("judgment"):
             lines.append(f"  - 判断: {item.get('judgment')}")
+        if item.get("kind") == "daily_confirm":
+            advice = item.get("advice") or {}
+            decision = item.get("decision") or {}
+            reconcile = item.get("reconcile") or {}
+            mode = item.get("mode") or advice.get("mode") or "—"
+            lines.append(f"  - 14:30 建议（{mode}）:")
+            if advice.get("available") is False:
+                lines.append(f"    - 建议不可用: {advice.get('error') or '—'}")
+            else:
+                for ln in (advice.get("lines") or [])[: 4 if compact else 8]:
+                    lines.append(f"    - {ln}")
+            status = decision.get("status") or "—"
+            dec_copy = f"  - 决定: {status}"
+            if decision.get("note"):
+                dec_copy += f" · {decision.get('note')}"
+            lines.append(dec_copy)
+            if status == "amended":
+                for ln in (decision.get("decisionLines") or [])[: 4 if compact else 8]:
+                    lines.append(f"    - 他的修订: {ln}")
+            rec_status = reconcile.get("status") or "pending"
+            as_of = reconcile.get("asOf") or "—"
+            lines.append(f"  - 次日对账: {rec_status}（asOf {as_of}）")
+            for dev in (reconcile.get("deviations") or [])[: 3 if compact else 6]:
+                copy_value = dev.get("copy") if isinstance(dev, dict) else dev
+                if copy_value:
+                    lines.append(f"    - 偏差: {copy_value}")
+            for miss in (reconcile.get("missing") or [])[:2]:
+                lines.append(f"    - 缺证据: {miss}")
     if not items:
         lines.append("- 本窗口暂无记录（写入只走显式 POST，不会自动写）")
     if log.get("note"):
         lines.append(f"- 说明: {log.get('note')}")
+    lines.append("")
+    return lines
+
+
+def _render_factor_system(brief: dict[str, Any]) -> list[str]:
+    block = brief.get("factorSystem") or {}
+    lines = ["## 因子系统 factor system", ""]
+    if not block.get("available"):
+        lines.append(f"- 可用: 否（{block.get('error') or '因子库不可读'}）")
+        lines.append("- 政策: 母港 M30 等待（fail-open，不自动跟卫星）")
+        lines.append("")
+        return lines
+    summary = block.get("summary") or {}
+    fresh = block.get("freshness") or {}
+    policy = block.get("policy") or {}
+    lines.append(
+        f"- 因子: {summary.get('nFactors')}（冷库 {summary.get('nCold')} / "
+        f"观察 {summary.get('nWatch')} / 复活 {summary.get('nRevived')}）"
+    )
+    lines.append(f"- 新鲜度: {'陈旧' if fresh.get('stale') else '正常'} — {fresh.get('reason')}")
+    lines.append(
+        f"- 政策: `{policy.get('action')}` · 基线 {policy.get('baselineLabel')} · "
+        f"规则建议 {policy.get('suggestedWeight')}% · "
+        f"建议实盘 {policy.get('suggestedLiveWeight')}%"
+    )
+    if policy.get("liveBlocked"):
+        lines.append(f"- 实盘受阻: {policy.get('liveBlockedReason')}")
+    lines.append(f"- 理由: {policy.get('reason')}")
+    focus = block.get("focus") or []
+    if focus:
+        lines.append("- 关注: " + " · ".join(str(f.get("name")) for f in focus))
     lines.append("")
     return lines
 
@@ -2390,7 +2719,8 @@ def render_judgment_brief_markdown(brief: dict[str, Any], *, compact: bool = Fal
     lines.extend(_render_freshness(brief))
     lines.extend(_render_execution(brief))
     lines.extend(_render_decision_log(brief, compact))
-    lines.append("## 12. 故意省略 omitted")
+    lines.extend(_render_factor_system(brief))
+    lines.append("## 13. 故意省略 omitted")
     lines.append("")
     lines.append("- " + " · ".join(str(x) for x in brief.get("omitted") or []))
     if brief.get("omittedNote"):

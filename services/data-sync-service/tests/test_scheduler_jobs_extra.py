@@ -193,6 +193,9 @@ class TestCreateScheduler:
             "watchlist_automation_retry",
             "factor_vault_refresh",
             "sgap_decay_refresh",
+            "factor_live_append",
+            "daily_confirm_reconcile",
+            "strategy_alerts_refresh",
         }
         assert ids == expected
 

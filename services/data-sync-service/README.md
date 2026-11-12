@@ -25,6 +25,14 @@ From repo root:
 pnpm dev
 ```
 
+The `dev` script (127.0.0.1:4330) runs uvicorn with `--reload --reload-dir src`.
+`--reload-dir src` is **required**, not optional: the default watch scope is the
+cwd, and jobs/backtests write JSON under `data/` (e.g. `data/backtest_reports/`).
+Watching those would bounce the server mid-run and interrupt the scheduler
+(same regression that forced reload off this port in `821a6204`). Only Python
+sources reload. `dev:reload` (127.0.0.1:4331) is the isolated optional instance
+with the same `--reload-dir src` scope; `start` never reloads.
+
 ## Database Migrations (Alembic)
 
 Schema baseline lives in `alembic/versions/0001_baseline.py` (DDL aggregated from `db/*.py` via `schema_baseline.py`).

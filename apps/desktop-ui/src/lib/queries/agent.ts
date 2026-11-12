@@ -187,3 +187,199 @@ export async function writeAgentDecisionLog(
 ): Promise<{ ok: boolean; item: Record<string, unknown> }> {
   return apiPostJson('/v1/agent/decision-log', body);
 }
+
+/* ------------------------------------------------------------------------- */
+/* Factor system (advice only) — GET /v1/agent/factor-system                  */
+/* ------------------------------------------------------------------------- */
+
+export type FactorSystemStatus = 'cold' | 'watch' | 'revived' | string;
+export type FactorSystemRole = 'reference' | 'satellite' | 'research' | string;
+export type FactorSystemAction = 'wait_in_baseline' | 'advise_follow' | 'advise_exit' | string;
+
+export type FactorSystemFreshness = {
+  sourceGeneratedAt?: string | null;
+  historyLatest?: string | null;
+  tradeBlotterLastEntry?: string | null;
+  /** As-of watermark of the live overlay (latest complete replay session). */
+  liveAsOf?: string | null;
+  /** `ok` | `degraded` (missing 14:30 bars / ETF not synced). */
+  liveStatus?: string | null;
+  liveUpdatedAt?: string | null;
+  expectedSession?: string | null;
+  ageDays?: number | null;
+  stale?: boolean;
+  reason?: string | null;
+};
+
+export type FactorSystemSummary = {
+  nFactors: number;
+  nCold: number;
+  nWatch: number;
+  nRevived: number;
+};
+
+/** One documented live gate (paper-20 / holdout / filtered valid). */
+export type FactorSystemGate = {
+  required?: number;
+  completed?: number;
+  pass?: boolean;
+  asOfDate?: string | null;
+  source?: string | null;
+  stale?: boolean;
+  currentPct?: number | null;
+  recoverToPct?: number | null;
+  thresholdPct?: number | null;
+};
+
+export type FactorSystemPreconditions = {
+  paper20?: FactorSystemGate;
+  holdoutRecovery?: FactorSystemGate;
+  filteredValidPositive?: FactorSystemGate;
+  allPass?: boolean;
+};
+
+export type FactorSystemDecay = {
+  id: string;
+  name?: string | null;
+  from?: string | number | null;
+  to?: string | number | null;
+  fromPosition?: number | null;
+  toPosition?: number | null;
+  reason?: string | null;
+};
+
+export type FactorSystemRevived = {
+  id: string;
+  name?: string | null;
+  status?: FactorSystemStatus;
+  position?: number | null;
+  percentile?: number | null;
+};
+
+export type FactorSystemPolicy = {
+  action: FactorSystemAction;
+  baseline: string;
+  baselineLabel: string;
+  /** Rule weight (0/10/20), independent of the live gates. */
+  suggestedWeight: number;
+  /** Live weight; stays 0 while any live gate is unmet. */
+  suggestedLiveWeight: number;
+  maxLiveWeight: number;
+  liveBlocked: boolean;
+  liveBlockedReason?: string | null;
+  reason?: string | null;
+  decayedFactors: FactorSystemDecay[];
+  revivedFactors: FactorSystemRevived[];
+  preconditions: FactorSystemPreconditions;
+};
+
+export type FactorSystemFocusItem = {
+  id: string;
+  name: string;
+  family?: string | null;
+  status: FactorSystemStatus;
+  badge?: string | null;
+  role: FactorSystemRole;
+  position: number;
+  percentile?: number | null;
+  /** True only for a satellite factor that is revived; never an order. */
+  actionable: boolean;
+  note?: string | null;
+};
+
+/** Atomic brick / combination sleeve / reference light. */
+export type FactorBrickKind = 'brick' | 'sleeve' | 'reference' | string;
+
+/** One frozen window slice (no invented percentiles). */
+export type FactorBrickWindow = {
+  date?: string | null;
+  net?: number | null;
+  percentile?: number | null;
+  winRate?: number | null;
+  trades?: number | null;
+  revived?: boolean | null;
+};
+
+/** Most recent rolling window: live overlay when present, else frozen holdout. */
+export type FactorBrickRecentPerformance = {
+  window: 'holdout' | 'live' | 'long' | 'valid' | string;
+  asOf?: string | null;
+  /** Last closed trade inside the window (the as-of may be the newer replay watermark). */
+  lastTradeAsOf?: string | null;
+  net?: number | null;
+  percentile?: number | null;
+  winRate?: number | null;
+  trades?: number | null;
+  unit?: string | null;
+  missing?: boolean;
+  /** `live` = frozen audit prefix + appended closed replay trades. */
+  source?: 'live' | 'frozen' | string;
+  basis?: string | null;
+};
+
+export type FactorBrickWindows = {
+  OOS2?: FactorBrickWindow | null;
+  train?: FactorBrickWindow | null;
+  valid?: FactorBrickWindow | null;
+  holdout?: FactorBrickWindow | null;
+};
+
+export type FactorBrick = {
+  id: string;
+  name: string;
+  family?: string | null;
+  source?: string | null;
+  /** Frozen research doc/reference for the expanded row (e.g. `H2 Sec 4`). */
+  doc?: string | null;
+  /** Display unit next to net (`点` / `%/笔` / `%`). */
+  unit?: string | null;
+  kind: FactorBrickKind;
+  role: FactorSystemRole;
+  status: FactorSystemStatus;
+  badge?: string | null;
+  position: number;
+  confirmations: number;
+  /** Days since the vault last changed this factor's status (未变档天数). */
+  daysSinceChange?: number | null;
+  recentPerformance: FactorBrickRecentPerformance;
+  windows: FactorBrickWindows;
+  spark?: number[] | null;
+  /** True only when a frozen window history entry says `revived: true`. */
+  onceRevived: boolean;
+  onceRevivedWindows: string[];
+  note?: string | null;
+};
+
+export type FactorSystemTransition = {
+  date?: string | null;
+  kind?: string | null;
+  eventType?: string | null;
+  factorId?: string | null;
+  name?: string | null;
+  from?: string | null;
+  to?: string | null;
+};
+
+export type FactorSystemPayload = {
+  available: boolean;
+  error?: string | null;
+  generatedAt?: string | null;
+  adviceOnly?: boolean;
+  freshness: FactorSystemFreshness;
+  summary: FactorSystemSummary;
+  policy: FactorSystemPolicy;
+  focus: FactorSystemFocusItem[];
+  /** Full vault brick list (omitted from the compact judgment-brief payload). */
+  bricks?: FactorBrick[];
+  recentTransitions: FactorSystemTransition[];
+};
+
+/** Advice-only factor-system policy (read-only; never places orders). */
+export function useFactorSystemQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['agent', 'factor-system'],
+    queryFn: () => apiGetJson<FactorSystemPayload>('/v1/agent/factor-system'),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}

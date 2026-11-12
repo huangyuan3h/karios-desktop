@@ -11,6 +11,7 @@ import {
   Factory,
   FlaskConical,
   LayoutGrid,
+  Library,
   Menu,
   Newspaper,
   Radar,
@@ -61,6 +62,11 @@ const MobileAlpha = React.lazy(() =>
 const MobileBacktest = React.lazy(() =>
   import('./pages/MobileBacktestPage').then((m) => ({ default: m.MobileBacktestPage })),
 );
+// The desktop factor-library page is already narrow-safe (grid + overflow table),
+// so mobile reuses it instead of growing a second visual system (2026-11-11).
+const MobileFactorSystem = React.lazy(() =>
+  import('@/components/pages/FactorSystemPage').then((m) => ({ default: m.FactorSystemPage })),
+);
 const MobileIndex = React.lazy(() =>
   import('./pages/MobileIndexPage').then((m) => ({ default: m.MobileIndexPage })),
 );
@@ -95,6 +101,7 @@ const MORE_SECTIONS: { label: string; items: PageDef[] }[] = [
       { id: 'alpha', label: 'Alpha 雷达', icon: Radar, Comp: MobileAlpha },
       { id: 'index', label: '指数', icon: BarChart3, Comp: MobileIndex },
       { id: 'backtest', label: '回测', icon: FlaskConical, Comp: MobileBacktest },
+      { id: 'factorSystem', label: '因子库', icon: Library, Comp: MobileFactorSystem },
     ],
   },
   {

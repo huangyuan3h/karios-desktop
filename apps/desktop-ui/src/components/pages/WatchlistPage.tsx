@@ -34,15 +34,12 @@ import {
 import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 import { useStrategyMode } from '@/lib/strategy-settings';
-import { pushStrategyModeToServer } from '@/lib/strategy-settings';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  // Display only: the backend holds the live mode and AppShell hydrates the
+  // client from it on mount. This page must not PUT (a stale localStorage
+  // value used to overwrite a backend-confirmed mode).
   const strategyMode = useStrategyMode();
-  // OPT-223: keep the backend's copy of the selected strategy in sync (it
-  // writes the Bark/notification copy for the 14:30 action).
-  React.useEffect(() => {
-    pushStrategyModeToServer(strategyMode);
-  }, [strategyMode]);
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();

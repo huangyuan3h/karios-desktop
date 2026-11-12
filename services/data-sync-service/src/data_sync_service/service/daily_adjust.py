@@ -10,18 +10,28 @@ a Bark push. This module composes ONE daily payload per selected mode:
   parking leg, including the sticky trail exit).
 - Empty day: the body explicitly says 「今日无需调整」 (never silence).
 
-Pure functions, no DB/network. The scheduler job supplies the sleeve/panel.
+Pure functions: the scheduler supplies the sleeve/panel/holdings/whip. Omitted
+params fall back to a read-only, fail-open registry / whip-memory read; this
+module never writes settings, the whip memory or an order.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from data_sync_service.service.agent_risk_gates import (
+    STOP_WARNING_PREFIX,
+    build_risk_gates,
+    rebuy_advice,
+)
 from data_sync_service.service.satellite_actions import (
     SATELLITE_MODES,
     STRATEGY_LABELS,
     compose_satellite_action,
 )
+
+logger = logging.getLogger(__name__)
 
 NO_CHANGE_TEXT = "今日无需调整"
 
@@ -160,6 +170,90 @@ def _sleeve_lines(sleeve: dict[str, Any]) -> tuple[list[str], list[dict[str, Any
     return lines, adjustments
 
 
+def _whip_state(
+    sleeve: dict[str, Any],
+    day: str,
+    whip: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Same-key rebuy state (fail-open; never saves memory from this composer).
+
+    ``observe=False``: the daily 14:30 push must not write the whip memory as a
+    side effect of composing text. The caller may pass the state it already
+    observed (the judgment brief does); otherwise we read the existing memory.
+    """
+    if isinstance(whip, dict) and whip:
+        return whip
+    try:
+        from data_sync_service.service.agent_whip import evaluate_whip
+
+        return evaluate_whip(sleeve or None, None, day=day, observe=False)
+    except Exception as exc:  # noqa: BLE001 — advice only, never break the push
+        logger.warning("daily adjust whip state unavailable: %s", exc)
+        return {}
+
+
+def _held_rows(
+    sleeve: dict[str, Any],
+    holdings: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Held rows for the stop check: caller holdings, else the sleeve's own leg."""
+    rows = [r for r in (holdings or []) if isinstance(r, dict)]
+    if rows:
+        return rows
+    if not sleeve.get("holding"):
+        return []
+    pick = sleeve.get("pick") or {}
+    symbol = str(sleeve.get("symbol") or pick.get("symbol") or "").upper()
+    if not symbol:
+        return []
+    return [
+        {
+            "symbol": symbol,
+            "key": pick.get("key") or sleeve.get("pickKey"),
+            "name": pick.get("name") or sleeve.get("label"),
+            "stopLossLine": sleeve.get("stopLossLine"),
+            "trailingLine": sleeve.get("trailingLine"),
+            "stopRule": sleeve.get("stopRule"),
+        }
+    ]
+
+
+def _annotate_rebuys(
+    adjustments: list[dict[str, Any]],
+    risk: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Mark every BUY / ROTATE target that would rebuy a just-stopped key.
+
+    Advice only: the row stays visible and Must-act SELL keeps its position
+    ahead of it. Returns the matched annotations (also mirrored on the row).
+    """
+    rebuy = risk.get("sameKeyRebuy") or {}
+    last_by_key = rebuy.get("recentExits") or {}
+    copy = rebuy.get("copy")
+    matches: list[dict[str, Any]] = []
+    for row in adjustments:
+        if str(row.get("side") or "").upper() != "BUY":
+            continue
+        advice = rebuy_advice(symbol=row.get("symbol"), key=row.get("key"), whip={"context": rebuy})
+        if advice is None:
+            continue
+        copy_value = copy or advice["copy"]
+        row["sameKeyRebuy"] = True
+        row["deferRebuy"] = True
+        row["annotation"] = copy_value
+        row["lastExitDate"] = advice["lastExitDate"]
+        matches.append(
+            {
+                **advice,
+                "symbol": row.get("symbol") or advice.get("symbol"),
+                "key": advice.get("key") or row.get("key"),
+                "copy": copy_value,
+                "lastExitDate": advice["lastExitDate"] or last_by_key.get(advice.get("key")),
+            }
+        )
+    return matches
+
+
 def compose_daily_adjust(
     mode: str,
     *,
@@ -167,11 +261,18 @@ def compose_daily_adjust(
     sleeve: dict[str, Any] | None = None,
     panel: dict[str, Any] | None = None,
     parking: dict[str, Any] | None = None,
+    holdings: list[dict[str, Any]] | None = None,
+    whip: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One guaranteed daily adjustment payload for ``mode``.
 
     ``noChange`` is True when there is nothing to execute; ``lines`` then
     starts with 「今日无需调整」 so the Bark body is never empty/silent.
+
+    Two advice-only gates are annotated on top (2026-11-11): a risky holding /
+    proposed buy with no stop gets a 止损缺口 warning line (never flips
+    ``mustAct`` / ``noChange``), and a BUY / ROTATE into a recently trailed
+    parking key is kept visible but flagged ``sameKeyRebuy`` / ``deferRebuy``.
     """
     day = _day(trade_date)
     label = STRATEGY_LABELS.get(mode, mode)
@@ -219,6 +320,33 @@ def compose_daily_adjust(
         sleeve = sleeve or load_live_sleeve(day)
         lines, adjustments = _sleeve_lines(sleeve)
 
+    live_sleeve = sleeve if isinstance(sleeve, dict) else {}
+    whip_state = _whip_state(live_sleeve, day, whip)
+    proposed_buys = [a for a in adjustments if str(a.get("side") or "").upper() == "BUY"]
+    risk = build_risk_gates(
+        whip=whip_state,
+        holdings=_held_rows(live_sleeve, holdings),
+        proposed_buys=proposed_buys,
+    )
+    rebuy_matches = _annotate_rebuys(adjustments, risk)
+    missing_by_symbol = {
+        str(row.get("symbol") or "").upper(): row
+        for row in (risk.get("stops") or {}).get("missing") or []
+        if row.get("source") == "buy"
+    }
+    for row in proposed_buys:
+        info = missing_by_symbol.get(str(row.get("symbol") or "").upper())
+        if info:
+            row["stopMissing"] = True
+            row["stopWarning"] = info.get("message")
+    for match in rebuy_matches:
+        sym = match.get("symbol") or match.get("key")
+        lines.append(
+            f"⚠️ {sym}：{match.get('copy')}（{match.get('key')} {match.get('lastExitDate')} 止损）"
+        )
+    for warning in (risk.get("stops") or {}).get("warnings") or []:
+        lines.append(f"⚠️ {STOP_WARNING_PREFIX}：{warning}")
+
     no_change = not adjustments
     if no_change:
         lines = [NO_CHANGE_TEXT] + [ln for ln in lines if NO_CHANGE_TEXT not in ln]
@@ -235,6 +363,8 @@ def compose_daily_adjust(
         "adjustments": adjustments,
         "lines": lines,
         "summary": "；".join(lines),
+        "riskGates": risk,
+        "warnings": list(risk.get("warnings") or []),
     }
 
 

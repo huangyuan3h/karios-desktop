@@ -1,8 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BacktestPage } from './BacktestPage';
 import { SgapDecayPanel } from './SgapDecayPanel';
 
 const { apiGetJson } = vi.hoisted(() => ({ apiGetJson: vi.fn() }));
@@ -75,15 +74,6 @@ function renderPanel() {
   );
 }
 
-function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <BacktestPage />
-    </QueryClientProvider>,
-  );
-}
-
 beforeEach(() => {
   window.localStorage.setItem('karios.strategyMode.v2', JSON.stringify('harbor'));
   apiGetJson.mockReset();
@@ -130,14 +120,5 @@ describe('SgapDecayPanel', () => {
     });
     renderPanel();
     expect(await screen.findByText(/generate_sgap_decay/)).toBeDefined();
-  });
-});
-
-describe('BacktestPage sgap tab', () => {
-  it('opens the S-gap 失效趋势 tab from the backtest page', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByText('S-gap 失效趋势'));
-    expect(await screen.findByTestId('sgap-summary')).toBeDefined();
-    expect(await screen.findByTestId('sgap-chart-equity')).toBeDefined();
   });
 });

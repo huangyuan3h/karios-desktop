@@ -5,6 +5,9 @@
 | GET  /v1/agent/decision-contract        | One stable JSON for the decision agent |
 | GET  /v1/agent/judgment-brief           | Full judgment pack (contract + market + backtest) |
 | GET  /v1/agent/judgment-brief.md        | Same payload as compact Markdown (Sync & Copy) |
+| GET  /v1/agent/factor-system            | Advice-only factor-system policy (JSON / md) |
+| GET  /v1/agent/strategy-alerts          | After-close decay / revival / excess pack |
+| POST /v1/agent/strategy-alerts/run      | Build today's alert snapshot on demand |
 | GET  /v1/agent/overlays                 | Read proposed/accepted/expired overlays |
 | POST /v1/agent/overlays                 | Propose / confirm / clear an overlay |
 | GET  /v1/agent/event-tags               | Read advice-only event / geo tags |
@@ -12,6 +15,8 @@
 | GET  /v1/agent/timeline-brief           | Compact, cache-first recent timeline note |
 | GET  /v1/agent/decision-log             | Read back today's / recent decision rows |
 | POST /v1/agent/decision-log             | One minimal decision-log row (TIP-015) |
+| POST /v1/agent/daily-confirm            | Persist 14:30 advice + Yuan's decision |
+| POST /v1/agent/daily-confirm/reconcile  | Fill next-session fills / deviations |
 | GET  /v1/agent/watchlist                | Current watchlist registry (+ positions) |
 | POST /v1/agent/watchlist                | Incremental symbol-scoped registry ops |
 
@@ -47,6 +52,10 @@ from data_sync_service.service.agent_overlays import (
     group_overlays,
     list_overlays,
     upsert_overlay,
+)
+from data_sync_service.service.factor_system import (
+    build_factor_system,
+    render_factor_system_markdown,
 )
 from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 
@@ -102,6 +111,31 @@ class DecisionLogBody(BaseModel):
     source: str = Field(default="agent", max_length=50)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     meta: dict[str, Any] | None = None
+
+
+class DailyConfirmBody(BaseModel):
+    tradeDate: str | None = Field(default=None, description="ISO date; default Shanghai today.")
+    mode: str | None = Field(
+        default=None,
+        description="Strategy mode; defaults to GET /settings/strategy-mode (never forced).",
+    )
+    decision: str = Field(
+        ...,
+        description="confirmed | amended | deferred | rejected",
+    )
+    note: str | None = Field(default=None, max_length=2000)
+    decisionLines: list[Any] | None = Field(
+        default=None,
+        description="His amended lines (required in spirit when decision=amended).",
+    )
+    contractSnapshotId: str | None = None
+    source: str = Field(default="daily_confirm", max_length=50)
+
+
+class DailyConfirmReconcileBody(BaseModel):
+    tradeDate: str | None = Field(default=None, description="ISO date; default today.")
+    mode: str | None = Field(default=None, description="Only this mode; default all modes.")
+    source: str = Field(default="daily_confirm", max_length=50)
 
 
 @router.get(
@@ -200,6 +234,128 @@ def get_judgment_brief_md(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"judgment brief failed: {exc}") from exc
     return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+@router.get(
+    "/factor-system",
+    summary="Advice-only factor-system policy from the frozen factor vault.",
+)
+def get_factor_system(
+    format: str = Query(
+        default="json",
+        description="json | md. 'md' returns the same contract as Markdown.",
+    ),
+) -> Any:
+    """Vault state -> follow / exit / wait-in-M30 advice (never an order).
+
+    Fail-open: a missing/corrupt vault returns ``available: false`` with an
+    error and a conservative wait-in-baseline policy instead of raising.
+    Live preconditions (paper-20 / holdout recovery / filtered valid) block
+    ``suggestedLiveWeight`` at 0 while still showing a revived light.
+    """
+    fmt = str(format or "json").strip().lower()
+    if fmt not in ("json", "md", "markdown"):
+        raise HTTPException(status_code=422, detail="format must be 'json' or 'md'")
+    try:
+        payload = build_factor_system()
+    except Exception as exc:  # noqa: BLE001 — mirrors the other agent routes
+        raise HTTPException(status_code=500, detail=f"factor system failed: {exc}") from exc
+    if fmt in ("md", "markdown"):
+        body = render_factor_system_markdown(payload)
+        return Response(content=body, media_type="text/markdown; charset=utf-8")
+    return payload
+
+
+@router.get(
+    "/factor-system.md",
+    summary="Advice-only factor system as Markdown.",
+    response_class=Response,
+)
+def get_factor_system_md() -> Response:
+    """Same payload as ``/v1/agent/factor-system``, rendered as Markdown."""
+    try:
+        payload = build_factor_system()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"factor system failed: {exc}") from exc
+    body = render_factor_system_markdown(payload)
+    return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+@router.get(
+    "/strategy-alerts",
+    summary="After-close decay / revival / excess alerts (read-only snapshot).",
+)
+def get_strategy_alerts(
+    asOf: str | None = Query(
+        default=None,
+        description=(
+            "ISO date (YYYY-MM-DD); default the latest complete A-share session. "
+            "Reads the persisted 19:20 snapshot; GET never writes one."
+        ),
+    ),
+) -> dict[str, Any]:
+    """Delta pack 乐乐 can broadcast in chat (advice only).
+
+    Quiet when nothing new happened: standing cold / revived lights live in
+    ``currentState`` and are never re-broadcast as today's events. Missing
+    snapshot returns ``available: false`` with a reason instead of silently
+    running the writer. Read-only: no alert row, decision row, or confirmation
+    is written on this path.
+    """
+    from data_sync_service.service.agent_strategy_alerts import read_strategy_alerts
+
+    day = str(asOf or "").strip()[:10]
+    if day:
+        try:
+            date.fromisoformat(day)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid asOf: {day}") from exc
+    try:
+        return read_strategy_alerts(as_of=day or None)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"strategy alerts failed: {exc}") from exc
+
+
+@router.post(
+    "/strategy-alerts/run",
+    summary="Build (and persist) today's after-close strategy alert snapshot.",
+)
+def post_strategy_alerts_run(
+    asOf: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default the latest complete A-share session.",
+    ),
+) -> dict[str, Any]:
+    """One-shot writer (the weekday 19:20 cron calls the same service).
+
+    Never places orders, never edits settings / the watchlist, never changes a
+    target weight. Idempotent per ``asOf``: a re-run overwrites that day's
+    snapshot and does not duplicate event keys.
+    """
+    from data_sync_service.service.agent_strategy_alerts import run_strategy_alerts
+
+    day = str(asOf or "").strip()[:10]
+    if day:
+        try:
+            date.fromisoformat(day)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid asOf: {day}") from exc
+    try:
+        out = run_strategy_alerts(as_of=day or None)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"strategy alerts run failed: {exc}") from exc
+    if not out.get("persisted"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"strategy alerts snapshot not persisted: {out.get('writeError')}",
+        )
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("strategy_alerts")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
+    return out
 
 
 @router.get(
@@ -400,8 +556,10 @@ def get_decision_log(
     """Read the store ``POST /v1/agent/decision-log`` writes (fail-open).
 
     Returns tradeDate / judgment / adopted overlay / symbol / source /
-    contractSnapshotId per row. A missing DB degrades to ``ok: false`` with
-    ``available: false`` and an error — it never 500s.
+    contractSnapshotId per row, plus ``kind`` / ``mode`` / ``advice`` /
+    ``decision`` / ``reconcile`` for 14:30 confirmation rows. A missing DB
+    degrades to ``ok: false`` with ``available: false`` and an error — it never
+    500s.
     """
     from data_sync_service.service.agent_decision_log import read_decision_log
 
@@ -456,6 +614,83 @@ def post_decision_log(body: DecisionLogBody) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
         pass
     return {"ok": True, "item": row}
+
+
+@router.post(
+    "/daily-confirm",
+    summary="Persist the 14:30 advice + Yuan's confirmation (one row per day+mode).",
+)
+def post_daily_confirm(body: DailyConfirmBody) -> dict[str, Any]:
+    """Record 建议 + 他的决定; the server loads today's ``compose_daily_adjust``.
+
+    Idempotent on ``(tradeDate, mode)``: a second confirmation updates the
+    existing row's decision / advice instead of appending a duplicate. Advice
+    composer failure is fail-open — his confirmation is still stored.
+    """
+    from data_sync_service.service.agent_daily_confirm import record_daily_confirm
+
+    day = str(body.tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    try:
+        out = record_daily_confirm(
+            trade_date=day,
+            mode=body.mode,
+            decision=body.decision,
+            note=body.note,
+            decision_lines=body.decisionLines,
+            contract_snapshot_id=body.contractSnapshotId,
+            source=body.source or "daily_confirm",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"daily confirm failed: {exc}") from exc
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("daily_confirm")
+    except Exception:  # noqa: BLE001 — never fail a successful write on cache eviction
+        pass
+    return out
+
+
+@router.post(
+    "/daily-confirm/reconcile",
+    summary="Fill next-session fills / deviations for pending 14:30 confirmations.",
+)
+def post_daily_confirm_reconcile(body: DailyConfirmReconcileBody) -> dict[str, Any]:
+    """One-shot reconcile (the weekday 18:55 cron calls the same service).
+
+    Read-only against the watchlist / user_trades. A missing input leaves the
+    row ``pending`` / ``degraded``; the confirmation row is never deleted.
+    """
+    from data_sync_service.service.agent_daily_confirm import reconcile_pending
+
+    day = str(body.tradeDate or shanghai_today_iso())[:10]
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid tradeDate: {day}") from exc
+    try:
+        out = reconcile_pending(
+            trade_date=day,
+            mode=body.mode,
+            source=body.source or "daily_confirm",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500, detail=f"daily confirm reconcile failed: {exc}"
+        ) from exc
+    try:
+        from data_sync_service.service.agent_brief import invalidate_judgment_brief_cache
+
+        invalidate_judgment_brief_cache("daily_confirm_reconcile")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 # ---------------------------------------------------------------------------
