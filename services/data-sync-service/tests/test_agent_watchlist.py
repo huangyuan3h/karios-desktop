@@ -102,6 +102,12 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, dict[str, Any]]:
     monkeypatch.setattr(registry_db, "latest_registry_updated_at", lambda: UPDATED_AT)
     monkeypatch.setattr(registry_db, "upsert_registry", _full_replace_boom)
     monkeypatch.setattr("data_sync_service.api.v1_agent_routes.shanghai_today_iso", lambda: AS_OF)
+    # GET uses agent_watchlist._as_of_date(), which lazy-imports shanghai_today_iso
+    # and ignores the route-module patch above.
+    monkeypatch.setattr(
+        "data_sync_service.service.agent_watchlist._as_of_date",
+        lambda: AS_OF,
+    )
     agent_brief.reset_judgment_brief_cache()
     yield rows
     agent_brief.reset_judgment_brief_cache()
