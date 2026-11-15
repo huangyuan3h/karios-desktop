@@ -207,7 +207,11 @@ def test_timeline_file_cache_drops_pre_close_rows(
     os.utime(p, (stale, stale))
     assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") is None
     # Fresh rows (written after the latest close) are still served.
-    fresh = br._last_session_close_ts() + 60
+    # Use "now" rather than last-close + 60s: over a weekend, close+60s is
+    # older than TIMELINE_CACHE_TTL_HOURS and would be dropped even though
+    # it is after the close boundary.
+    import time
+    fresh = time.time()
     os.utime(p, (fresh, fresh))
     assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") == payload
 
