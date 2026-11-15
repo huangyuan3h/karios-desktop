@@ -211,6 +211,7 @@ def test_timeline_file_cache_drops_pre_close_rows(
     # older than TIMELINE_CACHE_TTL_HOURS and would be dropped even though
     # it is after the close boundary.
     import time
+
     fresh = time.time()
     os.utime(p, (fresh, fresh))
     assert br._load_timeline_file("2026-01-01", "2026-02-01", "harbor") == payload
