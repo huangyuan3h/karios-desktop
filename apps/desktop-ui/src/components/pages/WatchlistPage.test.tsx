@@ -24,9 +24,7 @@ vi.mock('@/components/watchlist/SgapHealthCard', () => ({
   SgapHealthCard: () => <div data-testid="sgap-health-card-mock" />,
 }));
 vi.mock('@/components/watchlist/PortfolioHealthCard', () => ({
-  PortfolioHealthCard: ({ mode }: { mode: string }) => (
-    <div data-testid="health-mode">{mode}</div>
-  ),
+  PortfolioHealthCard: ({ mode }: { mode: string }) => <div data-testid="health-mode">{mode}</div>,
 }));
 vi.mock('@/components/watchlist/WatchlistTable', () => ({
   sortWatchlistItems: (items: unknown[]) => items,

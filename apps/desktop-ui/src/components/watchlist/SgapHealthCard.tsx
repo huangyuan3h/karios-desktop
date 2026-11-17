@@ -27,7 +27,8 @@ export function SgapHealthCard() {
   const circYi = latest?.crowd_circ != null ? latest.crowd_circ / 1e4 : null;
   const edge = latest?.large_edge ?? null;
   const revival = summary?.revival_pos ?? 0;
-  const degraded = (summary?.latest_r40_mean ?? 0) <= 0 || (summary?.latest_r40_percentile ?? 0) < 50;
+  const degraded =
+    (summary?.latest_r40_mean ?? 0) <= 0 || (summary?.latest_r40_percentile ?? 0) < 50;
 
   return (
     <div
@@ -47,7 +48,8 @@ export function SgapHealthCard() {
           {degraded ? '衰减 / 观察' : '仍有效'}
         </span>
         <span className="text-[10px] text-[var(--k-muted)]">
-          复活灯 {revival}%{revival === 0 ? '（保持观察）' : revival === 10 ? '（试探加回）' : '（半仓观察）'}
+          复活灯 {revival}%
+          {revival === 0 ? '（保持观察）' : revival === 10 ? '（试探加回）' : '（半仓观察）'}
         </span>
       </div>
 

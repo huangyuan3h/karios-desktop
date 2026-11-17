@@ -22,7 +22,13 @@ const FIELD =
  * integer-lot order aid (satellite buy rows, QuickBuyDialog, …). Display only —
  * it never changes strategy sizing or Live decisions.
  */
-export function AccountBar({ className, compact = false }: { className?: string; compact?: boolean }) {
+export function AccountBar({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
   const { capital } = useAccountSettings();
   const [capDraft, setCapDraft] = React.useState(capital != null ? String(capital) : '');
 

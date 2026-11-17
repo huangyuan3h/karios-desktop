@@ -77,8 +77,11 @@ export function RegimeAutoCard({
 
           <div className="mt-1 text-[11px] text-[var(--k-muted)]">
             确认于 {data?.confirmedAt ?? '—'}：000300 {data?.close ?? '—'} vs MA200{' '}
-            {data?.ma200 ?? '—'}（{data?.distancePct != null ? `${data.distancePct > 0 ? '+' : ''}${data.distancePct}%` : '—'}）
-            · 下次复核 {data?.nextReview ?? '—'}
+            {data?.ma200 ?? '—'}（
+            {data?.distancePct != null
+              ? `${data.distancePct > 0 ? '+' : ''}${data.distancePct}%`
+              : '—'}
+            ） · 下次复核 {data?.nextReview ?? '—'}
           </div>
           <div className="mt-1 text-[10px] text-[var(--k-muted)]">
             {data?.rule ?? '月末确认：000300 > MA200 → 稳健星舰 H2-a25；否则 → 星港 0.2'}
