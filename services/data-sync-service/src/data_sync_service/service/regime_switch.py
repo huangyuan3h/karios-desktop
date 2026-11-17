@@ -62,7 +62,9 @@ def get_regime_target(as_of_date: str | None = None) -> dict[str, Any]:
     if latest < current_month_end:
         # Current month not finished: use the previous month's last bar.
         prev = _previous_month(latest)
-        candidates = [i for i, d in enumerate(dates) if (d.year, d.month) == (prev.year, prev.month)]
+        candidates = [
+            i for i, d in enumerate(dates) if (d.year, d.month) == (prev.year, prev.month)
+        ]
         if not candidates:
             return {
                 "ok": False,

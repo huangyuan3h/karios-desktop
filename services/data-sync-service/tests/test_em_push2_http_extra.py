@@ -195,10 +195,9 @@ def test_curl_direct_bypasses_system_proxy(monkeypatch) -> None:
         return _Proc(stdout='{"a":1}\n200')
 
     monkeypatch.setattr(eh.subprocess, "run", fake_run)
-    assert (
-        eh._curl_get_json("https://push2", params={}, referer="r", timeout=5.0, use_proxy=False)
-        == {"a": 1}
-    )
+    assert eh._curl_get_json(
+        "https://push2", params={}, referer="r", timeout=5.0, use_proxy=False
+    ) == {"a": 1}
     args = captured["args"]
     assert "--noproxy" in args and "*" in args
     assert "-x" not in args
