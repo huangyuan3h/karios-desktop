@@ -1,7 +1,9 @@
 'use client';
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
+import type { RegimeTarget } from '@karios/shared';
 
+import { apiGetJson } from '@/lib/api/client';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { isShanghaiQuoteWindow } from '@/lib/market-hours';
 import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
@@ -61,6 +63,16 @@ export type RsRanksResponse = {
   asOfDate: string | null;
   ranks: Record<string, number>;
 };
+
+/** Auto 2-state regime target for the Watchlist page (month-end rule). */
+export function useWatchlistRegimeTargetQuery() {
+  return useQuery({
+    queryKey: ['watchlist', 'regime-target'],
+    queryFn: () => apiGetJson<RegimeTarget>('/watchlist/regime-target'),
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+}
 
 export function useWatchlistRsRanksQuery(symbols: string[]) {
   return useQuery({

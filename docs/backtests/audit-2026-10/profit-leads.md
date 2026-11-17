@@ -115,3 +115,42 @@
 - 为什么记：具体可测价的三条：① faceless 代工 Fiverr $5-500/单（5764服务，$45/479评价例）+ IndieHackers $229/月/客户 + faceless.so $29/月起 + 小蜜蜂 AI视频 10-20K/月 + 闲鱼代剪5-50/条；② 指标打假 TrendSpider $59-349/月（无免费档被骂）+ TradingView $12.95/月+数据费 + Vectester $49一次性（WFA+Monte Carlo）+ 中国公式定制/付费下载（60lt/zbgs518）；③ 复用分发 repurpose.io $35-179/月 + repurpose-ai $9-49/月（不支持B站/小红书/知乎，空位）。简报订阅判负（$0.03/次-$5/月，国内免费为主），只做引流。
 - 下一步：跑三 preview build（faceless-batch / indicator-falsifier / crosspost-cn），只测 waitlist“我愿付”点击，不收款、不公开发布、不发帖（spec 见 demand-research/build_*_prompt.md）。
 - 来源：Fiverr `https://www.fiverr.com/gigs/faceless-video` + IndieHackers faceless pipeline + Pictory `https://pictory.ai/pricing` + TrendSpider `https://trendspider.com/pricing` + Vectester `https://www.pyquantlab.com/apps/Vectester.html` + repurpose.io `https://repurpose.io/`（全 2026-10-04 实取）
+- 口径：真在线生成 45–90s 竖屏片（Cloudflare Pages+Workers+D1/R2/Queues 编排，渲染默认 Modal 备 Cloud Run；EdgeTTS 主 + Azure Neural 备；写稿 DeepSeek Flash 中 / gpt-4o-mini 英；BGM -42 LUFS；Google SSO only；改片 loop 结构化 op + undo；全自动计费/退 credit/防刷，无人工）。
+- 为什么记：单条 fully-loaded 成本约 $0.05（含 2 次小改分摊，1000 条/月约 $20–30，100 条以下约 $0），定价 3 SKU（免费水印试用 / $19 10 条包 $1.90/条 / $29 30 条月卡 $0.97/条）毛利率 95%+，对标 Pictory $29/$59/$199（pictory.ai/pricing）/ InVideo $20–$1000（invideo.io/pricing）/ Fliki $28/$88（fliki.ai/pricing）/ HeyGen $29/$49（heygen.com/pricing）/ faceless.so $29 起约 $0.96–1.16/条（faceless.so/pricing），均 2026-10-04 访问；里程碑 M0 容器 → M1 一条在线 → M2 队列/上传/改片 → M3 自动支付，约 2–3 个月。
+- 下一步：M0 容器实测 10 条修正渲染 180s 假设后，再开 M1（不预付、不开账号）。
+- 来源：`~/Projects/tools-faceless-batch/docs/CLOUD_PLAN.md`（已 commit `docs: ReelBatch cloud plan`）+ `~/Projects/video-factory/.opencode-runs/reelbatch_cloud_plan_report.md`
+
+## 2026-10-04 · OBV突破追涨 obv_breakout_chase（ep37候选1，已做视频，主hold5明确不赚钱，换拿法弱线索）
+- 口径：主hold5 扣费后（往返0.30%）每笔 -0.19%、中位数 -0.66%、胜率44.59%、组合年化 -29.74%（n=149577，2010-2026.08）；事件分位0.0%（随机-0.07%）/组合分位0.0%（随机-21.49%）均劣于随机，明确不赚钱，已做视频；换拿法 hold20 每笔 +0.11%、中位数 -1.34%、胜率45.17%、组合年化 -6.74%（仍负），hold10 -0.15%仍负、hold3 -0.16%仍负。
+- 为什么记：按规则「扣费后每笔为正」（hold20 +0.11%）即记录。弱线索，拿长才转正、组合仍大亏、中位数仍负、事件分位0.0%垫底；待样本外+持有期敏感性复核。
+- 来源：`~/Projects/karios-series-output/obv_breakout_chase/hold*/summary.json`（ep37候选1即中，已做视频 https://youtu.be/NBiz_YoBgng）
+
+## 2026-10-04 · TRIX金叉追涨 trix_golden_chase（ep38候选1，已做视频，主hold5明确不赚钱，换拿法弱线索）
+- 口径：主hold5 扣费后（往返0.30%）每笔 -0.12%、中位数 -0.63%、胜率45.09%、组合年化 -24.67%（n=181856，2010-2026.08）；事件分位9.8%（随机-0.10%）/组合分位13.5%（随机-21.59%）均劣于随机，明确不赚钱，已做视频；换拿法 hold10 每笔 +0.16%、hold20 +0.25%为正，组合最高-9.90%（hold20）仍负，hold3 -0.20%仍负。
+- 为什么记：按规则「扣费后每笔为正」（hold10/20）即记录。弱线索，拿长转正、组合仍大亏、中位数仍负；待样本外+持有期敏感性复核。
+- 来源：`~/Projects/karios-series-output/trix_golden_chase/hold*/summary.json`（ep38候选1即中，已做视频 https://youtu.be/ZXWBjvdMc0E）
+
+## 2026-10-05 · 指标打假口径小修 falsifier_polish（无新增 lead，特此声明）
+- 口径：仅加一句人话说明 26 已播集 vs 24 可打假规则（含未播新规则，日历类见对应集），+ 结果态 4 张 QA（无溢出/0报错/深海蓝+琥珀/红涨绿跌），`npm test` + `build` 全绿后部署，线上 200，commit `ef3b31f`。
+- 为什么不记：纯说明 + QA，无新回测数字、无收费点，永久免费。来源：`~/Projects/video-factory/.opencode-runs/falsifier_polish_report.md`，live https://zhibiao.it-t.xyz/check/
+
+## 2026-10-05 · 复用分发 crosspost-cn Round8（额度耗尽复跑，无新增 lead，特此声明）
+- 口径：线上 https://tools-crosspost-cn.pages.dev/ ，Workers AI 额度重置后（北京 08:06，UTC 00:06）1 条最小探针 + 10 版 live 全 fallback，确切错误 `AiError: 4006: you have used up your daily free allocation of 10,000 n`（五模型 Qwen3/GLM/Llama-fp8/llama-3.2-3b/gemma-4 全空，官方 catalog 2026-08-12 实取 69 models 均在列且 Free，非下线非代码 bug，D1 rewrite_hits 仅 2 行非限流；pricing 确认 00:00 UTC 重置，疑后端配额延迟/看板与后端不一致已知问题）；fallback deterministic 10/10 保真＋claim（含主语/评价/量词/范围/标点/一致）＋质量 5 项全过（d1 412/2238/2399/2317/343，d2 295/780/813/840/296，人工 4-5 分零 fail）；修诊断增强＋新增 2 免费兜底（llama-3.2-3b/gemma-4），未放宽任一门禁；pytest54+npm97+50 全绿，已部署确认 200。
+- 为什么不记：无新回测数字、无新收费点，钱路同 Round7（repurpose.io $35-179/月 + repurpose-ai $9-49/月均不支持B站/小红书/知乎空位，半自动复制→粘贴＋AI 润色点才发服务端，目标 10 邮箱 + 3 个“我愿付 ¥29/¥199”）；不重测已测想法（MACD/ep5 数字已在 Round7 核对）。待额度恢复后重测 AI（≥8/10 目标），不预付、不开付费档。
+- 来源：`~/Projects/tools-crosspost-cn/REPORT.md` Round8 + `qa/demo_outputs.md`（0 ai + 10 fallback，4006 实录）+ `~/Projects/wealth-ideas/demand-research/round8_crosspost-cn_report.md`
+
+## 2026-10-05 · 乖离追涨 bias_high_chase（ep36重做，多音字修复，无新增lead，特此声明）
+- 口径：BIAS6>8%次日开盘买拿5天开盘走，往返0.30%，2010-2026.08，12万9164笔；每笔净均值-0.81%（毛-0.51%）、中位数-1.8%、胜率41.4%、58.6%亏损，随机+0.07%（事件分位0.0%垫底），组合年化-52.2%（沪深300+1.7%/中证500+3.6%），17年16年超额为负、17/17年跑输300、4时代全输；换拿法3/5/10/20天全负（最高-25.0%），降费至0.15%仍-48.7%。
+- 为什么不记：每笔为负且明显劣于随机，不满足「扣费后每笔为正或明显优于随机」规则；本次为ep36多音字重做（平安银行yín háng修复+BGM -42 Drifting），数字与已播一致，无新回测、无收费点。
+- 来源：`~/Projects/video-factory-p2/data/output/indicator/ep36-manual-polyphone/20261005-183000-final/`（14段旁白原文一致，81 cues QA PASS）+ `~/Projects/video-factory/.opencode-runs/ep36_polyphone_report.md`
+
+## 2026-10-05 · 烂板回封 limitup_reseal_research（系列最亮弱正，隔夜，未对M30）
+- 口径：盘中开板尾盘回封；收盘买、次日开盘卖（研究窗2024-01起）；往返0.30%；n=16882；每笔净均值 **+1.07%**、中位+0.34%、胜率53.52%；组合年化 **+19.79%**、MDD−24.01%、Sharpe1.60；分年2024/25/26净均值+1.47/+0.67/+1.00全正；T+3收盘卖变体净+0.86%/组合+6.98%；成本0.50%时组合仍+11.03%。
+- 为什么记：按规则「扣费后每笔为正」且**组合年化亦正**（系列弱正里少见）。弱线索：样本仅2024+、收盘价成交偏乐观、无COMPARE三窗vs母港M30、无MC分位、换手极高；旧开板回封探针口径不同曾见负结果，执行敏感。
+- 下一步：开盘可成交口径+扩展样本+COMPARE vs M30+成本×2/延迟/容量；不过开盘口径则DROP。观察仓0%。不进视频实盘细则。
+- 来源：`~/Projects/karios-series-output/limitup_reseal_research/`；复核 `WEAK_LEADS_PICK_2026-10-05.md`（CONFIDENTIAL）。
+## 2026-10-05 · 长调整窄箱突破（形态弱正，旧前瞻口径，需诚实重测）
+- 口径：CN liquid1500，2022-01~2026-08；60d箱体带宽处20%分位为窄；上破后前瞻60d mean **+6.94%**（vs任意上破超额 **+3.53%**），win51.9%，n≈11011；20d +4.10%（+2.31%）；10d超额仅+1.18%弱。旧研究**未扣费**、非独立买卖组合。
+- 为什么记：形态层大样本超额>2%且持有期逻辑自洽（短持弱、长持强）。弱线索：厚尾（中位~0.4%）、win~52%、未对M30；同类布林开口旧前瞻+1.12%被系列诚实重跑证伪（净−0.14%/组合−12%），故本条必须诚实重测后才能升格。
+- 下一步：T+1开买卖、往返0.30%、组合层、COMPARE vs M30；不过则DROP。观察仓0%。
+- 来源：`karios-desktop/docs/backtests/factors/long-consolidation-breakout-study.md`；复核 `WEAK_LEADS_PICK_2026-10-05.md`（CONFIDENTIAL）。

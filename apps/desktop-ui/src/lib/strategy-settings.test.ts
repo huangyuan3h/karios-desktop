@@ -148,11 +148,15 @@ describe('pullStrategyModeFromServer (backend = source of truth, 2026-11-12)', (
 });
 
 describe('UI mount behaviour', () => {
-  it('WatchlistPage no longer pushes the localStorage mode on mount', () => {
+  // 2026-11-15: the watchlist has no manual selector; it mirrors the
+  // server-computed regime target. A stale localStorage mode must never be the
+  // thing that gets PUT (that used to overwrite a backend-confirmed mode).
+  it('WatchlistPage mirrors the auto regime target, not the localStorage mode', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'components', 'pages', 'WatchlistPage.tsx'),
       'utf-8',
     );
-    expect(source).not.toContain('pushStrategyModeToServer');
+    expect(source).not.toContain('useStrategyMode');
+    expect(source).toContain('pushStrategyModeToServer(regimeQ.data.target)');
   });
 });

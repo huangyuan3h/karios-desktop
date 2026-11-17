@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
+import { dashboardRefetchIntervalMs } from '@/lib/queries/intervals';
 import { GateBadge } from './primitives';
 import { ReconcileTab } from './tabs/ReconcileTab';
 
@@ -128,7 +129,7 @@ export function MobileShell() {
   const health = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
-    refetchInterval: 5 * 60_000,
+    refetchInterval: dashboardRefetchIntervalMs,
   });
 
   const cn = health.data;

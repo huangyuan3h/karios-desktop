@@ -1,0 +1,15 @@
+{
+  "start": "2021-08-02",
+  "end": "2026-08-07",
+  "strategies": [
+    "homeport_m30",
+    "homeport",
+    "harbor",
+    "starship",
+    "starship_robust",
+    "starport"
+  ],
+  "rows": 1216,
+  "tail": "2026-08-07",
+  "note": "starport = homeport(M50) x satellite(w=0.2); b3 from compare_nav if present"
+}

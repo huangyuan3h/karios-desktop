@@ -15,5 +15,6 @@ export * from './schemas/sgapDecay';
 export * from './schemas/factorVault';
 export * from './schemas/fleet';
 export * from './schemas/strategyCatalog';
+export * from './schemas/regimeTarget';
 export * from './schemas/userTrades';
 export * from './schemas/factors';

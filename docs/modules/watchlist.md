@@ -21,11 +21,28 @@ Watchlist 的 **Live 下单口径** = **港湾**：S-3 股票核心 + 闲置现�
 
 - **Live 核心（S-3）**：按冻结参数持有/轮出 A 股 + HK 股票篮（10%×10 名义上限）；今日决策卡列出 S-3 持仓与买卖（score≥65 · RS 前 50% · regime 非 Weak · 主线白名单 · 非持仓 · CN only）。
 - **Live 停车场（闲置现金）**：空闲资金每日按 **14:30 口径**在 `mom60+MA200` 的金（518880）/ 油（513350）/ 纳指（513110 / 513100 best）/ 国债（511260）里取 **`argmax`** 停一只；**换仓需新目标领先现持 ≥2pt（H2 迟滞，2026-09-18 起）**，否则维持原腿；**无候选 → 留现金/REPO**；因果 trail8（t-1 收盘触发）出场后回现金。只在 S-3 闲置现金上作用，不抢核心股票仓。
-- **研究/展示/人工操作档**：当前默认 `starship_b` = **星舰 B**，由卫星 14:30 名单提供人工操作提示；闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（回撤更浅、熊市更强、3 只 ETF 好复制）。另有并列可选 **`starship_robust` = 稳健星舰 H2-a25**（25% 闲置现金停 H2 ETF、75% 停 B3），由 A25 目标卡提供人工操作提示。二者都不切换 Live 下单引擎，也不把卫星腿写入 Harbor paper 账本。
+- **研究/展示/人工操作档（其他页面/历史）**：当前默认 `starship_b` = **星舰 B**，由卫星 14:30 名单提供人工操作提示；闲置现金 100% 停 {国债+黄金+纳指} 逆波动率（回撤更浅、熊市更强、3 只 ETF 好复制）。另有并列可选 **`starship_robust` = 稳健星舰 H2-a25**（25% 闲置现金停 H2 ETF、75% 停 B3），由 A25 目标卡提供人工操作提示。二者都不切换 Live 下单引擎，也不把卫星腿写入 Harbor paper 账本。**Watchlist 页 2026-11-15 起不再用手动档，改由下面的自动 regime 目标。**
 - **展示**：顶部显示「核心仓位 + 停车场当前 pick（ETF / mom60 / 是否站上 MA200）」；S-3 Exec 硬闸（单票 15% `SIZE_CAP_BLOCK` / 板块 30% `SECTOR_CONC_BLOCK` / 袖子 `SLEEVE_CAP_BLOCK`）不变。数据依赖 = 核心 ETF 日线（`daily`）+ S-3 持仓账本；陈旧走系统自检。
 - **卫星研究卡**：14:30 现场面板与 A25 操作提示仍保留；旧 `mode=twin_star` 通知和 paper 簿不再使用。H2-a25 报告裁决为 K3 风险下的 REJECT，不能当作全门 PASS。
 - **提醒铃铛**：目标包含当前所选研究档的卫星动作文案；它不改变 Harbor paper/Live 记账。
 - **Live 现状（2026-09-13 起）**：港湾已上线——`paper_twin_star` intake 前视、套筒 trail 记账前视、`_pnl_for` 恒 0、`SELL_TO_A_SHARE` 0 元平仓等**已全部修复/删除**；审计与清单见 [`optimization-checklist.md` OPT-178](../optimization-checklist.md) 与 [B11 档](../backtests/stable/etf-parking-baseline-2026-09-13.md)。
+
+### 自动 regime 跟随（2026-11-15 起 · Watchlist 只读）
+
+Watchlist 页**不再使用手动策略切换器**。顶部目标由后端 `GET /watchlist/regime-target` 自动给出：
+
+- **规则（月末确认，PIT）**：`000300` 月末收盘 > MA200 → **稳健星舰 H2-a25**（`starship_robust`）；
+  否则 → **星港 0.2**（`starport`）。用最近一个**已完成**的月末，不用月中穿越。
+- **页面行为**：`RegimeAutoCard` 显示状态 / 目标 / 确认日 / `close vs MA200` / 下次复核 / S-gap 暴露；
+  `PortfolioHealthCard` 与 Bark 文案跟随该目标。手动选择在 Watchlist 页已关闭（Settings 仍保留其他页面的默认策略）。
+- **S-gap 辅助判断**：`SgapHealthCard` 复用 `/api/backtest/sgap-decay`，显示最新 40 笔均值/分位/胜率、
+  成交中位/市值、大单边缘、复活灯；并明确标注 2026H2 衰减（−1.28%/笔、成交 6.3×、大单 t 1.95）。
+  用途：S-gap 是 H2-a25 / 星舰B / 双子星 / 星港的进攻引擎；衰减时卫星腿收益打折，星港 20% 暴露，M30/M50 不依赖。
+- **代码**：后端 `service/regime_switch.py` + `api/watchlist_routes.py`；前端
+  `lib/queries/watchlist.ts`、`components/watchlist/RegimeAutoCard.tsx`、`SgapHealthCard.tsx`；
+  schema `packages/shared/src/schemas/regimeTarget.ts`。
+- **研究记录**：[`regime-switch-2026-11-15`](../backtests/stable/regime-switch-2026-11-15.md)（2 状态 vs 全策略、
+  S-gap 叠加、exact NAV）、[`regime-switch-paper-2026-11-15`](../backtests/stable/regime-switch-paper-2026-11-15.md)（paper 3–6 月）。
 
 ---
 
