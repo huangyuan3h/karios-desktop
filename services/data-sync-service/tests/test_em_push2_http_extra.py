@@ -120,17 +120,32 @@ class _Resp:
         return self._body
 
 
+class _FakeOpener:
+    def __init__(self, resp: _Resp) -> None:
+        self._resp = resp
+
+    def open(self, req, timeout=None):
+        return self._resp
+
+
+def _patch_urllib_open(monkeypatch, body: bytes, status: int = 200) -> None:
+    """Direct path uses a null-ProxyHandler opener (bypasses system proxies)."""
+    monkeypatch.setattr(
+        eh.urllib.request,
+        "build_opener",
+        lambda *handlers: _FakeOpener(_Resp(body, status=status)),
+    )
+
+
 def test_urllib_get_json_ok(monkeypatch) -> None:
-    monkeypatch.setattr(eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b'{"k":1}'))
+    _patch_urllib_open(monkeypatch, b'{"k":1}')
     assert eh._urllib_get_json("https://push2", params={"a": "b"}, referer="r", timeout=25.0) == {
         "k": 1
     }
 
 
 def test_urllib_get_json_http_error(monkeypatch) -> None:
-    monkeypatch.setattr(
-        eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b"err", status=502)
-    )
+    _patch_urllib_open(monkeypatch, b"err", status=502)
     try:
         eh._urllib_get_json("https://push2", params={}, referer="r", timeout=25.0)
         raise AssertionError("expected RuntimeError")
@@ -139,12 +154,69 @@ def test_urllib_get_json_http_error(monkeypatch) -> None:
 
 
 def test_urllib_get_json_bad_body(monkeypatch) -> None:
-    monkeypatch.setattr(eh.urllib.request, "urlopen", lambda req, timeout=25: _Resp(b"nope"))
+    _patch_urllib_open(monkeypatch, b"nope")
     try:
         eh._urllib_get_json("https://push2", params={}, referer="r", timeout=25.0)
         raise AssertionError("expected RuntimeError")
     except RuntimeError as e:
         assert "urllib_invalid_json" in str(e)
+
+
+def test_urllib_direct_bypasses_system_proxy(monkeypatch) -> None:
+    """Direct urllib path must use ProxyHandler({}) even with proxy env set."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:7890")
+    seen_handlers: list = []
+
+    class _RecordingOpener(_FakeOpener):
+        pass
+
+    real_proxy_handler = eh.urllib.request.ProxyHandler
+
+    def fake_build_opener(*handlers):
+        seen_handlers.extend(handlers)
+        return _FakeOpener(_Resp(b'{"k":1}'))
+
+    monkeypatch.setattr(eh.urllib.request, "build_opener", fake_build_opener)
+    assert eh._urllib_get_json("https://push2", params={}, referer="r", timeout=5.0) == {"k": 1}
+    assert seen_handlers, "expected a ProxyHandler to be installed"
+    proxies = seen_handlers[0].proxies
+    assert proxies == {}, f"direct path must bypass system proxies, got {proxies!r}"
+    assert isinstance(seen_handlers[0], real_proxy_handler)
+
+
+def test_curl_direct_bypasses_system_proxy(monkeypatch) -> None:
+    """Direct curl path must pass --noproxy and never -x without EASTMONEY_PROXY."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+    captured: dict = {}
+
+    def fake_run(args, **kw):
+        captured["args"] = list(args)
+        return _Proc(stdout='{"a":1}\n200')
+
+    monkeypatch.setattr(eh.subprocess, "run", fake_run)
+    assert (
+        eh._curl_get_json("https://push2", params={}, referer="r", timeout=5.0, use_proxy=False)
+        == {"a": 1}
+    )
+    args = captured["args"]
+    assert "--noproxy" in args and "*" in args
+    assert "-x" not in args
+
+
+def test_curl_explicit_proxy_uses_x(monkeypatch) -> None:
+    """Opt-in EASTMONEY_PROXY path still routes via -x."""
+    monkeypatch.setattr(eh, "_PROXY", "http://127.0.0.1:7890")
+    captured: dict = {}
+
+    def fake_run(args, **kw):
+        captured["args"] = list(args)
+        return _Proc(stdout='{"a":1}\n200')
+
+    monkeypatch.setattr(eh.subprocess, "run", fake_run)
+    assert eh._curl_get_json("https://push2", params={}, referer="r", timeout=5.0) == {"a": 1}
+    args = captured["args"]
+    assert "-x" in args and "--noproxy" not in args
 
 
 def test_em_get_json_requests_path(monkeypatch) -> None:

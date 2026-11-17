@@ -1,4 +1,15 @@
-"""Shared HTTP helper for East Money push2 APIs."""
+"""Shared HTTP helper for East Money push2 APIs.
+
+Egress policy (2026-08-20, hardened 2026-10-12):
+- DIRECT-first for all eastmoney fetches. System proxies (HTTP_PROXY /
+  HTTPS_PROXY / ALL_PROXY / http_proxy / ...) are ALWAYS bypassed on the
+  direct path (requests ``proxies={"http": None, ...}``, curl ``--noproxy``,
+  urllib null-``ProxyHandler``) — a local 127.0.0.1:7890 ClashX-style proxy
+  must never silently capture eastmoney traffic.
+- ``EASTMONEY_PROXY`` is opt-in ONLY: set it manually when the direct line is
+  confirmed blocked; it is the sole proxy ever used, and only as a fallback
+  after direct fails. Leave it unset for default direct-only behavior.
+"""
 
 from __future__ import annotations
 
@@ -140,6 +151,10 @@ def _curl_get_json(
     args = ["curl", "-sS", "--compressed", "-w", "\n%{http_code}"]
     if use_proxy and _PROXY:
         args += ["-x", _PROXY]
+    else:
+        # Direct path: never let a system HTTP(S)_PROXY (e.g. 127.0.0.1:7890)
+        # capture this request — curl honours proxy env vars by default.
+        args += ["--noproxy", "*"]
     for name, value in headers.items():
         args.extend(["-H", f"{name}: {value}"])
     args.append(full_url)
@@ -168,16 +183,16 @@ def _urllib_get_json(
 ) -> dict[str, Any]:
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(full_url, headers=_em_headers(referer))
-    opener: urllib.request.OpenerDirector | None = None
     if use_proxy and _PROXY:
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": _PROXY, "https": _PROXY})
         )
-    with (
-        opener.open(req, timeout=timeout)
-        if opener
-        else urllib.request.urlopen(req, timeout=timeout)
-    ) as resp:
+    else:
+        # Direct path: null ProxyHandler so system HTTP(S)_PROXY env vars
+        # (macOS _scproxy included) are bypassed — plain urlopen() would
+        # honour them and route eastmoney via the local proxy exit.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as resp:
         raw = resp.read()
         status = getattr(resp, "status", 200)
     if int(status) >= 400:

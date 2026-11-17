@@ -3,47 +3,44 @@
 import * as React from 'react';
 
 import { AccountBar } from '@/components/account/AccountBar';
-import { PoolHistoryTable } from '@/components/watchlist/PoolHistoryTable';
-import { PickStrongAlignBanner } from '@/components/watchlist/PickStrongAlignBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
-import { StrategyModeBar } from '@/components/watchlist/StrategyModeBar';
-import { TodayTodoCard } from '@/components/watchlist/TodayTodoCard';
-import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
-import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
+import { RegimeAutoCard } from '@/components/watchlist/RegimeAutoCard';
+import { SgapHealthCard } from '@/components/watchlist/SgapHealthCard';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
-import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { buildCatalystPurgeMap, DEFAULT_CATALYST_MAX_AGE_DAYS } from '@/lib/alpha-radar-catalyst';
-import { useChatStore } from '@/lib/chat/store';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
 import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
-import { useWatchlistRsRanksQuery, watchlistMarketKey } from '@/lib/queries/watchlist';
-import {
-  fetchAutomationLatest,
-  formatAutomationSummary,
-  runManualAutomation,
-  type AutomationRun,
-} from '@/lib/watchlist-automation';
-import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
-import { loadWatchlist } from '@/lib/watchlist-storage';
-import { useStrategyMode } from '@/lib/strategy-settings';
-import { pushStrategyModeToServer } from '@/lib/strategy-settings';
+import { useWatchlistRegimeTargetQuery, useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
+import { pushStrategyModeToServer, type StrategyMode } from '@/lib/strategy-settings';
 
+/**
+ * Watchlist follow page (母港M30 baseline).
+ *
+ * Top-to-bottom: 账户（最小一行，总资金是份数/金额换算的分母） →
+ * 自动 regime 卡片（只读目标 + S-gap 健康度） → 操作引导（PortfolioHealthCard，
+ * 顶部是今日结论 + 编号操作清单，次要细节在同一组件内弱化展示） →
+ * watchlist 表格 + 添加输入框（页面本体）。
+ *
+ * TodayTodo / 跟仓 / 工具类卡片不在此页渲染（源码保留，以后可能复用，
+ * 不要新建折叠“详情”区）。
+ */
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
-  const strategyMode = useStrategyMode();
-  // OPT-223: keep the backend's copy of the selected strategy in sync (it
-  // writes the Bark/notification copy for the 14:30 action).
+  // 2026-11-15: the watchlist is auto-regime, not a manual selector. The
+  // month-end 000300-vs-MA200 target is the single source; the page mirrors it
+  // to the backend so Bark/notification copy follows the same strategy.
+  const regimeQ = useWatchlistRegimeTargetQuery();
+  const autoMode = (regimeQ.data?.target ?? 'homeport') as StrategyMode;
   React.useEffect(() => {
-    pushStrategyModeToServer(strategyMode);
-  }, [strategyMode]);
-  const { addReference } = useChatStore();
+    if (regimeQ.data?.target) pushStrategyModeToServer(regimeQ.data.target);
+  }, [regimeQ.data?.target]);
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();
   const catalystQuery = useAlphaRadarCatalystQuery(DEFAULT_CATALYST_MAX_AGE_DAYS);
@@ -69,7 +66,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
   const {
     items,
-    setItems,
     persist,
     watchlistHydrating,
     error,
@@ -80,7 +76,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     positionPctDrafts,
     onAdd,
     onRemove,
-    addSymbolToWatchlist,
     setItemColor,
     setItemPositionPct,
     setItemPositionPctDraft,
@@ -101,34 +96,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const symbols = React.useMemo(() => items.map((x) => x.symbol).filter(Boolean), [items]);
 
-  const {
-    trend,
-    quotes,
-    trendBusy,
-    trendUpdatedAt,
-    syncMsg,
-    setSyncMsg,
-    onManualRefreshTrend,
-    queryClient,
-  } = useWatchlistTrend(symbols, items, persist);
-
-  const [syncBusy, setSyncBusy] = React.useState(false);
-  const [syncStage, setSyncStage] = React.useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(
-    null,
-  );
-  const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
-  const [automationBusy, setAutomationBusy] = React.useState(false);
-  const [automationStage, setAutomationStage] = React.useState<string | null>(null);
-  const [automationLogs, setAutomationLogs] = React.useState<string[]>([]);
-  const [automationMsg, setAutomationMsg] = React.useState<string | null>(null);
-  const [latestAutomation, setLatestAutomation] = React.useState<AutomationRun | null>(null);
-  const [automationSkipRun, setAutomationSkipRun] = React.useState<AutomationRun | null>(null);
-  const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
-  const [copyMdBusy, setCopyMdBusy] = React.useState(false);
-  const copyMdTimerRef = React.useRef<number | null>(null);
+  const { trend, quotes } = useWatchlistTrend(symbols, items, persist);
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
@@ -141,16 +109,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     () => new Set(auditRows.flatMap((r) => (r.extraList ?? []).map((e) => e.symbol))),
     [auditRows],
   );
-
-  React.useEffect(() => {
-    void fetchAutomationLatest()
-      .then((run) => {
-        if (run) setLatestAutomation(run);
-      })
-      .catch(() => {
-        // ignore
-      });
-  }, []);
 
   // Global notification hub scroll: jump to the anchored health block and
   // flash it so "提醒我做操作" lands on the details.
@@ -171,13 +129,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     return () => window.removeEventListener('karios-scroll-to', onScrollTo);
   }, []);
 
-  React.useEffect(
-    () => () => {
-      if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
-    },
-    [],
-  );
-
   // RS percentiles (whole-market, /watchlist/rs-ranks) — tiebreaker for the
   // score sort; the table's own rs query shares the same query key/cache.
   const rsRanksQuery = useWatchlistRsRanksQuery(items.map((i) => i.symbol));
@@ -194,7 +145,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     [items, trend, scoreSortEnabled, scoreSortDir, rsRanksQuery.data],
   );
 
-  const macroLockBanner = React.useMemo(() => {
+  // Derived directly (no memo): React Compiler cannot preserve the manual
+  // memo here, and the scan is a cheap pass over the trend map.
+  const macroLockBanner = (() => {
     for (const t of Object.values(trend)) {
       if (t?.macroLock?.active) {
         return t.macroLock;
@@ -209,119 +162,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       }
     }
     return null;
-  }, [trend]);
-
-  const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
-
-  async function onRunAutomation(force = true) {
-    setError(null);
-    setAutomationMsg(null);
-    setAutomationBusy(true);
-    setAutomationStage('Starting automation…');
-    setAutomationLogs([]);
-    const pushLog = (line: string) => {
-      setAutomationLogs((prev) => [...prev, line].slice(-6));
-    };
-    try {
-      const { run, result } = await runManualAutomation({
-        force,
-        onStage: (label) => {
-          setAutomationStage(label);
-          pushLog(label);
-        },
-      });
-      setLatestAutomation({
-        ...run,
-        meta: {
-          ...(run.meta && typeof run.meta === 'object' ? run.meta : {}),
-        },
-      });
-      if (run.skipped) {
-        setAutomationMsg(`Skipped: ${run.skipReason || 'unknown'}`);
-        setAutomationSkipRun(run);
-        return;
-      }
-      setAutomationSkipRun(null);
-      setItems(loadWatchlist());
-      void queryClient.invalidateQueries({ queryKey: watchlistMarketKey(symbols) });
-      const summary = formatAutomationSummary(run, result ?? null);
-      setAutomationMsg(summary);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAutomationBusy(false);
-      setAutomationStage(null);
-    }
-  }
-
-  function referenceTable() {
-    const capturedAt = new Date().toISOString();
-    const rows = sortedItems.slice(0, 50).map((it) => {
-      const t = trend[it.symbol];
-      return {
-        symbol: it.symbol,
-        name: it.name ?? null,
-        asOfDate: t?.asOfDate ?? null,
-        close: typeof t?.values?.close === 'number' ? t.values.close : null,
-        trendOk: t?.trendOk ?? null,
-        score: t?.score ?? null,
-        stopLossPrice: t?.stopLossPrice ?? null,
-        buyMode: t?.buyMode ?? null,
-        buyAction: t?.buyAction ?? null,
-        buyZoneLow: t?.buyZoneLow ?? null,
-        buyZoneHigh: t?.buyZoneHigh ?? null,
-      };
-    });
-    addReference({
-      kind: 'watchlistTable',
-      refId: `${capturedAt}:${sortedItems.length}`,
-      capturedAt,
-      total: sortedItems.length,
-      items: rows,
-    });
-  }
-
-  function toastCopyMd(ok: boolean, text: string) {
-    setCopyMdStatus({ ok, text });
-    if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
-    copyMdTimerRef.current = window.setTimeout(() => setCopyMdStatus(null), 2400);
-  }
-
-  async function handleCopyWatchlistMarkdown() {
-    setCopyMdBusy(true);
-    try {
-      const result = await copyWatchlistMarkdown({
-        queryClient,
-        sortedItems,
-        trend,
-        quotes,
-        trendUpdatedAt,
-        executionGate,
-        mainlineAllow,
-        sectorOutflowBlock,
-      });
-      if (!result.ok) {
-        toastCopyMd(false, result.message);
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(result.markdown);
-        toastCopyMd(true, 'Copied Markdown.');
-      } catch {
-        toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
-      }
-    } catch (err) {
-      console.warn('copy watchlist markdown failed:', err);
-      toastCopyMd(false, 'Copy failed. Backend unavailable.');
-    } finally {
-      setCopyMdBusy(false);
-    }
-  }
-
-  async function handleManualRefreshTrend() {
-    setError(null);
-    await onManualRefreshTrend();
-  }
+  })();
 
   return (
     <div className="box-border min-w-0 w-full max-w-full overflow-x-hidden p-6">
@@ -338,48 +179,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
-        <StrategyModeBar />
-        <AccountBar />
-        <TodayTodoCard mode={strategyMode} />
-        {/* The banner aligns the account against the HARBOR core leg (target
-            100% ETF). The satellite-standalone modes hold no core leg, so it
-            only reports "idle too high" — pure noise for 星舰/稳健星舰. */}
-        {strategyMode === 'starship' ||
-        strategyMode === 'starship_robust' ||
-        strategyMode === 'starship_b' ? null : (
-          <PickStrongAlignBanner mode={strategyMode} />
-        )}
-        <PortfolioHealthCard mode={strategyMode} onOpenStock={onOpenStock} />
-        <WatchlistToolbar
-          trendUpdatedAt={trendUpdatedAt}
-          latestAutomation={latestAutomation}
-          syncBusy={syncBusy}
-          syncStage={syncStage}
-          syncProgress={syncProgress}
-          syncLogs={syncLogs}
-          automationBusy={automationBusy}
-          automationStage={automationStage}
-          automationLogs={automationLogs}
-          automationMsg={automationMsg}
-          automationSkipRun={automationSkipRun}
-          syncMsg={syncMsg}
-          copyMdStatus={copyMdStatus}
-          error={error}
-          trendBusy={trendBusy}
-          itemsCount={items.length}
-          sortedItemsCount={sortedItems.length}
-          copyMdBusy={copyMdBusy}
-          onManualRefreshTrend={() => void handleManualRefreshTrend()}
-          onReferenceTable={referenceTable}
-          onCopyMarkdown={() => void handleCopyWatchlistMarkdown()}
-          onRunAutomation={() => void onRunAutomation(true)}
-          onForceAutomationFromSkip={() => void onRunAutomation(true)}
-        />
-
-        <WatchlistInsightsPanel>
-          <TradeStatsPanel />
-          <PoolHistoryTable limit={10} />
-        </WatchlistInsightsPanel>
+        <AccountBar compact />
+        <RegimeAutoCard data={regimeQ.data} isLoading={regimeQ.isLoading} error={regimeQ.error} />
+        <SgapHealthCard />
+        <PortfolioHealthCard mode={autoMode} onOpenStock={onOpenStock} />
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Add</div>

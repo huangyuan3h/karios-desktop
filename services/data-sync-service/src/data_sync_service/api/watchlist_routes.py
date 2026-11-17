@@ -67,6 +67,28 @@ def watchlist_rs_ranks(
     return {"ok": True, "asOfDate": as_of, "ranks": ranks}
 
 
+@router.get("/watchlist/regime-target")
+def watchlist_regime_target(
+    as_of: str | None = Query(None, description="Inclusive YYYY-MM-DD; default today."),
+) -> dict:
+    """Auto regime target for the Watchlist page (2-state, read-only).
+
+    Month-end rule: 000300 > MA200 -> starship_robust (H2-a25); else starport.
+    The page uses this instead of the manual strategy selector.
+    """
+    from data_sync_service.service.regime_switch import get_regime_target
+
+    try:
+        return get_regime_target(as_of)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "asOf": as_of,
+            "error": str(exc),
+            "rule": "月末确认：000300 > MA200 → 稳健星舰 H2-a25；否则 → 星港 0.2",
+        }
+
+
 @router.get("/watchlist/registry")
 def get_watchlist_registry() -> dict:
     try:

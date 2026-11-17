@@ -7,6 +7,22 @@
 
 ---
 
+## 2026-11-15 研究（非 Live · 必读索引）
+
+| 文档 | 结论 |
+|---|---|
+| [`stable/m30-robustness-2026-11-15`](stable/m30-robustness-2026-11-15.md) | M30 条件稳健（B−）：50–70% 核心可以，100%/自动 Live 不够；top20 日贡献 64%、最长水下 444td、PBO 代理 1.0 |
+| [`stable/strategy-convergence-2026-11-15`](stable/strategy-convergence-2026-11-15.md) | 8 卡片 / 3 引擎 / 6 独立策略；打分与三档收敛；M45=55%港湾+45%B3 |
+| [`stable/regime-switch-2026-11-15`](stable/regime-switch-2026-11-15.md) | 精确 NAV：2 状态 +259.2%/−8.2%/SR2.39；长样本 H2-a25 +756.1%/−7.4%/3.63 更强；S-gap 2026H2 转负，2 状态是 forward 折中，M30/M50 是 S-gap-free |
+| [`stable/regime-switch-paper-2026-11-15`](stable/regime-switch-paper-2026-11-15.md) | 2 状态 paper 2026-11-13 启动（当前 bear→星港），同步跟踪 H2-a25/M30；复核 2026-12/2027-02/2027-05 |
+
+脚本：`scripts/export_regime_navs.py`（exact 日 NAV）、`scripts/regime_switch_exact.py`（精确重跑）、
+`scripts/regime_switch_paper.py`（paper 日志）。Watchlist 自 2026-11-15 起由
+`GET /watchlist/regime-target` 自动显示目标，S-gap 健康卡同页辅助判断；详见
+[`modules/watchlist.md`](../modules/watchlist.md) 的「自动 regime 跟随」。
+
+---
+
 ## 0. 现行终局：机会双子星（核心 = 择强单轨）
 
 | 项 | 内容 |

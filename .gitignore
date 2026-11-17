@@ -53,3 +53,13 @@ src-tauri/target/
 
 
 data/*
+# Agent run transcripts / prompts / pid files (local only)
+.opencode-runs/
+.oc-runs/
+
+# Local env backups (never commit secrets)
+.env.bak*
+.env.*.bak*
+
+# Ad-hoc timestamped backups of research outputs
+*.bak-*

@@ -22,7 +22,7 @@ const FIELD =
  * integer-lot order aid (satellite buy rows, QuickBuyDialog, …). Display only —
  * it never changes strategy sizing or Live decisions.
  */
-export function AccountBar({ className }: { className?: string }) {
+export function AccountBar({ className, compact = false }: { className?: string; compact?: boolean }) {
   const { capital } = useAccountSettings();
   const [capDraft, setCapDraft] = React.useState(capital != null ? String(capital) : '');
 
@@ -41,6 +41,7 @@ export function AccountBar({ className }: { className?: string }) {
         'mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl px-4 py-2.5',
         'border border-[var(--k-border)]/70 bg-[var(--k-surface)]/55 shadow-[0_1px_3px_rgba(0,0,0,0.05)]',
         'backdrop-blur-md',
+        compact && 'gap-x-3 rounded-xl px-3 py-1.5',
         className,
       )}
     >
@@ -73,9 +74,11 @@ export function AccountBar({ className }: { className?: string }) {
           <span className="text-[11px] text-amber-600 dark:text-amber-400">未设置</span>
         )}
       </label>
-      <span className="text-[11px] text-[var(--k-muted)]/80">
-        仓位 % → 整数股数（仅本机保存，不参与策略；港股按 0.92 估算）
-      </span>
+      {!compact ? (
+        <span className="text-[11px] text-[var(--k-muted)]/80">
+          仓位 % → 整数股数（仅本机保存，不参与策略；港股按 0.92 估算）
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -199,6 +199,17 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 0. 新想法先过 [`first-principles-2026-09-05.md`](docs/backtests/first-principles-2026-09-05.md) 自查：撞上已杀直觉（§一不变量 / §三死因）的不开诊断；撞上不变量的直接用；只有档里没有的才开预注册。
 
+> **2026-11-15 research（非 Live，必读）**：M30 稳健性复核、2 状态 regime 切换
+> （月末 `000300 > MA200` → 稳健星舰 H2-a25；否则 → 星港 0.2）、S-gap 拥挤/衰减、Watchlist 自动跟随。
+> 结论：**长样本 H2-a25 最强，但 S-gap 2026H2 已转负（−1.28%/笔、成交 6.3×、大单 t 1.95）；
+> 2 状态是更好的 forward 折中；M30/M50 是 S-gap-free。** Watchlist 自 2026-11-15 起由
+> `GET /watchlist/regime-target` 自动显示目标，不再手动选；S-gap 健康卡在 Watchlist 顶部。
+> 详见 [`m30-robustness-2026-11-15`](docs/backtests/stable/m30-robustness-2026-11-15.md)、
+> [`strategy-convergence-2026-11-15`](docs/backtests/stable/strategy-convergence-2026-11-15.md)、
+> [`regime-switch-2026-11-15`](docs/backtests/stable/regime-switch-2026-11-15.md)、
+> [`regime-switch-paper-2026-11-15`](docs/backtests/stable/regime-switch-paper-2026-11-15.md)；
+> 代码 `service/regime_switch.py`、（前端）`RegimeAutoCard.tsx` / `SgapHealthCard.tsx`。
+
 1. **现行产品基线 = 「母港 M30」基线（默认/Live）= S-3 股票核心 + 闲置现金 ETF 停车场**（tag `harbor-p1-20260913`；真值 [`docs/modules/pick-strong-track.md`](docs/modules/pick-strong-track.md)）。当前 clean 三窗增量 **+17.2/+13.0/+11.6pt**、long **+118.8pt**（2026-09-14 日历/决策单源修正）；停车场只作用于 S-3 闲置现金（14:30、`mom60+MA200` argmax、因果 trail8、H2 2pt）。
    - 停车场真值 → [`etf-parking-baseline-2026-09-13.md`](docs/backtests/stable/etf-parking-baseline-2026-09-13.md)（B11）
    - ETF 基准 / 最佳拟合 → [`etf-benchmark-parking-2026-09-13.md`](docs/backtests/stable/etf-benchmark-parking-2026-09-13.md)（B13；港湾×风险预算 50/50，落地需另起预注册）
