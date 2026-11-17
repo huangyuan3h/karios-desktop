@@ -165,6 +165,55 @@ async def on_action_change(client, action):
 
 ---
 
+## 3.1 增量写 watchlist（2026-11-11 · 乐乐专用）
+
+> **`POST /watchlist/registry` 是全量替换**：它只保留 posted 列表里的 symbol，
+> 其它行会被 `DELETE`（空列表 = 清空整本）。桌面 UI 依赖该契约，**不要**用它做
+> 单行更新。Agent 请统一走下面这组接口。
+
+**只读当前注册表（含持仓）**
+
+```bash
+curl -s "$BASE/v1/agent/watchlist" | jq '{count, positions: [.positions[].symbol]}'
+curl -s "$BASE/v1/agent/watchlist.md"          # 紧凑 Markdown 表（symbol/name/positionPct/costPrice/source）
+```
+
+**增量写：只有 `ops` 里显式点名的 symbol 会变，其它行永不删除**
+
+```bash
+curl -s -X POST "$BASE/v1/agent/watchlist" -H 'Content-Type: application/json' -d '{
+  "reason": "14:30 确认成交后更新持仓",
+  "source": "agent",
+  "dryRun": false,
+  "ops": [
+    {"op": "set_position", "symbol": "ETF:511260", "positionPct": 29.07, "costPrice": 134.46},
+    {"op": "upsert", "symbol": "CN:000001", "name": "平安银行", "positionPct": 12.5},
+    {"op": "remove", "symbol": "ETF:513350"}
+  ]
+}'
+```
+
+| 规则 | 说明 |
+|------|------|
+| `op` | `upsert`（不存在则插入，存在则合并字段）\| `set_position`（必须已存在，否则 404）\| `remove`（只删该 symbol） |
+| `reason` | 必填，1–500 字符 |
+| `ops` | 非空，最多 50 条 |
+| `positionPct` | 有限数字，服务端 clamp 到 `[0, 100]` 并保留 2 位小数 |
+| `dryRun: true` | 返回 would-be 的 `before` / `after` 与整本 `items`，**不写库** |
+| 持仓保护 | `remove` 时若该行 `positionPct > 0`，必须显式 `"force": true`，否则 422 |
+| 幂等 | `remove` 一个不存在的 symbol → 200 + `applied: false` |
+| `placesOrders` | 恒为 `false`：本接口只写账本（pool + 成本/仓位），**不下单** |
+| 决策日志 | 不会自动写 `POST /v1/agent/decision-log`，需要时单独调用 |
+
+**流程约束**：14:30 的成交确认仍然先在对话里完成，确认之后才由乐乐把结果写入
+watchlist；本接口不会替你拍板，也不改任何策略参数。
+
+> UI 侧提醒：桌面端 WatchlistPage 若还有未保存的本地改动，之后保存仍会走
+> `POST /watchlist/registry`（全量替换）并覆盖 agent 刚写入的行——这是本 slice
+> 已知的、未修的边界。
+
+---
+
 ## 4. 错误处理（生产必读）
 
 ### 4.1 401 Unauthorized

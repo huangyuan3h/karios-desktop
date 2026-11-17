@@ -22,6 +22,7 @@ from data_sync_service.scheduler import (
     close_sync_job,
     cn_industry_post_close_job,
     daily_basic_job,
+    daily_confirm_reconcile_job,
     daily_sync_job,
     decision_action_job,
     decision_outcome_job,
@@ -30,6 +31,7 @@ from data_sync_service.scheduler import (
     em_probe_job,
     etf_daily_job,
     etf_snapshot_job,
+    factor_live_job,
     factor_signals_job,
     factor_vault_job,
     fund_basic_job,
@@ -57,6 +59,7 @@ from data_sync_service.scheduler import (
     sgap_decay_job,
     sleeve_paper_job,
     stock_basic_job,
+    strategy_alerts_job,
     timeline_warmup_job,
     trading_brief_job,
     watchlist_automation_job,
@@ -431,11 +434,27 @@ def create_scheduler() -> BackgroundScheduler:
         id=decision_action_job.JOB_ID,
         replace_existing=True,
     )
+    # 14:30 confirmation loop: fill next-session fills / deviations onto the
+    # same daily_confirm row (weekdays 18:55, before factor_live_append 19:00).
+    scheduler.add_job(
+        daily_confirm_reconcile_job.run,
+        daily_confirm_reconcile_job.build_trigger(),
+        id=daily_confirm_reconcile_job.JOB_ID,
+        replace_existing=True,
+    )
     # Timeline warmup: past-year single-track (08:20 weekdays) -> file cache for <100ms loads
     scheduler.add_job(
         timeline_warmup_job.run,
         timeline_warmup_job.build_trigger(),
         id=timeline_warmup_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Factor live overlay (weekdays 19:00 — append new closed S-gap/Harbor
+    # trades + recompute the parking path; read-only replay, fail-open).
+    scheduler.add_job(
+        factor_live_job.run,
+        factor_live_job.build_trigger(),
+        id=factor_live_job.JOB_ID,
         replace_existing=True,
     )
     # Factor vault daily refresh (weekdays 19:10 — read-only file recompute,
@@ -452,6 +471,14 @@ def create_scheduler() -> BackgroundScheduler:
         sgap_decay_job.run,
         sgap_decay_job.build_trigger(),
         id=sgap_decay_job.JOB_ID,
+        replace_existing=True,
+    )
+    # After-close strategy alerts (weekdays 19:20 — decay / revival / excess
+    # delta pack for chat; read-only against the vault, advice only).
+    scheduler.add_job(
+        strategy_alerts_job.run,
+        strategy_alerts_job.build_trigger(),
+        id=strategy_alerts_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

@@ -110,6 +110,94 @@ def upsert_registry(items: list[dict[str, Any]]) -> int:
     return len(values)
 
 
+def upsert_registry_rows(items: list[dict[str, Any]]) -> int:
+    """Insert/merge the given symbols **only** — never deletes other rows.
+
+    This is the incremental counterpart of :func:`upsert_registry` (which is a
+    full replace and stays the desktop UI contract). Provided payload fields
+    overwrite; omitted fields keep their stored value (JSONB ``||`` merge).
+    ``source`` / ``added_at`` are only overwritten when the item sends them.
+    """
+    ensure_tables()
+    if not items:
+        return 0
+    # Lazy import: db layer must not hard-depend on the service layer.
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    values = []
+    for item in items:
+        sym = normalize_market_symbol(str(item.get("symbol") or "").strip())
+        if not sym:
+            continue
+        source_val = item.get("source")
+        added_val = item.get("addedAt") or item.get("added_at")
+        values.append(
+            (
+                sym,
+                str(source_val) if source_val else None,
+                str(added_val) if added_val else None,
+                Json({**item, "symbol": sym}),
+                str(source_val) if source_val else None,
+                str(added_val) if added_val else None,
+            )
+        )
+    if not values:
+        return 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"""
+                INSERT INTO {REGISTRY_TABLE}(symbol, source, added_at, payload, updated_at)
+                VALUES (%s, COALESCE(%s, 'agent'), COALESCE(%s, ''), %s, now())
+                ON CONFLICT(symbol) DO UPDATE SET
+                    source = COALESCE(%s, {REGISTRY_TABLE}.source),
+                    added_at = COALESCE(%s, {REGISTRY_TABLE}.added_at),
+                    payload = {REGISTRY_TABLE}.payload || EXCLUDED.payload,
+                    updated_at = now()
+                """,
+                values,
+            )
+        conn.commit()
+    return len(values)
+
+
+def delete_registry_symbols(symbols: list[str]) -> int:
+    """Delete only the listed symbols (normalized); returns the rows deleted."""
+    ensure_tables()
+    # Lazy import: db layer must not hard-depend on the service layer.
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    normalized: list[str] = []
+    for symbol in symbols or []:
+        sym = normalize_market_symbol(str(symbol or "").strip())
+        if sym and sym not in normalized:
+            normalized.append(sym)
+    if not normalized:
+        return 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"DELETE FROM {REGISTRY_TABLE} WHERE symbol = ANY(%s)",
+                (normalized,),
+            )
+            deleted = cur.rowcount or 0
+        conn.commit()
+    return deleted
+
+
+def latest_registry_updated_at() -> str | None:
+    """Newest registry ``updated_at`` as ISO text (None on an empty table)."""
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT MAX(updated_at) FROM {REGISTRY_TABLE}")
+            row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    value = row[0]
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
 def update_registry_payload(symbol: str, fields: dict[str, Any]) -> None:
     """Merge ``fields`` into one registry row's JSONB payload (no row delete)."""
     ensure_tables()

@@ -541,6 +541,15 @@ def test_brief_shape_has_contract_and_backtest(patched: None) -> None:
     # No equity curve inlined.
     assert "rows" not in bt
 
+    # Factor system: advice-only, wait in M30 while starship is cold.
+    fs = out["factorSystem"]
+    assert fs["available"] is True
+    assert fs["policy"]["action"] == "wait_in_baseline"
+    assert fs["policy"]["baseline"] == "homeport_m30"
+    assert fs["policy"]["suggestedLiveWeight"] == 0
+    assert fs["adviceOnly"] is True
+    assert any(item["id"] == "starship_b" for item in fs["focus"])
+
     # Market facts.
     assert out["fund"]["inflow5d"][0]["industryName"] == "半导体"
     assert out["fund"]["etfFlow"]["verdict"] == "confirm"
@@ -585,6 +594,9 @@ def test_compact_mode_is_a_subset(patched: None) -> None:
     assert compact["contract"]["contractId"] == full["contract"]["contractId"]
     assert len(compact["news"]["items"]) <= len(full["news"]["items"])
     assert compact["backtest"].get("recent") is None
+    assert compact["factorSystem"]["available"] is True
+    assert "focus" not in compact["factorSystem"]
+    assert compact["factorSystem"]["policy"]["action"] == full["factorSystem"]["policy"]["action"]
     # Same comparison table either way — that is the meat.
     assert [r["timelineStrategy"] for r in compact["backtest"]["comparison"]] == [
         r["timelineStrategy"] for r in full["backtest"]["comparison"]
@@ -612,7 +624,8 @@ def test_routes_json_and_markdown(patched: None) -> None:
     assert "## 4. 回测 backtest" in text
     assert "homeport_m30" in text
     assert "## 11. 决策日志 decision log" in text
-    assert "## 12. 故意省略 omitted" in text
+    assert "## 因子系统 factor system" in text
+    assert "## 13. 故意省略 omitted" in text
     assert "Alpha Radar · Structured Trends" not in text
     assert "研报" not in text.split("## 9. 数据新鲜度")[0]
 
@@ -1217,7 +1230,7 @@ def test_decision_log_read_is_fail_open_without_db(
 
 def test_step1_step2_fields_still_serialize(patched: None) -> None:
     out = agent_brief.build_judgment_brief(trade_date="2026-11-10")
-    assert out["briefVersion"] == "2026-11-11.3"
+    assert out["briefVersion"] == "2026-11-12.2"
     assert out["integrity"]["status"] in {"ok", "warning", "unknown"}
     assert out["judgment"]["fillClock"] is not None
     assert "followable" in out["judgment"]["followability"]

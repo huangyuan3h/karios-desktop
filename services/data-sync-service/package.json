@@ -2,12 +2,12 @@
   "name": "data-sync-service",
   "private": true,
   "scripts": {
-    "dev": "uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330",
+    "dev": "uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330 --reload --reload-dir src",
     "start": "uv run uvicorn data_sync_service.main:app --app-dir src --host 127.0.0.1 --port 4330",
     "lint": "uv run ruff check . && uv run ruff format --check .",
     "format": "uv run ruff format .",
     "typecheck": "uv run pyright",
     "test": "uv run pytest -q",
-    "dev:reload": "uv run uvicorn data_sync_service.main:app --app-dir src --reload --host 127.0.0.1 --port 4331"
+    "dev:reload": "uv run uvicorn data_sync_service.main:app --app-dir src --reload --reload-dir src --host 127.0.0.1 --port 4331"
   }
 }

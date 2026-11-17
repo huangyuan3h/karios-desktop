@@ -44,6 +44,11 @@ def _canonical_key(*, key: str | None = None, symbol: str | None = None) -> str 
         return None
 
 
+def canonical_key(*, key: str | None = None, symbol: str | None = None) -> str | None:
+    """Public alias for the key normalizer (shared by ``agent_risk_gates``)."""
+    return _canonical_key(key=key, symbol=symbol)
+
+
 def _today_iso() -> str:
     from data_sync_service.service.trade_calendar_utils import shanghai_today_iso
 

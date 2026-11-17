@@ -1274,6 +1274,16 @@ def backtest_starship_b_state() -> dict[str, Any]:
     return starship_b_state()
 
 
+def _hsgt_money_to_yi(value: float) -> float:
+    """Tushare ``moneyflow_hsgt`` money fields → 亿元.
+
+    ``north_money`` / ``hgt`` / ``sgt`` are published in **百万元** (official
+    docs + ``tushare/stock/reference.py``), so 22448.99 → 224.5 亿元
+    (2024-04-26, the single-day northbound net-buy record).
+    """
+    return round(value / 1e2, 1)
+
+
 def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
     """TIP-017 资金流全景 rows (display only, fail-open): one per trading day.
 
@@ -1294,7 +1304,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
       ``marginIncomplete`` on the following complete row's tooltip context
       via the /flow-series meta (see backtest_flow_series).
     - north: 2024-08-19 caliber break — pre-break north_money is daily net
-      inflow (万元), post-break it is turnover scale (always positive).
+      inflow (百万元), post-break it is turnover scale (always positive).
       Post-break rows carry ``northIsTurnover=True`` and the 20-session
       cumulative restarts at the break (never mixes net + turnover).
     """
@@ -1412,7 +1422,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
         for i in range(20, len(marg)):
             marg20sum[marg[i][0]] = round((marg[i][1] - marg[i - 20][1]) / 1e8, 1)
 
-        north_daily = {d: round(v / 1e4, 1) for d, v in hsgt}  # 万元 → 亿元
+        north_daily = {d: _hsgt_money_to_yi(v) for d, v in hsgt}  # 百万元 → 亿元
         # Caliber break 2024-08-19: post-break north_money is turnover, not
         # net inflow. The 20-session cumulative must not mix the two regimes,
         # so it restarts at the first post-break observation.
@@ -1430,7 +1440,7 @@ def _load_flow_rows(start: str, end: str) -> list[dict[str, Any]]:
                 # Only emit when the 20-day window sits in one regime.
                 window = run[-20:]
                 if (window[0][0] >= HSGT_BREAK_DATE) == (window[-1][0] >= HSGT_BREAK_DATE):
-                    north20[d] = round(sum(x for _, x in window) / 1e4, 1)
+                    north20[d] = _hsgt_money_to_yi(sum(x for _, x in window))
         north_is_turnover = {d: (d >= HSGT_BREAK_DATE) for d, _ in hsgt}
 
         sm_net_pct: dict[str, float] = {}

@@ -41,6 +41,14 @@
 
 ---
 
+## Unreleased — 2026-11-11
+
+### Added
+
+- `GET /v1/agent/watchlist` (+ `.md`) — read the registry with `placesOrders: false`, `positions` and the incremental-write hint. `POST /v1/agent/watchlist` — incremental, symbol-scoped `upsert` / `set_position` / `remove`; never a full replace, never places orders.
+
+---
+
 ## Template for next entry
 
 ```markdown

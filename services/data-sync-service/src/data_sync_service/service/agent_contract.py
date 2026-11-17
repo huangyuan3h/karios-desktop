@@ -93,6 +93,19 @@ STARSHIP_FACTOR_IDS: dict[str, tuple[str, ...]] = {
     "starship_b": ("starship_b",),
 }
 PARKING_KEYS = frozenset({"GOLD", "OIL", "NASDAQ", "BOND10"})
+# Tradable asset behind each parking key (copy only; the engine owns the map).
+_PARKING_ASSETS: dict[str, str] = {
+    "GOLD": "ETF:518880",
+    "OIL": "ETF:513350",
+    "NASDAQ": "ETF:513100",
+    "BOND10": "ETF:511260",
+}
+_PARKING_LABELS: dict[str, str] = {
+    "GOLD": "黄金",
+    "OIL": "油",
+    "NASDAQ": "纳指",
+    "BOND10": "10年国债",
+}
 # The recommendation is advice in the payload only — the settings mode and the
 # live sleeve are never rewritten by this module.
 FOLLOW_RECOMMENDATION = {
@@ -324,14 +337,58 @@ def _fill_clock(sleeve: dict[str, Any], *, now: datetime | None = None) -> dict[
     }
 
 
+def _rebuy_key_context(
+    key: str,
+    *,
+    last_exit_date: str | None,
+    pick_key: str | None,
+) -> dict[str, Any]:
+    """Per-key "just stopped, do not auto-rebuy" copy (not oil-only)."""
+    assets = _PARKING_ASSETS.get(key)
+    label = _PARKING_LABELS.get(key, key)
+    if pick_key and pick_key != key:
+        current = f"当前 pick={pick_key}，不是 {key}；"
+    elif pick_key == key:
+        current = f"当前 pick 仍是 {key}；"
+    else:
+        current = ""
+    message = (
+        f"刚卖出/止损 {key}（{assets or '停车 ETF'}，{last_exit_date or '近10日内'}）。{current}"
+        f"不要自动回买{label}；若下一腿回到 {key}，先确认再买。"
+        "人工覆盖（annotate only）：/v1/agent/overlays。"
+    )
+    return {
+        "active": True,
+        "key": key,
+        "symbol": assets,
+        "lastExitDate": last_exit_date,
+        "pickIsSameKey": bool(pick_key and pick_key == key),
+        "pickIsOil": key == "OIL" and pick_key == "OIL",
+        "parkingKey": key in PARKING_KEYS,
+        "message": message,
+    }
+
+
 def _whip_context(whip: dict[str, Any], sleeve: dict[str, Any]) -> dict[str, Any]:
-    """Make a same-key oil whip visible even when today's pick is BOND10."""
+    """Make a just-trailed parking key visible even when today's pick rotated.
+
+    Generalizes the 2026-11-03 OIL case to every parking key (GOLD / NASDAQ /
+    BOND10): ``context.oil`` stays as a convenience alias when the key is OIL,
+    and ``context.rebuy.byKey`` carries the generic per-key annotation.
+    """
     keys = [str(k).upper() for k in (whip.get("keys") or []) if k]
     pick = sleeve.get("pick") or {}
     pick_key = str(pick.get("key") or "").upper() or None
     recent = whip.get("recentExits") or {}
     last = whip.get("lastExit") or {}
-    oil_date = recent.get("OIL") or (last.get("date") if pick_key == "OIL" else None)
+    by_key: dict[str, Any] = {}
+    for key in keys:
+        date = recent.get(key)
+        if not date and pick_key == key:
+            date = last.get("date")
+        if not date:
+            continue
+        by_key[key] = _rebuy_key_context(key, last_exit_date=str(date)[:10], pick_key=pick_key)
     context: dict[str, Any] = {
         "keys": keys,
         "recentExits": recent,
@@ -347,24 +404,23 @@ def _whip_context(whip: dict[str, Any], sleeve: dict[str, Any]) -> dict[str, Any
             "the parking cooldown stays k=0 (H-PARK-C REJECT)"
         ),
     }
-    if "OIL" in keys or pick_key == "OIL":
-        current = (
-            f"当前 pick={pick_key}，不是 OIL；"
-            if pick_key and pick_key != "OIL"
-            else "当前 pick 仍是 OIL；"
-        )
-        context["oil"] = {
+    if by_key:
+        context["rebuy"] = {
             "active": True,
-            "key": "OIL",
-            "symbol": "ETF:513350",
-            "lastExitDate": oil_date,
-            "pickIsOil": pick_key == "OIL",
-            "message": (
-                f"刚卖出/止损 OIL（513350，{oil_date or '近10日内'}）。{current}"
-                "不要自动回买油；若下一腿回到 OIL，先确认再买。"
-                f"人工覆盖（annotate only）：{context['overlaysPath']}。"
+            "keys": sorted(by_key),
+            "byKey": by_key,
+            "pickKey": pick_key,
+            "sameKeyRebuy": bool(whip.get("sameKeyRebuy")),
+            "priority": context["priority"],
+            "adviceOnly": True,
+            "note": (
+                "any parking key (not only OIL) that was trailed out inside the "
+                "10-day whip memory; advice only, never a veto"
             ),
         }
+    if "OIL" in by_key:
+        # Convenience alias for the 2026-11-03 OIL case (never the only path).
+        context["oil"] = by_key["OIL"]
     return context
 
 

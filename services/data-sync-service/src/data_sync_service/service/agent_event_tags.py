@@ -679,17 +679,32 @@ def build_event_tag_block(
             )
         )
     whip_ctx = ((contract.get("whip") or {}).get("context") or {}) if contract.get("whip") else {}
-    oil = (whip_ctx or {}).get("oil") or {}
-    if oil.get("active"):
+    # Any parking key trailed out inside the whip memory window (not only OIL).
+    rebuy_ctx = (whip_ctx or {}).get("rebuy") or {}
+    rebuy_by_key = rebuy_ctx.get("byKey") or {}
+    if not rebuy_by_key:
+        # Back-compat for hand-built contexts that only carry the OIL alias.
+        oil_alias = (whip_ctx or {}).get("oil") or {}
+        if oil_alias.get("active"):
+            rebuy_by_key = {"OIL": oil_alias}
+    for key, info in rebuy_by_key.items():
+        if not isinstance(info, dict) or not info.get("active"):
+            continue
+        key_norm = str(key or "").upper()
+        assets = [key_norm]
+        if info.get("symbol"):
+            assets.append(str(info["symbol"]))
         tags.append(
             _engine_tag(
-                tag="same_key_rebuy_oil",
+                tag="same_key_rebuy_oil"
+                if key_norm == "OIL"
+                else f"same_key_rebuy_{key_norm.lower()}",
                 effect="advise_defer_same_key_rebuy",
                 confidence=1.0,
-                related_assets=["OIL", "ETF:513350"],
+                related_assets=assets,
                 day=day,
                 contract_id=contract_id,
-                note=oil.get("message"),
+                note=info.get("message"),
             )
         )
 

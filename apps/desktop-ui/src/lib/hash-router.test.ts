@@ -33,6 +33,11 @@ describe('parseHash', () => {
     expect(parseHash('#/settings').page).toBe('settings');
   });
 
+  it('parses the factor library kebab and camel hashes', () => {
+    expect(parseHash('#/factor-system').page).toBe('factorSystem');
+    expect(parseHash('#/factorSystem').page).toBe('factorSystem');
+  });
+
   it('parses stock deep links with the symbol decoded', () => {
     const r = parseHash('#/stock/HK%3A00700');
     expect(r.page).toBe('stock');
@@ -69,5 +74,21 @@ describe('buildHash / pageHref', () => {
     expect(pageHref('watchlist')).toBe('#/watchlist');
     expect(pageHref('stock', 'HK:00700')).toBe('#/stock/HK%3A00700');
     expect(pageHref('decision')).toBe('#/decision');
+  });
+
+  it('emits the kebab factor-system hash and round-trips it', () => {
+    expect(pageHref('factorSystem')).toBe('#/factor-system');
+    expect(
+      buildHash({
+        page: 'factorSystem',
+        symbol: null,
+        journalMode: null,
+        journalId: null,
+      }),
+    ).toBe('#/factor-system');
+
+    for (const hash of ['#/factor-system', '#/factorSystem']) {
+      expect(buildHash(parseHash(hash))).toBe('#/factor-system');
+    }
   });
 });

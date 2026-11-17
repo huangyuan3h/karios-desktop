@@ -500,8 +500,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                 />
               ) : id === 'factorRevival' ? (
                 <FactorRevivalCard
-                  onOpenVault={() => onNavigate?.('backtest')}
-                  onOpenSgap={() => onNavigate?.('backtest')}
+                  onOpenVault={() => onNavigate?.('factorSystem')}
+                  onOpenSgap={() => onNavigate?.('factorSystem')}
                 />
               ) : id === 'brief' ? (
                 <MorningBriefCard

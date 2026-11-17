@@ -917,4 +917,16 @@ describe('BacktestPage', () => {
     expect(card.textContent).toContain('2026-09-01');
     expect(card.textContent).toContain('511260');
   });
+
+  it('drops the vault and S-gap tabs (moved to the factor library)', async () => {
+    renderPage();
+
+    for (const label of ['策略总览', '对比', '回测基线', '舰队']) {
+      expect(await screen.findByRole('button', { name: label })).toBeDefined();
+    }
+    expect(screen.queryByText('因子冷库')).toBeNull();
+    expect(screen.queryByText('S-gap 失效趋势')).toBeNull();
+    expect(screen.queryByTestId('vault-summary')).toBeNull();
+    expect(screen.queryByTestId('sgap-summary')).toBeNull();
+  });
 });

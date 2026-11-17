@@ -7,9 +7,10 @@
  *   #/dashboard            #/watchlist            #/news
  *   #/market               #/industry-flow        #/alpha
  *   #/decision             #/backtest             #/scheduler
- *   #/screener             #/settings             #/broker
- *   #/index                #/stock/HK%3A00700     #/journal
- *   #/journal/write        #/journal/review       #/journal/write/<id>
+ *   #/factor-system        #/screener             #/settings
+ *   #/broker               #/index                #/stock/HK%3A00700
+ *   #/journal              #/journal/write        #/journal/review
+ *   #/journal/write/<id>
  */
 
 export interface ParsedRoute {
@@ -28,6 +29,7 @@ export const PAGE_IDS = [
   'alpha',
   'decision',
   'backtest',
+  'factorSystem',
   'watchlist',
   'broker',
   'journal',
@@ -46,6 +48,9 @@ const SLUG_TO_PAGE: Record<string, string> = {
   alpha: 'alpha',
   decision: 'decision',
   backtest: 'backtest',
+  // Both spellings parse; `buildHash` always emits the kebab slug.
+  'factor-system': 'factorSystem',
+  factorSystem: 'factorSystem',
   watchlist: 'watchlist',
   broker: 'broker',
   journal: 'journal',
@@ -93,6 +98,8 @@ export function buildHash(route: ParsedRoute): string {
       if (route.journalMode === 'review') return '#/journal/review';
       return '#/journal';
     }
+    case 'factorSystem':
+      return '#/factor-system';
     default:
       return `#/${route.page}`;
   }

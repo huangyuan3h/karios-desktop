@@ -3,13 +3,21 @@
 Recomputes the uniform H2k health check for every once-effective factor from
 existing audit data (no DB queries, no live-param changes, no orders):
 
-- S-gap last-40: ~/Projects/wealth-ideas/karios-audit-2026-10/scratch/h2f_trades.json
-  (1130 trades, exact rolling mean/sum/win/t/percentile via factor_vault
-  SGAP calibration + sgap_decay helpers where imported).
-- Harbor S-3 stock leg last-40: scratch/h2d_blotter_{long,valid,holdout}.json
-  (416 long trades) with the H2d placebo calibration.
+- S-gap last-40: the frozen ~/Projects/wealth-ideas/karios-audit-2026-10/
+  scratch/h2f_trades.json prefix (1130 trades, read-only) **plus** the live
+  overlay's new closed trades (factor_live_trades.json) when present; exact
+  rolling mean/sum/win/t/percentile via factor_vault SGAP calibration.
+- Harbor S-3 stock leg last-40: h2d_blotter_long.json (416 frozen trades,
+  read-only) plus live stock-leg appends and live parking episodes from the
+  same overlay (all additive Harbor NAV points), with the H2d calibration.
+- H01/H02/H03 daily event pilots last-40: the frozen-prefix sidecar extracted
+  from h2_records.pkl (read-only) plus live closed appends, reported as the
+  mean % per trade (``%/笔``) — never revived without a real percentile.
 - All other pilots: frozen window aggregates embedded in
   service/factor_vault.py (FINAL/H2/G/H2b/H2d/H2j/H2k).
+
+The four audit windows (OOS2/train/valid/holdout) are never recomputed —
+only the rolling last-40 override follows the live blotter.
 
 Output (tracked frozen files served by GET /api/backtest/factor-vault):
 - services/data-sync-service/data/backtest_reports/factor_vault.json
@@ -31,11 +39,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from data_sync_service.service import factor_live as fl  # noqa: E402
+from data_sync_service.service import factor_live_daily as fld  # noqa: E402
 from data_sync_service.service import factor_vault as fv  # noqa: E402
 
-AUDIT_SCRATCH = (
-    Path.home() / "Projects" / "wealth-ideas" / "karios-audit-2026-10" / "scratch"
-)
+AUDIT_SCRATCH = fl.audit_scratch_dir()
 DEFAULT_OUTPUT = (
     Path(__file__).resolve().parents[1] / "data" / "backtest_reports" / "factor_vault.json"
 )
@@ -47,120 +55,104 @@ DEFAULT_HISTORY = (
 )
 
 
-def _mean(xs: list[float]) -> float:
-    return sum(xs) / len(xs) if xs else 0.0
-
-
-def _t_stat(xs: list[float]) -> float:
-    import math
-
-    n = len(xs)
-    if n < 2:
-        return 0.0
-    m = sum(xs) / n
-    var = sum((x - m) ** 2 for x in xs) / (n - 1)
-    if not math.isfinite(var) or var <= 0:
-        return 0.0
-    return m / (math.sqrt(var) / math.sqrt(n))
-
-
-def _sgap_override() -> dict[str, dict] | None:
-    """Exact S-gap last-40 from h2f_trades.json (same contrib unit as sgap_decay)."""
-    src = AUDIT_SCRATCH / "h2f_trades.json"
-    if not src.exists():
+def _sgap_override(live: dict | None) -> dict[str, dict] | None:
+    """Exact S-gap last-40: frozen h2f prefix + live closed appends."""
+    frozen = fl.load_frozen_sgap(AUDIT_SCRATCH / fl.SGAP_FROZEN_FILENAME)
+    stats = fl.live_override_stats(
+        live, family="sgap", frozen=frozen, mu=fv.SGAP_MU, sigma=fv.SGAP_SIGMA
+    )
+    if stats is None:
         return None
-    try:
-        trades = json.loads(src.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if isinstance(trades, dict):
-        trades = trades.get("trades", [])
-    rows: list[tuple[str, float]] = []
-    for t in trades:
-        if not isinstance(t, dict):
-            continue
-        entry = t.get("entry") or t.get("entryDate")
-        raw = t.get("contrib", t.get("contribPct"))
-        try:
-            c = float(raw)
-        except (TypeError, ValueError):
-            continue
-        import math as _m
-
-        if not _m.isfinite(c) or not entry:
-            continue
-        rows.append((str(entry)[:10], c))
-    rows.sort(key=lambda r: r[0])
-    if len(rows) < 1:
-        return None
-    tail = [c for _, c in rows[-40:]]
-    n = len(tail)
-    win = sum(1 for x in tail if x > 0) / n if n else 0.0
-    net = sum(tail)
-    pct = fv.percentile_of_sum(net, n, fv.SGAP_MU, fv.SGAP_SIGMA)
     return {
         "starship_b": {
-            "percentile": pct,
-            "net": net,
-            "win_rate": win,
-            "trades": n,
-            "window": "holdout",
+            "percentile": stats["percentile"],
+            "net": stats["net"],
+            "win_rate": stats["win_rate"],
+            "trades": stats["trades"],
+            "window": "live" if live else "holdout",
+            "as_of": stats["as_of"],
+            "last_trade_as_of": stats["last_trade_as_of"],
+            "basis": "live:sgap" if live else "frozen:sgap",
         }
     }
 
 
-def _harbor_override() -> dict[str, dict] | None:
-    """Exact Harbor S-3 stock-leg last-40 from the long blotter only.
+def _harbor_override(live: dict | None) -> dict[str, dict] | None:
+    """Exact Harbor last-40: frozen H2d stock leg + live stock/parking legs.
 
-    h2d_blotter_long.json (416 trades) already contains every window;
+    h2d_blotter_long.json (416 trades) already contains every frozen window;
     the per-window files are subsets, so concatenating would double-count.
-    Sorted by entry date (stable) to match the H2d replay order.
+    Live stock trades and parking episodes are additive Harbor NAV points, so
+    they can extend the same rolling window (the frozen prefix stays stock-only
+    because the H2d audit never recorded the parking leg).
     """
-    p = AUDIT_SCRATCH / "h2d_blotter_long.json"
-    if not p.exists():
+    frozen = fl.load_frozen_harbor(AUDIT_SCRATCH / fl.HARBOR_FROZEN_FILENAME)
+    stats = fl.live_override_stats(
+        live, family="harbor", frozen=frozen, mu=fv.HARBOR_MU, sigma=fv.HARBOR_SIGMA
+    )
+    if stats is None:
         return None
-    try:
-        blotter = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(blotter, list):
-        return None
-    rows: list[tuple[str, float]] = []
-    for d in blotter:
-        if not isinstance(d, dict):
-            continue
-        try:
-            pnl = float(d.get("pnl", 0.0))
-            pos = float(d.get("pos", 0.1))
-        except (TypeError, ValueError):
-            continue
-        import math as _m
-
-        if not (_m.isfinite(pnl) and _m.isfinite(pos)):
-            continue
-        entry = str(d.get("entry") or "")[:10]
-        rows.append((entry, pnl * pos))
-    rows.sort(key=lambda r: r[0])
-    vals = [v for _, v in rows]
-    # Keep entry order (files are already chronological); take the last 40.
-    if not vals:
-        return None
-    tail = vals[-40:]
-    n = len(tail)
-    net = sum(tail)
-    win = sum(1 for _ in [])  # blotter has no per-trade win flag; leave None
-    pct = fv.percentile_of_sum(net, n, fv.HARBOR_MU, fv.HARBOR_SIGMA)
-    _ = _t_stat(tail)
-    _ = _mean(tail)
     return {
         "harbor": {
-            "percentile": pct,
-            "net": net,
-            "win_rate": None,
-            "trades": n,
-            "window": "valid" if n <= 16 else "long",
+            "percentile": stats["percentile"],
+            "net": stats["net"],
+            "win_rate": stats["win_rate"],
+            "trades": stats["trades"],
+            "window": "live" if live else ("valid" if stats["trades"] <= 16 else "long"),
+            "as_of": stats["as_of"],
+            "last_trade_as_of": stats["last_trade_as_of"],
+            "basis": "live:harbor" if live else "frozen:harbor",
         }
     }
+
+
+def _live_meta(live: dict | None) -> dict | None:
+    if not live:
+        return None
+    meta = live.get("meta") or {}
+    return {
+        "status": meta.get("status"),
+        "asOf": meta.get("asOf"),
+        "updatedAt": meta.get("updatedAt"),
+        "reason": meta.get("reason"),
+        "appended": {
+            fam: len((live.get("appended") or {}).get(fam) or [])
+            for fam in ("sgap", "harbor", *fld.FAMILIES)
+        },
+        "parkingEpisodes": len((live.get("parking") or {}).get("episodes") or []),
+    }
+
+
+def _daily_override(
+    live: dict | None, prefix: dict | None
+) -> dict[str, dict] | None:
+    """Exact H01/H02/H03 last-40 as mean %/笔 (frozen prefix + live appends).
+
+    The audit windows stay frozen; only the rolling window follows the live
+    daily replay. Without both a prefix row and an appended row the builder
+    returns nothing and the vault keeps its embedded holdout proxy.
+    """
+    if not prefix:
+        return None
+    out: dict[str, dict] = {}
+    appended = (live or {}).get("appended") or {}
+    for family in fld.FAMILIES:
+        frozen = fld.family_rows(prefix, family)
+        stats = fl.daily_override_stats(live, family=family, frozen=frozen)
+        if stats is None:
+            continue
+        is_live = bool(appended.get(family))
+        out[family] = {
+            "percentile": stats["percentile"],
+            "net": stats["net"],
+            "win_rate": stats["win_rate"],
+            "trades": stats["trades"],
+            "window": "live" if is_live else "holdout",
+            "as_of": stats["as_of"],
+            "last_trade_as_of": stats["last_trade_as_of"],
+            "basis": f"live:{family}" if is_live else f"frozen:{family}",
+        }
+    return out or None
 
 
 def _load_history(path: Path) -> list[dict]:
@@ -183,17 +175,29 @@ def main() -> int:
     ap.add_argument("--date", default=date.today().isoformat())
     args = ap.parse_args()
 
+    out_path = Path(args.output)
+    hist_path = Path(args.history)
+    live = fl.load_live_payload(out_path.parent / fl.LIVE_FILENAME)
+    try:
+        daily_prefix = fld.load_frozen_prefix(out_path.parent)
+    except Exception:
+        daily_prefix = None
+
     overrides: dict[str, dict] = {}
     for builder in (_sgap_override, _harbor_override):
         try:
-            ov = builder()
+            ov = builder(live)
         except Exception:
             ov = None
         if ov:
             overrides.update(ov)
+    try:
+        daily_ov = _daily_override(live, daily_prefix)
+    except Exception:
+        daily_ov = None
+    if daily_ov:
+        overrides.update(daily_ov)
 
-    out_path = Path(args.output)
-    hist_path = Path(args.history)
     prev_history = _load_history(hist_path)
 
     payload = fv.compute_factor_vault(
@@ -201,8 +205,16 @@ def main() -> int:
         prev_history=prev_history or None,
         generated_at=args.date,
     )
-    payload["meta"]["source_path"] = "scratch/h2f_trades.json + h2d_blotter_*.json + frozen FACTOR_DEFS"
+    payload["meta"]["source_path"] = (
+        "scratch/h2f_trades.json + h2d_blotter_long.json + h2_records.pkl "
+        "(frozen prefix, read-only) + factor_live_trades.json (live overlay) "
+        "+ frozen FACTOR_DEFS"
+        if live
+        else "scratch/h2f_trades.json + h2d_blotter_long.json + h2_records.pkl "
+        "+ frozen FACTOR_DEFS"
+    )
     payload["meta"]["overrides"] = sorted(overrides.keys())
+    payload["meta"]["liveOverlay"] = _live_meta(live)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

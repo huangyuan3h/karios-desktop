@@ -30,10 +30,16 @@ Uniform rule (frozen, same for every factor, documented here and in the UI):
   monthly large-cap P&L positive); this
   module never changes live strategy params or any order/broker logic.
 
-Data (frozen, read-only, no DB/network/clock/broker calls):
-- S-gap / 星舰B family: per-trade h2f_trades.json (1130 trades) where
-  available; else frozen window aggregates below.
-- Harbor S-3 stock leg: per-trade h2d_blotter_*.json (416 long trades).
+Data (frozen audit windows + generated live overlay):
+- The four audit windows (OOS2/train/valid/holdout through 2026-09-30) are
+  frozen truth and stay frozen. The rolling "last 40 trades" override prefers
+  the Karios-owned live overlay (``data/backtest_reports/factor_live_trades.json``,
+  generated daily by ``factor_live_append``) when it exists: the frozen
+  wealth-ideas prefix (read-only) plus new closed replay trades after it.
+- S-gap / 星舰B family: per-trade h2f_trades.json (1130 frozen trades) +
+  live appends; else frozen window aggregates below.
+- Harbor S-3 stock leg: per-trade h2d_blotter_long.json (416 frozen trades) +
+  live stock-leg appends + live parking episodes (all additive NAV points).
 - All other pilots: frozen audit window aggregates (FINAL_REPORT.md Sec 2,
   H2_backtests.md Sec 2-4, G_portfolio_100w.md Sec 2, H2b/H2d, H2j, H2k).
   Percentiles are true placebo values where the audits ran them
@@ -700,7 +706,16 @@ def build_factors(
         proxy = rolling_proxy(factor)
         ov = overrides.get(fid)
         if ov:
-            for key in ("percentile", "net", "win_rate", "trades", "window"):
+            for key in (
+                "percentile",
+                "net",
+                "win_rate",
+                "trades",
+                "window",
+                "as_of",
+                "last_trade_as_of",
+                "basis",
+            ):
                 if key in ov and ov[key] is not None:
                     proxy[key] = ov[key]
         try:
@@ -741,6 +756,10 @@ def build_factors(
                 "trades": trades,
                 "trades_raw": proxy.get("n_raw", trades),
                 "rolling_window": proxy.get("window"),
+                # Live-overlay provenance (None for the frozen embedded windows).
+                "rolling_as_of": proxy.get("as_of"),
+                "rolling_last_trade_as_of": proxy.get("last_trade_as_of"),
+                "rolling_basis": proxy.get("basis"),
                 "spark": spark,
                 "history": history,
                 "position": position,
